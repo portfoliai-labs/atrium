@@ -7,6 +7,7 @@ import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, CircleDollarSi
 // (backend TransactionResponse) rows are converted into before reaching this component.
 export interface DisplayTransaction {
   ticker: string | null;
+  name: string | null;
   isin: string | null;
   date: string;
   operation: string;
@@ -59,6 +60,14 @@ const OPERATION_STYLES: Record<string, { icon: typeof ArrowUpRight; classes: str
 function formatMoney(value: number, currency: string): string {
   if (Number.isNaN(value)) return "-";
   return `${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency || ""}`.trim();
+}
+
+// The asset's name is the row's primary identifier when known, with its ticker alongside
+// for quick recognition — pending (not-yet-saved) rows don't have a resolved name yet, so
+// this falls back to whatever identifier is available (ticker, then ISIN).
+function rowIdentifier(tx: DisplayTransaction): string {
+  if (tx.name && tx.ticker) return `${tx.name} (${tx.ticker})`;
+  return tx.name || tx.ticker || tx.isin || "—";
 }
 
 export function TransactionsSection({
@@ -176,7 +185,7 @@ export function TransactionsSection({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-sm font-black truncate ${hasError("ticker") || hasError("isin") ? "text-rose-600" : "text-slate-900"}`}>
-                      {tx.ticker || tx.isin || "—"}
+                      {rowIdentifier(tx)}
                     </span>
                     <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full shrink-0 ${opStyle.classes}`}>
                       {tx.operation}

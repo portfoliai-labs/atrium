@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ChevronDown, X } from "lucide-react";
 import type { TransactionOperation } from "../../models/Transaction";
 
@@ -39,6 +40,26 @@ function FilterInput({
   );
 }
 
+function DateFilterInput({
+  value, onChange,
+}: {
+  value: string; onChange: (v: string) => void;
+}) {
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <input
+      type={focused || value ? "date" : "text"}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      placeholder=""
+      className="h-9 px-3 rounded-lg bg-white border border-slate-200 text-slate-900 text-xs font-semibold placeholder:text-slate-300 placeholder:font-normal outline-none focus:ring-4 focus:ring-slate-50 focus:border-slate-300 transition-all min-w-0 w-full sm:w-32"
+    />
+  );
+}
+
 interface TransactionFilterBarProps {
   filters: TransactionFilterState;
   onChange: (filters: TransactionFilterState) => void;
@@ -70,11 +91,11 @@ export function TransactionFilterBar({ filters, onChange }: TransactionFilterBar
 
       <div className="flex items-center gap-1.5">
         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">From</span>
-        <FilterInput type="date" placeholder="" value={filters.dateFrom} onChange={set("dateFrom")} />
+        <DateFilterInput value={filters.dateFrom} onChange={set("dateFrom")} />
       </div>
       <div className="flex items-center gap-1.5">
         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">To</span>
-        <FilterInput type="date" placeholder="" value={filters.dateTo} onChange={set("dateTo")} />
+        <DateFilterInput value={filters.dateTo} onChange={set("dateTo")} />
       </div>
 
       {hasActiveFilters && (

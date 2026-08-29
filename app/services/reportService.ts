@@ -1,5 +1,5 @@
 // services/reportService.ts
-import type { Document, PresignedUrl } from "../models/Report";
+import type { Document, PresignedUrl, ReportType } from "../models/Report";
 import { apiFetch } from "./apiClient";
 
 export const reportService = {
@@ -11,10 +11,21 @@ export const reportService = {
 
   // POST /v1/reports/process-report — advisors pass for_user_uuid to generate for a client.
   // Transactions must already be saved via transactionService.saveTransactions before calling this.
-  async processReport(filename: string, forUserUuid?: string | null): Promise<void> {
+  // reportType PERIODIC requires periodStart/periodEnd (covers a custom period, not just calendar months).
+  async processReport(
+    filename: string,
+    forUserUuid?: string | null,
+    period?: { reportType: ReportType; periodStart?: string; periodEnd?: string },
+  ): Promise<void> {
     return apiFetch<void>('/v1/reports/process-report', {
       method: 'POST',
-      body: JSON.stringify({ filename, for_user_uuid: forUserUuid ?? null }),
+      body: JSON.stringify({
+        filename,
+        for_user_uuid: forUserUuid ?? null,
+        report_type: period?.reportType ?? 'FULL',
+        period_start: period?.periodStart ?? null,
+        period_end: period?.periodEnd ?? null,
+      }),
     });
   },
 

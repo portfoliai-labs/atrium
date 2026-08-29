@@ -26,6 +26,8 @@ interface TransactionResponse {
   asset_id: string;
   isin: string | null;
   ticker: string | null;
+  name: string | null;
+  asset_class: string | null;
   date: string;
   operation: TransactionOperation;
   amount: number;

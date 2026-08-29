@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  Globe, ShieldAlert, Wallet, Coins, Save,
+  Globe, ShieldAlert, Save,
   Loader2, CheckCircle2, AlertCircle, ChevronDown, Banknote,
-  GraduationCap, Info, Percent
+  GraduationCap, Info,
+  // Wallet, Coins, Percent, // used by the hidden "Financial Data" section below
 } from "lucide-react";
 import { userService } from "../../services/userService";
 import { useUser } from "../../context/UserContext";
@@ -331,7 +332,10 @@ export function ProfileSection() {
           </div>
         </div>
 
-        {/* Financial Data */}
+        {/* Financial Data section (net worth, income, savings rate, financial goals) temporarily
+            hidden from the profile UI. State/logic and handleSave payload are left untouched;
+            un-comment this block to restore it. */}
+        {/*
         <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-4xl border border-[rgba(196,154,60,0.2)] shadow-sm space-y-6 md:space-y-8">
           <SectionHeader icon={<Wallet className="w-5 h-5" />} title="Financial Data" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -495,6 +499,7 @@ export function ProfileSection() {
             </div>
           </div>
         </div>
+        */}
       </div>
 
       {message && (

@@ -4,14 +4,11 @@ import { useState, useRef, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   UploadCloud, AlertCircle, Loader2, Send,
-  FileText, CheckCircle2, X, FileSpreadsheet, PlusCircle, Sparkles
+  FileText, CheckCircle2, X, FileSpreadsheet, PlusCircle
 } from "lucide-react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
-import { reportService } from "../../services/reportService";
 import { transactionService, TransactionFilters } from "../../services/transactionService";
-import { userService } from "../../services/userService";
-import { useNotificationsContext } from "../../context/NotificationsContext";
 import {
   identifyBroker,
   BROKER_CONFIGS,
@@ -25,7 +22,6 @@ import {
 import { StandardTransaction } from "../../models/Report";
 import { REQUIRED_FIELDS } from "../../lib/parser/config";
 import type { TransactionInput, TransactionResponse } from "../../models/Transaction";
-import { buildReportName } from "../../lib/format";
 import { TransactionModal } from "./TransactionModal";
 import { FileMappingModal } from "./FileMappingModal";
 import { UploadedFileState } from "./uploaderTypes";
@@ -38,6 +34,8 @@ const PENDING_PAGE_SIZE = 10;
 function pendingToDisplay(tx: StandardTransaction): DisplayTransaction {
   return {
     ticker: tx.ticker ?? null,
+    // Not-yet-saved rows haven't been through backend asset resolution, so no name yet.
+    name: null,
     isin: tx.isin ?? null,
     date: tx.date,
     operation: tx.operation,
@@ -53,6 +51,7 @@ function pendingToDisplay(tx: StandardTransaction): DisplayTransaction {
 function existingToDisplay(tx: TransactionResponse): DisplayTransaction {
   return {
     ticker: tx.ticker,
+    name: tx.name,
     isin: tx.isin,
     date: tx.date,
     operation: tx.operation,
@@ -106,17 +105,13 @@ function toTransactionInput(tx: DisplayTransaction): TransactionInput {
   };
 }
 
-export function FileUploader({ forUserUuid, forUserName }: { forUserUuid?: string | null; forUserName?: string | null } = {}) {
+export function FileUploader({ forUserUuid }: { forUserUuid?: string | null } = {}) {
   const [loading, setLoading] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
   const [files, setFiles] = useState<UploadedFileState[]>([]);
   const [mappingModalFileId, setMappingModalFileId] = useState<string | null>(null);
   const [manualTransactions, setManualTransactions] = useState<StandardTransaction[]>([]);
   const [existingItems, setExistingItems] = useState<TransactionResponse[]>([]);
   const [existingTotal, setExistingTotal] = useState(0);
-  // True (unfiltered) count of saved transactions — only updated while no filter is active, so it
-  // keeps gating "Run analysis" correctly even when the filtered view above happens to be empty.
-  const [savedTransactionsTotal, setSavedTransactionsTotal] = useState(0);
   const [existingPage, setExistingPage] = useState(1);
   const [existingFilters, setExistingFilters] = useState<TransactionFilterState>(EMPTY_TRANSACTION_FILTERS);
   const [pendingPage, setPendingPage] = useState(1);
@@ -129,51 +124,9 @@ export function FileUploader({ forUserUuid, forUserName }: { forUserUuid?: strin
   const [showToast, setShowToast] = useState(false);
   const [showExampleModal, setShowExampleModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showAnalysisConfirm, setShowAnalysisConfirm] = useState(false);
   const [editingKey, setEditingKey] = useState<string | null>(null);
-  // null means the subscription has no monthly cap — analysis is never blocked then.
-  const [reportsRemaining, setReportsRemaining] = useState<number | null>(null);
-  // True from the moment "Run analysis" is clicked (optimistic — before the request even
-  // resolves) until a SUCCESS/FAILED job notification arrives. Backed by the shared SSE
-  // stream rather than polling, so it unlocks the instant the backend reports completion.
-  const [isReportPending, setIsReportPending] = useState(false);
-  // Only notifications created at/after this instant count as "ours" — avoids unlocking
-  // the button because of a stale, already-read notification from a previous job.
-  const watchSinceRef = useRef<number>(0);
-  const { notifications } = useNotificationsContext();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const reportsExhausted = reportsRemaining !== null && reportsRemaining <= 0;
-
-  // Re-fetches the remaining monthly report quota (used on mount and after a successful analysis run)
-  const refreshReportsRemaining = async () => {
-    try {
-      const m = await userService.getUserMetrics();
-      setReportsRemaining(m.reports_remaining);
-      // A report was already in progress before this component ever mounted (e.g. page
-      // reload mid-generation) — start watching for its completion notification too.
-      if (m.report_in_progress > 0) {
-        watchSinceRef.current = Date.now();
-        setIsReportPending(true);
-      }
-    } catch (error) {
-      console.error("Failed to fetch report quota:", error);
-    }
-  };
-
-  useEffect(() => { refreshReportsRemaining(); }, []);
-
-  // Unlocks as soon as a job-status notification (success or failure) shows up for the
-  // report we're watching — no reliance on re-fetching /users/metrics.
-  useEffect(() => {
-    if (!isReportPending) return;
-    const completed = notifications.some(n => {
-      const jobStatus = (n.payload as Record<string, unknown> | undefined)?.status;
-      if (jobStatus !== "SUCCESS" && jobStatus !== "FAILED") return false;
-      return new Date(n.created_at).getTime() >= watchSinceRef.current;
-    });
-    if (completed) setIsReportPending(false);
-  }, [notifications, isReportPending]);
 
   // Effetto per nascondere automaticamente il toast dopo 5 secondi
   useEffect(() => {
@@ -210,11 +163,10 @@ export function FileUploader({ forUserUuid, forUserName }: { forUserUuid?: strin
         if (cancelled) return;
         setExistingItems(res.items);
         setExistingTotal(res.total);
-        if (!hasActiveFilters) setSavedTransactionsTotal(res.total);
       })
       .finally(() => { if (!cancelled) setLoadingExisting(false); });
     return () => { cancelled = true; };
-  }, [forUserUuid, existingPage, existingFilters, hasActiveFilters]);
+  }, [forUserUuid, existingPage, existingFilters]);
 
   // Re-fetches a given page of saved transactions (used after a save/delete changes the underlying data)
   const refreshExisting = async (page: number) => {
@@ -223,7 +175,6 @@ export function FileUploader({ forUserUuid, forUserName }: { forUserUuid?: strin
       const res = await transactionService.getUserTransactions(forUserUuid, EXISTING_PAGE_SIZE, (page - 1) * EXISTING_PAGE_SIZE, toServiceFilters(existingFilters));
       setExistingItems(res.items);
       setExistingTotal(res.total);
-      if (!hasActiveFilters) setSavedTransactionsTotal(res.total);
     } finally {
       setLoadingExisting(false);
     }
@@ -627,32 +578,6 @@ export function FileUploader({ forUserUuid, forUserName }: { forUserUuid?: strin
     }
   };
 
-  // Kicks off analysis on demand, independent of saving. Called after the user confirms
-  // in the "Run analysis" dialog, which is the only entry point to this function.
-  const handleStartAnalysis = async () => {
-    setShowAnalysisConfirm(false);
-    if (reportsExhausted || isReportPending) return;
-    // Lock immediately — don't wait for the request (or a metrics refetch) to confirm it.
-    watchSinceRef.current = Date.now();
-    setIsReportPending(true);
-    try {
-      setAnalyzing(true);
-      const filename = buildReportName(forUserName);
-      await reportService.processReport(filename, forUserUuid);
-      setStatus("processing");
-      setShowToast(true);
-      refreshReportsRemaining();
-    } catch (error: unknown) {
-      // The job never actually started — release the lock.
-      setIsReportPending(false);
-      setStatus("error");
-      setErrorMessage(error instanceof Error ? error.message : "Failed to start analysis.");
-      setShowToast(true);
-    } finally {
-      setAnalyzing(false);
-    }
-  };
-
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-12 relative">
 
@@ -794,53 +719,6 @@ export function FileUploader({ forUserUuid, forUserName }: { forUserUuid?: strin
         />
       )}
 
-      {/* MODAL: Confirm before kicking off analysis — always runs on every saved transaction, not just the filtered/currently visible ones */}
-      {showAnalysisConfirm && createPortal(
-        <div
-          className="fixed inset-0 z-100 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
-          onClick={() => setShowAnalysisConfirm(false)}
-        >
-          <div
-            className="bg-white rounded-4xl shadow-2xl border border-slate-200 max-w-md w-full p-6 md:p-8 space-y-5 animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-blue-50 rounded-xl">
-                  <Sparkles className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-900">Run analysis?</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    This will generate a report from all {savedTransactionsTotal} saved transactions.
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => setShowAnalysisConfirm(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors shrink-0">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setShowAnalysisConfirm(false)}
-                className="px-5 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleStartAnalysis}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-blue-600 transition-colors shadow-md shadow-slate-200"
-              >
-                <Sparkles className="h-4 w-4" />
-                Run analysis
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
       {/* MODAL: Edit (or delete) whichever transaction row was clicked */}
       {editingKey && editingTransaction && (
         <TransactionModal
@@ -863,8 +741,8 @@ export function FileUploader({ forUserUuid, forUserName }: { forUserUuid?: strin
         />
       )}
 
-      {/* TOOLBAR: upload actions + analysis trigger, full width */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* TOOLBAR: upload actions, full width */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div
           onClick={() => setShowExampleModal(true)}
           className="p-5 border-2 border-dashed border-slate-200/80 rounded-3xl bg-white/50 hover:bg-slate-50 cursor-pointer transition-all flex items-center gap-4 group"
@@ -889,45 +767,6 @@ export function FileUploader({ forUserUuid, forUserName }: { forUserUuid?: strin
           <div className="overflow-hidden">
             <span className="text-sm font-bold text-slate-700 block">Add transaction</span>
             <p className="text-xs text-slate-400 truncate">Insert a single row manually</p>
-          </div>
-        </button>
-
-        <button
-          onClick={() => setShowAnalysisConfirm(true)}
-          disabled={analyzing || loadingExisting || savedTransactionsTotal === 0 || reportsExhausted || isReportPending || pendingRows.length > 0}
-          title={
-            reportsExhausted
-              ? "Monthly report limit reached — upgrade to continue"
-              : isReportPending
-              ? "A report is already being generated — please wait for it to finish"
-              : pendingRows.length > 0
-              ? "Save your new transactions first — analysis only covers already-saved ones"
-              : undefined
-          }
-          className={`p-5 rounded-3xl border flex items-center gap-4 transition-colors group text-left ${
-            !analyzing && !loadingExisting && savedTransactionsTotal > 0 && !reportsExhausted && !isReportPending && pendingRows.length === 0
-              ? "border-slate-200 bg-white hover:bg-slate-50"
-              : "border-slate-200 bg-slate-50/60 cursor-not-allowed"
-          }`}
-        >
-          <div className="bg-violet-50 w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-violet-100 transition-colors">
-            {analyzing || isReportPending
-              ? <Loader2 className="h-5 w-5 text-violet-600 animate-spin" />
-              : <Sparkles className="h-5 w-5 text-violet-600" />}
-          </div>
-          <div className="overflow-hidden">
-            <span className="text-sm font-bold text-slate-700 block">Run analysis</span>
-            <p className="text-xs text-slate-400 truncate">
-              {reportsExhausted
-                ? "Monthly limit reached"
-                : isReportPending
-                ? "Report in progress..."
-                : pendingRows.length > 0
-                ? "Save new transactions first"
-                : savedTransactionsTotal === 0
-                ? "No saved transactions yet"
-                : `Analyze ${savedTransactionsTotal} saved transactions`}
-            </p>
           </div>
         </button>
       </div>

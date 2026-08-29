@@ -3,9 +3,10 @@ import { User } from "lucide-react";
 interface StepPersonalProps {
   formData: any;
   setFormData: (data: any) => void;
+  showCurrency?: boolean;
 }
 
-export function StepPersonal({ formData, setFormData }: StepPersonalProps) {
+export function StepPersonal({ formData, setFormData, showCurrency }: StepPersonalProps) {
   const inputClass = "w-full p-4 bg-[#F7F5EF] border border-[rgba(196,154,60,0.3)] rounded-2xl font-bold text-[#1c1917] focus:bg-white focus:border-[#C49A3C] focus:ring-4 focus:ring-[#C49A3C]/10 outline-none transition-all placeholder:text-[#a8a29e] placeholder:font-normal";
 
   return (
@@ -47,16 +48,32 @@ export function StepPersonal({ formData, setFormData }: StepPersonalProps) {
         </div>
       </div>
 
-      <div className="space-y-2 mt-6">
-        <label className="text-[10px] font-black uppercase tracking-widest text-[#78716c] ml-1">Preferred Language</label>
-        <select
-          className="w-full p-4 bg-[#F7F5EF] border border-[rgba(196,154,60,0.3)] rounded-2xl font-bold text-[#1c1917] focus:bg-white focus:border-[#C49A3C] outline-none transition-all appearance-none cursor-pointer"
-          value={formData.language || "it"}
-          onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-        >
-          <option value="it">🇮🇹 Italian</option>
-          <option value="en">🇬🇧 English</option>
-        </select>
+      <div className={`grid grid-cols-1 ${showCurrency ? "md:grid-cols-2" : ""} gap-4 mt-6`}>
+        <div className="space-y-2">
+          <label className="text-[10px] font-black uppercase tracking-widest text-[#78716c] ml-1">Preferred Language</label>
+          <select
+            className="w-full p-4 bg-[#F7F5EF] border border-[rgba(196,154,60,0.3)] rounded-2xl font-bold text-[#1c1917] focus:bg-white focus:border-[#C49A3C] outline-none transition-all appearance-none cursor-pointer"
+            value={formData.language || "it"}
+            onChange={(e) => setFormData({ ...formData, language: e.target.value })}
+          >
+            <option value="it">🇮🇹 Italian</option>
+            <option value="en">🇬🇧 English</option>
+          </select>
+        </div>
+        {showCurrency && (
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-[#78716c] ml-1">Reference Currency</label>
+            <select
+              className="w-full p-4 bg-[#F7F5EF] border border-[rgba(196,154,60,0.3)] rounded-2xl font-bold text-[#1c1917] focus:bg-white focus:border-[#C49A3C] outline-none transition-all appearance-none cursor-pointer"
+              value={formData.currency}
+              onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+            >
+              <option value="EUR">Euro (€)</option>
+              <option value="USD">US Dollar ($)</option>
+              <option value="GBP">British Pound (£)</option>
+            </select>
+          </div>
+        )}
       </div>
     </div>
   );

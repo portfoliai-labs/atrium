@@ -14,8 +14,7 @@ import type { UserRole } from "../../models/User";
 import type { LegalDocument } from "../../models/Legal";
 
 import { StepPersonal } from "../../components/onboarding/StepPersonal";
-import { StepFinancial } from "../../components/onboarding/StepFinancial";
-import { StepGoals } from "../../components/onboarding/StepGoals";
+import { StepRiskProfile } from "../../components/onboarding/StepRiskProfile";
 import { StepConsultant } from "../../components/onboarding/StepConsultant";
 import { StepPreferences } from "../../components/onboarding/StepPreferences";
 
@@ -25,23 +24,12 @@ interface OnboardingFormData {
   last_name: string;
   // Investor profile
   currency: string;
-  estimated_wealth: string;
-  annual_income: string;
-  savings_rate: string;
   risk_tolerance: 'low' | 'medium' | 'high';
   financial_knowledge_level: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
-  financial_goals: string[];
-  financial_goals_other: string;
   // Consultant profile
   years_of_experience: string;
   specialization: string;
   language: string;
-}
-
-function buildFinancialGoals(formData: OnboardingFormData): string[] | null {
-  const other = formData.financial_goals_other.trim();
-  const goals = other ? [...formData.financial_goals, other] : formData.financial_goals;
-  return goals.length > 0 ? goals : null;
 }
 
 function RoleCard({
@@ -111,13 +99,8 @@ function OnboardingWizard() {
     first_name: searchParams.get("first_name") || "",
     last_name: searchParams.get("last_name") || "",
     currency: "EUR",
-    estimated_wealth: "",
-    annual_income: "",
-    savings_rate: "",
     risk_tolerance: "medium",
     financial_knowledge_level: "BEGINNER",
-    financial_goals: [],
-    financial_goals_other: "",
     years_of_experience: "",
     specialization: "",
     language: "it",
@@ -138,7 +121,7 @@ function OnboardingWizard() {
     }
   };
 
-  const totalSteps = 3;
+  const totalSteps = role === 'ADVISOR' ? 3 : 2;
 
   // Step 2 of each role's flow: the PATCH that actually stores the financial
   // / advisor data collected in the wizard. Runs either right after register
@@ -150,12 +133,8 @@ function OnboardingWizard() {
       if (role === 'USER') {
         await userService.updateUserProfile({
           currency: formData.currency || null,
-          estimated_wealth: parseFloat(formData.estimated_wealth) || null,
-          annual_income: parseFloat(formData.annual_income) || null,
-          savings_rate: formData.savings_rate ? parseFloat(formData.savings_rate) / 100 : null,
           risk_tolerance: formData.risk_tolerance || null,
           financial_knowledge_level: formData.financial_knowledge_level || null,
-          financial_goals: buildFinancialGoals(formData),
         });
       } else {
         await advisorService.updateAdvisorProfile({
@@ -313,9 +292,8 @@ function OnboardingWizard() {
   // — Steps 1–3 —
   const renderStep = () => {
     if (role === 'USER') {
-      if (step === 1) return <StepPersonal formData={formData} setFormData={setFormData} />;
-      if (step === 2) return <StepFinancial formData={formData} setFormData={setFormData} />;
-      if (step === 3) return <StepGoals formData={formData} setFormData={setFormData} />;
+      if (step === 1) return <StepPersonal formData={formData} setFormData={setFormData} showCurrency />;
+      if (step === 2) return <StepRiskProfile formData={formData} setFormData={setFormData} />;
     } else {
       if (step === 1) return <StepPersonal formData={formData} setFormData={setFormData} />;
       if (step === 2) return <StepConsultant formData={formData} setFormData={setFormData} />;

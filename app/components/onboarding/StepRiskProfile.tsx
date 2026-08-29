@@ -1,18 +1,9 @@
-import { Target } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 
-interface StepGoalsProps {
+interface StepRiskProfileProps {
   formData: any;
   setFormData: (data: any) => void;
 }
-
-const goalOptions = [
-  { label: "Retirement", sub: "Long-term income security" },
-  { label: "Financial Independence", sub: "Retire early (FIRE)" },
-  { label: "Buy a Home", sub: "Save for a property" },
-  { label: "Education", sub: "Children's or personal education" },
-  { label: "Wealth Preservation", sub: "Protect capital from inflation" },
-  { label: "Passive Income", sub: "Generate recurring cash flow" },
-] as const;
 
 const riskConfig = {
   low: { label: "Conservative", sub: "Capital preservation" },
@@ -41,12 +32,12 @@ const knowledgeConfig = {
   },
 } as const;
 
-export function StepGoals({ formData, setFormData }: StepGoalsProps) {
+export function StepRiskProfile({ formData, setFormData }: StepRiskProfileProps) {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
       <div className="text-center mb-10">
         <div className="w-16 h-16 bg-[#C49A3C]/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
-          <Target className="w-8 h-8 text-[#C49A3C]" />
+          <ShieldAlert className="w-8 h-8 text-[#C49A3C]" />
         </div>
         <h1
           className="text-3xl font-bold text-[#1c1917]"
@@ -54,7 +45,7 @@ export function StepGoals({ formData, setFormData }: StepGoalsProps) {
         >
           Your Strategy
         </h1>
-        <p className="text-[#78716c] mt-2 text-sm">Define your goals and risk appetite.</p>
+        <p className="text-[#78716c] mt-2 text-sm">Define your risk appetite and experience level.</p>
       </div>
 
       <div className="space-y-2">
@@ -97,42 +88,6 @@ export function StepGoals({ formData, setFormData }: StepGoalsProps) {
             </button>
           ))}
         </div>
-      </div>
-
-      <div className="space-y-2 mt-6">
-        <label className="text-[10px] font-black uppercase tracking-widest text-[#78716c] ml-1">Your Goals (Optional)</label>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {goalOptions.map(({ label, sub }) => {
-            const selected = formData.financial_goals.includes(label);
-            return (
-              <button
-                key={label}
-                type="button"
-                onClick={() => {
-                  const next = selected
-                    ? formData.financial_goals.filter((g: string) => g !== label)
-                    : [...formData.financial_goals, label];
-                  setFormData({ ...formData, financial_goals: next });
-                }}
-                className={`p-4 rounded-2xl font-bold border-2 transition-all text-left ${
-                  selected
-                    ? 'border-[#C49A3C] bg-[#C49A3C]/10 text-[#1c1917]'
-                    : 'border-[rgba(196,154,60,0.2)] bg-[#F7F5EF] text-[#78716c] hover:border-[#C49A3C]/50'
-                }`}
-              >
-                <p className="text-sm">{label}</p>
-                <p className="text-[10px] font-normal mt-0.5 opacity-70">{sub}</p>
-              </button>
-            );
-          })}
-        </div>
-        <input
-          type="text"
-          className="w-full p-4 mt-2 bg-[#F7F5EF] border border-[rgba(196,154,60,0.3)] rounded-2xl font-medium text-[#1c1917] focus:bg-white focus:border-[#C49A3C] focus:ring-4 focus:ring-[#C49A3C]/10 outline-none transition-all placeholder:text-[#a8a29e]"
-          value={formData.financial_goals_other}
-          onChange={(e) => setFormData({ ...formData, financial_goals_other: e.target.value })}
-          placeholder="Other goal (optional)"
-        />
       </div>
     </div>
   );

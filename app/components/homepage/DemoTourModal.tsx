@@ -165,7 +165,7 @@ function DemoSidebar({ activeNav }: { activeNav: string }) {
   const items = [
     { id: "overview", label: "Dashboard", icon: LayoutDashboard },
     { id: "upload", label: "Transactions", icon: Receipt },
-    { id: "reports", label: "Reports Archive", icon: FileText },
+    { id: "reports", label: "Reports", icon: FileText },
     { id: "profile", label: "Profile", icon: User2 },
     { id: "settings", label: "Settings", icon: Settings },
   ];
@@ -391,7 +391,7 @@ function ScreenReportReady() {
       {/* Header & controls */}
       <div className="flex flex-col xl:flex-row justify-between gap-4 xl:items-end">
         <div>
-          <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Documents Archive</h2>
+          <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Reports</h2>
           <p className="text-sm text-slate-500 font-medium mt-1">Manage, download, and organize your generated analyses.</p>
           <div className="relative w-full md:w-80 mt-4">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />

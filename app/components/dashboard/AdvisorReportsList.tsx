@@ -22,7 +22,7 @@ function ClientPicker({
   return (
     <div className="space-y-8 pb-12">
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#C49A3C] mb-1">Reports Archive</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#C49A3C] mb-1">Reports</p>
         <h1 className="text-3xl font-bold text-[#1c1917]" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
           Select a Client
         </h1>

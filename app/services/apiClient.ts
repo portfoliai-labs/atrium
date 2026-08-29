@@ -11,6 +11,25 @@ export class ApiError extends Error {
   }
 }
 
+// FastAPI's `detail` field on an error response isn't always a string: a 422 validation
+// error carries an array of {loc, msg, type} objects instead. Left as-is, that array ends
+// up as `ApiError.message`, and rendering it (e.g. `{error}` in JSX) shows "[object Object]"
+// rather than anything readable — so it's normalized to a string up front, at the one place
+// every ApiError gets constructed.
+function formatErrorDetail(detail: unknown, status: number): string {
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    return detail
+      .map((item) => (typeof item === 'string' ? item : (item as { msg?: string })?.msg ?? JSON.stringify(item)))
+      .join('; ');
+  }
+  if (detail && typeof detail === 'object') {
+    const msg = (detail as { msg?: string }).msg;
+    if (typeof msg === 'string') return msg;
+  }
+  return `Error ${status}`;
+}
+
 export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = typeof window !== 'undefined' ? localStorage.getItem("auth_token") : null;
 
@@ -39,7 +58,7 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
   // Handle other errors
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, errorData.detail || `Error ${response.status}`);
+    throw new ApiError(response.status, formatErrorDetail(errorData.detail, response.status));
   }
 
   if (response.status === 204) return undefined as T;
@@ -73,7 +92,7 @@ export async function apiFetchForm<T>(endpoint: string, formData: FormData, opti
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, errorData.detail || `Error ${response.status}`);
+    throw new ApiError(response.status, formatErrorDetail(errorData.detail, response.status));
   }
 
   if (response.status === 204) return undefined as T;
