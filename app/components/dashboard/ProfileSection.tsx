@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Globe, ShieldAlert, Wallet, Coins, Save,
   Loader2, CheckCircle2, AlertCircle, ChevronDown, Banknote,
-  GraduationCap, Info, Percent, SlidersHorizontal, ClipboardList,
+  GraduationCap, Info, Percent, ClipboardList, ArrowRight,
 } from "lucide-react";
 import { userService } from "../../services/userService";
 import { useUser } from "../../context/UserContext";
 import type { FinancialKnowledgeLevel } from "../../models/User";
-import { InvestorPolicy } from "./InvestorPolicy";
+import { useInvestorPolicy } from "../../hooks/useInvestorPolicy";
+import { IPS_STEPS, completedSteps } from "../../lib/ips";
+import { InvestorPolicyDialog } from "./InvestorPolicyDialog";
 
 type GoalTemplatePart = { type: "text"; text: string } | { type: "number"; key: string; placeholder: string };
 
@@ -67,56 +69,70 @@ const goalTemplates: GoalTemplate[] = [
   },
 ];
 
-const TABS = [
-  { id: "general", label: "General", icon: SlidersHorizontal },
-  { id: "policy", label: "Investment Policy", icon: ClipboardList },
-] as const;
-
-type TabId = (typeof TABS)[number]["id"];
+// A link can open the Investment Policy dialog through the URL hash #policy.
+const hasHash = (hash: string) => typeof window !== "undefined" && window.location.hash === hash;
 
 export function ProfileSection() {
-  const [activeTab, setActiveTab] = useState<TabId>("general");
+  const { user } = useUser();
+  const { policy, status, update } = useInvestorPolicy(user?.uuid);
+  const [policyOpen, setPolicyOpen] = useState(() => hasHash("#policy"));
+  const closePolicy = useCallback(() => setPolicyOpen(false), []);
+
+  // The hash only carries the request to open something; clear it so coming back to Profile
+  // later, from the sidebar, doesn't open it again.
+  useEffect(() => {
+    if (hasHash("#policy")) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
+  }, []);
+
+  const done = policy ? completedSteps(policy).length : 0;
 
   return (
     <div className="space-y-6 md:space-y-8 pb-12 animate-in fade-in duration-500">
-      <div>
-        <h2
-          className="text-2xl md:text-3xl font-bold text-[#1c1917] tracking-tight"
-          style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2
+            className="text-2xl md:text-3xl font-bold text-[#1c1917] tracking-tight"
+            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+          >
+            Profile
+          </h2>
+          <p className="text-sm md:text-base text-[#78716c] font-medium mt-1">
+            Manage your preferences, financial profile and investment policy
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setPolicyOpen(true)}
+          disabled={!policy}
+          className="group flex items-center gap-3 pl-3 pr-4 py-2.5 bg-white rounded-2xl border border-[rgba(196,154,60,0.3)] hover:border-[#C49A3C] transition-colors text-left disabled:opacity-60"
         >
-          Profile
-        </h2>
-        <p className="text-sm md:text-base text-[#78716c] font-medium mt-1">
-          {activeTab === "general"
-            ? "Manage your preferences and financial profile"
-            : "Build your investor policy statement, one step at a time"}
-        </p>
+          <span className="p-2.5 bg-[#F7F5EF] text-[#C49A3C] rounded-xl">
+            <ClipboardList className="w-5 h-5" />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-bold text-[#1c1917]">Investment Policy</span>
+            <span className="block text-xs font-medium text-[#78716c]">
+              {!policy
+                ? "Loading…"
+                : done === IPS_STEPS.length
+                ? "Complete · review or edit"
+                : done === 0 && !policy.updated_at
+                ? "Not started · set it up"
+                : `${done} of ${IPS_STEPS.length} steps · continue`}
+            </span>
+          </span>
+          <ArrowRight className="w-4 h-4 text-[#a8a29e] group-hover:text-[#C49A3C] transition-colors" />
+        </button>
       </div>
 
-      {/* Same pill tab bar as Settings: two columns on mobile, an inline row from sm up. */}
-      <div className="grid grid-cols-2 sm:inline-flex gap-1 p-1 bg-white rounded-2xl sm:rounded-full border border-[rgba(196,154,60,0.2)]">
-        {TABS.map((tab) => {
-          const active = tab.id === activeTab;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2 sm:px-5 py-2.5 sm:py-2 rounded-xl sm:rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors ${
-                active ? "bg-[#1c1917] text-white" : "text-[#78716c] hover:text-[#1c1917]"
-              }`}
-            >
-              <tab.icon className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+      <GeneralProfile />
 
-      {/* Kept mounted (just hidden) so edits not yet saved survive a visit to the other tab. */}
-      <div hidden={activeTab !== "general"}>
-        <GeneralProfile />
-      </div>
-      {activeTab === "policy" && <InvestorPolicy />}
+      {policyOpen && policy && (
+        <InvestorPolicyDialog policy={policy} status={status} update={update} onClose={closePolicy} />
+      )}
     </div>
   );
 }
