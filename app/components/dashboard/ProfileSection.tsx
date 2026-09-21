@@ -4,11 +4,12 @@ import { useState, useEffect, useRef } from "react";
 import {
   Globe, ShieldAlert, Wallet, Coins, Save,
   Loader2, CheckCircle2, AlertCircle, ChevronDown, Banknote,
-  GraduationCap, Info, Percent
+  GraduationCap, Info, Percent, SlidersHorizontal, ClipboardList,
 } from "lucide-react";
 import { userService } from "../../services/userService";
 import { useUser } from "../../context/UserContext";
 import type { FinancialKnowledgeLevel } from "../../models/User";
+import { InvestorPolicy } from "./InvestorPolicy";
 
 type GoalTemplatePart = { type: "text"; text: string } | { type: "number"; key: string; placeholder: string };
 
@@ -66,7 +67,61 @@ const goalTemplates: GoalTemplate[] = [
   },
 ];
 
+const TABS = [
+  { id: "general", label: "General", icon: SlidersHorizontal },
+  { id: "policy", label: "Investment Policy", icon: ClipboardList },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
 export function ProfileSection() {
+  const [activeTab, setActiveTab] = useState<TabId>("general");
+
+  return (
+    <div className="space-y-6 md:space-y-8 pb-12 animate-in fade-in duration-500">
+      <div>
+        <h2
+          className="text-2xl md:text-3xl font-bold text-[#1c1917] tracking-tight"
+          style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+        >
+          Profile
+        </h2>
+        <p className="text-sm md:text-base text-[#78716c] font-medium mt-1">
+          {activeTab === "general"
+            ? "Manage your preferences and financial profile"
+            : "Build your investor policy statement, one step at a time"}
+        </p>
+      </div>
+
+      {/* Same pill tab bar as Settings: two columns on mobile, an inline row from sm up. */}
+      <div className="grid grid-cols-2 sm:inline-flex gap-1 p-1 bg-white rounded-2xl sm:rounded-full border border-[rgba(196,154,60,0.2)]">
+        {TABS.map((tab) => {
+          const active = tab.id === activeTab;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2 sm:px-5 py-2.5 sm:py-2 rounded-xl sm:rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors ${
+                active ? "bg-[#1c1917] text-white" : "text-[#78716c] hover:text-[#1c1917]"
+              }`}
+            >
+              <tab.icon className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Kept mounted (just hidden) so edits not yet saved survive a visit to the other tab. */}
+      <div hidden={activeTab !== "general"}>
+        <GeneralProfile />
+      </div>
+      {activeTab === "policy" && <InvestorPolicy />}
+    </div>
+  );
+}
+
+function GeneralProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -202,19 +257,8 @@ export function ProfileSection() {
   const dropdownBtnClass = "w-full flex items-center justify-between p-3.5 bg-white border border-[rgba(196,154,60,0.25)] rounded-xl font-medium text-[#1c1917] hover:border-[#C49A3C] transition-all focus:ring-4 focus:ring-[#C49A3C]/10";
 
   return (
-    <div className="space-y-6 md:space-y-8 pb-12 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2
-            className="text-2xl md:text-3xl font-bold text-[#1c1917] tracking-tight"
-            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-          >
-            Profile
-          </h2>
-          <p className="text-sm md:text-base text-[#78716c] font-medium mt-1">
-            Manage your preferences and financial profile
-          </p>
-        </div>
+    <div className="space-y-6 md:space-y-8">
+      <div className="flex justify-end">
         <button
           onClick={handleSave}
           disabled={saving}
