@@ -26,7 +26,10 @@ interface UserContextType {
   // brand-new account that hasn't registered yet (404) — LegalGate needs to
   // tell these two apart to know whether it's safe to call /legal/pending.
   needsLegalAcceptance: boolean;
-  refreshUser: () => Promise<void>;
+  // `silent: true` re-fetches without touching `loading`, for a caller that's already showing
+  // its own feedback (e.g. a save button) and would otherwise have that feedback torn down by
+  // the full-page spinner other pages show while `loading` is true.
+  refreshUser: (opts?: { silent?: boolean }) => Promise<void>;
   logout: () => void;
 }
 
@@ -63,9 +66,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
    * Profile Fetcher
    * Attempts to retrieve the user profile from the backend
    */
-  const fetchProfile = useCallback(async (): Promise<void> => {
+  const fetchProfile = useCallback(async (opts?: { silent?: boolean }): Promise<void> => {
+    const silent = opts?.silent ?? false;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const profile: UserProfile = await userService.getUserProfile();
       setUser(profile);
       setNeedsLegalAcceptance(false);
@@ -91,7 +95,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       }
       // Note: 401 errors are handled globally by the 'auth-unauthorized' event
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [pathname, router]);
 

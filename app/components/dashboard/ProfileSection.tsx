@@ -251,7 +251,9 @@ function GeneralProfile() {
       });
 
       localStorage.removeItem("user_profile");
-      await refreshUser();
+      // Silent: a full refetch flips UserContext's `loading`, which would swap this whole page
+      // for the dashboard's full-page spinner and take the toast below down with it.
+      await refreshUser({ silent: true });
 
       setMessage({ type: "success", text: "Profile updated successfully" });
     } catch (err) {
@@ -274,17 +276,6 @@ function GeneralProfile() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <div className="flex justify-end">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center justify-center gap-2 px-6 py-3.5 bg-[#1c1917] text-white rounded-xl font-bold hover:bg-[#C49A3C] transition-colors shadow-sm disabled:opacity-50 w-full md:w-auto"
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* Preferences */}
@@ -555,6 +546,17 @@ function GeneralProfile() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center justify-center gap-2 px-6 py-3.5 bg-[#1c1917] text-white rounded-xl font-bold hover:bg-[#C49A3C] transition-colors shadow-sm disabled:opacity-50 w-full md:w-auto"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {saving ? "Saving..." : "Save Changes"}
+        </button>
       </div>
 
       {message && (
