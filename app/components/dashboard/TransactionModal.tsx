@@ -2,16 +2,13 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { X, AlertCircle, PlusCircle, Pencil, Trash2, TrendingUp, TrendingDown, Coins, LineChart, Building2, type LucideIcon } from "lucide-react";
+import { X, AlertCircle, PlusCircle, Pencil, Trash2, TrendingUp, TrendingDown, Coins, type LucideIcon } from "lucide-react";
 import { StandardTransaction } from "../../models/Report";
 import { validateTransactions } from "../../lib/parser";
 import type { Portfolio } from "../../models/Portfolio";
 import { PortfolioSelect } from "./PortfolioSelect";
 import { AssetPicker } from "./AssetPicker";
 import type { AssetSearchResult } from "../../models/AssetSearch";
-import { PreviewBadge } from "../preview/PreviewKit";
-import { RealEstateTransactionFields } from "../preview/RealEstateTransactionFields";
-import { useUser } from "../../context/UserContext";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 
 interface TransactionModalProps {
@@ -159,21 +156,15 @@ function PillButton({
 }
 
 export function TransactionModal({ mode, initial, onClose, onSave, onDelete, portfolios, defaultPortfolioUuid, readOnly = false }: TransactionModalProps) {
-  // The Real estate tab is a preview, shown to demo accounts only.
-  const { isDemo } = useUser();
   const [form, setForm] = useState<FormState>(() => toFormState(initial));
   const [portfolioUuid, setPortfolioUuid] = useState(initial?.portfolioUuid ?? defaultPortfolioUuid ?? portfolios?.[0]?.uuid);
   const [errors, setErrors] = useState<string[]>([]);
-  // What the new transaction is about. "property" opens the real estate form, a preview that
-  // can't be saved yet (see RealEstateTransactionFields); a saved transaction is always a security.
-  const [assetKind, setAssetKind] = useState<"security" | "property">("security");
   const isEdit = mode === "edit";
   // A new transaction's security is picked from the search, which fills in ticker, ISIN and
   // currency; typing them by hand stays possible for one the search doesn't find. A saved
   // transaction opens on the fields it already has.
   const [manualAsset, setManualAsset] = useState(isEdit);
   const [pickedAsset, setPickedAsset] = useState<AssetSearchResult | null>(null);
-  const isProperty = assetKind === "property";
 
   const set = <K extends keyof FormState>(key: K) => (value: string) =>
     setForm(prev => ({ ...prev, [key]: value }));
@@ -302,33 +293,10 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete, por
           </p>
         )}
 
-        {!isEdit && isDemo && (
-          <div className="flex p-1 rounded-2xl bg-slate-100 gap-1">
-            {([
-              { value: "security", label: "Stocks, ETFs & funds", icon: LineChart },
-              { value: "property", label: "Real estate", icon: Building2 },
-            ] as const).map((k) => (
-              <button
-                key={k.value}
-                type="button"
-                onClick={() => { setAssetKind(k.value); setErrors([]); }}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                  assetKind === k.value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                <k.icon className="h-4 w-4" />
-                {k.label}
-                {k.value === "property" && <PreviewBadge />}
-              </button>
-            ))}
-          </div>
-        )}
-
         {portfolios && portfolios.length > 1 && portfolioUuid && (
           <PortfolioSelect portfolios={portfolios} value={portfolioUuid} onChange={setPortfolioUuid} label={isEdit ? "Portfolio" : "Add to portfolio"} />
         )}
 
-        {isProperty ? <RealEstateTransactionFields /> : (<>
         <div className="flex flex-wrap gap-3">
           {OPERATION_OPTIONS.map((op) => (
             <OperationButton
@@ -407,7 +375,6 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete, por
           <InputField label="Fees" type="number" value={form.fees} onChange={set("fees")} placeholder="0" />
           <InputField label="Broker" value={form.broker} onChange={set("broker")} placeholder="Manual" />
         </div>
-        </>)}
 
         <div className="flex items-center justify-between gap-3 pt-2">
           {isEdit && onDelete && !readOnly ? (
@@ -428,11 +395,11 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete, por
             </button>
             <button
               onClick={handleSubmit}
-              disabled={isProperty || readOnly}
-              title={readOnly ? DEMO_DISABLED_TITLE : isProperty ? "Real estate transactions can't be saved yet" : undefined}
+              disabled={readOnly}
+              title={readOnly ? DEMO_DISABLED_TITLE : undefined}
               className="px-6 py-3 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-blue-600 transition-colors shadow-md shadow-slate-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-900"
             >
-              {isEdit ? "Save changes" : isProperty ? "Add property — coming soon" : "Add transaction"}
+              {isEdit ? "Save changes" : "Add transaction"}
             </button>
           </div>
         </div>

@@ -8,8 +8,9 @@ import { useDashboardEntry } from "../../lib/dashboardHistory";
 import { CLIENTS_SECTION, JOURNAL_SECTION, PLAN_SECTION, WEALTH_SECTION } from "../../lib/dashboardNav";
 import { clientDisplayName, useClients } from "../../context/ClientsContext";
 import { useClientPortfolios } from "../../hooks/useClientPortfolios";
-import { portfolioColorMap } from "../../lib/chartColors";
+import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
 import { useWallets } from "../../context/WalletsContext";
+import { useRealEstate } from "../../context/RealEstateContext";
 import { ALL_WALLETS, walletColor } from "../../lib/wallets";
 import { PLAN_PAGE_LABELS, planPages } from "./PlanSection";
 import { UserRole, SubscriptionTier } from "../../models/User";
@@ -37,11 +38,13 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
   const { isDemo } = useUser();
   // An investor's wallets: a demo account's are sample data.
   const { wallets, available: walletsAvailable, sample } = useWallets();
+  // Their real estate: a demo account's is sample data too.
+  const { available: realEstateAvailable, properties } = useRealEstate();
   const { portfolios } = usePortfolio();
   // Which page the open section is on, to mark its row.
   const entry = useDashboardEntry();
   const view = (entry?.section === activeSection ? entry.view : undefined) as
-    { kind?: string; uuid?: string; id?: string; page?: string; client?: string } | undefined;
+    { kind?: string; uuid?: string; id?: string; page?: string; client?: string; property?: string } | undefined;
   // An advisor's: their clients under Clients, and the open one's portfolios under it.
   const { clients } = useClients();
   const openClient = isAdvisor && activeSection === CLIENTS_SECTION ? view?.client ?? null : null;
@@ -49,7 +52,7 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
 
   // Investor: the sections, and under the open one its pages. Under Wealth, what it's made of:
   // All portfolios and each real portfolio under it, then the wallets (each one not archived under
-  // them) and, for a demo account, the real estate (a preview). Without wallets (a backend that
+  // them) and the real estate. Without wallets (a backend that
   // doesn't have them), Wealth opens on All portfolios itself, and only the portfolios are listed.
   const colorOf = portfolioColorMap(portfolios);
   const aggregate = portfolios.find((p) => p.isAggregate);
@@ -73,7 +76,17 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
       depth: 1,
       color,
     })),
-    ...(isDemo ? [{ key: 'real-estate', label: 'Real estate', view: { kind: 'realEstate', page: 'home' }, active: view?.kind === 'realEstate', preview: true }] : []),
+    ...(realEstateAvailable ? [
+      { key: 'real-estate', label: 'Real estate', view: { kind: 'realEstate', page: 'home' }, active: view?.kind === 'realEstate' && !view.property, preview: sample },
+      ...properties.filter((p) => !p.archived).map((p, i) => ({
+        key: `property:${p.uuid}`,
+        label: p.name,
+        view: { kind: 'realEstate', page: 'property', property: p.uuid },
+        active: view?.kind === 'realEstate' && view.property === p.uuid,
+        depth: 1,
+        color: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length],
+      })),
+    ] : []),
   ] : [];
   const wealthRows: SubItem[] = hasRoot
     ? [...(aggregate ? [portfolioRow(aggregate, 0)] : []), ...real.map((p) => portfolioRow(p, aggregate ? 1 : 0)), ...walletRows]

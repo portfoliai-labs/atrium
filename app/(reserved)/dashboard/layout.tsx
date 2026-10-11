@@ -6,6 +6,7 @@ import { NotificationsProvider } from "../../context/NotificationsContext";
 import { PortfolioProvider } from "../../context/PortfolioContext";
 import { ClientsProvider } from "../../context/ClientsContext";
 import { WalletsProvider } from "../../context/WalletsContext";
+import { RealEstateProvider } from "../../context/RealEstateContext";
 
 /**
  * DashboardLayout component
@@ -23,11 +24,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     <PortfolioProvider>
       <ClientsProvider>
         <WalletsProvider>
-          <NotificationsProvider>
-            <div className="dashboard-container">
-              {children}
-            </div>
-          </NotificationsProvider>
+          <RealEstateProvider>
+            <NotificationsProvider>
+              <div className="dashboard-container">
+                {children}
+              </div>
+            </NotificationsProvider>
+          </RealEstateProvider>
         </WalletsProvider>
       </ClientsProvider>
     </PortfolioProvider>
