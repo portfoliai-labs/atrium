@@ -7,16 +7,25 @@ export class ApiError extends Error {
   status: number;
   // The backend's `error_type` (e.g. "InvalidFieldError"), when it sends one.
   errorType: string | null;
-  constructor(status: number, message: string, errorType: string | null = null) {
+  // The refusal's other string fields, when it carries some (e.g. the Journal's `field`, `index`,
+  // `problem`; see ianus' constants/errors.py).
+  metadata: Record<string, string>;
+  constructor(status: number, message: string, errorType: string | null = null, metadata: Record<string, string> = {}) {
     super(message);
     this.status = status;
     this.errorType = errorType;
+    this.metadata = metadata;
     this.name = 'ApiError';
   }
 }
 
 const errorTypeOf = (errorData: { error_type?: unknown }) =>
   typeof errorData.error_type === 'string' ? errorData.error_type : null;
+
+const metadataOf = (errorData: Record<string, unknown>) =>
+  Object.fromEntries(
+    Object.entries(errorData).filter(([key, value]) => key !== 'detail' && key !== 'error_type' && typeof value === 'string'),
+  ) as Record<string, string>;
 
 // FastAPI's `detail` field on an error response isn't always a string: a 422 validation
 // error carries an array of {loc, msg, type} objects instead. Left as-is, that array ends
@@ -67,7 +76,7 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
   // Handle other errors
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, formatErrorDetail(errorData.detail, response.status), errorTypeOf(errorData));
+    throw new ApiError(response.status, formatErrorDetail(errorData.detail, response.status), errorTypeOf(errorData), metadataOf(errorData));
   }
 
   if (response.status === 204) return undefined as T;
@@ -103,7 +112,7 @@ export async function apiFetchForm<T>(endpoint: string, formData: FormData, opti
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, formatErrorDetail(errorData.detail, response.status), errorTypeOf(errorData));
+    throw new ApiError(response.status, formatErrorDetail(errorData.detail, response.status), errorTypeOf(errorData), metadataOf(errorData));
   }
 
   if (response.status === 204) return undefined as T;

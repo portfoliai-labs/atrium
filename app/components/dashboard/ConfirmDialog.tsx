@@ -1,7 +1,7 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { AlertTriangle, Loader2, X } from "lucide-react";
+import { AlertTriangle, HelpCircle, Loader2, X } from "lucide-react";
 
 interface ConfirmDialogProps {
   title: string;
@@ -11,6 +11,10 @@ interface ConfirmDialogProps {
   confirming?: boolean;
   // Why the last confirm failed, shown above the buttons.
   error?: string | null;
+  // `neutral`: a confirmation that destroys nothing (e.g. sending something for review).
+  tone?: "danger" | "neutral";
+  // More to fill in, under the description.
+  children?: React.ReactNode;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -24,9 +28,12 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   confirming,
   error,
+  tone = "danger",
+  children,
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
+  const danger = tone === "danger";
   return createPortal(
     <div className="fixed inset-0 z-100 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={() => !confirming && onClose()}>
       <div
@@ -35,8 +42,8 @@ export function ConfirmDialog({
       >
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-rose-50 rounded-xl shrink-0">
-              <AlertTriangle className="h-5 w-5 text-rose-600" />
+            <div className={`p-2.5 rounded-xl shrink-0 ${danger ? "bg-rose-50" : "bg-slate-100"}`}>
+              {danger ? <AlertTriangle className="h-5 w-5 text-rose-600" /> : <HelpCircle className="h-5 w-5 text-slate-600" />}
             </div>
             <h3 className="text-lg font-black text-slate-900">{title}</h3>
           </div>
@@ -50,6 +57,7 @@ export function ConfirmDialog({
         </div>
 
         <p className="text-sm text-slate-500 leading-relaxed">{description}</p>
+        {children}
         {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
 
         <div className="flex items-center justify-end gap-3 pt-2">
@@ -63,7 +71,7 @@ export function ConfirmDialog({
           <button
             onClick={onConfirm}
             disabled={confirming}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-md shadow-rose-100 disabled:opacity-60"
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white transition-colors shadow-md disabled:opacity-60 ${danger ? "bg-rose-600 hover:bg-rose-700 shadow-rose-100" : "bg-slate-900 hover:bg-slate-800 shadow-slate-200"}`}
           >
             {confirming && <Loader2 className="h-4 w-4 animate-spin" />}
             {confirmLabel}

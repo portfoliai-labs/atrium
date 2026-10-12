@@ -18,8 +18,8 @@ export const PLAN_SECTION = "plan";
 // An advisor's clients: the list, and each client's Wealth (see ClientsSection).
 export const CLIENTS_SECTION = "clients";
 // The strategies catalog's section before it was Plan's, under Strategy: old links land there.
-// The Journal: a demo account's preview.
 export const EXPLORE_SECTION = "explore";
+// The Journal: its articles, and each reader's and author's pages (see JournalSection).
 export const JOURNAL_SECTION = "journal";
 
 type Navigate = (section: string) => void;
