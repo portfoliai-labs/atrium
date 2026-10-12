@@ -11,7 +11,7 @@ import { transactionService } from "../../services/transactionService";
 import { reportService } from "../../services/reportService";
 import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
 import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
-import { formatCurrency } from "../../lib/format";
+import { formatCompact, formatCurrency } from "../../lib/format";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
 import { PLAN_SECTION, WEALTH_SECTION, openClientPage, openPlanPage } from "../../lib/dashboardNav";
 import { useMyPublications } from "../../hooks/useMyPublications";
@@ -39,28 +39,31 @@ import { ReadOnlySimulation } from "./ReadOnlySimulation";
 import type { SharedStrategy } from "../../models/AdoptedStrategy";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import { PreviewBadge } from "../preview/PreviewKit";
-import { walletsSummary } from "../preview/WalletsOverview";
-import { monthlySummary } from "../../lib/mock/wallets";
-import {
-  ALL_WALLETS, WALLET_PAGE_LABELS, WalletView, WalletsHub, isWalletId, walletName, type WalletPage,
-} from "../preview/WalletPages";
-import { RealEstatePortfolio, type RealEstatePage } from "../preview/RealEstatePortfolio";
+import { useWallets } from "../../context/WalletsContext";
+import { useWalletsOverview } from "../../hooks/useWalletsOverview";
+import { ALL_WALLETS, monthLabel, savingsRate as walletsSavingsRate } from "../../lib/wallets";
+import { WalletNode, type WalletPage } from "./wallets/WalletNode";
+import { WalletFormDialog } from "./wallets/WalletDialogs";
+import { useRealEstate, useRealEstateOverview } from "../../context/RealEstateContext";
+import { RealEstateNode, type RealEstatePage } from "./realEstate/RealEstateNode";
+import { RealEstateTransactionDialog } from "./realEstate/RealEstateTransactionForm";
 
 // A portfolio's pages: its own (overview), and those its header leads to.
 export type PortfolioPage = "overview" | "transactions" | "alerts" | "reports" | "compare" | "portfolios" | "categories" | "strategy";
 
 export type WealthView =
-  // Everything the user owns: investments and wallets. A demo account's preview: anyone else
-  // opens straight on their investments.
+  // Everything the user owns: investments and wallets. Where there are no wallets to have (a
+  // client's Wealth, a backend without them), Wealth opens straight on the investments.
   | { kind: "root" }
   // A portfolio, "All portfolios" (the investments) included. A strategy's backtest is Plan's.
   // `simulation`: on its Strategy page, the advisor's strategy portfolio a shared strategy came
   // from, opened read-only.
   | { kind: "portfolio"; uuid: string; page: PortfolioPage; simulation?: string }
-  // A wallet, or every wallet together (ALL_WALLETS); a demo account's preview.
+  // A wallet, or every wallet together (ALL_WALLETS). A demo account's are sample data.
   | { kind: "wallet"; id: string; page: WalletPage }
-  // A sample real estate portfolio; a demo account's preview.
-  | { kind: "realEstate"; page: RealEstatePage };
+  // The real estate: every property together, or one (`property`, its page or its transactions).
+  // A demo account's are sample data.
+  | { kind: "realEstate"; page: RealEstatePage; property?: string };
 
 const NO_SCOPE: Record<string, string> = {};
 const NO_TRAIL: Crumb[] = [];
@@ -81,14 +84,17 @@ type WealthScope = Record<string, string>;
 const inScope = (view: unknown, scope: WealthScope) =>
   typeof view === "object" && view !== null && Object.entries(scope).every(([k, v]) => (view as Record<string, unknown>)[k] === v);
 
-/** The page the current history entry was on, read for this account (and this scope). */
-function viewFromHistory(isDemo: boolean, portfolios: Portfolio[], section: string, scope: WealthScope): WealthView {
+/**
+ * The page the current history entry was on, read for this account (and this scope). `hasRoot`:
+ * Wealth itself is a page, with the wallets under it; `hasRealEstate`: the real estate too.
+ */
+function viewFromHistory(hasRealEstate: boolean, hasRoot: boolean, portfolios: Portfolio[], section: string, scope: WealthScope): WealthView {
   const entry = readDashboardEntry();
   const raw = entry?.section === section && inScope(entry.view, scope) ? entry.view : undefined;
   // A scope's own fields alone (a client opened on no page) are no page.
   const view = (raw && "kind" in (raw as object) ? raw : undefined) as (WealthView | { kind: string; [k: string]: unknown }) | undefined;
   const investments = investmentsOf(portfolios);
-  const top: WealthView = isDemo ? { kind: "root" } : { kind: "portfolio", uuid: investments?.uuid ?? "", page: "overview" };
+  const top: WealthView = hasRoot ? { kind: "root" } : { kind: "portfolio", uuid: investments?.uuid ?? "", page: "overview" };
   if (!view) return top;
   switch (view.kind) {
     case "root":
@@ -117,13 +123,20 @@ function viewFromHistory(isDemo: boolean, portfolios: Portfolio[], section: stri
       return { kind: "portfolio", uuid: investments.uuid, page };
     }
     case "wallets":
-      return isDemo ? { kind: "wallet", id: ALL_WALLETS, page: "insights" } : top;
+      return hasRoot ? { kind: "wallet", id: ALL_WALLETS, page: "insights" } : top;
     case "wallet": {
+      // A wallet that's gone opens every wallet (see WalletNode).
       const v = view as { id?: string; page?: WalletPage };
-      return isDemo && v.id && isWalletId(v.id) ? { kind: "wallet", id: v.id, page: v.page ?? "insights" } : top;
+      return hasRoot && typeof v.id === "string" ? { kind: "wallet", id: v.id, page: v.page ?? "insights" } : top;
     }
-    case "realEstate":
-      return isDemo ? { kind: "realEstate", page: (view as { page?: RealEstatePage }).page ?? "home" } : top;
+    case "realEstate": {
+      // A property that's gone opens the real estate's own page (see RealEstateNode).
+      const v = view as { page?: RealEstatePage; property?: unknown };
+      if (!hasRealEstate) return top;
+      return typeof v.property === "string"
+        ? { kind: "realEstate", page: v.page ?? "home", property: v.property }
+        : { kind: "realEstate", page: v.page ?? "home" };
+    }
     default:
       // Manage's hub, Strategy and Explore (now Plan's), anything older.
       return top;
@@ -132,16 +145,17 @@ function viewFromHistory(isDemo: boolean, portfolios: Portfolio[], section: stri
 
 /**
  * WEALTH SECTION (investor; "performance" in the sidebar's ids) — everything the user owns, as
- * pages to go down through, each one the place to act on what it shows. A demo account opens on
- * Wealth itself (WealthRoot: investments and wallets together); anyone else on their investments,
- * which are "All portfolios" while they have two or more, otherwise their only portfolio.
+ * pages to go down through, each one the place to act on what it shows. It opens on Wealth itself
+ * (WealthRoot: investments and wallets together); a client's Wealth, which has no wallets, on the
+ * investments, which are "All portfolios" while they have two or more, otherwise their only portfolio.
  *
  * A portfolio's page (PortfolioNode) is its header (value, activity, actions, key figures) over
  * its Insights (PerformanceSection), whose Composition leads down to each portfolio (from All
  * portfolios) or holding. Its activity and its actions open pages of its own, always on that
  * portfolio, so none of them asks which one: Transactions, Alerts and Reports, and on All
  * portfolios Compare and Manage portfolios. A strategy's backtest opens the same page in Plan, under
- * Strategy (a link to one here goes there). Wallets and the real estate portfolio are previews on sample data for a demo account.
+ * Strategy (a link to one here goes there). The wallets are WalletNode's pages, the real estate
+ * RealEstateNode's; a demo account's are sample data.
  *
  * Every page is a browser history entry, so back and forward move between them (see
  * lib/dashboardHistory). Opening a portfolio also makes it the selected one (PortfolioContext).
@@ -160,9 +174,12 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
 }) {
   const { portfolios, selectPortfolio, client } = usePortfolio();
   const { isDemo: demoAccount } = useUser();
-  // The previews (Wealth itself, wallets, real estate) are a demo account's own Wealth's only.
-  const isDemo = demoAccount && !client;
-  const [view, setView] = useState<WealthView>(() => viewFromHistory(isDemo, portfolios, section, scope));
+  const { available: walletsAvailable } = useWallets();
+  const { available: realEstateAvailable } = useRealEstate();
+  // Wealth itself, the wallets and the real estate are any investor's own, not a client's.
+  const hasRoot = !client && (demoAccount || walletsAvailable);
+  const hasRealEstate = hasRoot && realEstateAvailable;
+  const [view, setView] = useState<WealthView>(() => viewFromHistory(hasRealEstate, hasRoot, portfolios, section, scope));
 
   useEffect(() => {
     // Record the page it opened on, so the Sidebar marks it.
@@ -171,7 +188,7 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
     const onPopState = () => {
       const current = readDashboardEntry();
       if (current?.section !== section || !inScope(current.view ?? {}, scope)) return;
-      const next = viewFromHistory(isDemo, portfolios, section, scope);
+      const next = viewFromHistory(hasRealEstate, hasRoot, portfolios, section, scope);
       setView((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
     };
     window.addEventListener("popstate", onPopState);
@@ -189,19 +206,26 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
   const openPortfolio = (uuid: string, page: PortfolioPage = "overview") => go({ kind: "portfolio", uuid, page });
 
   const investments = investmentsOf(portfolios);
-  // Wealth itself is a page only where there's more than the investments (a demo account's wallets).
-  const rootTrail: Crumb[] = isDemo ? [{ label: "Wealth", onClick: () => go({ kind: "root" }) }] : outerTrail;
+  // Wealth itself is a page only where there's more than the investments (the wallets).
+  const rootTrail: Crumb[] = hasRoot ? [{ label: "Wealth", onClick: () => go({ kind: "root" }) }] : outerTrail;
 
-  if (view.kind === "root" && isDemo) {
+  if (view.kind === "root" && hasRoot) {
     return <WealthRoot investments={investments} onOpen={go} />;
   }
 
-  if (view.kind === "wallet" && isDemo) {
-    return <WalletNode id={view.id} page={view.page} rootTrail={rootTrail} onOpen={(id, page) => go({ kind: "wallet", id, page })} />;
+  if (view.kind === "wallet" && hasRoot) {
+    return <WalletNode key={view.id} id={view.id} page={view.page} rootTrail={rootTrail} onOpen={(id, page) => go({ kind: "wallet", id, page })} />;
   }
 
-  if (view.kind === "realEstate" && isDemo) {
-    return <RealEstatePortfolio trail={rootTrail} page={view.page} onOpenPage={(page) => go({ kind: "realEstate", page })} />;
+  if (view.kind === "realEstate" && hasRealEstate) {
+    return (
+      <RealEstateNode
+        page={view.page}
+        property={view.property}
+        rootTrail={rootTrail}
+        onOpen={(page, property) => go(property ? { kind: "realEstate", page, property } : { kind: "realEstate", page })}
+      />
+    );
   }
 
   const portfolio = (view.kind === "portfolio" && portfolios.find((p) => p.uuid === view.uuid)) || investments;
@@ -406,8 +430,9 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   };
   const demo = isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
   // New portfolios (and wallets) are added on Wealth's first page: Wealth itself where it's a page
-  // (a demo account's), otherwise the investments.
-  const addsPortfolios = isInvestments && !isDemo;
+  // (an investor's own, with wallets), otherwise the investments.
+  const { available: walletsAvailable } = useWallets();
+  const addsPortfolios = isInvestments && !(!client && (isDemo || walletsAvailable));
 
   // ── What can be done with it ──
   const actions: PageAction[] = backtest
@@ -726,32 +751,47 @@ function ReadOnlyNote({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ── Wealth itself (a demo account's preview) ─────────────────────────────────────────────────
+// ── Wealth itself ────────────────────────────────────────────────────────────────────────────
 
 const WALLETS_COLOR = "#0f766e";
 const INVESTMENTS_COLOR = "#C49A3C";
+const REAL_ESTATE_COLOR = "#eb6834";
 
 /**
- * WEALTH ROOT (preview) — everything a demo account owns, the top of Wealth: its net worth, the
- * investments (All portfolios, real) and the wallets (sample data) side by side, each opening its
- * page, and the sample real estate portfolio. New portfolios and wallets are added here, at the top
- * of Wealth (a wallet is coming soon; a demo account, read only, can add neither).
+ * WEALTH ROOT — everything an investor owns, the top of Wealth: the net worth, the investments
+ * (All portfolios), the wallets and the real estate side by side, each opening its page, the
+ * wallets' cash flow and what it's all in. New portfolios, wallets and properties are added here, at
+ * the top of Wealth (a demo account, read only, can add none). The wallets and the real estate (its equity:
+ * the value at the user's share less the mortgages) are added up in the user's reference currency;
+ * when that isn't the investments' they're shown but not added to the net worth.
  */
 function WealthRoot({ investments, onOpen }: { investments: Portfolio | undefined; onOpen: (view: WealthView) => void }) {
   const { isDemo } = useUser();
+  const { sample, changed, wallets: allWallets } = useWallets();
+  const { available: realEstateShown } = useRealEstate();
+  const realEstate = useRealEstateOverview(realEstateShown);
   const entry = useComparisonEntry(investments?.uuid ?? "");
-  const [creating, setCreating] = useState(false);
-  const wallets = useMemo(() => walletsSummary(), []);
+  const [dialog, setDialog] = useState<"portfolio" | "wallet" | "property" | null>(null);
+  const overview = useWalletsOverview();
   const [hovered, setHovered] = useState<string | null>(null);
   const invested = entry?.value?.marketValue ?? null;
-  const currency = entry?.value?.currency ?? wallets.currency;
-  const total = (invested ?? 0) + wallets.balance;
-  const saved = wallets.income > 0 ? ((wallets.income - wallets.expenses) / wallets.income) * 100 : null;
+  const currency = entry?.value?.currency ?? overview?.currency ?? "EUR";
+  const walletCount = overview?.wallets.length ?? 0;
+  const walletsBalance = overview?.balance ?? 0;
+  // The wallets count in the net worth when they're in its currency.
+  const walletsCounted = overview && overview.currency === currency ? walletsBalance : 0;
+  // The real estate's equity, likewise.
+  const realEstateEquity = realEstate?.equity ?? 0;
+  const realEstateCounted = realEstate && realEstate.currency === currency ? realEstateEquity : 0;
+  const total = (invested ?? 0) + walletsCounted + realEstateCounted;
 
-  const months = useMemo(() => monthlySummary(null), []);
+  const months = overview?.months ?? [];
   const recent = months.slice(-6);
-  const avgSpending = recent.reduce((sum, m) => sum + m.expenses, 0) / Math.max(recent.length, 1);
+  const avgSpending = recent.reduce((sum, m) => sum + m.spending, 0) / Math.max(recent.length, 1);
+  const saved = walletsSavingsRate(months.slice(-1));
   const [breakdown, setBreakdown] = useState<"nav" | "class">("nav");
+  const sampleNote = sample ? " · sample data" : "";
+  const walletsCurrency = overview?.currency ?? currency;
 
   // Investments & wallets, each opening its page; or what it's all in, by asset class (the
   // investments' allocation, the wallets as cash), to read only.
@@ -766,13 +806,24 @@ function WealthRoot({ investments, onOpen }: { investments: Portfolio | undefine
     }] : []),
     {
       key: "wallets",
-      label: "Wallets",
-      sub: `${wallets.wallets.length} wallets · sample data`,
-      value: wallets.balance,
+      label: "All wallets",
+      sub: walletCount === 0
+        ? "No wallets yet: add your accounts, cards and cash"
+        : `${walletCount} ${walletCount === 1 ? "wallet" : "wallets"}${walletsCounted === 0 && walletsBalance !== 0 ? ` · ${formatCurrency(walletsBalance, walletsCurrency, 0)}, not added in` : ""}${sampleNote}`,
+      value: walletsCounted,
       color: WALLETS_COLOR,
-      preview: true,
       onOpen: () => onOpen({ kind: "wallet", id: ALL_WALLETS, page: "insights" }),
     },
+    ...(realEstateShown ? [{
+      key: "realEstate",
+      label: "Real estate",
+      sub: !realEstate || realEstate.propertyCount === 0
+        ? realEstate === null ? "Can't be added up right now: an exchange rate is missing" : "No properties yet"
+        : `${realEstate.propertyCount} ${realEstate.propertyCount === 1 ? "property" : "properties"}, equity${realEstateCounted === 0 && realEstateEquity !== 0 ? ` · ${formatCurrency(realEstateEquity, realEstate.currency, 0)}, not added in` : ""}${sampleNote}`,
+      value: realEstateCounted,
+      color: REAL_ESTATE_COLOR,
+      onOpen: () => onOpen({ kind: "realEstate", page: "home" }),
+    }] : []),
   ];
   const classParts: RootPart[] = [
     ...(entry?.allocation ?? []).map((a, i) => ({
@@ -781,7 +832,8 @@ function WealthRoot({ investments, onOpen }: { investments: Portfolio | undefine
       value: a.marketValue,
       color: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length],
     })),
-    { key: "class:cash", label: "Cash", sub: "In your wallets · sample data", value: wallets.balance, color: WALLETS_COLOR },
+    ...(walletsCounted > 0 ? [{ key: "class:cash", label: "Cash", sub: `In your wallets${sampleNote}`, value: walletsCounted, color: WALLETS_COLOR }] : []),
+    ...(realEstateCounted > 0 ? [{ key: "class:realEstate", label: "Real estate", sub: `Equity in your properties${sampleNote}`, value: realEstateCounted, color: REAL_ESTATE_COLOR }] : []),
   ].sort((a, b) => b.value - a.value);
   // The largest few slices (ROOT_TOP); any others as one "N more" (named in it, to read only).
   const allParts = breakdown === "nav" ? navParts : classParts;
@@ -792,28 +844,34 @@ function WealthRoot({ investments, onOpen }: { investments: Portfolio | undefine
         { key: "more", label: `${rest.length} more`, sub: rest.map((p) => p.label).join(", "), value: rest.reduce((sum, p) => sum + p.value, 0), color: "#d6d3d1" },
       ]
     : allParts;
-  const partsTotal = parts.reduce((sum, p) => sum + p.value, 0);
-  const share = (v: number) => (partsTotal > 0 ? (v / partsTotal) * 100 : 0);
+  // The donut draws what's worth something (a card in debt takes no room); the list shows it all.
+  const slices = parts.filter((p) => p.value > 0);
+  const partsTotal = slices.reduce((sum, p) => sum + p.value, 0);
+  const share = (v: number) => (partsTotal > 0 ? Math.max(0, (v / partsTotal) * 100) : 0);
   const focus = parts.find((p) => p.key === hovered);
 
   return (
     <div className="space-y-[22px] pb-12">
       <PageHeader
         eyebrow="Wealth"
-        badge={<PreviewBadge />}
+        badge={sample ? <PreviewBadge label="Sample data" /> : undefined}
         title="Wealth"
         value={invested === null && entry === undefined ? null : formatCurrency(total, currency, 0)}
-        note="Your investments and your wallets"
+        note={realEstateShown ? "Your investments, wallets and real estate" : "Your investments and your wallets"}
         actions={[
-          { label: "Add portfolio", primary: true, onClick: () => setCreating(true), ...(isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {}) },
-          // Wallets are a preview: nothing can be connected yet.
-          { label: "Add wallet", onClick: () => {}, disabled: true, title: "Coming soon" },
+          { label: "Add portfolio", primary: true, onClick: () => setDialog("portfolio"), ...(isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {}) },
+          { label: "Add wallet", onClick: () => setDialog("wallet"), ...(isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {}) },
+          ...(realEstateShown ? [{ label: "Add property", onClick: () => setDialog("property"), ...(isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {}) }] : []),
         ]}
         figures={[
           { label: "Net worth", value: formatCurrency(total, currency, 0) },
           { label: "Invested", value: total > 0 ? `${(((invested ?? 0) / total) * 100).toFixed(0)}%` : "—", sub: invested !== null ? `${formatCurrency(invested, currency, 0)} in portfolios` : undefined },
-          { label: "Liquidity", value: formatCurrency(wallets.balance, wallets.currency, 0), sub: avgSpending > 0 ? `${(wallets.balance / avgSpending).toFixed(1)} months of spending` : "In your wallets" },
-          { label: "Savings rate", value: saved !== null ? `${saved.toFixed(0)}%` : "—", tone: toneOf(saved) },
+          {
+            label: "Liquidity",
+            value: overview?.balance == null ? "—" : formatCurrency(overview.balance, walletsCurrency, 0),
+            sub: avgSpending > 0 && walletsBalance > 0 ? `${(walletsBalance / avgSpending).toFixed(1)} months of spending` : "In your wallets",
+          },
+          { label: "Saved this month", value: saved !== null ? `${saved.toFixed(0)}%` : "—", tone: toneOf(saved) },
         ]}
       />
 
@@ -844,9 +902,9 @@ function WealthRoot({ investments, onOpen }: { investments: Portfolio | undefine
             <div className="relative w-full max-w-[210px] aspect-square mx-auto">
               <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 210, height: 210 }}>
                 <PieChart>
-                  <Pie data={parts} dataKey="value" nameKey="label" innerRadius="67%" outerRadius="98%" paddingAngle={1.4} stroke="none" isAnimationActive={false} onMouseLeave={() => setHovered(null)}>
-                    {parts.map((p) => (
-                      <Cell key={p.key} fill={p.color} opacity={hovered && hovered !== p.key ? 0.25 : 1} cursor={p.onOpen ? "pointer" : "default"} onMouseEnter={() => setHovered(p.key)} onClick={p.onOpen} />
+                  <Pie data={slices.length ? slices : [{ key: "none", label: "", value: 1, color: "#EEE9DD" }]} dataKey="value" nameKey="label" innerRadius="67%" outerRadius="98%" paddingAngle={slices.length > 1 ? 1.4 : 0} stroke="none" isAnimationActive={false} onMouseLeave={() => setHovered(null)}>
+                    {(slices.length ? slices : [{ key: "none", color: "#EEE9DD" } as RootPart]).map((p) => (
+                      <Cell key={p.key} fill={p.color} opacity={hovered && hovered !== p.key ? 0.25 : 1} cursor={p.onOpen ? "pointer" : "default"} onMouseEnter={() => p.key !== "none" && setHovered(p.key)} onClick={p.onOpen} />
                     ))}
                   </Pie>
                 </PieChart>
@@ -864,7 +922,7 @@ function WealthRoot({ investments, onOpen }: { investments: Portfolio | undefine
                   <>
                     <span className="h-2.5 w-2.5 rounded-[3px] shrink-0" style={{ background: p.color }} />
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2 font-semibold text-[#1c1917] truncate">{p.label}{p.preview && <PreviewBadge />}</span>
+                      <span className="flex items-center gap-2 font-semibold text-[#1c1917] truncate">{p.label}</span>
                       {p.sub && <span className="block truncate text-[11.5px] font-medium text-[#78716c]">{p.sub}</span>}
                     </span>
                     <span className="shrink-0 font-bold text-[#1c1917] tabular-nums">{formatCurrency(p.value, currency, 0)}</span>
@@ -883,18 +941,6 @@ function WealthRoot({ investments, onOpen }: { investments: Portfolio | undefine
                   </li>
                 );
               })}
-              {breakdown === "nav" && (
-                <li>
-                  <button type="button" onClick={() => onOpen({ kind: "realEstate", page: "home" })} className="w-full flex items-center gap-3 px-2.5 py-[11px] rounded-[14px] text-left border-t border-[#EEE9DD] transition-colors hover:bg-[#F7F5EF]">
-                    <span className="h-2.5 w-2.5 rounded-[3px] shrink-0 bg-[#d6d3d1]" />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2 font-semibold text-[#1c1917]">Real estate <PreviewBadge /></span>
-                      <span className="block truncate text-[11.5px] font-medium text-[#78716c]">A sample property portfolio, not counted in the net worth</span>
-                    </span>
-                    <ChevronRight className="h-4 w-4 text-[#a8a29e] shrink-0" />
-                  </button>
-                </li>
-              )}
             </ul>
           </div>
         </div>
@@ -902,32 +948,45 @@ function WealthRoot({ investments, onOpen }: { investments: Portfolio | undefine
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-[22px]">
         <Module>
-          <ModuleHead title="Cash Flow" desc="What came into your wallets and what went out, month by month. Sample data." right={<PreviewBadge />} />
+          <ModuleHead
+            title="Cash Flow"
+            desc={`What came into your wallets and what went out, month by month, transfers between them left out.${sample ? " Sample data." : ""}`}
+          />
           <div className={`${MODULE_BODY} space-y-4`}>
-            <Figs>
-              <Fig label="In · 6 months" value={formatCurrency(recent.reduce((sum, m) => sum + m.income, 0), wallets.currency, 0)} tone="gain" strong />
-              <Fig label="Out · 6 months" value={formatCurrency(recent.reduce((sum, m) => sum + m.expenses, 0), wallets.currency, 0)} />
-              <Fig label="Savings rate" value={savingsRate(recent)} />
-            </Figs>
-            <div className="h-[150px]">
-              <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 400, height: 150 }}>
-                <BarChart data={recent.map((m) => ({ label: m.label, income: m.income, expenses: -m.expenses }))} stackOffset="sign" margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#a8a29e" }} axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={(v) => `${Number(v) < 0 ? "−" : ""}€${Math.abs(Math.round(Number(v) / 1000))}k`} tick={{ fontSize: 10, fill: "#a8a29e" }} axisLine={false} tickLine={false} width={40} />
-                  <Tooltip formatter={(v, name) => [formatCurrency(Math.abs(Number(v)), wallets.currency, 0), name === "income" ? "In" : "Out"]} contentStyle={{ borderRadius: 12, border: "1px solid #E0DACC", fontSize: 12 }} />
-                  <ReferenceLine y={0} stroke="#a8a29e" />
-                  <Bar dataKey="income" stackId="flow" fill="#1baf7a" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-                  <Bar dataKey="expenses" stackId="flow" fill="#e11d48" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {recent.length === 0 ? (
+              <p className="text-[12.5px] text-[#a8a29e]">
+                {overview === undefined ? "Loading…" : walletCount === 0 ? "Add a wallet to see what comes in and goes out." : "Can't be added up right now: an exchange rate is missing."}
+              </p>
+            ) : (
+              <>
+                <Figs>
+                  <Fig label="In · 6 months" value={formatCurrency(recent.reduce((sum, m) => sum + m.income, 0), walletsCurrency, 0)} tone="gain" strong />
+                  <Fig label="Out · 6 months" value={formatCurrency(recent.reduce((sum, m) => sum + m.spending, 0), walletsCurrency, 0)} />
+                  <Fig label="Savings rate" value={rateText(walletsSavingsRate(recent))} />
+                </Figs>
+                <div className="h-[150px]">
+                  <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 400, height: 150 }}>
+                    <BarChart data={recent.map((m) => ({ label: monthLabel(m.month), income: m.income, expenses: -m.spending }))} stackOffset="sign" margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#a8a29e" }} axisLine={false} tickLine={false} />
+                      <YAxis tickFormatter={(v) => formatCompact(Number(v))} tick={{ fontSize: 10, fill: "#a8a29e" }} axisLine={false} tickLine={false} width={40} />
+                      <Tooltip formatter={(v, name) => [formatCurrency(Math.abs(Number(v)), walletsCurrency, 0), name === "income" ? "In" : "Out"]} contentStyle={{ borderRadius: 12, border: "1px solid #E0DACC", fontSize: 12 }} />
+                      <ReferenceLine y={0} stroke="#a8a29e" />
+                      <Bar dataKey="income" stackId="flow" fill="#1baf7a" radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                      <Bar dataKey="expenses" stackId="flow" fill="#e11d48" radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </>
+            )}
           </div>
         </Module>
         <Module>
-          <ModuleHead title="Asset Classes" desc="What your wealth is in, across every portfolio and wallet." />
+          <ModuleHead title="Asset Classes" desc="What your wealth is in, across every portfolio, wallet and property." />
           <div className={`${MODULE_BODY} space-y-3`}>
             {entry === undefined ? (
               <p className="text-[12.5px] text-[#a8a29e]">Loading…</p>
+            ) : classParts.length === 0 ? (
+              <p className="text-[12.5px] text-[#a8a29e]">Nothing held yet.</p>
             ) : (
               <HBars
                 max={100}
@@ -940,7 +999,25 @@ function WealthRoot({ investments, onOpen }: { investments: Portfolio | undefine
           </div>
         </Module>
       </div>
-      {creating && <NewPortfolioDialog onClose={() => setCreating(false)} />}
+      {dialog === "portfolio" && <NewPortfolioDialog onClose={() => setDialog(null)} />}
+      {dialog === "property" && (
+        <RealEstateTransactionDialog
+          initialKind="purchase"
+          onClose={() => setDialog(null)}
+          onSaved={(uuid) => { setDialog(null); onOpen({ kind: "realEstate", page: "property", property: uuid }); }}
+        />
+      )}
+      {dialog === "wallet" && (
+        <WalletFormDialog
+          takenColors={allWallets.map((w) => w.color ?? "")}
+          onClose={() => setDialog(null)}
+          onSaved={(created) => {
+            setDialog(null);
+            changed();
+            onOpen({ kind: "wallet", id: created.uuid, page: "insights" });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -951,7 +1028,6 @@ interface RootPart {
   sub?: string;
   value: number;
   color: string;
-  preview?: boolean;
   onOpen?: () => void;
 }
 
@@ -960,50 +1036,4 @@ const ROOT_TOP = 3;
 
 const classTotal = (parts: RootPart[]) => parts.reduce((sum, p) => sum + p.value, 0);
 
-function savingsRate(months: { income: number; expenses: number }[]) {
-  const income = months.reduce((sum, m) => sum + m.income, 0);
-  const expenses = months.reduce((sum, m) => sum + m.expenses, 0);
-  return income > 0 ? `${Math.round(((income - expenses) / income) * 100)}%` : "—";
-}
-
-// ── Wallets (a demo account's preview) ───────────────────────────────────────────────────────
-
-const WALLET_PAGES: WalletPage[] = ["transactions", "budgets", "reports", "alerts"];
-
-/**
- * WALLET NODE (preview) — every wallet together, or one, in Wealth: a header leading to its pages
- * (Transactions, Budgets, Reports, Alerts), then its Insights; on every wallet together, the
- * wallets first, each opening its own. All sample data (lib/mock/wallets).
- */
-function WalletNode({ id, page, rootTrail, onOpen }: {
-  id: string;
-  page: WalletPage;
-  rootTrail: Crumb[];
-  onOpen: (id: string, page: WalletPage) => void;
-}) {
-  const all = id === ALL_WALLETS;
-  const summary = useMemo(() => walletsSummary(), []);
-  const balance = all ? summary.balance : summary.wallets.find((w) => w.id === id)?.balance ?? 0;
-  const title = all ? "Wallets" : walletName(id);
-  const allCrumb: Crumb = { label: "Wallets", onClick: () => onOpen(ALL_WALLETS, "insights") };
-  const trail = all ? rootTrail : [...rootTrail, allCrumb];
-
-  if (page !== "insights") {
-    return <WalletView id={id} page={page} trail={[...trail, { label: title, onClick: () => onOpen(id, "insights") }]} />;
-  }
-
-  const header = (
-    <>
-      <PageHeader
-        eyebrow={all ? "Wallets" : "Wallet"}
-        badge={<PreviewBadge />}
-        title={title}
-        value={formatCurrency(balance, summary.currency, 0)}
-        note="Sample data"
-        counters={WALLET_PAGES.map((p) => ({ key: p, label: WALLET_PAGE_LABELS[p], onClick: () => onOpen(id, p) }))}
-      />
-      {all && <WalletsHub trail={[]} onOpen={onOpen} />}
-    </>
-  );
-  return <WalletView id={id} page="insights" trail={trail} pageLabel={title} header={header} />;
-}
+const rateText = (rate: number | null) => (rate === null ? "—" : `${Math.round(rate)}%`);

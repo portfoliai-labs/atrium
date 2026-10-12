@@ -3,178 +3,75 @@
 
 import { useMemo, useState } from "react";
 import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  BarChart, Bar, LineChart, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ReferenceLine, ReferenceDot, Legend, CartesianGrid, ComposedChart,
 } from "recharts";
-import { BellRing, Building2, Calculator, Download, FileSearch, FileText, Home, Landmark, MapPin, Plus, Receipt, Sparkles, TrendingUp } from "lucide-react";
+import { BellRing, Building2, Calculator, Download, FileSearch, FileText, Home, Landmark, MapPin, Plus, Sparkles } from "lucide-react";
 import { Breadcrumb, type Crumb } from "../dashboard/Breadcrumb";
-import { DataTable, type DataColumn } from "../dashboard/ExploreView";
-import { ActionCard } from "../dashboard/ActionCard";
 import { Toggle } from "../dashboard/Toggle";
 import { formatCompact, formatCurrency } from "../../lib/format";
 import { CATEGORICAL_PALETTE } from "../../lib/chartColors";
 import {
-  PROPERTIES, ZONES, QUARTERS, REAL_ESTATE_TRANSACTIONS, REAL_ESTATE_REPORTS, REAL_ESTATE_ALERTS, zoneById, zoneMarketTrend, zoneNow, zoneYoY, zoneGrossYield,
-  propertyValue, propertyGrossYield, mortgageBalance, monthlyIncome, shortTermAnalysis, portfolioValueSeries, monthlyCashFlow,
-  type Property, type RealEstateTransaction, type RealEstateReport,
+  PROPERTIES, ZONES, QUARTERS, REAL_ESTATE_REPORTS, REAL_ESTATE_ALERTS, zoneById, zoneMarketTrend, zoneNow, zoneYoY, zoneGrossYield,
+  propertyValue, shortTermAnalysis,
+  type Property, type RealEstateReport,
 } from "../../lib/mock/realEstate";
 import { AXIS_TICK, ComingSoonButton, Panel, Pills, PreviewBadge, PreviewBanner, Stat, TOOLTIP_STYLE, formatPct, serif } from "./PreviewKit";
 
 const eur = (v: number) => formatCurrency(v, "EUR", 0);
 const GOLD = "#C49A3C";
 
-export type RealEstatePage = "home" | "insights" | "transactions" | "reports" | "alerts";
+export type RealEstatePreviewPage = "reports" | "alerts";
 
-const PAGE_LABELS: Record<Exclude<RealEstatePage, "home">, string> = {
-  insights: "Insights", transactions: "Transactions", reports: "Reports", alerts: "Alerts",
+const PAGE_LABELS: Record<RealEstatePreviewPage, string> = {
+  reports: "Reports", alerts: "Alerts",
 };
 
 /**
- * REAL ESTATE PORTFOLIO (preview) — a sample portfolio of properties, opened from its card on
- * the Portfolios hub and built as a portfolio's own page once was: its figures and
- * value curve, then the way into its Insights, Transactions, Reports and Alerts. Insights holds
- * the property analyses: a table of the properties, then for the one picked the market of its
- * neighbourhood (price trend against the city, rents in the nearby zones) and how it would do as
- * a short-term rental (a 0–100 score, its seasonality, the income against a long-term lease).
- * `trail` leads up to the hub; the sub-pages add "Real estate" to it. Everything comes from
+ * REAL ESTATE PAGES (preview) — the real estate's pages the API doesn't have yet, a demo account's
+ * only, opened from the real estate's own page (dashboard/realEstate/RealEstateNode): Reports and
+ * Alerts. `trail` leads up to Wealth; "Real estate" is added to it. Everything comes from
  * lib/mock/realEstate.
  */
 export function RealEstatePortfolio({
-  trail, page, onOpenPage,
-}: { trail: Crumb[]; page: RealEstatePage; onOpenPage: (page: RealEstatePage) => void }) {
-  if (page === "home") return <RealEstateHome trail={trail} onOpenPage={onOpenPage} />;
-
-  const pageTrail = [...trail, { label: "Real estate", onClick: () => onOpenPage("home") }];
+  trail, page, onOpenHome,
+}: { trail: Crumb[]; page: RealEstatePreviewPage; onOpenHome: () => void }) {
+  const pageTrail = [...trail, { label: "Real estate", onClick: onOpenHome }];
   return (
     <div className="space-y-6 pb-12">
       <Breadcrumb trail={pageTrail} current={PAGE_LABELS[page]} right={pageAction(page)} />
-      {page === "insights" && <RealEstateInsights />}
-      {page === "transactions" && <RealEstateTransactions />}
       {page === "reports" && <RealEstateReports />}
       {page === "alerts" && <RealEstateAlerts />}
     </div>
   );
 }
 
-function pageAction(page: RealEstatePage) {
+function pageAction(page: RealEstatePreviewPage) {
   switch (page) {
-    case "transactions":
-      return <ComingSoonButton icon={<Plus className="h-3.5 w-3.5" />}>Add transaction</ComingSoonButton>;
     case "reports":
       return <ComingSoonButton icon={<FileText className="h-3.5 w-3.5" />}>Generate report</ComingSoonButton>;
     case "alerts":
       return <ComingSoonButton icon={<Plus className="h-3.5 w-3.5" />}>New alert</ComingSoonButton>;
-    default:
-      return undefined;
   }
 }
 
-function RealEstateHome({ trail, onOpenPage }: { trail: Crumb[]; onOpenPage: (page: RealEstatePage) => void }) {
-  const totals = useMemo(() => {
-    const value = PROPERTIES.reduce((s, p) => s + propertyValue(p), 0);
-    const invested = PROPERTIES.reduce((s, p) => s + p.purchasePrice + p.purchaseCosts, 0);
-    const debt = PROPERTIES.reduce((s, p) => s + mortgageBalance(p), 0);
-    const income = PROPERTIES.reduce((s, p) => s + monthlyIncome(p), 0);
-    return { value, invested, debt, income, equity: value - debt, gain: value - invested };
-  }, []);
-  const valueSeries = useMemo(() => portfolioValueSeries(), []);
-  const lastReport = REAL_ESTATE_REPORTS[0];
-  const activeAlerts = REAL_ESTATE_ALERTS.filter((a) => a.enabled);
-  const triggered = activeAlerts.filter((a) => a.triggered).length;
-
-  return (
-    <div className="space-y-6 pb-12">
-      <Breadcrumb
-        trail={trail}
-        current="Real estate"
-        right={<ComingSoonButton icon={<Plus className="h-3.5 w-3.5" />}>Add property</ComingSoonButton>}
-      />
-      <PreviewBanner feature="Real estate">
-        A sample portfolio of four properties, to show where PortfoliAI is heading: property values tracked against their
-        neighbourhood&apos;s market, rent and mortgage cash flows, and a short-term rental check. Market and rental figures
-        are invented; nothing here is saved.
-      </PreviewBanner>
-
-      <section className="bg-white rounded-4xl border border-slate-200 shadow-sm">
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-          <div className="p-6 md:p-7 flex flex-col justify-between gap-6">
-            <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">Estimated value</p>
-                <PreviewBadge label="Sample" />
-              </div>
-              <p className="text-3xl md:text-4xl font-black text-slate-900 tabular-nums" style={serif}>{eur(totals.value)}</p>
-              <p className="text-[13px] font-bold tabular-nums mt-2">
-                <span className={totals.gain >= 0 ? "text-emerald-600" : "text-rose-600"}>{formatPct((totals.gain / totals.invested) * 100)}</span>
-                <span className="text-slate-400 font-semibold"> on what was paid, costs included</span>
-              </p>
-            </div>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
-              <Stat label="Invested" value={eur(totals.invested)} />
-              <Stat label="Equity" value={eur(totals.equity)} note={`LTV ${((totals.debt / totals.value) * 100).toFixed(0)}%`} />
-              <Stat label="Mortgage debt" value={eur(totals.debt)} />
-              <Stat label="Rent / month" value={eur(totals.income)} note={`${((totals.income * 12 / totals.value) * 100).toFixed(1)}% gross yield`} />
-            </dl>
-          </div>
-          <div className="h-60 lg:h-auto lg:min-h-64 border-t lg:border-t-0 lg:border-l border-slate-100 p-4">
-            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 500, height: 240 }}>
-              <AreaChart data={valueSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <XAxis dataKey="quarter" tick={AXIS_TICK} axisLine={false} tickLine={false} minTickGap={40} />
-                <YAxis tickFormatter={formatCompact} tick={AXIS_TICK} axisLine={false} tickLine={false} width={48} domain={["auto", "auto"]} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v, name) => [eur(Number(v)), name === "value" ? "Estimated value" : "Invested"]} />
-                <Area type="stepAfter" dataKey="invested" stroke="#94a3b8" strokeDasharray="4 4" fill="none" strokeWidth={1.5} isAnimationActive={false} />
-                <Area type="monotone" dataKey="value" stroke={GOLD} fill={GOLD} fillOpacity={0.12} strokeWidth={2} isAnimationActive={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </section>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <ActionCard
-          className="md:col-span-3 min-h-0"
-          icon={<TrendingUp className="h-5 w-5" />}
-          title="Insights"
-          text="Each property against its neighbourhood's market, its short-term rental potential, cash flow and where the value sits."
-          onClick={() => onOpenPage("insights")}
-        >
-          <div className="flex flex-wrap gap-1.5">
-            {["Properties", "Market trend", "Rents by zone", "Short-term rental", "Cash flow"].map((label) => (
-              <span key={label} className="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-bold text-stone-300">{label}</span>
-            ))}
-          </div>
-        </ActionCard>
-        <ActionCard
-          icon={<Receipt className="h-5 w-5" />}
-          title="Transactions"
-          text="Purchases, works, rents, mortgage payments and running costs."
-          onClick={() => onOpenPage("transactions")}
-        >
-          <p className="text-xs font-bold text-[#C49A3C]">{REAL_ESTATE_TRANSACTIONS.length} transactions</p>
-        </ActionCard>
-        <ActionCard icon={<FileText className="h-5 w-5" />} title="Reports" text="Quarterly reports, valuations and the figures for your tax return." onClick={() => onOpenPage("reports")}>
-          <p className="text-xs font-bold text-[#C49A3C]">
-            {REAL_ESTATE_REPORTS.length} reports · last {new Date(lastReport.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-          </p>
-        </ActionCard>
-        <ActionCard icon={<BellRing className="h-5 w-5" />} title="Alerts" text="Missed rents, falling zone prices, taxes due and short-stay occupancy." onClick={() => onOpenPage("alerts")}>
-          <p className="text-xs font-bold text-[#C49A3C]">{activeAlerts.length} active{triggered > 0 ? ` · ${triggered} triggered` : ""}</p>
-        </ActionCard>
-      </div>
-    </div>
-  );
-}
-
-function RealEstateInsights() {
-  const [selectedId, setSelectedId] = useState(PROPERTIES[0].id);
+/**
+ * REAL ESTATE MARKET (preview) — under a demo account's real estate Insights: for the sample
+ * property picked, the market of its neighbourhood (price trend against the city, rents in the
+ * nearby zones) and how it would do as a short-term rental (a 0–100 score, its seasonality, the
+ * income against a long-term lease), then the analyses on the roadmap. Market and rental figures
+ * are invented (lib/mock/realEstate). `propertyId`: the sample property to open on.
+ */
+export function RealEstateMarketPreview({ propertyId }: { propertyId?: string }) {
+  const [selectedId, setSelectedId] = useState(PROPERTIES.some((p) => p.id === propertyId) ? propertyId! : PROPERTIES[0].id);
   const selected = PROPERTIES.find((p) => p.id === selectedId)!;
 
   return (
     <>
-      <PreviewBanner feature="Real estate insights" />
-      <PropertiesTable selectedId={selectedId} onSelect={setSelectedId} />
-
       <div className="space-y-4">
+        <PreviewBanner feature="Market and short-stay analyses">
+          What the market around each property and short stays would mean for it, on invented figures: not available yet.
+        </PreviewBanner>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">Property analysis</p>
@@ -192,55 +89,8 @@ function RealEstateInsights() {
         </div>
         <ShortTermRental property={selected} />
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-6">
-        <CashFlow />
-        <Allocation />
-      </div>
-
       <Roadmap />
     </>
-  );
-}
-
-function PropertiesTable({ selectedId, onSelect }: { selectedId: string; onSelect: (id: string) => void }) {
-  const columns: DataColumn<Property>[] = [
-    {
-      key: "name", label: "Property", sortValue: (p) => p.name,
-      render: (p) => (
-        <button type="button" onClick={() => onSelect(p.id)} className="text-left group min-w-44">
-          <span className="font-bold text-slate-900 group-hover:text-[#C49A3C] transition-colors">{p.name}</span>
-          <span className="block text-[11px] text-slate-400 font-semibold">{p.type} · {zoneById(p.zoneId).name}, {p.city}</span>
-        </button>
-      ),
-    },
-    { key: "sqm", label: "m²", align: "right", sortValue: (p) => p.sqm, render: (p) => p.sqm },
-    { key: "bought", label: "Bought", align: "right", sortValue: (p) => p.purchaseDate, render: (p) => new Date(p.purchaseDate).toLocaleDateString("en-US", { month: "short", year: "numeric" }) },
-    { key: "price", label: "Paid", align: "right", sortValue: (p) => p.purchasePrice, render: (p) => eur(p.purchasePrice) },
-    { key: "value", label: "Value", align: "right", sortValue: (p) => propertyValue(p), render: (p) => <span className="font-bold text-slate-900">{eur(propertyValue(p))}</span> },
-    {
-      key: "gain", label: "Gain", align: "right", sortValue: (p) => propertyValue(p) / p.purchasePrice,
-      render: (p) => {
-        const pct = (propertyValue(p) / p.purchasePrice - 1) * 100;
-        return <span className={`font-bold ${pct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatPct(pct)}</span>;
-      },
-    },
-    { key: "rent", label: "Income / mo", align: "right", sortValue: (p) => monthlyIncome(p), render: (p) => eur(monthlyIncome(p)) },
-    { key: "yield", label: "Gross yield", align: "right", sortValue: (p) => propertyGrossYield(p), render: (p) => `${propertyGrossYield(p).toFixed(1)}%` },
-    { key: "debt", label: "Mortgage", align: "right", sortValue: (p) => mortgageBalance(p), render: (p) => (p.mortgage ? eur(mortgageBalance(p)) : "—") },
-    {
-      key: "usage", label: "Use", sortValue: (p) => p.usage,
-      render: (p) => (
-        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider whitespace-nowrap ${
-          p.usage === "Short-term rental" ? "bg-violet-50 text-violet-700" : p.usage === "Long-term rental" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
-        }`}>{p.usage}</span>
-      ),
-    },
-  ];
-  return (
-    <Panel title="Properties" subtitle="Click a property to analyse it below.">
-      <DataTable columns={columns} rows={PROPERTIES} rowKey={(p) => p.id} initialSort={{ key: "value", desc: true }} highlight={selectedId} />
-    </Panel>
   );
 }
 
@@ -408,94 +258,6 @@ function ShortTermRental({ property }: { property: Property }) {
         </div>
       )}
     </Panel>
-  );
-}
-
-function CashFlow() {
-  const data = useMemo(() => monthlyCashFlow(), []);
-  const net = data.reduce((s, d) => s + d.net, 0);
-  return (
-    <Panel
-      title="Cash flow, last 12 months"
-      subtitle="Rent and payouts in; mortgage, condo fees, property tax and repairs out."
-      right={<span className="text-sm font-black tabular-nums"><span className={net >= 0 ? "text-emerald-600" : "text-rose-600"}>{net >= 0 ? "+" : ""}{eur(net)}</span> <span className="text-xs font-semibold text-slate-400">net</span></span>}
-    >
-      <div className="p-4 md:p-6 h-64">
-        <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 600, height: 240 }}>
-          <BarChart data={data} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
-            <XAxis dataKey="month" tick={AXIS_TICK} axisLine={false} tickLine={false} minTickGap={8} />
-            <YAxis tickFormatter={formatCompact} tick={AXIS_TICK} axisLine={false} tickLine={false} width={44} />
-            <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "#f8fafc" }} formatter={(v, name) => [eur(Number(v)), name === "income" ? "In" : "Out"]} />
-            <Bar dataKey="income" fill="#10b981" radius={[5, 5, 0, 0]} maxBarSize={18} isAnimationActive={false} />
-            <Bar dataKey="costs" fill="#f43f5e" radius={[5, 5, 0, 0]} maxBarSize={18} isAnimationActive={false} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </Panel>
-  );
-}
-
-function Allocation() {
-  const byCity = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const p of PROPERTIES) map.set(p.city, (map.get(p.city) ?? 0) + propertyValue(p));
-    return [...map].map(([name, value]) => ({ name, value }));
-  }, []);
-  const total = byCity.reduce((s, d) => s + d.value, 0);
-  return (
-    <Panel title="Where the value sits" subtitle="Estimated value by city.">
-      <div className="p-6 md:p-7 flex items-center gap-6">
-        <PieChart width={128} height={128}>
-          <Pie data={byCity} dataKey="value" innerRadius={40} outerRadius={62} paddingAngle={2} isAnimationActive={false} stroke="none">
-            {byCity.map((d, i) => <Cell key={d.name} fill={CATEGORICAL_PALETTE[i]} />)}
-          </Pie>
-          <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => eur(Number(v))} />
-        </PieChart>
-        <ul className="space-y-2 flex-1 min-w-0">
-          {byCity.map((d, i) => (
-            <li key={d.name} className="flex items-center justify-between gap-3 text-[13px]">
-              <span className="flex items-center gap-2 font-semibold text-slate-700 truncate">
-                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: CATEGORICAL_PALETTE[i] }} />{d.name}
-              </span>
-              <span className="font-black tabular-nums text-slate-900">{((d.value / total) * 100).toFixed(0)}%</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </Panel>
-  );
-}
-
-function RealEstateTransactions() {
-  const [propertyId, setPropertyId] = useState("all");
-  const nameOf = (id: string) => PROPERTIES.find((p) => p.id === id)!.name;
-  const rows = propertyId === "all" ? REAL_ESTATE_TRANSACTIONS : REAL_ESTATE_TRANSACTIONS.filter((t) => t.propertyId === propertyId);
-  const net = rows.reduce((s, t) => s + t.amount, 0);
-  const columns: DataColumn<RealEstateTransaction>[] = [
-    { key: "date", label: "Date", sortValue: (t) => t.date, render: (t) => <span className="whitespace-nowrap">{new Date(t.date).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}</span> },
-    { key: "property", label: "Property", sortValue: (t) => nameOf(t.propertyId), render: (t) => <span className="font-semibold text-slate-800">{nameOf(t.propertyId)}</span> },
-    { key: "kind", label: "Type", sortValue: (t) => t.kind, render: (t) => t.kind },
-    {
-      key: "amount", label: "Amount", align: "right", sortValue: (t) => t.amount,
-      render: (t) => <span className={`font-bold ${t.amount >= 0 ? "text-emerald-600" : "text-slate-900"}`}>{t.amount >= 0 ? "+" : ""}{eur(t.amount)}</span>,
-    },
-  ];
-  return (
-    <>
-      <PreviewBanner feature="Real estate transactions">
-        Sample transactions. New ones will be added from the transaction form&apos;s Real estate tab, which you can already
-        try out but not save.
-      </PreviewBanner>
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 md:p-5">
-        <Pills options={[{ value: "all", label: "Every property" }, ...PROPERTIES.map((p) => ({ value: p.id, label: p.name }))]} value={propertyId} onChange={setPropertyId} />
-      </div>
-      <Panel
-        title={`${rows.length} transactions`}
-        right={<span className="text-sm font-black tabular-nums"><span className={net >= 0 ? "text-emerald-600" : "text-slate-900"}>{net >= 0 ? "+" : ""}{eur(net)}</span> <span className="text-xs text-slate-400 font-semibold">net</span></span>}
-      >
-        <DataTable columns={columns} rows={rows} rowKey={(t) => t.id} initialSort={{ key: "date", desc: true }} />
-      </Panel>
-    </>
   );
 }
 

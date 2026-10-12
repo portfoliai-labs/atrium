@@ -8,8 +8,10 @@ import { useDashboardEntry } from "../../lib/dashboardHistory";
 import { CLIENTS_SECTION, JOURNAL_SECTION, PLAN_SECTION, WEALTH_SECTION } from "../../lib/dashboardNav";
 import { clientDisplayName, useClients } from "../../context/ClientsContext";
 import { useClientPortfolios } from "../../hooks/useClientPortfolios";
-import { portfolioColorMap } from "../../lib/chartColors";
-import { ALL_WALLETS, WALLET_OPTIONS } from "../preview/WalletPages";
+import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
+import { useWallets } from "../../context/WalletsContext";
+import { useRealEstate } from "../../context/RealEstateContext";
+import { ALL_WALLETS, walletColor } from "../../lib/wallets";
 import { PLAN_PAGE_LABELS, planPages } from "./PlanSection";
 import { UserRole, SubscriptionTier } from "../../models/User";
 
@@ -32,21 +34,26 @@ type NavItem = { id: string; label: string; icon: typeof LayoutDashboard; previe
 
 export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = false, onClose, role, subscriptionTier }: SidebarProps) {
   const isAdvisor = role === 'ADVISOR';
-  // The previews of what's coming (Wallets, Plan's profile…) are for demo accounts only (see lib/demo).
+  // The previews of what's coming (real estate, Plan's profile…) are for demo accounts only (see lib/demo).
   const { isDemo } = useUser();
+  // An investor's wallets: a demo account's are sample data.
+  const { wallets, available: walletsAvailable, sample } = useWallets();
+  // Their real estate: a demo account's is sample data too.
+  const { available: realEstateAvailable, properties } = useRealEstate();
   const { portfolios } = usePortfolio();
   // Which page the open section is on, to mark its row.
   const entry = useDashboardEntry();
   const view = (entry?.section === activeSection ? entry.view : undefined) as
-    { kind?: string; uuid?: string; id?: string; page?: string; client?: string } | undefined;
+    { kind?: string; uuid?: string; id?: string; page?: string; client?: string; property?: string } | undefined;
   // An advisor's: their clients under Clients, and the open one's portfolios under it.
   const { clients } = useClients();
   const openClient = isAdvisor && activeSection === CLIENTS_SECTION ? view?.client ?? null : null;
   const { portfolios: clientPortfolios } = useClientPortfolios(openClient);
 
   // Investor: the sections, and under the open one its pages. Under Wealth, what it's made of:
-  // All portfolios and each real portfolio under it (only the portfolios while Wealth opens on
-  // All portfolios itself), then for a demo account the wallets and the real estate (previews).
+  // All portfolios and each real portfolio under it, then the wallets (each one not archived under
+  // them) and the real estate. Without wallets (a backend that
+  // doesn't have them), Wealth opens on All portfolios itself, and only the portfolios are listed.
   const colorOf = portfolioColorMap(portfolios);
   const aggregate = portfolios.find((p) => p.isAggregate);
   const real = portfolios.filter((p) => !p.isVirtual).sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
@@ -58,19 +65,30 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     depth,
     color: p.isAggregate ? undefined : colorOf(p.uuid),
   });
-  const walletRows: SubItem[] = isDemo ? [
-    { key: ALL_WALLETS, label: 'Wallets', view: { kind: 'wallet', id: ALL_WALLETS, page: 'insights' }, active: view?.kind === 'wallet' && view.id === ALL_WALLETS, preview: true },
-    ...WALLET_OPTIONS.filter((w) => w.id !== ALL_WALLETS).map((w) => ({
-      key: w.id,
+  const hasRoot = isDemo || walletsAvailable;
+  const walletRows: SubItem[] = hasRoot ? [
+    { key: ALL_WALLETS, label: 'All wallets', view: { kind: 'wallet', id: ALL_WALLETS, page: 'insights' }, active: view?.kind === 'wallet' && view.id === ALL_WALLETS, preview: sample },
+    ...wallets.map((w, i) => ({ wallet: w, color: walletColor(w, i) })).filter(({ wallet: w }) => !w.archived).map(({ wallet: w, color }) => ({
+      key: w.uuid,
       label: w.name,
-      view: { kind: 'wallet', id: w.id, page: 'insights' },
-      active: view?.kind === 'wallet' && view.id === w.id,
+      view: { kind: 'wallet', id: w.uuid, page: 'insights' },
+      active: view?.kind === 'wallet' && view.id === w.uuid,
       depth: 1,
-      color: w.color,
+      color,
     })),
-    { key: 'real-estate', label: 'Real estate', view: { kind: 'realEstate', page: 'home' }, active: view?.kind === 'realEstate', preview: true },
+    ...(realEstateAvailable ? [
+      { key: 'real-estate', label: 'Real estate', view: { kind: 'realEstate', page: 'home' }, active: view?.kind === 'realEstate' && !view.property, preview: sample },
+      ...properties.filter((p) => !p.archived).map((p, i) => ({
+        key: `property:${p.uuid}`,
+        label: p.name,
+        view: { kind: 'realEstate', page: 'property', property: p.uuid },
+        active: view?.kind === 'realEstate' && view.property === p.uuid,
+        depth: 1,
+        color: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length],
+      })),
+    ] : []),
   ] : [];
-  const wealthRows: SubItem[] = isDemo
+  const wealthRows: SubItem[] = hasRoot
     ? [...(aggregate ? [portfolioRow(aggregate, 0)] : []), ...real.map((p) => portfolioRow(p, aggregate ? 1 : 0)), ...walletRows]
     : real.length > 1 ? real.map((p) => portfolioRow(p, 0)) : [];
   const planRows: SubItem[] = planPages(isDemo).map((page) => ({

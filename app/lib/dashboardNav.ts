@@ -9,7 +9,7 @@
 import { pushDashboardEntry } from "./dashboardHistory";
 import type { WealthView, PortfolioPage } from "../components/dashboard/WealthSection";
 import type { PlanPage } from "../components/dashboard/PlanSection";
-import type { WalletPage } from "../components/preview/WalletPages";
+import type { WalletPage } from "../components/dashboard/wallets/WalletNode";
 
 // The dashboard's section ids (see the dashboard page). Wealth keeps "performance", the id it had
 // as Insights, then Manage, so old links and history entries still land on it.
@@ -45,7 +45,7 @@ export const openClientPage = (onNavigate: Navigate, clientUuid: string, view?: 
 export const openPortfolioPage = (onNavigate: Navigate, portfolioUuid: string, page: PortfolioPage = "overview") =>
   openWealthView(onNavigate, { kind: "portfolio", uuid: portfolioUuid, page });
 
-/** A wallet (or "all", every wallet) on one of its pages. A demo account's preview. */
+/** A wallet (or "all", every wallet) on one of its pages. */
 export const openWalletPage = (onNavigate: Navigate, id: string, page: WalletPage = "insights") =>
   openWealthView(onNavigate, { kind: "wallet", id, page });
 

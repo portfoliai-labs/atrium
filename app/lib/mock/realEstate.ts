@@ -1,10 +1,18 @@
 // lib/mock/realEstate.ts
 //
-// SAMPLE DATA for the Real estate preview (components/preview/RealEstatePortfolio): a made-up
-// portfolio of four Italian properties, the market of the neighbourhoods they sit in, and what
-// each would earn as a short-term rental. None of it comes from the backend or a market source.
+// SAMPLE DATA for a demo account's Real estate: a made-up portfolio of four Italian properties, the
+// market of the neighbourhoods they sit in, and what each would earn as a short-term rental. The
+// properties, their transactions, mortgages and valuations are also served in the API's shapes
+// (models/RealEstate) by demoRealEstateSource, as the API would; the market and short-stay figures
+// are what the API doesn't have yet, shown as previews (components/preview/RealEstatePortfolio).
+// None of it comes from the backend or a market source.
 
 import { hashSeed, normal, round, seeded } from "./random";
+import { TRANSACTION_KIND_LABELS, type RealEstateSource } from "../realEstate";
+import type {
+  Mortgage, MortgageSchedule, Property as ApiProperty, PropertyTransaction, PropertyTransactionFilters,
+  PropertyUse, RealEstateMonth, RealEstateOverview, RealEstateSummary, Valuation,
+} from "../../models/RealEstate";
 
 export type PropertyType = "Apartment" | "House" | "Commercial" | "Garage" | "Land";
 export type PropertyUsage = "Long-term rental" | "Short-term rental" | "Primary residence" | "Vacant";
@@ -371,3 +379,348 @@ export const REAL_ESTATE_ALERTS: RealEstateAlert[] = [
   { id: "ra6", title: "Mortgage rate reset", detail: "A variable-rate mortgage changes its rate", scope: "San Salvario two-bed", enabled: true, triggered: false },
   { id: "ra7", title: "Loan-to-value above 60%", detail: "Mortgage debt passes 60% of the estimated value", scope: "Every property", enabled: false, triggered: false },
 ];
+
+// ── The same portfolio in the API's shapes (demoRealEstateSource) ───────────────────────────
+
+// The sample's today: the wallets' sample runs to the same day (lib/mock/wallets).
+const DEMO_TODAY = "2026-09-28";
+const DEMO_MONTH = DEMO_TODAY.slice(0, 7);
+
+const USE_OF: Record<PropertyUsage, PropertyUse> = {
+  "Long-term rental": "long_term_rental",
+  "Short-term rental": "short_term_rental",
+  "Primary residence": "primary_residence",
+  Vacant: "vacant",
+};
+
+const pad = (n: number) => String(n).padStart(2, "0");
+/** The day `months` months after `day`, kept on the same day of the month (28th at most). */
+function addMonths(day: string, months: number) {
+  const [y, m, d] = day.split("-").map(Number);
+  const date = new Date(y, m - 1 + months, 1);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(Math.min(d, 28))}`;
+}
+const monthEnd = (month: string) => `${month}-31`;
+/** Every month from `from` to `to`, both included. */
+function monthsBetween(from: string, to: string) {
+  const out: string[] = [];
+  for (let month = from; month <= to; month = addMonths(`${month}-01`, 1).slice(0, 7)) out.push(month);
+  return out;
+}
+
+// San Salvario's mortgage is variable (Euribor 3M + 1.1%): these are its resets after the first rate.
+const RATE_RESETS: Record<string, { index: "euribor_3m"; spreadPct: number; changes: { effectiveOn: string; ratePct: number }[] }> = {
+  "san-salvario": {
+    index: "euribor_3m",
+    spreadPct: 1.1,
+    changes: [
+      { effectiveOn: "2023-07-01", ratePct: 4.6 },
+      { effectiveOn: "2024-07-01", ratePct: 4.8 },
+      { effectiveOn: "2025-07-01", ratePct: 3.2 },
+      { effectiveOn: "2026-01-01", ratePct: 3.1 },
+    ],
+  },
+};
+
+interface DemoMortgageDef {
+  uuid: string;
+  property: Property;
+  firstInstalmentOn: string;
+  termMonths: number;
+  // Oldest first; the first is the initial rate.
+  rateChanges: { effectiveOn: string; ratePct: number }[];
+}
+
+const MORTGAGE_DEFS: DemoMortgageDef[] = PROPERTIES.filter((p) => p.mortgage).map((p) => ({
+  uuid: `${p.id}-mortgage`,
+  property: p,
+  firstInstalmentOn: addMonths(p.purchaseDate, 1),
+  termMonths: p.mortgage!.years * 12,
+  rateChanges: [{ effectiveOn: p.purchaseDate, ratePct: p.mortgage!.ratePct }, ...(RATE_RESETS[p.id]?.changes ?? [])],
+}));
+
+const annuity = (debt: number, ratePct: number, instalments: number) => {
+  const r = ratePct / 1200;
+  return r === 0 ? debt / instalments : (debt * r) / (1 - (1 + r) ** -instalments);
+};
+
+/** The French schedule, the instalment recomputed on what's owed at every rate change. */
+function scheduleRows(def: DemoMortgageDef) {
+  const rows: Omit<MortgageSchedule["instalments"][number], "transactionUuid">[] = [];
+  let debt = def.property.mortgage!.principal;
+  let rate = def.rateChanges[0].ratePct;
+  let payment = annuity(debt, rate, def.termMonths);
+  for (let number = 1; number <= def.termMonths; number++) {
+    const dueOn = addMonths(def.firstInstalmentOn, number - 1);
+    const now = def.rateChanges.filter((c) => c.effectiveOn <= dueOn).at(-1)!.ratePct;
+    if (now !== rate) {
+      rate = now;
+      payment = annuity(debt, rate, def.termMonths - number + 1);
+    }
+    const interest = (debt * rate) / 1200;
+    const principal = number === def.termMonths ? debt : payment - interest;
+    debt = Math.max(0, debt - principal);
+    rows.push({
+      number, dueOn, payment: round(principal + interest, 2), principal: round(principal, 2), interest: round(interest, 2),
+      residualDebt: round(debt, 2), ratePct: rate,
+    });
+  }
+  return rows;
+}
+
+const SCHEDULES = new Map(MORTGAGE_DEFS.map((def) => [def.uuid, scheduleRows(def)]));
+
+const LENDERS: Record<string, string> = { navigli: "Banca Esempio", "santo-stefano": "Credito Demo", "san-salvario": "Banca Esempio" };
+const lenderOf = (p: Property) => LENDERS[p.id] ?? null;
+
+// Each property's tenant (or platform), and when it was first let.
+const LETTING: Record<string, { from: string; counterparty: string }> = {
+  navigli: { from: "2020-01", counterparty: "G. Ferraris" },
+  "santo-stefano": { from: "2021-06", counterparty: "Airbnb" },
+  "san-salvario": { from: "2023-01", counterparty: "L. Conti" },
+  "prati-garage": { from: "2020-12", counterparty: "M. De Santis" },
+};
+
+const DEMO_TRANSACTIONS: PropertyTransaction[] = (() => {
+  const out: PropertyTransaction[] = [];
+  let n = 0;
+  const add = (p: Property, kind: PropertyTransaction["kind"], bookedOn: string, amount: number, extra: Partial<PropertyTransaction> = {}) => {
+    if (bookedOn > DEMO_TODAY) return;
+    out.push({
+      uuid: `ret-${n++}`, propertyUuid: p.id, kind, bookedOn, amount: round(amount, 2), currency: "EUR",
+      description: extra.description ?? TRANSACTION_KIND_LABELS[kind], counterparty: null, note: null, costKind: null, expenseKind: null,
+      rentPeriod: null, taxYear: null, incentive: null, mortgageUuid: null, instalmentNumber: null, interest: null,
+      prepaymentEffect: null, createdAt: `${bookedOn}T09:00:00Z`, ...extra,
+    });
+  };
+
+  for (const p of PROPERTIES) {
+    // The purchase and its costs: registration taxes, the agency, the notary.
+    add(p, "purchase", p.purchaseDate, -p.purchasePrice);
+    add(p, "purchase_cost", p.purchaseDate, -p.purchaseCosts * 0.5, { costKind: "taxes", description: "Registration & taxes" });
+    add(p, "purchase_cost", p.purchaseDate, -p.purchaseCosts * 0.35, { costKind: "agency", description: "Agency fee" });
+    add(p, "purchase_cost", p.purchaseDate, -p.purchaseCosts * 0.15, { costKind: "notary", description: "Notary" });
+
+    const rand = seeded(hashSeed(`re-${p.id}`));
+    const letting = LETTING[p.id];
+    for (const month of monthsBetween(addMonths(p.purchaseDate, 1).slice(0, 7), DEMO_MONTH)) {
+      const mi = Number(month.slice(5)) - 1;
+      if (letting && month >= letting.from) {
+        if (p.usage === "Short-term rental") {
+          // The platform pays out what's left after its fee and the cleaning.
+          const payout = shortTermAnalysis(p).monthly[mi].revenue * 0.65 * (0.85 + rand() * 0.3);
+          add(p, "short_stay_payout", `${month}-05`, payout, { counterparty: letting.counterparty, description: "Airbnb payout" });
+        } else {
+          add(p, "rent", `${month}-05`, p.monthlyRent, { counterparty: letting.counterparty, rentPeriod: month });
+        }
+      }
+      add(p, "expense", `${month}-10`, -p.monthlyCondo, { expenseKind: "condo_fees", counterparty: "Condo administrator", description: "Condo fees" });
+      // IMU, half in June and half in December.
+      if (mi === 5 || mi === 11) add(p, "property_tax", `${month}-16`, -p.yearlyPropertyTax / 2, { taxYear: Number(month.slice(0, 4)), description: "IMU" });
+      // The odd repair.
+      if (rand() > 0.9) add(p, "expense", `${month}-${pad(12 + Math.floor(rand() * 14))}`, -round(120 + rand() * 600), { expenseKind: "maintenance", description: "Repair" });
+    }
+    if (p.usage === "Short-term rental") {
+      for (const year of [2022, 2023, 2024, 2025, 2026]) add(p, "expense", `${year}-03-20`, -540, { expenseKind: "insurance", counterparty: "Assicurazioni Demo", description: "Home insurance" });
+    }
+  }
+
+  const byId = (id: string) => PROPERTIES.find((p) => p.id === id)!;
+  add(byId("navigli"), "works", "2019-10-02", -18400, { description: "Bathroom and kitchen renovation", incentive: "Bonus ristrutturazione 50%" });
+  add(byId("santo-stefano"), "expense", "2021-05-18", -9600, { expenseKind: "furnishing", description: "Furnishing for short stays" });
+  add(byId("san-salvario"), "works", "2022-11-21", -7200, { description: "New windows", incentive: "Ecobonus 50%" });
+
+  for (const def of MORTGAGE_DEFS) {
+    for (const row of SCHEDULES.get(def.uuid)!) {
+      add(def.property, "mortgage_instalment", row.dueOn, -row.payment, {
+        mortgageUuid: def.uuid, instalmentNumber: row.number, interest: row.interest, counterparty: lenderOf(def.property),
+      });
+    }
+  }
+  // Newest first, as the API lists them.
+  return out.sort((a, b) => b.bookedOn.localeCompare(a.bookedOn) || b.uuid.localeCompare(a.uuid, undefined, { numeric: true }));
+})();
+
+const transactionsOf = (propertyUuid: string | null) =>
+  propertyUuid ? DEMO_TRANSACTIONS.filter((t) => t.propertyUuid === propertyUuid) : DEMO_TRANSACTIONS;
+
+// A yearly estimate every January since the purchase, then this month's appraisal at the zone's
+// current price.
+const DEMO_VALUATIONS: Valuation[] = PROPERTIES.flatMap((p) => {
+  const years = monthsBetween(p.purchaseDate.slice(0, 7), DEMO_MONTH).filter((m) => m.endsWith("-01") && m > p.purchaseDate.slice(0, 7));
+  const estimates = years.map((month) => ({ valuedOn: `${month}-15`, value: propertyValueAt(p, (Number(month.slice(0, 4)) - 2019) * 4)!, source: "user_estimate" as const }));
+  return [...estimates, { valuedOn: "2026-09-15", value: propertyValue(p), source: "appraisal" as const }].map((v, i) => ({
+    uuid: `${p.id}-valuation-${i}`, propertyUuid: p.id, currency: "EUR", note: null, createdAt: `${v.valuedOn}T09:00:00Z`, ...v,
+  }));
+}).sort((a, b) => b.valuedOn.localeCompare(a.valuedOn));
+
+/** The whole property's value on a day: its latest valuation, else its purchase price. */
+function valueOn(p: Property, day: string) {
+  if (day < p.purchaseDate) return 0;
+  return DEMO_VALUATIONS.find((v) => v.propertyUuid === p.id && v.valuedOn <= day)?.value ?? p.purchasePrice;
+}
+
+function debtOn(p: Property, day: string) {
+  const def = MORTGAGE_DEFS.find((d) => d.property === p);
+  if (!def || day < p.purchaseDate) return 0;
+  return SCHEDULES.get(def.uuid)!.filter((row) => row.dueOn <= day).at(-1)?.residualDebt ?? p.mortgage!.principal;
+}
+
+const INVESTED_KINDS = new Set(["purchase", "purchase_cost", "works"]);
+const investedOn = (p: Property, day: string) =>
+  -transactionsOf(p.id).filter((t) => INVESTED_KINDS.has(t.kind) && t.bookedOn <= day).reduce((s, t) => s + t.amount, 0);
+
+function propertyMonth(p: Property, month: string): RealEstateMonth {
+  const inMonth = transactionsOf(p.id).filter((t) => t.bookedOn.startsWith(month));
+  const sum = (kinds: string[]) => inMonth.filter((t) => kinds.includes(t.kind)).reduce((s, t) => s + t.amount, 0);
+  const income = sum(["rent", "short_stay_payout"]);
+  const expenses = -sum(["expense", "property_tax"]);
+  const mortgagePayments = -sum(["mortgage_instalment", "mortgage_prepayment"]);
+  const mortgageInterest = inMonth.reduce((s, t) => s + (t.interest ?? 0), 0);
+  // The month's end, or today for this one.
+  const day = month === DEMO_MONTH ? DEMO_TODAY : monthEnd(month);
+  return {
+    month, income: round(income, 2), expenses: round(expenses, 2), mortgagePayments: round(mortgagePayments, 2),
+    mortgageInterest: round(mortgageInterest, 2), netCashFlow: round(income - expenses - mortgagePayments, 2),
+    value: valueOn(p, day), residualDebt: debtOn(p, day), invested: round(investedOn(p, day), 2),
+  };
+}
+
+function demoSummary(propertyUuid: string | null, from?: string, to?: string): RealEstateSummary {
+  const last = to ?? DEMO_MONTH;
+  const first = from ?? addMonths(`${last}-01`, -11).slice(0, 7);
+  const properties = propertyUuid ? PROPERTIES.filter((p) => p.id === propertyUuid) : PROPERTIES;
+  const months = monthsBetween(first, last).map((month) => {
+    const rows = properties.map((p) => propertyMonth(p, month));
+    const total = (key: Exclude<keyof RealEstateMonth, "month">) => round(rows.reduce((s, r) => s + r[key], 0), 2);
+    return {
+      month, income: total("income"), expenses: total("expenses"), mortgagePayments: total("mortgagePayments"),
+      mortgageInterest: total("mortgageInterest"), netCashFlow: total("netCashFlow"), value: total("value"),
+      residualDebt: total("residualDebt"), invested: total("invested"),
+    };
+  });
+  return { currency: "EUR", months };
+}
+
+export const DEMO_PROPERTIES: ApiProperty[] = PROPERTIES.map((p) => {
+  const value = valueOn(p, DEMO_TODAY);
+  const latest = DEMO_VALUATIONS.find((v) => v.propertyUuid === p.id);
+  const residualDebt = debtOn(p, DEMO_TODAY);
+  const year = demoSummary(p.id).months;
+  const yearlyIncome = round(year.reduce((s, m) => s + m.income, 0), 2);
+  return {
+    uuid: p.id,
+    name: p.name,
+    kind: p.type.toLowerCase() as ApiProperty["kind"],
+    use: USE_OF[p.usage],
+    address: { country: "IT", street: p.address, locality: p.city, region: null, postalCode: null, neighbourhood: zoneById(p.zoneId).name, location: null },
+    currency: "EUR",
+    surfaceSqm: p.sqm,
+    rooms: p.rooms || null,
+    yearBuilt: p.yearBuilt,
+    energyRating: p.energyClass === "—" ? null : p.energyClass,
+    ownershipSharePct: 100,
+    details: { italy: null },
+    note: null,
+    purchasedOn: p.purchaseDate,
+    soldOn: null,
+    archived: false,
+    figures: {
+      value,
+      valueSource: latest?.source ?? "purchase_price",
+      valuedOn: latest?.valuedOn ?? p.purchaseDate,
+      valueAtShare: value,
+      residualDebt,
+      equity: round(value - residualDebt, 2),
+      invested: round(investedOn(p, DEMO_TODAY), 2),
+      yearlyIncome,
+      yearlyNetCashFlow: round(year.reduce((s, m) => s + m.netCashFlow, 0), 2),
+      loanToValuePct: value > 0 ? (residualDebt / value) * 100 : null,
+      grossYieldPct: value > 0 ? (yearlyIncome / value) * 100 : null,
+      reference: { currency: "EUR", valueAtShare: value, residualDebt, equity: round(value - residualDebt, 2) },
+    },
+    createdAt: `${p.purchaseDate}T09:00:00Z`,
+  };
+});
+
+const DEMO_MORTGAGES: Mortgage[] = MORTGAGE_DEFS.map((def) => {
+  const rows = SCHEDULES.get(def.uuid)!;
+  const next = rows.find((row) => row.dueOn > DEMO_TODAY);
+  const reset = RATE_RESETS[def.property.id];
+  const initial = def.rateChanges[0].ratePct;
+  return {
+    uuid: def.uuid,
+    propertyUuid: def.property.id,
+    principal: def.property.mortgage!.principal,
+    currency: "EUR",
+    firstInstalmentOn: def.firstInstalmentOn,
+    termMonths: def.termMonths,
+    frequency: "monthly",
+    rate: reset
+      ? { fixedPct: null, variable: { index: reset.index, spreadPct: reset.spreadPct, initialPct: initial } }
+      : { fixedPct: initial, variable: null },
+    rateChanges: def.rateChanges,
+    lender: lenderOf(def.property),
+    note: null,
+    closedOn: null,
+    residualDebt: debtOn(def.property, DEMO_TODAY),
+    currentRatePct: def.rateChanges.filter((c) => c.effectiveOn <= DEMO_TODAY).at(-1)!.ratePct,
+    currentInstalment: next?.payment ?? 0,
+    lastInstalmentOn: rows.at(-1)!.dueOn,
+    createdAt: `${def.property.purchaseDate}T09:00:00Z`,
+  };
+});
+
+function demoOverview(): RealEstateOverview {
+  const sum = (pick: (p: ApiProperty) => number) => round(DEMO_PROPERTIES.reduce((s, p) => s + pick(p), 0), 2);
+  const value = sum((p) => p.figures.valueAtShare);
+  const residualDebt = sum((p) => p.figures.residualDebt);
+  const yearlyIncome = sum((p) => p.figures.yearlyIncome);
+  return {
+    currency: "EUR",
+    propertyCount: DEMO_PROPERTIES.length,
+    value,
+    residualDebt,
+    equity: round(value - residualDebt, 2),
+    invested: sum((p) => p.figures.invested),
+    yearlyIncome,
+    yearlyNetCashFlow: sum((p) => p.figures.yearlyNetCashFlow),
+    loanToValuePct: value > 0 ? (residualDebt / value) * 100 : null,
+    grossYieldPct: value > 0 ? (yearlyIncome / value) * 100 : null,
+  };
+}
+
+function matches(t: PropertyTransaction, f: PropertyTransactionFilters) {
+  if (f.bookedFrom && t.bookedOn < f.bookedFrom) return false;
+  if (f.bookedTo && t.bookedOn > f.bookedTo) return false;
+  if (f.kinds?.length && !f.kinds.includes(t.kind)) return false;
+  if (f.mortgageUuid && t.mortgageUuid !== f.mortgageUuid) return false;
+  const text = f.text?.trim().toLowerCase();
+  if (text && ![t.description, t.counterparty ?? "", t.note ?? ""].some((s) => s.toLowerCase().includes(text))) return false;
+  return true;
+}
+
+/** A demo account's real estate, read as the API would serve it. */
+export const demoRealEstateSource: RealEstateSource = {
+  overview: async () => demoOverview(),
+  summary: async (propertyUuid, from, to) => demoSummary(propertyUuid, from, to),
+  transactions: async (propertyUuid, filters = {}) => {
+    const all = transactionsOf(propertyUuid).filter((t) => matches(t, filters));
+    const limit = filters.limit ?? 50;
+    const offset = filters.offset ?? 0;
+    const amount = round(all.reduce((s, t) => s + t.amount, 0), 2);
+    return { items: all.slice(offset, offset + limit), total: all.length, limit, offset, totals: all.length ? [{ currency: "EUR", amount }] : [] };
+  },
+  mortgages: async (propertyUuid) => DEMO_MORTGAGES.filter((m) => !propertyUuid || m.propertyUuid === propertyUuid),
+  schedule: async (mortgageUuid) => {
+    const rows = SCHEDULES.get(mortgageUuid) ?? [];
+    const paid = new Map(DEMO_TRANSACTIONS.filter((t) => t.mortgageUuid === mortgageUuid).map((t) => [t.instalmentNumber, t.uuid]));
+    return {
+      currency: "EUR",
+      instalments: rows.map((row) => ({ ...row, transactionUuid: paid.get(row.number) ?? null })),
+      prepayments: [],
+      totalInterest: round(rows.reduce((s, row) => s + row.interest, 0), 2),
+    };
+  },
+  valuations: async (propertyUuid) => DEMO_VALUATIONS.filter((v) => v.propertyUuid === propertyUuid),
+};

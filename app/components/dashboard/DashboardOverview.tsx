@@ -19,8 +19,8 @@ import { openPortfolioPage, openWalletPage } from "../../lib/dashboardNav";
 import { DailyArticleModule } from "./NewsSection";
 import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
 import { alertState, type AlertState, type AlertTone } from "../../lib/alerts";
-import { useUser } from "../../context/UserContext";
-import { walletsSummary, type WalletsSummary } from "../preview/WalletsOverview";
+import { useWalletsOverview, type WalletsOverview } from "../../hooks/useWalletsOverview";
+import { useWallets } from "../../context/WalletsContext";
 import { PreviewBadge } from "../preview/PreviewKit";
 
 // One portfolio's GET /v1/portfolios/{p}/overview: null snapshot = no data yet (no transactions,
@@ -33,17 +33,17 @@ type SnapshotState =
 /**
  * DASHBOARD — the whole wealth at a glance, not tied to the selected portfolio: the net worth
  * on top (every portfolio's market value, from the aggregate "All portfolios" or the only
- * portfolio, plus, for a demo account, the wallets' balance — a preview on sample data, see
- * components/preview), with the portfolios and the wallets under it, as totals and one by one; then every
+ * portfolio, plus the wallets' balance; a demo account's wallets are sample data, see
+ * lib/mock/wallets), with the portfolios and the wallets under it, as totals and one by one; then every
  * portfolio's alerts and the article of the day. Headline figures only: the rest lives under
  * Manage, which the summaries open. The overview endpoint never mixes history
  * with fresh data (no isStale).
  */
 export default function DashboardOverview({ onNavigate }: { onNavigate?: (section: string) => void } = {}) {
   const { portfolios, current, selectPortfolio } = usePortfolio();
-  const { isDemo } = useUser();
-  // Wallets are a preview on sample data that only demo accounts see.
-  const wallets = useMemo(() => (isDemo ? walletsSummary() : null), [isDemo]);
+  // The wallets, once there's at least one (not archived).
+  const overview = useWalletsOverview();
+  const wallets = overview && overview.wallets.length > 0 ? overview : null;
   const [snapshots, setSnapshots] = useState<Record<string, SnapshotState>>({});
 
   // Refetch only when the set of portfolios changes, not on every new array from the context
@@ -177,9 +177,10 @@ function ErrorBanner({ message }: { message: string }) {
  *
  * The portfolios' total is the aggregate's (recomputed from every portfolio's transactions
  * combined) or the only portfolio's; each row is that portfolio's own overview. A strategy's
- * backtest is simulated money: never here. Wallets in another currency than the portfolios' are
- * shown but not added in, since there's no rate to convert them with; a wallet in debt (a credit
- * card) takes no room in the bar.
+ * backtest is simulated money: never here. The wallets come added up in the user's reference
+ * currency (see useWalletsOverview); if that isn't the portfolios' they're shown but not added in,
+ * and a wallet in another currency than that has no piece of its own in the bar. A wallet in debt
+ * (a credit card) takes no room in the bar.
  */
 function NetWorthModule({
   portfolio, snapshot, members, snapshots, wallets,
@@ -191,16 +192,17 @@ function NetWorthModule({
   // The real portfolios, each with its own overview.
   members: Portfolio[];
   snapshots: Record<string, SnapshotState>;
-  wallets: WalletsSummary | null;
+  wallets: WalletsOverview | null;
   onOpenPortfolios?: () => void;
   onOpenPortfolio?: (uuid: string) => void;
   onOpenWallets?: () => void;
   onOpenWallet?: (id: string) => void;
 }) {
   const moves = useRecentMoves(portfolio.uuid);
+  const { sample } = useWallets();
   const currency = snapshot?.currency ?? wallets?.currency ?? "EUR";
   const investments = snapshot?.totalMarketValue ?? 0;
-  const walletsCounted = wallets && wallets.currency === currency ? wallets.balance : 0;
+  const walletsCounted = wallets && wallets.currency === currency ? wallets.balance ?? 0 : 0;
   const total = investments + walletsCounted;
   const shareOf = (value: number) => (total > 0 ? Math.max(0, (value / total) * 100) : 0);
   const pnlPct = snapshot ? unrealizedPct(snapshot) : null;
@@ -218,7 +220,9 @@ function NetWorthModule({
     ...(allIn
       ? portfolioRows.filter((r) => r.own && r.own.currency === currency).map((r) => ({ key: r.portfolio.uuid, label: r.portfolio.name, value: r.own!.totalMarketValue, color: r.shade }))
       : [{ key: "investments", label: "Investments", value: investments, color: GOLD }]),
-    ...(walletsCounted !== 0 ? walletRows.map((r) => ({ key: r.wallet.id, label: r.wallet.name, value: r.wallet.balance, color: r.shade })) : []),
+    ...(walletsCounted !== 0
+      ? walletRows.filter((r) => r.wallet.currency === currency).map((r) => ({ key: r.wallet.id, label: r.wallet.name, value: r.wallet.balance, color: r.shade }))
+      : []),
   ].filter((s) => s.value > 0);
 
   return (
@@ -287,8 +291,8 @@ function NetWorthModule({
           <GroupColumn
             title="Wallets"
             color={TEAL}
-            badge={<PreviewBadge label="Sample data" />}
-            value={formatCurrency(wallets.balance, wallets.currency, 0)}
+            badge={sample ? <PreviewBadge label="Sample data" /> : undefined}
+            value={wallets.balance === null ? "—" : formatCurrency(wallets.balance, wallets.currency, 0)}
             summary={
               <>
                 <span className="text-emerald-600">+{formatCurrency(wallets.income, wallets.currency, 0)}</span> in
@@ -303,10 +307,10 @@ function NetWorthModule({
                 key={w.id}
                 color={shade}
                 name={w.name}
-                share={wallets.currency === currency ? shareOf(w.balance) : null}
-                value={formatCurrency(w.balance, wallets.currency, 0)}
+                share={walletsCounted !== 0 && w.currency === currency ? shareOf(w.balance) : null}
+                value={formatCurrency(w.balance, w.currency, 0)}
                 negative={w.balance < 0}
-                delta={<Delta amount={w.net} pct={null} currency={wallets.currency} />}
+                delta={<Delta amount={w.net} pct={null} currency={w.currency} />}
                 onOpen={onOpenWallet ? () => onOpenWallet(w.id) : undefined}
               />
             ))}
