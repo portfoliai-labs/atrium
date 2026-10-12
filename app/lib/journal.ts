@@ -1,118 +1,145 @@
 // lib/journal.ts
 //
-// JOURNAL — PortfoliAI's own articles on investing (the Journal section, see JournalSection):
-// evergreen pieces on the ideas behind the figures the dashboard shows. Written here rather than
-// fetched, since there's no backend for them yet; newest first.
+// JOURNAL — what every Journal page shares: the names of categories, languages, reasons and
+// states, the notices an article is shown with, and where the reading pages read from (a
+// JournalSource: the API, or, on a backend without the Journal, the platform's own articles
+// written in the code, lib/journalStatic).
 
-export type JournalCategory = "Performance" | "Risk" | "Strategy" | "Costs";
+import type {
+  Article, ArticleAuthor, ArticleCategory, ArticleFilters, ArticleLanguage, ArticleStatus, ArticleSummary, Block,
+  Page, ReportReason, ReportStatus, Span,
+} from "../models/Journal";
+import { ApiError } from "../services/apiClient";
+import { journalService } from "../services/journalService";
 
-// A paragraph, a subheading, or a bulleted list.
-export type JournalBlock =
-  | { type: "p"; text: string }
-  | { type: "h"; text: string }
-  | { type: "ul"; items: string[] };
+export const CATEGORY_LABELS: Record<ArticleCategory, string> = {
+  performance: "Performance",
+  risk: "Risk",
+  strategy: "Strategy",
+  costs: "Costs",
+  markets: "Markets",
+  taxes: "Taxes",
+  personal_finance: "Personal finance",
+  real_estate: "Real estate",
+  other: "Other",
+};
+export const CATEGORIES = Object.keys(CATEGORY_LABELS) as ArticleCategory[];
 
-export interface JournalArticle {
-  slug: string;
-  title: string;
-  // The line under the title, on its card and at the top of the article.
-  dek: string;
-  category: JournalCategory;
-  publishedAt: string;
-  readMinutes: number;
-  body: JournalBlock[];
+export const LANGUAGE_LABELS: Record<ArticleLanguage, string> = { en: "English", it: "Italiano" };
+export const LANGUAGES = Object.keys(LANGUAGE_LABELS) as ArticleLanguage[];
+
+export const STATUS_LABELS: Record<ArticleStatus, string> = { draft: "Draft", published: "Published", hidden: "Hidden" };
+
+export const REASON_LABELS: Record<ReportReason, string> = {
+  spam: "Spam or advertising",
+  misleading: "Misleading or false",
+  market_manipulation: "Market manipulation",
+  hate_or_harassment: "Hate or harassment",
+  personal_data: "Someone's personal data",
+  copyright: "Copyright infringement",
+  illegal: "Other illegal content",
+  other: "Something else",
+};
+export const REASONS = Object.keys(REASON_LABELS) as ReportReason[];
+
+export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
+  open: "Waiting for review",
+  article_kept: "Reviewed: article kept",
+  article_hidden: "Reviewed: article hidden",
+};
+
+// Bounds acta checks (its constants/articles.py), so the fields stop where it would refuse.
+export const TITLE_MAX = 160;
+export const DEK_MAX = 300;
+export const ALT_TEXT_MAX = 300;
+export const CAPTION_MAX = 300;
+export const ATTRIBUTION_MAX = 200;
+export const HEADING_MAX = 200;
+export const MAX_INSTRUMENTS = 10;
+export const DISCLOSURE_MAX = 2000;
+export const NOTE_MAX = 1000;
+export const QUERY_MAX = 200;
+
+// The notices an article is shown with. PLACEHOLDERS: their wording is waiting for a legal review
+// (forum's service-map, "acta": the notice, the advisors' disclosure, the authors' terms).
+export const NOT_ADVICE_NOTICE =
+  "This article is its author's own opinion, published on PortfoliAI without review. It is not investment advice, and PortfoliAI doesn't endorse it.";
+export const EDITORS_NOTICE = "For education only, not investment advice. Past returns don't predict future ones.";
+export const DISCLOSURE_TITLE = "The author's interests in the instruments named";
+export const DISCLOSURE_HELP =
+  "As an advisor naming instruments, say whether you, your firm or your clients hold them or have other interests in them. It is shown with the article.";
+
+/** Who an article is by, as its byline says it. */
+export function authorName(author: ArticleAuthor) {
+  if (author.kind === "editor") return "PortfoliAI";
+  return author.displayName ?? "A PortfoliAI member";
 }
 
-export const JOURNAL_ARTICLES: JournalArticle[] = [
-  {
-    slug: "time-vs-money-weighted-returns",
-    title: "Time-weighted or money-weighted: which return is yours?",
-    dek: "Two portfolios can hold the same assets and still earn different returns. The difference is when the money went in.",
-    category: "Performance",
-    publishedAt: "2026-09-24",
-    readMinutes: 5,
-    body: [
-      { type: "p", text: "Ask \"how did my portfolio do this year?\" and there are two honest answers. One measures the investments, the other measures the investor. They agree only when no money moves in or out, which, for anyone saving monthly, is never." },
-      { type: "h", text: "Time-weighted return: how the holdings did" },
-      { type: "p", text: "The time-weighted return (TWR) cuts the period at every deposit and withdrawal, measures the return of each slice, and chains the slices together. Cash flows drop out entirely: it's the return one euro would have earned had it been invested from the first day to the last." },
-      { type: "p", text: "That makes it the fair way to compare a portfolio with an index or with another portfolio. It's what fund managers report, because they don't decide when their clients buy in." },
-      { type: "h", text: "Money-weighted return: how your money did" },
-      { type: "p", text: "The money-weighted return (MWR, or internal rate of return) weights each period by how much was invested in it. A big deposit just before a fall hurts it more than the same fall on a small balance; a deposit just before a rally helps it." },
-      { type: "p", text: "It answers the personal question: given what I put in and when, what rate did my money actually grow at? Timing, good or bad, shows up here and only here." },
-      { type: "h", text: "Reading the gap" },
-      { type: "ul", items: [
-        "MWR above TWR: your deposits landed before the good stretches. Luck or skill, the timing added to your result.",
-        "MWR below TWR: more money was invested during the weak periods than the strong ones, often after buying in following a run-up.",
-        "Roughly equal: steady contributions, or too few cash flows to matter.",
-      ] },
-      { type: "p", text: "Neither number is the \"real\" one. Use the time-weighted return to judge what you hold, and the money-weighted return to judge what you did with it." },
-    ],
-  },
-  {
-    slug: "diversification-is-about-correlation",
-    title: "Diversification is about correlation, not count",
-    dek: "Twenty stocks that move together are one bet. Two assets that don't can be a portfolio.",
-    category: "Risk",
-    publishedAt: "2026-09-17",
-    readMinutes: 4,
-    body: [
-      { type: "p", text: "It's tempting to measure diversification by the number of holdings. But a portfolio's volatility depends less on how many things it owns than on how they move relative to each other." },
-      { type: "h", text: "Why correlation does the work" },
-      { type: "p", text: "Correlation runs from +1 (two assets always move in the same direction) to −1 (always opposite). When two holdings are perfectly correlated, combining them averages their risk and nothing more. Below +1, some of each one's swings cancel out, and the mix is less volatile than the weighted average of its parts. That reduction is the only free lunch finance is said to offer." },
-      { type: "p", text: "Ten technology stocks, or three ETFs tracking overlapping indices, are highly correlated with each other: they look diversified on a list and behave like one position on a chart." },
-      { type: "h", text: "What to check in your own portfolio" },
-      { type: "ul", items: [
-        "Overlap: do your funds hold the same large companies? A global ETF and a US ETF share most of their top holdings.",
-        "Asset classes: equities, bonds, commodities and cash respond to different forces, and tend to diversify each other better than one class does alone.",
-        "Currency and region: exposure to one economy can hide behind many different tickers.",
-      ] },
-      { type: "h", text: "A caveat on crises" },
-      { type: "p", text: "Correlations aren't fixed. In a sharp sell-off many risky assets fall together, just when diversification is wanted most. Correlations measured over calm years can overstate how much protection a mix will give in a bad one, which is why it's worth looking at how a portfolio behaved through its worst drawdowns, not only on average." },
-    ],
-  },
-  {
-    slug: "rebalancing-without-the-guesswork",
-    title: "Rebalancing without the guesswork",
-    dek: "Markets quietly change your allocation. A rule for putting it back beats deciding each time.",
-    category: "Strategy",
-    publishedAt: "2026-09-10",
-    readMinutes: 5,
-    body: [
-      { type: "p", text: "Start with 60% equities and 40% bonds, let a strong year for stocks pass, and you may find yourself at 68/32 without having made a single trade. The portfolio now carries more risk than you chose. Rebalancing is the habit of bringing it back." },
-      { type: "h", text: "Three common rules" },
-      { type: "ul", items: [
-        "Calendar: rebalance every quarter, half-year or year, whatever the drift. Simple, predictable, and easy to stick to.",
-        "Threshold: rebalance only when an asset strays more than a set margin (say 5 percentage points) from its target. Fewer trades, and they happen when they matter.",
-        "Cash flows: steer new deposits (or withdrawals) toward whatever is underweight. Often enough on its own for a saver, and it avoids selling at all.",
-      ] },
-      { type: "h", text: "What it costs, and what it buys" },
-      { type: "p", text: "Every rebalance has costs: commissions, spreads and, when selling at a gain, taxes. Rebalancing too often can cost more than the drift it corrects. Too rarely, and the risk you carry is no longer the one you picked." },
-      { type: "p", text: "Rebalancing isn't mainly a way to earn more. By selling what has risen and buying what has fallen, it sometimes adds a little return, and sometimes, in a long trend, costs a little. Its real job is keeping risk where you set it." },
-      { type: "h", text: "Test before you commit" },
-      { type: "p", text: "The right frequency depends on your assets, your costs and your contributions. Backtesting the same target weights with different rules over past prices shows the trade-off concretely: how much each rule traded, what it cost, and how far the allocation wandered in between. Past prices won't repeat, but they show how a rule behaves." },
-    ],
-  },
-  {
-    slug: "costs-compound-too",
-    title: "Costs compound too",
-    dek: "A fee of 1% a year sounds small. Over thirty years it can take a quarter of what you would have had.",
-    category: "Costs",
-    publishedAt: "2026-09-03",
-    readMinutes: 3,
-    body: [
-      { type: "p", text: "Compounding is usually told as the good news of investing: returns earn returns. The same arithmetic works on costs. A fee isn't charged once; it's charged every year on a balance that includes all previous years' growth." },
-      { type: "h", text: "The arithmetic" },
-      { type: "p", text: "Take €10,000 growing at 6% a year for 30 years: about €57,000. At 5%, the same return after a 1% annual fee, it ends near €43,000. The one-point difference costs roughly a quarter of the final value, far more than 30 × 1% of the starting sum." },
-      { type: "h", text: "Where costs hide" },
-      { type: "ul", items: [
-        "Ongoing charges (TER) of funds and ETFs, taken from the fund's value rather than billed to you, so they never show as a transaction.",
-        "Transaction costs: commissions, currency conversion and the bid-ask spread on every trade.",
-        "Advisory or platform fees charged as a percentage of assets.",
-        "Taxes realised by trading more often than needed.",
-      ] },
-      { type: "p", text: "Costs are one of the few parts of investing entirely within your control. Future returns are uncertain; a fee is certain. Knowing what you pay, in total and each year, is the first step to deciding whether it's worth it." },
-    ],
-  },
-];
+/** "Oct 12, 2026". */
+export const dateLabel = (iso: string) =>
+  new Date(iso.length === 10 ? `${iso}T00:00:00` : iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
-export const findJournalArticle = (slug: string) => JOURNAL_ARTICLES.find((a) => a.slug === slug);
+/** The reader's language for the lists' preferredLanguage, from the profile's. */
+export const readerLanguage = (language: string | null | undefined): ArticleLanguage =>
+  language?.toLowerCase().startsWith("it") ? "it" : "en";
+
+export const spansText = (spans: Span[]) => spans.map((s) => s.text).join("");
+
+/** An article's words, block by block (for the static articles' search). */
+export function blocksText(blocks: Block[]) {
+  return blocks
+    .map((b) => {
+      switch (b.type) {
+        case "paragraph":
+        case "quote":
+          return spansText(b.spans);
+        case "heading":
+          return b.text;
+        case "list":
+          return b.items.map((i) => spansText(i.spans)).join(" ");
+        case "image":
+          return [b.altText, b.caption].filter(Boolean).join(" ");
+      }
+    })
+    .join(" ");
+}
+
+/** Whether `err` is the backend telling it has no Journal: FastAPI's own 404, no error_type. */
+export const isJournalMissing = (err: unknown) => err instanceof ApiError && err.status === 404 && !err.errorType;
+
+/** Whether `err` is an article that isn't there, or not the caller's to read. */
+export const isArticleNotFound = (err: unknown) => err instanceof ApiError && err.status === 404;
+
+/** The text of an API error, or `fallback`. */
+export function journalErrorText(err: unknown, fallback: string) {
+  if (err instanceof ApiError) {
+    if (err.errorType === "AuthorUnavailableError") return "Your profile couldn't be read just now. Try publishing again in a moment.";
+    if (err.status === 404) return "This article isn't available anymore.";
+  }
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+// ── Where the reading pages read from ──
+
+/**
+ * Where the Journal's reading pages read from: the API (apiJournalSource) or, on a backend
+ * without the Journal (staging, for now), the platform's own articles written in the code
+ * (lib/journalStatic), in the same shapes. Writes, saves and reports go to journalService, and
+ * only with the API.
+ */
+export interface JournalSource {
+  list(filters: ArticleFilters): Promise<Page<ArticleSummary>>;
+  bySlug(slug: string): Promise<Article>;
+}
+
+export const apiJournalSource: JournalSource = {
+  list: (filters) => journalService.list(filters),
+  bySlug: (slug) => journalService.getBySlug(slug),
+};
+
+/** An article's summary, from a whole one. */
+export function summaryOf(article: Article): ArticleSummary {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { body, interestDisclosure, moderation, createdAt, updatedAt, ...summary } = article;
+  return summary;
+}

@@ -13,6 +13,8 @@ import { useWallets } from "../../context/WalletsContext";
 import { useRealEstate } from "../../context/RealEstateContext";
 import { ALL_WALLETS, walletColor } from "../../lib/wallets";
 import { PLAN_PAGE_LABELS, planPages } from "./PlanSection";
+import { journalRowOf, type JournalView } from "./JournalSection";
+import { useJournal } from "../../context/JournalContext";
 import { UserRole, SubscriptionTier } from "../../models/User";
 
 interface SidebarProps {
@@ -100,12 +102,24 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     preview: page !== 'strategy',
   }));
 
+  // The Journal, for everyone (the written articles where the backend doesn't have it yet); under
+  // it the reader's and the author's pages, and the editors' moderation.
+  const journal = useJournal();
+  const journalRow = activeSection === JOURNAL_SECTION ? journalRowOf(view as JournalView | undefined) : null;
+  const journalRows: SubItem[] = journal.canWrite ? [
+    { key: 'journal', label: 'Articles', view: { page: 'journal' }, active: journalRow === 'journal' },
+    { key: 'saved', label: 'Saved', view: { page: 'saved' }, active: journalRow === 'saved' },
+    { key: 'mine', label: 'Your articles', view: { page: 'mine' }, active: journalRow === 'mine' },
+    ...(journal.editor ? [{ key: 'moderation', label: 'Moderation', view: { page: 'moderation' }, active: journalRow === 'moderation' }] : []),
+  ] : [];
+  const journalItem: NavItem = { id: JOURNAL_SECTION, label: 'Journal', icon: BookOpen, subs: journalRows };
+
   const investorItems: NavItem[] = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: WEALTH_SECTION, label: 'Wealth', icon: PieChart, subs: wealthRows },
     { id: PLAN_SECTION, label: 'Plan', icon: MapIcon, subs: planRows },
     { id: 'news', label: 'News', icon: Newspaper },
-    ...(isDemo ? [{ id: JOURNAL_SECTION, label: 'Journal', icon: BookOpen, preview: true }] : []),
+    journalItem,
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -138,6 +152,7 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     { id: CLIENTS_SECTION, label: 'Clients', icon: Users, subs: clientRows },
     { id: PLAN_SECTION, label: 'Strategy', icon: History, subs: [] },
     { id: 'news', label: 'News', icon: Newspaper },
+    journalItem,
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

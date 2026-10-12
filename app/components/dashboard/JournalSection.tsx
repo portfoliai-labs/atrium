@@ -2,175 +2,147 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowUpRight, Clock } from "lucide-react";
-import { JOURNAL_ARTICLES, findJournalArticle, type JournalArticle, type JournalCategory } from "../../lib/journal";
+import { useJournal } from "../../context/JournalContext";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
 import { JOURNAL_SECTION } from "../../lib/dashboardNav";
-import { Pills, serif } from "../preview/PreviewKit";
+import type { ArticleCategory } from "../../models/Journal";
+import { Spinner } from "./journal/JournalKit";
+import { ArticleList } from "./journal/ArticleList";
+import { ArticleReader } from "./journal/ArticleReader";
+import { ArticleEditor } from "./journal/ArticleEditor";
+import { MyArticles } from "./journal/MyArticles";
+import { SavedArticles } from "./journal/SavedArticles";
+import { MyReports } from "./journal/MyReports";
+import { ModerationCases, ModerationCasePage } from "./journal/Moderation";
 
-// An open article adds its slug to the view.
 const SECTION = JOURNAL_SECTION;
 
-type JournalView = { page: "journal"; slug?: string } | undefined;
-type Filter = "all" | JournalCategory;
-
-const CATEGORIES: JournalCategory[] = ["Performance", "Risk", "Strategy", "Costs"];
-
-const dateLabel = (iso: string) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-
-// The article the current history entry is on, if it's this section's and the article still exists.
-const articleFromHistory = (): JournalArticle | undefined => {
-  const entry = readDashboardEntry();
-  const view = entry?.section === SECTION ? (entry.view as JournalView) : undefined;
-  return view?.page === "journal" && view.slug ? findJournalArticle(view.slug) : undefined;
-};
+/** What the articles' list is narrowed to; kept in its history entry, so going back finds it. */
+export interface JournalFilters {
+  category?: ArticleCategory;
+  q?: string;
+  author?: { uuid: string; name: string };
+  instrument?: { ticker: string; isin: string | null };
+}
 
 /**
- * JOURNAL (a demo account's preview for now) — PortfoliAI's own
- * articles on investing (lib/journal): the newest on a large card, the rest in a grid that can be
- * narrowed to one category, each opening on the article itself. Opening one is a history entry,
- * so the browser's back button returns to the list (see lib/dashboardHistory).
+ * The Journal's pages, as its history entries hold them. `journal` with a `slug` is an article's
+ * entry from before the Journal had pages of its own.
+ */
+export type JournalView =
+  | { page: "journal"; filters?: JournalFilters; slug?: string }
+  | { page: "article"; slug: string }
+  | { page: "saved" }
+  | { page: "reports" }
+  | { page: "mine" }
+  // The editor: one of the caller's articles, or a new one.
+  | { page: "write"; uuid?: string }
+  | { page: "moderation" }
+  | { page: "case"; uuid: string };
+
+const LIST: JournalView = { page: "journal" };
+
+function viewFromHistory(): JournalView {
+  const entry = readDashboardEntry();
+  const view = entry?.section === SECTION ? (entry.view as JournalView | undefined) : undefined;
+  if (!view?.page) return LIST;
+  if (view.page === "journal" && view.slug) return { page: "article", slug: view.slug };
+  return view;
+}
+
+/** The Sidebar row a page is under (see Sidebar). */
+export function journalRowOf(view: JournalView | undefined): "journal" | "saved" | "mine" | "moderation" {
+  switch (view?.page) {
+    case "saved":
+    case "reports":
+      return "saved";
+    case "mine":
+    case "write":
+      return "mine";
+    case "moderation":
+    case "case":
+      return "moderation";
+    default:
+      return "journal";
+  }
+}
+
+/**
+ * JOURNAL — articles on investing by PortfoliAI's editors, advisors and users (acta, through
+ * ianus' /v1/journal): the latest, searchable and narrowed by category, author or instrument;
+ * each article; the reader's saved articles and reports; the author's own articles and their
+ * editor; the editors' moderation. On a backend without the Journal everyone reads the
+ * platform's own articles written in the code (see JournalContext). Each page is a history
+ * entry, so the browser's back button walks through them (see lib/dashboardHistory).
  */
 export function JournalSection() {
-  const [article, setArticle] = useState<JournalArticle | undefined>(articleFromHistory);
-  const [filter, setFilter] = useState<Filter>("all");
+  const { mode, canWrite, editor } = useJournal();
+  const [view, setView] = useState<JournalView>(viewFromHistory);
 
   useEffect(() => {
     const onPopState = () => {
-      if (readDashboardEntry()?.section === SECTION) setArticle(articleFromHistory());
+      if (readDashboardEntry()?.section === SECTION) setView(viewFromHistory());
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  const open = (next: JournalArticle | undefined) => {
-    pushDashboardEntry({ section: SECTION, view: { page: "journal", ...(next ? { slug: next.slug } : {}) } });
-    setArticle(next);
-    window.scrollTo({ top: 0 });
+  /** Moves to `next`: a new history entry, or (`replace`) in place of this one. */
+  const go = (next: JournalView, replace = false) => {
+    pushDashboardEntry({ section: SECTION, view: next }, replace);
+    setView(next);
+    if (!replace) window.scrollTo({ top: 0 });
   };
+  const openArticle = (slug: string) => go({ page: "article", slug });
+  const openEditor = (uuid?: string) => go(uuid ? { page: "write", uuid } : { page: "write" });
 
-  if (article) return <ArticleView article={article} onBack={() => open(undefined)} />;
+  if (mode === "loading") return <Spinner />;
 
-  const shown = JOURNAL_ARTICLES.filter((a) => filter === "all" || a.category === filter);
-  const [lead, ...rest] = shown;
+  // The reader's and the author's pages are the API's only, and moderation the editors'.
+  const allowed =
+    view.page === "journal" || view.page === "article"
+    || ((view.page === "moderation" || view.page === "case") ? editor : canWrite);
+  const page = allowed ? view : LIST;
 
-  return (
-    <div className="space-y-6 pb-12">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C] mb-1.5">PortfoliAI</p>
-          <h1 className="text-3xl md:text-4xl font-black text-slate-900" style={serif}>Journal</h1>
-          <p className="text-[13px] text-slate-500 mt-1.5 leading-relaxed max-w-xl">
-            Plain-spoken notes on investing: the ideas behind the numbers on your dashboard.
-          </p>
-        </div>
-        <Pills<Filter>
-          options={[{ value: "all", label: "All" }, ...CATEGORIES.map((c) => ({ value: c, label: c }))]}
-          value={filter}
-          onChange={setFilter}
+  switch (page.page) {
+    case "article":
+      return (
+        <ArticleReader
+          key={page.slug}
+          slug={page.slug}
+          onBack={() => go(LIST)}
+          onEdit={(uuid) => openEditor(uuid)}
+          onFilter={(filters) => go({ page: "journal", filters })}
         />
-      </header>
-
-      {lead ? (
-        <>
-          <LeadCard article={lead} onOpen={() => open(lead)} />
-          {rest.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {rest.map((a) => <ArticleCard key={a.slug} article={a} onOpen={() => open(a)} />)}
-            </div>
-          )}
-        </>
-      ) : (
-        <p className="text-sm font-semibold text-slate-500 text-center py-12">No articles in this category yet.</p>
-      )}
-    </div>
-  );
-}
-
-function Meta({ article, dark = false }: { article: JournalArticle; dark?: boolean }) {
-  return (
-    <p className={`flex items-center gap-2 text-[11px] font-semibold ${dark ? "text-stone-400" : "text-slate-400"}`}>
-      <span className="font-black uppercase tracking-wider text-[#C49A3C]">{article.category}</span>
-      <span>·</span>
-      <span>{dateLabel(article.publishedAt)}</span>
-      <span>·</span>
-      <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{article.readMinutes} min read</span>
-    </p>
-  );
-}
-
-/** The newest article: dark and full width, the way into the page. */
-function LeadCard({ article, onOpen }: { article: JournalArticle; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group w-full text-left bg-[#1c1917] rounded-3xl p-6 md:p-9 shadow-md relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-lg outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/60"
-    >
-      <div className="absolute -top-16 -right-16 w-56 h-56 bg-[#C49A3C]/10 blur-3xl rounded-full" />
-      <div className="relative flex items-start justify-between gap-6">
-        <div className="max-w-2xl">
-          <Meta article={article} dark />
-          <h2 className="text-2xl md:text-3xl font-black text-white mt-3 leading-tight" style={serif}>{article.title}</h2>
-          <p className="text-sm md:text-[15px] text-stone-400 mt-3 leading-relaxed">{article.dek}</p>
-        </div>
-        <ArrowUpRight className="h-5 w-5 shrink-0 text-stone-500 group-hover:text-[#C49A3C] transition-colors" />
-      </div>
-    </button>
-  );
-}
-
-function ArticleCard({ article, onOpen }: { article: JournalArticle; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group h-full text-left bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-6 flex flex-col gap-3 hover:border-[#C49A3C]/50 hover:shadow-md transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/60"
-    >
-      <Meta article={article} />
-      <h3 className="text-lg font-black text-slate-900 leading-snug" style={serif}>{article.title}</h3>
-      <p className="text-[13px] text-slate-500 leading-relaxed">{article.dek}</p>
-      <span className="mt-auto pt-2 flex items-center gap-1 text-xs font-bold text-slate-400 group-hover:text-[#C49A3C] transition-colors">
-        Read <ArrowUpRight className="h-3.5 w-3.5" />
-      </span>
-    </button>
-  );
-}
-
-function ArticleView({ article, onBack }: { article: JournalArticle; onBack: () => void }) {
-  return (
-    <div className="pb-12">
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#C49A3C] transition-colors"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" /> Journal
-      </button>
-      <article className="mt-5 bg-white rounded-3xl border border-slate-200 shadow-sm px-6 py-8 md:px-14 md:py-12">
-        <div className="max-w-2xl mx-auto">
-          <Meta article={article} />
-          <h1 className="text-3xl md:text-4xl font-black text-slate-900 mt-3 leading-tight" style={serif}>{article.title}</h1>
-          <p className="text-base md:text-lg text-slate-500 mt-4 leading-relaxed">{article.dek}</p>
-          <div className="mt-8 pt-8 border-t border-slate-100 space-y-5 text-[15px] text-slate-700 leading-[1.8]">
-            {article.body.map((block, i) =>
-              block.type === "h" ? (
-                <h2 key={i} className="text-xl font-black text-slate-900 pt-3" style={serif}>{block.text}</h2>
-              ) : block.type === "ul" ? (
-                <ul key={i} className="space-y-2 pl-5 list-disc marker:text-[#C49A3C]">
-                  {block.items.map((item) => <li key={item}>{item}</li>)}
-                </ul>
-              ) : (
-                <p key={i}>{block.text}</p>
-              ),
-            )}
-          </div>
-          <p className="mt-10 pt-6 border-t border-slate-100 text-[11px] text-slate-400 leading-relaxed">
-            For education only, not investment advice. Past returns don&apos;t predict future ones.
-          </p>
-        </div>
-      </article>
-    </div>
-  );
+      );
+    case "saved":
+      return <SavedArticles onOpen={openArticle} onReports={() => go({ page: "reports" })} />;
+    case "reports":
+      return <MyReports onBack={() => go({ page: "saved" })} />;
+    case "mine":
+      return <MyArticles onOpen={openEditor} onNew={() => openEditor()} />;
+    case "write":
+      return (
+        <ArticleEditor
+          // The same editor on: a new article's first save gives it a uuid, in the same entry.
+          key="write"
+          uuid={page.uuid}
+          onCreated={(uuid) => go({ page: "write", uuid }, true)}
+          onBack={() => go({ page: "mine" })}
+          onRead={openArticle}
+        />
+      );
+    case "moderation":
+      return <ModerationCases onOpen={(uuid) => go({ page: "case", uuid })} />;
+    case "case":
+      return <ModerationCasePage key={page.uuid} uuid={page.uuid} onBack={() => go({ page: "moderation" })} />;
+    default:
+      return (
+        <ArticleList
+          filters={page.page === "journal" ? page.filters ?? {} : {}}
+          onFilters={(filters) => go({ page: "journal", filters }, true)}
+          onOpen={openArticle}
+        />
+      );
+  }
 }

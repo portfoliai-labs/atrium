@@ -173,7 +173,7 @@ function DashboardPageContent() {
         // Until it lands on Plan's, see above.
         return null;
       case JOURNAL_SECTION:
-        return isDemo ? <JournalSection key={sectionVisit} /> : <DashboardOverview onNavigate={navigate} />;
+        return <JournalSection key={sectionVisit} />;
       case 'discover':
         // Until it lands where its page went, see above.
         return null;
