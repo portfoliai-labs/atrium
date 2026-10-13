@@ -11,7 +11,7 @@ import { useClientPortfolios } from "../../hooks/useClientPortfolios";
 import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
 import { useWallets } from "../../context/WalletsContext";
 import { useRealEstate } from "../../context/RealEstateContext";
-import { ALL_WALLETS, walletColor } from "../../lib/wallets";
+import { ALL_WALLETS, KIND_LABELS, walletColor } from "../../lib/wallets";
 import { PLAN_PAGE_LABELS, planPages } from "./PlanSection";
 import { journalRowOf, type JournalView } from "./JournalSection";
 import { useJournal } from "../../context/JournalContext";
@@ -69,12 +69,19 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     color: p.isAggregate ? undefined : colorOf(p.uuid),
   });
   const hasRoot = isDemo || walletsAvailable;
+  // Two wallets listed under the same name are told apart by their bank (their kind without one).
+  const listedWallets = wallets.filter((w) => !w.archived);
+  const nameKey = (name: string) => name.trim().toLowerCase();
+  const walletLabel = (w: (typeof wallets)[number]) =>
+    listedWallets.filter((x) => nameKey(x.name) === nameKey(w.name)).length > 1
+      ? `${w.name} – ${w.institution?.trim() || KIND_LABELS[w.kind]}`
+      : w.name;
   const walletRows: SubItem[] = hasRoot ? [
     ...(wallets.length > 0 ? [
       { key: ALL_WALLETS, label: 'All wallets', view: { kind: 'wallet', id: ALL_WALLETS, page: 'insights' }, active: view?.kind === 'wallet' && view.id === ALL_WALLETS, preview: sample },
       ...wallets.map((w, i) => ({ wallet: w, color: walletColor(w, i) })).filter(({ wallet: w }) => !w.archived).map(({ wallet: w, color }) => ({
         key: w.uuid,
-        label: w.name,
+        label: walletLabel(w),
         view: { kind: 'wallet', id: w.uuid, page: 'insights' },
         active: view?.kind === 'wallet' && view.id === w.uuid,
         depth: 1,
