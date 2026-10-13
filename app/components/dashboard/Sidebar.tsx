@@ -54,7 +54,8 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
 
   // Investor: the sections, and under the open one its pages. Under Wealth, what it's made of:
   // All portfolios and each real portfolio under it, then the wallets (each one not archived under
-  // them) and the real estate. Without wallets (a backend that
+  // them) and the real estate, each only once the user has one (the first is added from Wealth's
+  // root). Without wallets (a backend that
   // doesn't have them), Wealth opens on All portfolios itself, and only the portfolios are listed.
   const colorOf = portfolioColorMap(portfolios);
   const aggregate = portfolios.find((p) => p.isAggregate);
@@ -69,16 +70,18 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
   });
   const hasRoot = isDemo || walletsAvailable;
   const walletRows: SubItem[] = hasRoot ? [
-    { key: ALL_WALLETS, label: 'All wallets', view: { kind: 'wallet', id: ALL_WALLETS, page: 'insights' }, active: view?.kind === 'wallet' && view.id === ALL_WALLETS, preview: sample },
-    ...wallets.map((w, i) => ({ wallet: w, color: walletColor(w, i) })).filter(({ wallet: w }) => !w.archived).map(({ wallet: w, color }) => ({
-      key: w.uuid,
-      label: w.name,
-      view: { kind: 'wallet', id: w.uuid, page: 'insights' },
-      active: view?.kind === 'wallet' && view.id === w.uuid,
-      depth: 1,
-      color,
-    })),
-    ...(realEstateAvailable ? [
+    ...(wallets.length > 0 ? [
+      { key: ALL_WALLETS, label: 'All wallets', view: { kind: 'wallet', id: ALL_WALLETS, page: 'insights' }, active: view?.kind === 'wallet' && view.id === ALL_WALLETS, preview: sample },
+      ...wallets.map((w, i) => ({ wallet: w, color: walletColor(w, i) })).filter(({ wallet: w }) => !w.archived).map(({ wallet: w, color }) => ({
+        key: w.uuid,
+        label: w.name,
+        view: { kind: 'wallet', id: w.uuid, page: 'insights' },
+        active: view?.kind === 'wallet' && view.id === w.uuid,
+        depth: 1,
+        color,
+      })),
+    ] : []),
+    ...(realEstateAvailable && properties.length > 0 ? [
       { key: 'real-estate', label: 'Real estate', view: { kind: 'realEstate', page: 'home' }, active: view?.kind === 'realEstate' && !view.property, preview: sample },
       ...properties.filter((p) => !p.archived).map((p, i) => ({
         key: `property:${p.uuid}`,
