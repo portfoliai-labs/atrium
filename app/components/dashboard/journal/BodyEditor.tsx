@@ -1,8 +1,10 @@
 // components/dashboard/journal/BodyEditor.tsx
 "use client";
 
-import { useRef, useState } from "react";
-import { Node, mergeAttributes, type Editor, type JSONContent } from "@tiptap/core";
+import { useEffect, useRef, useState } from "react";
+import { Extension, Node, mergeAttributes, type Editor, type JSONContent } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, useEditorState, type ReactNodeViewProps } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Blockquote } from "@tiptap/extension-blockquote";
@@ -134,6 +136,30 @@ const QuoteNode = Blockquote.extend({
   },
 });
 
+// A block acta refused, marked a moment (focusNode). A decoration, as ProseMirror redraws a node
+// whose DOM is changed from outside.
+const flagKey = new PluginKey<DecorationSet>("journalFlag");
+const FlagBlock = Extension.create({
+  name: "journalFlag",
+  addProseMirrorPlugins() {
+    return [
+      new Plugin<DecorationSet>({
+        key: flagKey,
+        state: {
+          init: () => DecorationSet.empty,
+          apply(tr, set) {
+            const flag = tr.getMeta(flagKey) as { from: number; to: number } | null | undefined;
+            if (flag === null) return DecorationSet.empty;
+            if (flag) return DecorationSet.create(tr.doc, [Decoration.node(flag.from, flag.to, { class: "journal-flagged" })]);
+            return set.map(tr.mapping, tr.doc);
+          },
+        },
+        props: { decorations: (state) => flagKey.getState(state) },
+      }),
+    ];
+  },
+});
+
 const EXTENSIONS = [
   StarterKit.configure({
     blockquote: false,
@@ -159,6 +185,7 @@ const EXTENSIONS = [
   ListItem.extend({ content: "paragraph" }),
   QuoteNode,
   ArticleImageNode,
+  FlagBlock,
   Placeholder.configure({ placeholder: "Write the article here. Headings, lists, quotes and images are in the bar above." }),
 ];
 
@@ -173,11 +200,10 @@ export function focusNode(editor: Editor, index: number) {
   const node = doc.child(index);
   if (node.isAtom) editor.chain().focus().setNodeSelection(pos).scrollIntoView().run();
   else editor.chain().focus().setTextSelection(pos + 1).scrollIntoView().run();
-  const dom = editor.view.nodeDOM(pos);
-  if (dom instanceof HTMLElement) {
-    dom.classList.add("journal-flagged");
-    setTimeout(() => dom.classList.remove("journal-flagged"), 2500);
-  }
+  editor.view.dispatch(editor.state.tr.setMeta(flagKey, { from: pos, to: pos + node.nodeSize }));
+  setTimeout(() => {
+    if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(flagKey, null));
+  }, 2500);
 }
 
 // ── The editor ──
@@ -234,10 +260,16 @@ export function BodyEditor({ initial, onChange, editorRef, disabled = false }: {
     // The dashboard renders on the client; rendering on the server would mismatch.
     immediatelyRender: false,
     editorProps: { attributes: { class: "journal-editor min-h-[320px] outline-none" } },
-    onCreate: ({ editor }) => { editorRef.current = editor; },
-    onDestroy: () => { editorRef.current = null; },
     onUpdate: ({ editor }) => onChange(editor.getJSON()),
   });
+
+  // The page points at blocks through this editor. A replaced editor is destroyed later than its
+  // successor is made, so it clears the ref only while the ref is still its own.
+  useEffect(() => {
+    if (!editor) return;
+    editorRef.current = editor;
+    return () => { if (editorRef.current === editor) editorRef.current = null; };
+  }, [editor, editorRef]);
 
   const toolbar = useEditorState({
     editor,
