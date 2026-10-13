@@ -49,6 +49,10 @@ export const openPortfolioPage = (onNavigate: Navigate, portfolioUuid: string, p
 export const openWalletPage = (onNavigate: Navigate, id: string, page: WalletPage = "insights") =>
   openWealthView(onNavigate, { kind: "wallet", id, page });
 
+/** The real estate (its home page), or one property's page. */
+export const openRealEstatePage = (onNavigate: Navigate, property?: string) =>
+  openWealthView(onNavigate, property ? { kind: "realEstate", page: "property", property } : { kind: "realEstate", page: "home" });
+
 export const openPlanPage = (onNavigate: Navigate, page: Exclude<PlanPage, "backtest" | "explore">) =>
   openSectionView(onNavigate, PLAN_SECTION, { page });
 

@@ -254,6 +254,7 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
       onOpen={openPortfolio}
       simulation={simulation}
       onOpenSimulation={(uuid) => go({ kind: "portfolio", uuid: portfolio.uuid, page: "strategy", simulation: uuid })}
+      onOpenRealEstate={hasRealEstate ? () => go({ kind: "realEstate", page: "home" }) : undefined}
       onNavigate={onNavigate}
     />
   );
@@ -375,7 +376,7 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  * client's (PortfolioContext's `client`) can't rename or delete it; its alerts are the advisor's,
  * its asset categories the client's, and its Strategy page says whether the client sees it.
  */
-export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, onOpenSimulation, onBacktestGone, onNavigate }: {
+export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, onOpenSimulation, onOpenRealEstate, onBacktestGone, onNavigate }: {
   portfolio: Portfolio;
   page: PortfolioPage;
   trail: Crumb[];
@@ -388,6 +389,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   // and the way to open one.
   simulation?: string;
   onOpenSimulation?: (uuid: string) => void;
+  // The investor's real estate, where it's theirs to see: Compare then offers it as a column.
+  onOpenRealEstate?: () => void;
   // A backtest's page (Plan's): where to go once it's deleted. Strategy by default.
   onBacktestGone?: () => void;
   onNavigate: (section: string) => void;
@@ -656,6 +659,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
         })}
         trail={pageTrail}
         onOpen={(uuid) => onOpen(uuid)}
+        onOpenRealEstate={onOpenRealEstate}
       />
     );
   }
