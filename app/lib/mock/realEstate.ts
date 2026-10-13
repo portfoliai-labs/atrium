@@ -1028,6 +1028,8 @@ function demoSaleTax(p: Property, request: SaleSimulationRequest): PropertyTax {
   const capitalGain = {
     soldOn, salePrice: price, saleCosts, acquisitionCost: p.purchasePrice, acquisitionCosts: p.purchaseCosts, works, worksExcluded: 0,
     gain, rule: soldOn <= taxedUntil ? ("within_five_years" as const) : null, taxedUntil,
+    // No Superbonus works in the sample: nothing to revalue.
+    costRevaluationDue: false, costRevaluation: null,
   };
   const ordinary = request.regime === "ordinary";
   const taxed = soldOn <= taxedUntil && propertyUseOn(p, soldOn) !== "primary_residence";

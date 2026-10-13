@@ -623,12 +623,20 @@ export interface CapitalGain {
   // The works counted in the cost, and those the rules leave out (Superbonus at 110% transferred).
   works: number;
   worksExcluded: number;
-  // Negative is a loss, untaxed. Not yet revalued by ISTAT's FOI index (held over 5 years).
+  // Negative is a loss, untaxed.
   gain: number;
   // Null when no window taxes it.
   rule: GainRule | null;
   // The last day a sale is still taxed: from the day after, the gain isn't.
   taxedUntil: string | null;
+  // The purchase price is revalued by ISTAT's FOI index (a Superbonus sale over 5 years after the
+  // purchase; a donation: the donor's). Due but null: the index has no month for the purchase
+  // (before 1976, or January to September 1978), and the gain uses the price as it was (an
+  // overestimate; the tax is provisional).
+  costRevaluationDue: boolean;
+  // Only the purchase price, not its costs nor the works; `gain` counts revaluedCost in its place.
+  // toMonth before the sale's month: that month's index isn't out yet (the tax is provisional).
+  costRevaluation: { fromMonth: string; toMonth: string; factor: number; revaluedCost: number } | null;
 }
 
 /** A sale to simulate, the user's part: nothing is stored, a sale recorded is replaced. */

@@ -6,7 +6,7 @@ import { Calculator, Loader2 } from "lucide-react";
 import { useRealEstate } from "../../../context/RealEstateContext";
 import { formatCurrency } from "../../../lib/format";
 import { fieldErrorText, fieldLabel, NOT_COMPUTED_TEXT } from "../../../lib/realEstate";
-import { dayLabel, today } from "../../../lib/wallets";
+import { dayLabel, monthName, today } from "../../../lib/wallets";
 import type { Property, PropertyTax, SaleSimulationRequest, TaxRegime } from "../../../models/RealEstate";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
@@ -44,8 +44,9 @@ const EXEMPT_TEXT: Record<string, string> = {
 
 /**
  * A sale's tax, told plainly: whether the gain is taxed and why, what it comes to under the regime
- * picked and under the other, how the gain is made up (price, costs, purchase, works), and until when
- * a sale is taxed at all. The gain isn't revalued by ISTAT's index yet: said where it matters.
+ * picked and under the other, how the gain is made up (price, costs, purchase — revalued by ISTAT's
+ * FOI index when due —, works), and until when a sale is taxed at all. An estimate while the sale
+ * month's index isn't out, or when the purchase is too old to revalue.
  */
 export function SaleTaxSummary({ tax, currency }: { tax: PropertyTax; currency: string }) {
   const money = (v: number) => formatCurrency(v, currency, 0);
@@ -53,6 +54,7 @@ export function SaleTaxSummary({ tax, currency }: { tax: PropertyTax; currency: 
   const period = tax.periods[0];
   const flat = period?.regime !== "ordinary";
   const other = period?.alternativeAmount ?? null;
+  const revaluation = g?.costRevaluation ?? null;
 
   if (tax.status === "not_computed") {
     return (
@@ -65,7 +67,11 @@ export function SaleTaxSummary({ tax, currency }: { tax: PropertyTax; currency: 
 
   return (
     <div className="space-y-3">
-      {tax.status === "exempt" ? (
+      {tax.status === "computed" && g && g.gain <= 0 ? (
+        <p className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-3 text-[13px] font-semibold text-slate-700">
+          No tax: the sale makes {g.gain < 0 ? `a loss of ${money(-g.gain)}` : "no gain"}.
+        </p>
+      ) : tax.status === "exempt" ? (
         <p className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-[13px] font-semibold text-emerald-800">
           {EXEMPT_TEXT[period?.rateClass ?? ""] ?? "The gain isn't taxed."}
           {g && g.gain > 0 && ` A gain of ${money(g.gain)}, free of tax.`}
@@ -73,25 +79,45 @@ export function SaleTaxSummary({ tax, currency }: { tax: PropertyTax; currency: 
       ) : (
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <span className="text-[24px] font-bold text-[#1c1917] tabular-nums">{money(tax.amount)}</span>
+          {tax.provisional && (
+            <span
+              className="px-2 py-0.5 rounded-full bg-amber-50 text-[10px] font-black uppercase tracking-wider text-amber-700"
+              title={g?.costRevaluationDue && !revaluation ? "ISTAT's index isn't available for the purchase's month." : "The sale month's ISTAT index isn't out yet."}
+            >
+              Estimate
+            </span>
+          )}
           <span className="text-[12.5px] text-[#78716c]">
             {flat ? "26% substitute tax, paid at the deed via the notary" : `IRPEF with the ${tax.year + 1} return${period ? `, ${period.ratePct.toFixed(1)}% with the surcharges` : ""}`}
           </span>
         </div>
       )}
-      {tax.status === "computed" && other !== null && (
+      {tax.status === "computed" && other !== null && !(g && g.gain <= 0) && (
         <p className={`text-[12.5px] font-semibold ${other >= tax.amount ? "text-emerald-700" : "text-amber-700"}`}>
           {flat ? "With IRPEF" : "At the deed (26%)"} it would be {money(other)}
           {other > tax.amount ? `: this way saves you ${money(other - tax.amount)}` : other < tax.amount ? `: ${money(tax.amount - other)} less, worth considering` : ": the same"}
         </p>
       )}
-      {tax.status === "computed" && other === null && flat && (
+      {tax.status === "computed" && other === null && flat && !(g && g.gain <= 0) && (
         <p className="text-[11.5px] text-[#a8a29e]">Add your tax details for the year to compare it with IRPEF.</p>
       )}
       {g && (
         <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 text-[12.5px] rounded-xl bg-[#F7F5EF] px-4 py-3">
           <dt className="text-slate-500">Sale price</dt><dd className="text-right tabular-nums">{money(g.salePrice)}</dd>
           {g.saleCosts > 0 && <><dt className="text-slate-500">Sale costs</dt><dd className="text-right tabular-nums">−{money(g.saleCosts)}</dd></>}
-          <dt className="text-slate-500">What it cost</dt><dd className="text-right tabular-nums">−{money(g.acquisitionCost)}</dd>
+          {revaluation ? (
+            <>
+              <dt className="text-slate-500">
+                What it cost, revalued
+                <span className="block text-[11px] text-slate-400">
+                  {money(g.acquisitionCost)} × {revaluation.factor.toFixed(3)} by ISTAT&apos;s FOI index, {monthName(revaluation.fromMonth.slice(0, 7))} to {monthName(revaluation.toMonth.slice(0, 7))}
+                </span>
+              </dt>
+              <dd className="text-right tabular-nums">−{money(revaluation.revaluedCost)}</dd>
+            </>
+          ) : (
+            <><dt className="text-slate-500">What it cost</dt><dd className="text-right tabular-nums">−{money(g.acquisitionCost)}</dd></>
+          )}
           {g.acquisitionCosts > 0 && <><dt className="text-slate-500">Its purchase costs</dt><dd className="text-right tabular-nums">−{money(g.acquisitionCosts)}</dd></>}
           {g.works > 0 && <><dt className="text-slate-500">Works</dt><dd className="text-right tabular-nums">−{money(g.works)}</dd></>}
           {g.worksExcluded > 0 && <><dt className="text-slate-500">Works not counted (Superbonus)</dt><dd className="text-right tabular-nums text-slate-400">{money(g.worksExcluded)}</dd></>}
@@ -106,8 +132,11 @@ export function SaleTaxSummary({ tax, currency }: { tax: PropertyTax; currency: 
             : <>Sales were taxed until {dayLabel(g.taxedUntil)}.</>}
         </p>
       )}
-      {g?.rule === "superbonus" && (
-        <p className="text-[11px] text-[#a8a29e]">The cost isn&apos;t revalued by ISTAT&apos;s index yet: when held over 5 years, the gain shown is higher than the one taxed.</p>
+      {g?.costRevaluationDue && !revaluation && (
+        <p className="text-[11px] text-amber-700">The purchase can&apos;t be revalued: ISTAT&apos;s index isn&apos;t available for its month. The gain shown is overestimated.</p>
+      )}
+      {revaluation && g && revaluation.toMonth.slice(0, 7) < g.soldOn.slice(0, 7) && (
+        <p className="text-[11px] text-[#a8a29e]">The sale month&apos;s index isn&apos;t out yet: revalued to {monthName(revaluation.toMonth.slice(0, 7))} for now.</p>
       )}
     </div>
   );
