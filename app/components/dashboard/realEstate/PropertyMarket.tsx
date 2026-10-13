@@ -3,12 +3,13 @@
 
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, MapPin } from "lucide-react";
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useRealEstate } from "../../../context/RealEstateContext";
 import { formatCurrency } from "../../../lib/format";
 import { VALUATION_SOURCE_LABELS } from "../../../lib/realEstate";
-import type { MarketQuotation, MarketSemester, Property, PropertyMarket } from "../../../models/RealEstate";
+import type { MarketQuotation, MarketSemester, MarketTrend, Property, PropertyMarket } from "../../../models/RealEstate";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
-import { PreviewBadge } from "../../preview/PreviewKit";
+import { AXIS_TICK, PreviewBadge, TOOLTIP_STYLE } from "../../preview/PreviewKit";
 
 const MISSING_TEXT: Record<string, string> = {
   "address.location": "the address's location",
@@ -128,6 +129,7 @@ export function PropertyMarketModule({ property, readOnly, onEdit }: { property:
                 </div>
               </>
             )}
+            {market.trend && market.trend.points.length > 1 && <Trend trend={market.trend} />}
             {market.zoneQuotations.length > 0 && (
               <div className="space-y-2">
                 <button type="button" onClick={() => setAllTypes((o) => !o)} className="flex items-center gap-1 text-[11px] font-bold text-[#8A6A28] hover:text-[#C49A3C]">
@@ -214,3 +216,51 @@ function ValueRange({ low, mid, high, property, money }: { low: number; mid: num
     </div>
   );
 }
+
+const changeText = (v: number | null) => (v === null ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)}%`);
+const changeTone = (v: number | null) => (v === null || v === 0 ? "text-slate-500" : v > 0 ? "text-emerald-700" : "text-rose-600");
+
+/**
+ * The zone's middle sale price and rent per m² over the semesters (its kind of building and state),
+ * and how they moved: on the semester before the latest, and on the same half a year earlier.
+ * The semesters needn't follow on: one without a quotation is left out.
+ */
+function Trend({ trend }: { trend: MarketTrend }) {
+  const data = trend.points.map((p) => ({ label: `H${p.semester.half} ’${String(p.semester.year).slice(2)}`, sale: p.saleMid, rent: p.rentMid }));
+  const hasRent = trend.points.some((p) => p.rentMid !== null);
+  const change = (label: string, semester: number | null, year: number | null) => (
+    <p className="text-[12px] text-slate-500">
+      {label}: <span className={`font-bold ${changeTone(year)}`}>{changeText(year)}</span> on the year,{" "}
+      <span className={`font-bold ${changeTone(semester)}`}>{changeText(semester)}</span> on the semester
+    </p>
+  );
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <p className="text-[12.5px] font-bold text-slate-700">Prices over time · {trend.buildingType}, {trend.state.toLowerCase()}</p>
+        <div className="flex flex-wrap gap-x-5">
+          {change("Sale", trend.saleChangeSemesterPct, trend.saleChangeYearPct)}
+          {hasRent && change("Rent", trend.rentChangeSemesterPct, trend.rentChangeYearPct)}
+        </div>
+      </div>
+      <div className="h-52">
+        <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 700, height: 200 }}>
+          <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="label" tick={AXIS_TICK} axisLine={false} tickLine={false} />
+            <YAxis yAxisId="sale" tick={AXIS_TICK} axisLine={false} tickLine={false} width={48} domain={["auto", "auto"]} tickFormatter={(v) => `€${Number(v).toLocaleString("en-US")}`} />
+            {hasRent && <YAxis yAxisId="rent" orientation="right" tick={AXIS_TICK} axisLine={false} tickLine={false} width={40} domain={["auto", "auto"]} tickFormatter={(v) => `€${v}`} />}
+            <Tooltip
+              contentStyle={TOOLTIP_STYLE}
+              formatter={(v, name) => (name === "sale" ? [`€${Number(v).toLocaleString("en-US")}/m²`, "Sale, middle"] : [`€${Number(v).toFixed(1)}/m² a month`, "Rent, middle"])}
+            />
+            <Legend formatter={(v) => (v === "sale" ? "Sale €/m² (left)" : "Rent €/m² a month (right)")} wrapperStyle={{ fontSize: 12 }} />
+            <Line yAxisId="sale" type="monotone" dataKey="sale" stroke="#C49A3C" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive={false} />
+            {hasRent && <Line yAxisId="rent" type="monotone" dataKey="rent" stroke="#0f766e" strokeWidth={2} strokeDasharray="5 4" dot={{ r: 2.5 }} connectNulls isAnimationActive={false} />}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+

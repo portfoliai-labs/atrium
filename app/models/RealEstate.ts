@@ -791,7 +791,8 @@ export interface TaxpayerYearInput {
 
 // ── Alerts ──
 
-export type RealEstateAlertType = "rent_unpaid" | "tax_due" | "mortgage_instalment_unpaid" | "lease_ending" | "loan_to_value";
+export type RealEstateAlertType =
+  | "rent_unpaid" | "tax_due" | "mortgage_instalment_unpaid" | "lease_ending" | "loan_to_value" | "zone_price_drop" | "rent_below_market";
 
 /** What a rule watches, by `type`. */
 export type RealEstateAlertParams =
@@ -806,7 +807,13 @@ export type RealEstateAlertParams =
   // A lease ending within N days (1-365).
   | { type: "lease_ending"; daysBefore: number }
   // Residual debt over the value at the share above the threshold (>0, ≤200), in percent.
-  | { type: "loan_to_value"; thresholdPct: number | string };
+  | { type: "loan_to_value"; thresholdPct: number | string }
+  // The zone's middle sale price down from the same semester a year earlier by the threshold or
+  // more (>0, ≤50, in percent): told again each new semester while it lasts.
+  | { type: "zone_price_drop"; thresholdPct: number | string }
+  // Today's lease's rent per m² below the zone's minimum by the tolerance or more (0-50, in
+  // percent; 0: any rent below it): told again each new semester while it lasts.
+  | { type: "rent_below_market"; tolerancePct: number | string };
 
 /** A fact a rule finds today: only its kind's fields are set, the others null. Amounts are the user's share. */
 export interface RealEstateAlertFinding {
@@ -816,11 +823,11 @@ export interface RealEstateAlertFinding {
   propertyUuid: string;
   propertyName: string;
   currency: string;
-  // The rent's due day, the instalment's due day, the lease's last day; null for loan-to-value.
+  // The rent's due day, the instalment's due day, the lease's last day; null for loan-to-value and the market's.
   dueOn: string | null;
-  // The month's rent, the tax instalment, the mortgage instalment, or the lease's monthly rent.
+  // The month's rent, the tax instalment, the mortgage instalment, or the lease's monthly rent (rent_below_market's too).
   amount: number | null;
-  // rent_unpaid and lease_ending.
+  // rent_unpaid, lease_ending and rent_below_market.
   rentalContractUuid: string | null;
   tenant: string | null;
   rentPeriod: string | null; // "YYYY-MM"
@@ -836,6 +843,14 @@ export interface RealEstateAlertFinding {
   loanToValuePct: number | null;
   residualDebt: number | null;
   valueAtShare: number | null;
+  // zone_price_drop and rent_below_market: the zone, the semester quoted, and the gap (negative,
+  // in percent) between perSqm and referencePerSqm — the latest middle sale price per m² against a
+  // year earlier's, or the lease's rent per m² a month against the zone's minimum.
+  zone?: MarketZone | null;
+  semester?: MarketSemester | null;
+  changePct?: number | null;
+  perSqm?: number | null;
+  referencePerSqm?: number | null;
 }
 
 /**
@@ -992,8 +1007,26 @@ export interface PropertyMarket {
   // The whole property's, in EUR: the surface by the sale range.
   value: { low: number; mid: number; high: number } | null;
   // Today's lease against the zone's rents.
-  rent: { monthlyRent: number; monthlyRentPerSqm: number; position: "below" | "within" | "above" } | null;
+  rent: { monthlyRent: number; monthlyRentPerSqm: number; position: "below" | "within" | "above"; rentalContractUuid?: string } | null;
+  // The zone's middle prices by semester, for the quotation's building type and state; null unless available.
+  trend?: MarketTrend | null;
   // To show wherever these figures are (CC BY 4.0).
   attribution: string | null;
+}
+
+/**
+ * A zone's middle prices over the semesters, oldest first (a semester without the building type and
+ * state is left out: they needn't follow on). Changes in percent: against the semester before the
+ * latest, and against the same half a year earlier; null when that point is missing.
+ */
+export interface MarketTrend {
+  buildingTypeCode: number | string;
+  buildingType: string;
+  state: string;
+  points: { semester: MarketSemester; saleMid: number; rentMid: number | null }[];
+  saleChangeSemesterPct: number | null;
+  saleChangeYearPct: number | null;
+  rentChangeSemesterPct: number | null;
+  rentChangeYearPct: number | null;
 }
 

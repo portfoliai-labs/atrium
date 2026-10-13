@@ -7,7 +7,7 @@ import { categoryLabel, formatAlertPct, formatRange, WINDOW_LABEL } from "../../
 import type { AlertWindow } from "../../models/Alert";
 import { WEALTH_SECTION } from "../../lib/dashboardNav";
 import type { WealthView } from "./WealthSection";
-import { ALERT_TYPES, alertFindingText, findingFromPayload } from "../../lib/realEstate";
+import { ALERT_TYPES, OMI_ATTRIBUTION, alertFindingText, findingFromPayload } from "../../lib/realEstate";
 import type { RealEstateAlertType } from "../../models/RealEstate";
 
 interface NotificationListProps {
@@ -175,15 +175,18 @@ function getStrategySharedSummary(n: NotificationResponse): { title: string; det
 function getRealEstateAlertSummary(n: NotificationResponse): { title: string; detail: string } {
   const p = n.payload ?? {};
   const findings = Array.isArray(p.findings) ? (p.findings as Record<string, unknown>[]).map(findingFromPayload) : [];
-  const label = ALERT_TYPES[p.kind as RealEstateAlertType]?.label ?? "Real estate alert";
+  const type = ALERT_TYPES[p.kind as RealEstateAlertType];
+  const label = type?.label ?? "Real estate alert";
+  // The market's figures are credited (CC BY 4.0).
+  const source = type?.market ? ` · Source: ${OMI_ATTRIBUTION}` : "";
   if (findings.length === 1) {
     const text = alertFindingText(findings[0]);
-    return { title: `${findings[0].propertyName}: ${text.title}`, detail: text.detail };
+    return { title: `${findings[0].propertyName}: ${text.title}`, detail: `${text.detail}${source}` };
   }
   const names = [...new Set(findings.map((f) => f.propertyName))];
   return {
     title: findings.length > 1 ? `${label}: ${findings.length} found` : label,
-    detail: names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", "),
+    detail: `${names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", ")}${source}`,
   };
 }
 

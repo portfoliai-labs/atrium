@@ -2,12 +2,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Banknote, BellRing, CircleCheck, FileSignature, Landmark, Pencil, Plus, Receipt, Scale, Trash2 } from "lucide-react";
+import { Banknote, BellRing, CircleCheck, FileSignature, Landmark, Pencil, Plus, Receipt, Scale, Trash2, TrendingDown, Tags } from "lucide-react";
 import { useRealEstate } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { ApiError } from "../../../services/apiClient";
 import {
-  ALERT_TYPES, ALERT_TYPE_LIST, alertFindingText, alertParamValue, alertParams, alertRuleText, currentFindings, fieldErrorText, findingKey,
+  ALERT_TYPES, ALERT_TYPE_LIST, OMI_ATTRIBUTION, alertFindingText, alertParamValue, alertParams, alertRuleText, currentFindings, fieldErrorText, findingKey,
 } from "../../../lib/realEstate";
 import { dayLabel } from "../../../lib/wallets";
 import type { Property, RealEstateAlertRule, RealEstateAlertRuleUpdateRequest, RealEstateAlertType } from "../../../models/RealEstate";
@@ -25,6 +25,8 @@ export const ALERT_ICONS: Record<RealEstateAlertType, React.ComponentType<{ clas
   mortgage_instalment_unpaid: Landmark,
   lease_ending: FileSignature,
   loan_to_value: Scale,
+  zone_price_drop: TrendingDown,
+  rent_below_market: Tags,
 };
 
 /**
@@ -192,6 +194,11 @@ export function RealEstateAlerts({ trail, property, onOpenProperty }: {
                     })}
                   </ul>
                 )}
+                {findings.some((f) => ALERT_TYPES[f.kind]?.market) && (
+                  <p className="mt-3 text-[10.5px] text-slate-400">
+                    {sample ? "Market figures: made up for the demo, not the OMI's." : `Market figures: ${OMI_ATTRIBUTION} (CC BY 4.0), the zone's indicative ranges.`}
+                  </p>
+                )}
               </div>
             </Module>
           )}
@@ -303,7 +310,7 @@ function AlertRuleDialog({ rule, properties, initialPropertyUuid, onClose, onSav
   const spec = ALERT_TYPES[type].param;
   const parsed = spec.decimal ? parseAmount(value) : /^\d+$/.test(value.trim()) ? value.trim() : null;
   const number = parsed === null ? null : Number(parsed);
-  const valid = number !== null && (spec.decimal ? number > spec.min : number >= spec.min) && number <= spec.max;
+  const valid = number !== null && (spec.exclusiveMin ? number > spec.min : number >= spec.min) && number <= spec.max;
   const params = valid ? alertParams(type, spec.decimal ? parsed! : number!) : null;
   const pickType = (t: RealEstateAlertType) => {
     setType(t);
@@ -332,7 +339,7 @@ function AlertRuleDialog({ rule, properties, initialPropertyUuid, onClose, onSav
     }
   };
 
-  const range = spec.decimal ? `Above 0, up to ${spec.max}.` : `From ${spec.min} to ${spec.max}.`;
+  const range = spec.exclusiveMin ? `Above ${spec.min}, up to ${spec.max}.` : `From ${spec.min} to ${spec.max}.`;
   return (
     <DialogShell
       icon={<BellRing className="h-5 w-5" />}

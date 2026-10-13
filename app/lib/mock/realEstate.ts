@@ -13,7 +13,7 @@ import type {
   ItalianDetails, Mortgage, MortgageSchedule, Municipality, Property as ApiProperty, PropertyTax, PropertyTransaction, SaleSimulationRequest,
   PropertyTransactionFilters, PropertyUse, RealEstateMonth, RealEstateOverview, RealEstateSummary, RentalContract, TaxInstalment,
   TaxList, TaxPeriod, TaxpayerYear, UsePeriod, Valuation, RealEstateAlertFinding, RealEstateAlertParams, RealEstateAlertRule,
-  Instalment, ScheduleOutlook, MarketQuotation, MarketZone, PropertyMarket, PrepaymentSimulationRequest, RefinancingSimulationRequest, PrepaymentSimulation, RefinancingSimulation,
+  Instalment, ScheduleOutlook, MarketQuotation, MarketTrend, MarketZone, PropertyMarket, PrepaymentSimulationRequest, RefinancingSimulationRequest, PrepaymentSimulation, RefinancingSimulation,
 } from "../../models/RealEstate";
 
 export type PropertyType = "Apartment" | "House" | "Commercial" | "Garage" | "Land";
@@ -1056,6 +1056,8 @@ const DEMO_RULES: DemoRuleDef[] = [
   { uuid: "rule-mortgage", propertyUuid: null, params: { type: "mortgage_instalment_unpaid", daysAfter: 5 }, notifyEmail: false, notifyInApp: true, enabled: true, createdAt: "2026-01-10T09:10:00Z" },
   { uuid: "rule-lease", propertyUuid: "san-salvario", params: { type: "lease_ending", daysBefore: 180 }, notifyEmail: true, notifyInApp: true, enabled: true, createdAt: "2026-02-02T18:00:00Z" },
   { uuid: "rule-ltv", propertyUuid: null, params: { type: "loan_to_value", thresholdPct: 60 }, notifyEmail: true, notifyInApp: true, enabled: false, createdAt: "2026-03-15T08:30:00Z" },
+  { uuid: "rule-zone", propertyUuid: null, params: { type: "zone_price_drop", thresholdPct: 5 }, notifyEmail: true, notifyInApp: true, enabled: true, createdAt: "2026-10-01T08:30:00Z" },
+  { uuid: "rule-rent-market", propertyUuid: null, params: { type: "rent_below_market", tolerancePct: 0 }, notifyEmail: false, notifyInApp: true, enabled: true, createdAt: "2026-10-01T08:35:00Z" },
 ];
 
 const NO_FINDING = {
@@ -1100,12 +1102,36 @@ function demoFindings(rule: DemoRuleDef): RealEstateAlertFinding[] {
           ? [{ ...base(p, p.id), loanToValuePct: round(f.loanToValuePct, 2), residualDebt: f.residualDebt, valueAtShare: f.valueAtShare }]
           : [];
       }
+      case "zone_price_drop": {
+        const m = demoMarket(p.id);
+        const t = m.trend;
+        if (!t || t.saleChangeYearPct === null || t.saleChangeYearPct > -Number(params.thresholdPct)) return [];
+        const last = t.points.at(-1)!;
+        const before = t.points.find((x) => x.semester.year === last.semester.year - 1 && x.semester.half === last.semester.half)!;
+        return [{
+          ...base(p, `${m.zone!.code}:${last.semester.year}-${last.semester.half}`), zone: m.zone, semester: last.semester,
+          changePct: t.saleChangeYearPct, perSqm: last.saleMid, referencePerSqm: before.saleMid,
+        }];
+      }
+      case "rent_below_market": {
+        const m = demoMarket(p.id);
+        if (!m.rent || !m.quotation?.rentMin) return [];
+        const changePct = round((m.rent.monthlyRentPerSqm / m.quotation.rentMin - 1) * 100, 2);
+        if (changePct >= 0 || -changePct < Number(params.tolerancePct)) return [];
+        const lease = leaseOn(p, DEMO_TODAY)!;
+        return [{
+          ...base(p, `${lease.uuid}:${SEMESTER.year}-${SEMESTER.half}`), zone: m.zone, semester: SEMESTER, changePct,
+          perSqm: m.rent.monthlyRentPerSqm, referencePerSqm: m.quotation.rentMin, amount: lease.monthlyRent, rentalContractUuid: lease.uuid, tenant: lease.tenant,
+        }];
+      }
     }
   });
   return out.sort((a, b) => (a.dueOn ?? "").localeCompare(b.dueOn ?? "") || a.propertyName.localeCompare(b.propertyName));
 }
 
-const DEMO_ALERT_RULES: RealEstateAlertRule[] = DEMO_RULES.map((rule) => {
+// Worked out on first read: the market's findings need the sample market, defined further down.
+let demoAlertRules: RealEstateAlertRule[] | null = null;
+const DEMO_ALERT_RULES = () => demoAlertRules ??= DEMO_RULES.map((rule) => {
   const findings = demoFindings(rule);
   return {
     ...rule,
@@ -1238,6 +1264,34 @@ function demoQuotations(z: Zone): MarketQuotation[] {
   }));
 }
 
+/**
+ * The zone's middle prices over the last semesters, following its price series (H1 at its second
+ * quarter, H2 at its fourth), up to the semester quoted.
+ */
+function demoTrend(z: Zone, q: MarketQuotation): MarketTrend {
+  const series = zonePriceSeries(z);
+  const indexOf = (year: number, half: 1 | 2) => (year - 2019) * 4 + (half === 1 ? 1 : 3);
+  const latest = indexOf(SEMESTER.year, SEMESTER.half);
+  const saleMid = (q.saleMin + q.saleMax) / 2;
+  const rentMid = q.rentMin !== null && q.rentMax !== null ? (q.rentMin + q.rentMax) / 2 : null;
+  const points: MarketTrend["points"] = [];
+  for (let year = 2022; year <= SEMESTER.year; year++) {
+    for (const half of [1, 2] as const) {
+      const i = indexOf(year, half);
+      if (i > latest) continue;
+      const ratio = series[i] / series[latest];
+      points.push({ semester: { year, half }, saleMid: step(saleMid * ratio, 10), rentMid: rentMid === null ? null : round(rentMid * ratio ** 0.7, 1) });
+    }
+  }
+  const change = (a: number | null | undefined, b: number | null | undefined) => (a == null || b == null ? null : round((a / b - 1) * 100, 2));
+  const [last, prev, yearAgo] = [points.at(-1), points.at(-2), points.at(-3)];
+  return {
+    buildingTypeCode: q.buildingTypeCode, buildingType: q.buildingType, state: q.state, points,
+    saleChangeSemesterPct: change(last?.saleMid, prev?.saleMid), saleChangeYearPct: change(last?.saleMid, yearAgo?.saleMid),
+    rentChangeSemesterPct: change(last?.rentMid, prev?.rentMid), rentChangeYearPct: change(last?.rentMid, yearAgo?.rentMid),
+  };
+}
+
 function demoMarket(propertyUuid: string): PropertyMarket {
   const p = PROPERTIES.find((x) => x.id === propertyUuid);
   if (!p) throw new Error("Property not found.");
@@ -1256,6 +1310,7 @@ function demoMarket(propertyUuid: string): PropertyMarket {
       monthlyRent: lease.monthlyRent, monthlyRentPerSqm: perSqm,
       position: perSqm < quotation.rentMin! ? "below" : perSqm > quotation.rentMax! ? "above" : "within",
     } : null,
+    trend: demoTrend(zone.zone, quotation),
     // Made-up figures: not the OMI's, so not credited to it.
     attribution: null,
   };
@@ -1301,5 +1356,5 @@ export const demoRealEstateSource: RealEstateSource = {
     return city ? demoZonesOf(city).map(({ zone: _omit, ...z }) => { void _omit; return z; }) : [];
   },
   market: async (propertyUuid) => demoMarket(propertyUuid),
-  alertRules: async (propertyUuid) => DEMO_ALERT_RULES.filter((r) => !propertyUuid || !r.propertyUuid || r.propertyUuid === propertyUuid),
+  alertRules: async (propertyUuid) => DEMO_ALERT_RULES().filter((r) => !propertyUuid || !r.propertyUuid || r.propertyUuid === propertyUuid),
 };

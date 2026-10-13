@@ -10,7 +10,7 @@ import type {
   RateIndex, RateSource, RealEstateOverview, RealEstateSummary, RentalContract, RentalContractKind, TaxList, TaxReduction,
   TaxRegime, TaxpayerYear, Valuation, ValuationSource, AcquisitionKind, IncentiveKind, PropertyTax, SaleSimulationRequest,
   MovementLinkProposal, PrepaymentSimulation, PrepaymentSimulationRequest, RefinancingSimulation, RefinancingSimulationRequest,
-  RealEstateAlertFinding, MarketZone, PropertyMarket, RealEstateAlertParams, RealEstateAlertRule, RealEstateAlertType,
+  RealEstateAlertFinding, MarketSemester, MarketZone, PropertyMarket, RealEstateAlertParams, RealEstateAlertRule, RealEstateAlertType,
 } from "../models/RealEstate";
 import { realEstateService } from "../services/realEstateService";
 import { ApiError } from "../services/apiClient";
@@ -227,7 +227,10 @@ export const sqftToSqm = (sqft: number) => sqft / SQFT_PER_SQM;
 export const ALERT_TYPES: Record<RealEstateAlertType, {
   label: string;
   desc: string;
-  param: { key: string; label: string; min: number; max: number; initial: number; unit: string; decimal?: boolean };
+  // `exclusiveMin`: above min, not from it.
+  param: { key: string; label: string; min: number; max: number; initial: number; unit: string; decimal?: boolean; exclusiveMin?: boolean };
+  // Its figures are the zone's market's (OMI): credited wherever they show.
+  market?: boolean;
 }> = {
   rent_unpaid: {
     label: "Rent not received",
@@ -252,7 +255,19 @@ export const ALERT_TYPES: Record<RealEstateAlertType, {
   loan_to_value: {
     label: "Loan-to-value too high",
     desc: "Your mortgage debt above a share of what your part of the property is worth.",
-    param: { key: "thresholdPct", label: "Above", min: 0, max: 200, initial: 60, unit: "%", decimal: true },
+    param: { key: "thresholdPct", label: "Above", min: 0, max: 200, initial: 60, unit: "%", decimal: true, exclusiveMin: true },
+  },
+  zone_price_drop: {
+    label: "Zone prices falling",
+    desc: "The zone's middle sale price down from a year earlier (OMI), told again each new semester while it lasts.",
+    param: { key: "thresholdPct", label: "Down by at least", min: 0, max: 50, initial: 5, unit: "%", decimal: true, exclusiveMin: true },
+    market: true,
+  },
+  rent_below_market: {
+    label: "Rent below the market",
+    desc: "Today's lease's rent per m² under the zone's minimum (OMI), told again each new semester while it lasts.",
+    param: { key: "tolerancePct", label: "Under the minimum by at least", min: 0, max: 50, initial: 0, unit: "%", decimal: true },
+    market: true,
   },
 };
 export const ALERT_TYPE_LIST = Object.keys(ALERT_TYPES) as RealEstateAlertType[];
@@ -278,6 +293,11 @@ export function alertRuleText(params: RealEstateAlertParams) {
       return params.daysAfter === 0 ? "A mortgage instalment not recorded on its due day" : `A mortgage instalment not recorded ${days(params.daysAfter)} after its due day`;
     case "lease_ending": return `A lease ending within ${days(params.daysBefore)}`;
     case "loan_to_value": return `Loan-to-value above ${pctText(Number(params.thresholdPct))}`;
+    case "zone_price_drop": return `The zone's prices down ${pctText(Number(params.thresholdPct))} or more in a year`;
+    case "rent_below_market":
+      return Number(params.tolerancePct) === 0
+        ? "A rent below the zone's minimum"
+        : `A rent ${pctText(Number(params.tolerancePct))} or more below the zone's minimum`;
   }
 }
 
@@ -308,8 +328,32 @@ export function alertFindingText(f: RealEstateAlertFinding): { title: string; de
         title: `Loan-to-value at ${f.loanToValuePct === null ? "—" : pctText(f.loanToValuePct)}`,
         detail: join(f.residualDebt === null ? null : `${money(f.residualDebt)} of debt`, f.valueAtShare === null ? null : `on ${money(f.valueAtShare)} of value`),
       };
+    case "zone_price_drop":
+      return {
+        title: `${f.zone ? `Zone ${f.zone.code}` : "The zone"}'s prices down${f.changePct == null ? "" : ` ${pctText(Math.abs(f.changePct))}`} in a year`,
+        detail: join(
+          f.perSqm == null ? null : `${formatCurrency(f.perSqm, "EUR", 0)}/m²`,
+          f.referencePerSqm == null ? null : `${formatCurrency(f.referencePerSqm, "EUR", 0)}/m² a year earlier`,
+          f.semester ? semesterLabel(f.semester) : null,
+        ),
+      };
+    case "rent_below_market":
+      return {
+        title: `${f.tenant ? `${f.tenant}'s rent` : "The rent"} ${f.changePct == null ? "" : `${pctText(Math.abs(f.changePct))} `}below the zone's minimum`,
+        detail: join(
+          f.perSqm == null ? null : `${formatCurrency(f.perSqm, "EUR", 1)}/m² a month`,
+          f.referencePerSqm == null ? null : `the zone's minimum ${formatCurrency(f.referencePerSqm, "EUR", 1)}`,
+          f.amount === null ? null : `${money(f.amount)} a month`,
+        ),
+      };
   }
 }
+
+/** A semester, said: "H1 2026". */
+export const semesterLabel = (s: MarketSemester) => `H${s.half} ${s.year}`;
+
+/** Where the market's figures come from, credited wherever they show (CC BY 4.0). */
+export const OMI_ATTRIBUTION = "Agenzia delle Entrate – OMI";
 
 /** A REAL_ESTATE_ALERT notification's finding (snake_case, decimals as strings, rent_period a month's first day) as the API's. */
 export function findingFromPayload(p: Record<string, unknown>): RealEstateAlertFinding {
@@ -335,6 +379,16 @@ export function findingFromPayload(p: Record<string, unknown>): RealEstateAlertF
     loanToValuePct: num(p.loan_to_value_pct),
     residualDebt: num(p.residual_debt),
     valueAtShare: num(p.value_at_share),
+    zone: str(p.zone_code)
+      ? {
+          country: "IT", municipalityCode: str(p.zone_municipality_code) ?? "", code: str(p.zone_code)!, band: "",
+          description: str(p.zone_description) ?? "", semester: { year: num(p.semester_year) ?? 0, half: (num(p.semester_half) === 2 ? 2 : 1) },
+        }
+      : null,
+    semester: num(p.semester_year) ? { year: num(p.semester_year)!, half: num(p.semester_half) === 2 ? 2 : 1 } : null,
+    changePct: num(p.change_pct),
+    perSqm: num(p.per_sqm),
+    referencePerSqm: num(p.reference_per_sqm),
   };
 }
 
