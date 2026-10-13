@@ -232,7 +232,7 @@ function DashboardPageContent() {
           subscriptionTier={user.subscription_tier}
         />
 
-        <main className="flex-1 min-w-0 lg:ml-72 bg-[#F7F5EF] p-4 md:p-12 transition-all duration-300">
+        <main className="flex-1 min-w-0 lg:ml-80 bg-[#F7F5EF] p-4 md:p-8 transition-all duration-300">
           <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
             {isDemo && <DemoBanner />}
             {renderContent}

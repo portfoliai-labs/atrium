@@ -230,7 +230,7 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
 
       <aside className={`
         fixed top-0 left-0 z-40
-        w-72 bg-[#1c1917]
+        w-80 bg-[#1c1917]
         flex flex-col h-screen
         transition-transform duration-300 ease-in-out
         ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
