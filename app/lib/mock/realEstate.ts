@@ -600,7 +600,7 @@ const BASE_TRANSACTIONS: PropertyTransaction[] = (() => {
       description: extra.description ?? TRANSACTION_KIND_LABELS[kind], counterparty: null, note: null, costKind: null, expenseKind: null,
       rentPeriod: null, taxYear: null, incentive: null, mortgageUuid: null, instalmentNumber: null, interest: null,
       prepaymentEffect: null, createdAt: `${bookedOn}T09:00:00Z`, platformFee: null, taxWithheld: null, incentiveKind: null,
-      worksCompletedOn: null, taxRegime: null, ...extra,
+      worksCompletedOn: null, taxRegime: null, movementUuid: null, movementState: null, movement: null, ...extra,
     });
   };
 
@@ -769,7 +769,7 @@ const DEMO_TRANSACTIONS: PropertyTransaction[] = (() => {
           description: `${tax.name} ${year} — ${last ? "balance" : "payment on account"}`, counterparty: "Agenzia delle Entrate", note: null,
           costKind: null, expenseKind: null, rentPeriod: null, taxYear: year, incentive: null, mortgageUuid: null, instalmentNumber: null,
           interest: null, prepaymentEffect: null, createdAt: `${i.dueOn}T09:00:00Z`, platformFee: null, taxWithheld: null,
-          incentiveKind: null, worksCompletedOn: null, taxRegime: null,
+          incentiveKind: null, worksCompletedOn: null, taxRegime: null, movementUuid: null, movementState: null, movement: null,
         });
       });
     }
@@ -1083,4 +1083,6 @@ export const demoRealEstateSource: RealEstateSource = {
     const p = PROPERTIES.find((x) => x.id === propertyUuid);
     return p ? demoSaleTax(p, request) : null;
   },
+  // The sample wallets and properties aren't linked: nothing to propose.
+  movementLinkProposals: async () => [],
 };

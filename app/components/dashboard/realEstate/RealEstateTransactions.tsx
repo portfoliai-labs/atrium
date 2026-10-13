@@ -7,7 +7,7 @@ import { useRealEstate } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { formatCurrency } from "../../../lib/format";
 import {
-  COST_KIND_LABELS, EXPENSE_KIND_LABELS, INCENTIVE_KIND_LABELS, PREPAYMENT_EFFECT_LABELS, TRANSACTION_KIND_LABELS,
+  COST_KIND_LABELS, EXPENSE_KIND_LABELS, INCENTIVE_KIND_LABELS, PREPAYMENT_EFFECT_LABELS, TRANSACTION_KIND_LABELS, fieldErrorText,
 } from "../../../lib/realEstate";
 import { dayLabel, errorText, monthName } from "../../../lib/wallets";
 import type {
@@ -16,6 +16,7 @@ import type {
 } from "../../../models/RealEstate";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { DialogShell, Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
+import { MovementLinkField, MovementLinkMark, MovementProposals } from "./MovementLinks";
 
 const PAGE = 50;
 const SELECT = "h-9 px-3 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 outline-none";
@@ -72,8 +73,9 @@ function detailOf(t: PropertyTransaction) {
  * Every property's transactions, or one's (the list widens to all of them from its own filter):
  * searched, filtered and paged by the API, newest first, with the net of everything that matches
  * per currency. A transaction opens to be changed (not its kind or mortgage: delete it and add
- * another); several picked together can be deleted. An archived property's, and a demo account's,
- * are read only.
+ * another) and linked to its wallet movement; several picked together can be deleted. Above them,
+ * the wallets' movements that may be transactions not linked yet, or instalments not recorded. An
+ * archived property's, and a demo account's, are read only.
  */
 export function RealEstateTransactions({ initial, readOnly }: { initial: string; readOnly: boolean }) {
   const { properties, source, version, changed } = useRealEstate();
@@ -198,6 +200,10 @@ export function RealEstateTransactions({ initial, readOnly }: { initial: string;
         </div>
       </div>
 
+      {!readOnly && !(scope && byUuid.get(scope)?.archived) && (
+        <MovementProposals propertyUuid={scope} from={from} to={to} transactions={rows} />
+      )}
+
       {picked.length > 0 && (
         <div className="sticky top-20 z-10 bg-[#1c1917] text-white rounded-2xl shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
           <span className="text-sm font-bold">{picked.length} selected</span>
@@ -271,7 +277,7 @@ export function RealEstateTransactions({ initial, readOnly }: { initial: string;
                       )}
                       <td className={`${readOnly ? "pl-6" : "pl-2"} pr-3 py-3 whitespace-nowrap text-slate-500`}>{dayLabel(t.bookedOn)}</td>
                       <td className="px-3 py-3 min-w-48">
-                        <p className="font-semibold text-slate-800">{t.description}</p>
+                        <p className="flex items-center gap-1.5 font-semibold text-slate-800">{t.description}<MovementLinkMark transaction={t} /></p>
                         {detail && <p className="text-[11px] text-slate-400 truncate max-w-md">{detail}</p>}
                       </td>
                       <td className="px-3 py-3"><KindChip transaction={t} /></td>
@@ -346,6 +352,7 @@ function TransactionEditDialog({ transaction: t, onClose, onSaved }: { transacti
   const [incentiveKind, setIncentiveKind] = useState<IncentiveKind | "">(t.incentiveKind ?? "");
   const [worksCompletedOn, setWorksCompletedOn] = useState(t.worksCompletedOn ?? "");
   const [taxRegime, setTaxRegime] = useState<TaxRegime>(t.taxRegime ?? "flat_rate");
+  const [movementUuid, setMovementUuid] = useState(t.movementUuid ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -386,12 +393,14 @@ function TransactionEditDialog({ transaction: t, onClose, onSaved }: { transacti
       ...(t.kind === "mortgage_instalment" && interest.trim() !== interestText
         ? { interest: interest.trim() === "" ? "" : parseAmount(interest)! } : {}),
       ...(t.kind === "mortgage_prepayment" && effect !== t.prepaymentEffect ? { prepaymentEffect: effect } : {}),
+      // "" unlinks it.
+      ...(movementUuid !== (t.movementUuid ?? "") ? { movementUuid } : {}),
     };
     try {
       if (Object.keys(changes).length > 0) await realEstateService.updateTransaction(t.uuid, changes);
       onSaved();
     } catch (err) {
-      setError(errorText(err, "Unable to save this transaction."));
+      setError(fieldErrorText(err, "Unable to save this transaction."));
       setBusy(false);
     }
   };
@@ -507,6 +516,10 @@ function TransactionEditDialog({ transaction: t, onClose, onSaved }: { transacti
         <Field label="Note" className="sm:col-span-2">
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={`${INPUT} h-auto py-2.5`} />
         </Field>
+        <div className="sm:col-span-2 space-y-1.5">
+          <span className="block text-[11px] font-black uppercase tracking-widest text-slate-400">Wallet movement</span>
+          <MovementLinkField transaction={t} bookedOn={bookedOn} moneyIn={positiveIn} value={movementUuid} onChange={setMovementUuid} />
+        </div>
       </div>
     </DialogShell>
   );

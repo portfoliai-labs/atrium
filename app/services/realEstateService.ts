@@ -5,7 +5,7 @@ import type {
   PropertyTransactionList, PropertyTransactionUpdateRequest, PropertyUpdateRequest, RealEstateOverview,
   RealEstateSummary, Valuation, ValuationInput, Amount, Municipality, Property as PropertyResponse, PropertyUse, TaxList, TaxRate,
   RentalContract, RentalContractInput, RentalContractUpdateRequest, TaxpayerYear, TaxpayerYearInput,
-  PropertyTax, SaleSimulationRequest,
+  PropertyTax, SaleSimulationRequest, MovementLinkProposal,
 } from "../models/RealEstate";
 import { apiFetch } from "./apiClient";
 
@@ -247,6 +247,15 @@ export const realEstateService = {
       body: JSON.stringify(payload),
     });
     return response.tax;
+  },
+
+  // GET /v1/real-estate/movement-link-proposals (every non-archived property's) or
+  // /properties/{p}/movement-link-proposals — the wallets' movements that may be the transactions
+  // booked in the range and not linked, or pay the instalments due in it and not recorded. At most
+  // 366 days; 503 when the wallets can't be asked.
+  async movementLinkProposals(propertyUuid: string | null, bookedFrom: string, bookedTo: string): Promise<MovementLinkProposal[]> {
+    const base = propertyUuid ? `${BASE}/properties/${propertyUuid}/movement-link-proposals` : `${BASE}/movement-link-proposals`;
+    return apiFetch<MovementLinkProposal[]>(`${base}?${new URLSearchParams({ bookedFrom, bookedTo })}`);
   },
 
   // GET /v1/real-estate/municipalities — Italy's, by name (2-100 characters, accents ignored, at

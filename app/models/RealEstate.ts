@@ -288,6 +288,46 @@ export interface PropertyTransaction {
   worksCompletedOn: string | null;
   // sale: how its gain is taxed (flat_rate: the notary's 26%; ordinary: IRPEF with the return).
   taxRegime: TaxRegime | null;
+  // The wallets' movement it is, if linked; the state and the movement as the wallets have it.
+  movementUuid: string | null;
+  movementState: MovementLinkState | null;
+  movement: LinkedMovement | null;
+}
+
+// found: `movement` is the wallets'; gone: the wallets no longer have it (unlink it, or link
+// another); unavailable: the wallets couldn't be asked, `movement` is null and the link stays.
+export type MovementLinkState = "found" | "gone" | "unavailable";
+
+/** A wallets' movement as a property's transaction reads it. */
+export interface LinkedMovement {
+  movementUuid: string;
+  walletUuid: string;
+  bookedOn: string;
+  // Signed, money in positive, in the wallet's currency.
+  amount: number;
+  currency: string;
+  description: string;
+  counterparty: string | null;
+}
+
+/**
+ * What wallets' movements may be: a transaction recorded and not linked (`transactionUuid`: PATCH
+ * it with movementUuid), or an instalment due and not recorded (`mortgageUuid` and
+ * `instalmentNumber`: POST a mortgage_instalment with the movement's day, amount and movementUuid).
+ */
+export interface MovementLinkProposal {
+  propertyUuid: string;
+  transactionUuid: string | null;
+  mortgageUuid: string | null;
+  instalmentNumber: number | null;
+  // The transaction's day, or the instalment's due day.
+  dueOn: string;
+  // Signed, as the transaction is (an instalment's negative).
+  amount: number;
+  currency: string;
+  // Same amount and currency, booked within 5 days; nearest first, then those naming the
+  // counterparty or the lender.
+  candidates: LinkedMovement[];
 }
 
 /**
@@ -323,10 +363,14 @@ export interface PropertyTransactionInput {
   worksCompletedOn?: string | null;
   // sale only; null: flat_rate.
   taxRegime?: TaxRegime | null;
+  // The wallets' movement it is: the caller's, in the property's currency, the same direction, not
+  // a transfer's leg, not linked to another transaction (422, field movementUuid; 503 when the
+  // wallets can't be asked). Its day and amount may differ.
+  movementUuid?: string | null;
 }
 
 // The fields to change: null or left out keeps the value. "" clears counterparty, note and
-// incentive, gives back the kind's name to description and the schedule's to interest. The kind
+// incentive, unlinks movementUuid, gives back the kind's name to description and the schedule's to interest. The kind
 // and the mortgage don't change: delete the transaction and add another.
 export type PropertyTransactionUpdateRequest = Partial<Omit<PropertyTransactionInput, "kind" | "mortgageUuid">>;
 

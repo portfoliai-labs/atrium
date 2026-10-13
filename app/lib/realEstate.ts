@@ -9,6 +9,7 @@ import type {
   PrepaymentEffect, PropertyKind, PropertyTransactionFilters, PropertyTransactionKind, PropertyTransactionList, PropertyUse,
   RateIndex, RateSource, RealEstateOverview, RealEstateSummary, RentalContract, RentalContractKind, TaxList, TaxReduction,
   TaxRegime, TaxpayerYear, Valuation, ValuationSource, AcquisitionKind, IncentiveKind, PropertyTax, SaleSimulationRequest,
+  MovementLinkProposal,
 } from "../models/RealEstate";
 import { realEstateService } from "../services/realEstateService";
 import { ApiError } from "../services/apiClient";
@@ -176,7 +177,7 @@ export const TAX_REGIME_LABELS: Record<TaxRegime, string> = {
 
 // The fields as the API names them (PATCH /properties, errors' `field`), as the form shows them.
 export const PROPERTY_FIELD_LABELS: Record<string, string> = {
-  name: "Name", kind: "Kind", use: "Use", address: "Address", "address.country": "Country", "address.street": "Street",
+  name: "Name", kind: "Kind", use: "Use", movementUuid: "The wallet movement", address: "Address", "address.country": "Country", "address.street": "Street",
   "address.locality": "Town", "address.region": "Region", "address.postalCode": "Postal code", "address.neighbourhood": "Neighbourhood",
   "address.location": "Location", currency: "Currency", surfaceSqm: "Surface", rooms: "Rooms", yearBuilt: "Year built",
   energyRating: "Energy rating", ownershipSharePct: "Your share", note: "Note", details: "Land registry",
@@ -232,6 +233,9 @@ export interface RealEstateSource {
   // A year's, or every year's.
   taxpayerYears(year?: number): Promise<TaxpayerYear[]>;
   simulateSale(propertyUuid: string, request: SaleSimulationRequest): Promise<PropertyTax | null>;
+  // Every non-archived property's, or one's: the wallets' movements that may be its transactions
+  // not linked, or its instalments not recorded, in a range of at most 366 days.
+  movementLinkProposals(propertyUuid: string | null, bookedFrom: string, bookedTo: string): Promise<MovementLinkProposal[]>;
 }
 
 export const apiRealEstateSource: RealEstateSource = {
@@ -246,4 +250,5 @@ export const apiRealEstateSource: RealEstateSource = {
   rentalContracts: (propertyUuid) => realEstateService.rentalContracts(propertyUuid),
   taxpayerYears: (year) => realEstateService.taxpayerYears(year),
   simulateSale: (propertyUuid, request) => realEstateService.simulateSale(propertyUuid, request),
+  movementLinkProposals: (propertyUuid, bookedFrom, bookedTo) => realEstateService.movementLinkProposals(propertyUuid, bookedFrom, bookedTo),
 };
