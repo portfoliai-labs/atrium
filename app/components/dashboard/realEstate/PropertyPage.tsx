@@ -20,7 +20,9 @@ import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { PreviewBadge } from "../../preview/PreviewKit";
 import { CashFlowModule, ValueModule } from "./RealEstateNode";
 import { MortgageDialog, PropertyEditDialog, RateChangeDialog, ValuationDialog } from "./PropertyDialogs";
-import { RealEstateTransactionDialog } from "./RealEstateTransactionForm";
+import { RealEstateTransactionDialog, type TaxPaymentPrefill } from "./RealEstateTransactionForm";
+import { PropertyTaxModule, PropertyUsesModule } from "./PropertyTaxes";
+import { LeasesModule, TaxpayerYearDialog } from "./PropertyRentals";
 
 const ARCHIVED_TITLE = "An archived property is read only";
 const pct = (v: number, digits = 1) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}%`;
@@ -32,8 +34,9 @@ type Dialog = "transaction" | "valuation" | "mortgage" | "edit" | "archive" | "d
  * PROPERTY PAGE — one property, under the real estate: a header with its value at the user's
  * share, how that stands against what was put in, its year in figures and what can be done with it
  * (a transaction, a valuation, a mortgage, its settings, archive, delete); under it its value since
- * the purchase and its last 12 months' cash flow, its mortgages (each with its schedule and rate
- * changes, closed or reopened), its valuations and its details. Its amounts are in its own
+ * the purchase and its last 12 months' cash flow, its taxes (Italy's IMU and the tax on its rents,
+ * PropertyTaxModule), its leases, its mortgages (each with its schedule and rate changes, closed or
+ * reopened), its valuations, its use over time and its details. Its amounts are in its own
  * currency. An archived property, and a demo account's, are read only.
  */
 export function PropertyPage({ property, trail, onOpenTransactions, onGone }: {
@@ -47,6 +50,8 @@ export function PropertyPage({ property, trail, onOpenTransactions, onGone }: {
   const summary = useRealEstateSummary(property.uuid, (property.purchasedOn ?? property.createdAt).slice(0, 7));
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [rateFor, setRateFor] = useState<Mortgage | null>(null);
+  const [taxPayment, setTaxPayment] = useState<TaxPaymentPrefill | null>(null);
+  const [taxpayerYear, setTaxpayerYear] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const count = useTransactionCount(property.uuid);
@@ -124,6 +129,16 @@ export function PropertyPage({ property, trail, onOpenTransactions, onGone }: {
         <CashFlowModule summary={summary} />
       </div>
 
+      <PropertyTaxModule
+        property={property}
+        readOnly={readOnly}
+        onEdit={() => setDialog("edit")}
+        onEditTaxpayer={setTaxpayerYear}
+        onRecordPayment={setTaxPayment}
+      />
+
+      <LeasesModule property={property} readOnly={readOnly} onChanged={changed} />
+
       <MortgagesModule
         property={property}
         source={source}
@@ -135,11 +150,23 @@ export function PropertyPage({ property, trail, onOpenTransactions, onGone }: {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ValuationsModule property={property} source={source} version={version} readOnly={readOnly} onChanged={changed} />
-        <DetailsModule property={property} />
+        <PropertyUsesModule property={property} readOnly={readOnly} onChanged={changed} />
       </div>
+      <DetailsModule property={property} />
 
       {dialog === "transaction" && (
         <RealEstateTransactionDialog initialKind="rent" initialPropertyUuid={property.uuid} onClose={close} onSaved={close} />
+      )}
+      {taxpayerYear !== null && (
+        <TaxpayerYearDialog year={taxpayerYear} onClose={() => setTaxpayerYear(null)} onSaved={() => { setTaxpayerYear(null); changed(); }} />
+      )}
+      {taxPayment && (
+        <RealEstateTransactionDialog
+          initialPropertyUuid={property.uuid}
+          taxPayment={taxPayment}
+          onClose={() => setTaxPayment(null)}
+          onSaved={() => setTaxPayment(null)}
+        />
       )}
       {dialog === "valuation" && <ValuationDialog property={property} onClose={close} onSaved={done} />}
       {dialog === "mortgage" && <MortgageDialog property={property} onClose={close} onSaved={done} />}
@@ -462,6 +489,10 @@ function ValuationsModule({ property, source, version, readOnly, onChanged }: {
 
 function DetailsModule({ property: p }: { property: Property }) {
   const italy = p.details.italy;
+  const { properties, source } = useRealEstate();
+  const owner = p.appurtenantToUuid ? properties.find((x) => x.uuid === p.appurtenantToUuid) : undefined;
+  const appurtenances = properties.filter((x) => x.appurtenantToUuid === p.uuid);
+  const municipality = useRead(`municipality:${italy?.municipalityCode ?? ""}`, () => (italy?.municipalityCode ? source.municipalities({ codes: [italy.municipalityCode] }) : Promise.resolve([])), 0);
   const rows: [string, string | null][] = [
     ["Address", [p.address.street, [p.address.postalCode, p.address.locality].filter(Boolean).join(" "), p.address.region, p.address.country].filter(Boolean).join(", ")],
     ["Neighbourhood", p.address.neighbourhood ?? null],
@@ -470,15 +501,21 @@ function DetailsModule({ property: p }: { property: Property }) {
     ["Year built", p.yearBuilt != null ? String(p.yearBuilt) : null],
     ["Energy rating", p.energyRating],
     ["Your share", `${p.ownershipSharePct}%`],
+    ["Held by", p.holder.name ? `${p.holder.name}${p.holder.kind === "company" ? " (a company)" : ""}` : p.holder.kind === "company" ? "A company" : null],
+    ["Belongs to", owner?.name ?? null],
+    ["Its appurtenances", appurtenances.length ? appurtenances.map((x) => x.name).join(", ") : null],
     ["Bought", p.purchasedOn ? dayLabel(p.purchasedOn) : null],
     ["Sold", p.soldOn ? dayLabel(p.soldOn) : null],
     ["Value from", p.figures.valueSource ? `${VALUATION_SOURCE_LABELS[p.figures.valueSource]}${p.figures.valuedOn ? `, ${dayLabel(p.figures.valuedOn)}` : ""}` : null],
     ["Currency", p.currency],
+    ["Municipality", italy?.municipalityCode ? (municipality?.[0] ? `${municipality[0].name} (${municipality[0].province}) · ${italy.municipalityCode}` : italy.municipalityCode) : null],
     ["Cadastral reference", italy && (italy.cadastralSheet || italy.cadastralParcel)
-      ? [italy.municipalityCode, italy.cadastralSheet && `Fg. ${italy.cadastralSheet}`, italy.cadastralParcel && `Part. ${italy.cadastralParcel}`, italy.cadastralSubunit && `Sub. ${italy.cadastralSubunit}`].filter(Boolean).join(", ")
+      ? [ italy.cadastralSheet && `Fg. ${italy.cadastralSheet}`, italy.cadastralParcel && `Part. ${italy.cadastralParcel}`, italy.cadastralSubunit && `Sub. ${italy.cadastralSubunit}`].filter(Boolean).join(", ")
       : null],
     ["Cadastral category", italy?.cadastralCategory ?? null],
     ["Cadastral income", italy?.cadastralIncome != null ? formatCurrency(italy.cadastralIncome, "EUR", 2) : null],
+    ["Listed building", italy?.historic ? "Yes: IMU on half the base" : null],
+    ["Lent to a relative", italy?.freeLoanToRelative && p.use === "free_loan" ? "On IMU's conditions: half the base" : null],
     ["Note", p.note],
   ];
   return (

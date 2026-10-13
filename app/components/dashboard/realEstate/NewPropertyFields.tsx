@@ -2,16 +2,20 @@
 "use client";
 
 import { useState } from "react";
+import { useRealEstate } from "../../../context/RealEstateContext";
 import {
-  ENERGY_RATINGS, FREQUENCY_LABELS, PROPERTY_KINDS, PROPERTY_KIND_LABELS, PROPERTY_USES, PROPERTY_USE_LABELS, RATE_INDEX_LABELS,
-  sqftToSqm,
+  ENERGY_RATINGS, FREQUENCY_LABELS, HOLDER_KIND_LABELS, PROPERTY_KINDS, PROPERTY_KIND_LABELS, PROPERTY_USES, PROPERTY_USE_LABELS,
+  RATE_INDEX_LABELS, sqftToSqm,
 } from "../../../lib/realEstate";
 import { COMMON_CURRENCIES, today } from "../../../lib/wallets";
 import type {
-  CostKind, InstalmentFrequency, MortgageInput, Property, PropertyCreateRequest, PropertyInput, PropertyKind,
+  CostKind, HolderKind, InstalmentFrequency, MortgageInput, Property, PropertyCreateRequest, PropertyInput, PropertyKind,
   PropertyUpdateRequest, PropertyUse, RateIndex,
 } from "../../../models/RealEstate";
 import { Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
+import { MunicipalityPicker } from "./MunicipalityPicker";
+
+const HOLDER_NAME_MAX = 120;
 
 const COSTS: { kind: CostKind; label: string; placeholder: string }[] = [
   { kind: "notary", label: "Notary", placeholder: "3500" },
@@ -36,11 +40,14 @@ const parseWhole = (text: string) => (text.trim() === "" ? null : /^\d+$/.test(t
 const text = (v: string | number | null | undefined) => (v == null ? "" : String(v));
 
 /**
- * A property's own fields — what it is, where, its size, the user's share, Italy's land registry
- * for one in Italy — new (`initial` left out) or as `initial` has them, to change. Returns the
- * fields, what's still missing, the property to create, and the changes to send for `initial`
- * (only what changed; "" clears the surface, the energy rating and the note; the address and the
- * details are sent whole, if anything in them changed).
+ * A property's own fields — what it is, where, its size, the user's share, who holds it, the
+ * property it belongs to (a garage to the house), Italy's land registry for one in Italy, the
+ * municipality picked by name — new (`initial` left out) or as `initial` has them, to change.
+ * Changing an existing property's use here corrects the use it has today; a use that changed on a
+ * day is its page's "Use changed". Returns the fields, what's still missing, the property to
+ * create, and the changes to send for `initial` (only what changed; "" clears the surface, the
+ * energy rating, the note and the property it belongs to; the address, the details and the holder
+ * are sent whole, if anything in them changed).
  */
 export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
   const italian = initial?.details.italy;
@@ -61,6 +68,16 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
   const [energy, setEnergy] = useState(text(initial?.energyRating));
   const [share, setShare] = useState(text(initial?.ownershipSharePct ?? 100));
   const [note, setNote] = useState(text(initial?.note));
+  const [holderKind, setHolderKind] = useState<HolderKind>(initial?.holder.kind ?? "person");
+  const [holderName, setHolderName] = useState(text(initial?.holder.name));
+  const [appurtenantTo, setAppurtenantTo] = useState(initial?.appurtenantToUuid ?? "");
+  const [historic, setHistoric] = useState(italian?.historic ?? false);
+  const [freeLoanToRelative, setFreeLoanToRelative] = useState(italian?.freeLoanToRelative ?? false);
+  // What it can belong to: another property, not archived, not itself an appurtenance. One that
+  // has appurtenances of its own can't belong to another.
+  const { properties } = useRealEstate();
+  const hasAppurtenances = !!initial && properties.some((p) => p.appurtenantToUuid === initial.uuid);
+  const owners = properties.filter((p) => p.uuid !== initial?.uuid && !p.archived && !p.appurtenantToUuid);
   // Italy's land registry.
   const [cadastre, setCadastre] = useState({
     municipalityCode: text(italian?.municipalityCode), cadastralSheet: text(italian?.cadastralSheet), cadastralParcel: text(italian?.cadastralParcel),
@@ -87,6 +104,7 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
     Number.isNaN(yearValue) && "a valid year built",
     (shareValue === null || Number(shareValue) <= 0 || Number(shareValue) > 100) && "a share between 0 and 100%",
     italy && cadastre.cadastralIncome.trim() !== "" && cadastralIncome === null && "a valid cadastral income",
+    holderName.trim().length > HOLDER_NAME_MAX && `a holder's name of ${HOLDER_NAME_MAX} characters at most`,
   ].filter(Boolean) as string[];
 
   const address = () => ({
@@ -98,7 +116,8 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
     neighbourhood: neighbourhood.trim() || null,
     location: initial?.address.location ?? null,
   });
-  const details = () => (italy && Object.values(cadastre).some((v) => v.trim())
+  const loanToRelative = use === "free_loan" && freeLoanToRelative;
+  const details = () => (italy && (Object.values(cadastre).some((v) => v.trim()) || historic || loanToRelative)
     ? {
         italy: {
           municipalityCode: cadastre.municipalityCode.trim().toUpperCase() || null,
@@ -107,9 +126,12 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
           cadastralSubunit: cadastre.cadastralSubunit.trim() || null,
           cadastralCategory: cadastre.cadastralCategory.trim().toUpperCase() || null,
           cadastralIncome,
+          historic,
+          freeLoanToRelative: loanToRelative,
         },
       }
     : { italy: null });
+  const holder = () => ({ kind: holderKind, name: holderName.trim() || null });
   const surfaceText = surfaceSqm === null ? null : String(Math.round(surfaceSqm * 100) / 100);
 
   const input = (): PropertyInput => ({
@@ -125,6 +147,8 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
     ownershipSharePct: shareValue,
     details: details().italy ? details() : null,
     note: note.trim() || null,
+    holder: holder(),
+    appurtenantToUuid: appurtenantTo || null,
   });
 
   const changes = (): PropertyUpdateRequest => {
@@ -134,9 +158,13 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
     const addressChanged = (["country", "street", "locality", "postalCode", "region", "neighbourhood"] as const)
       .some((k) => (a[k] ?? null) !== (before[k] ?? null));
     const d = details();
-    const detailsChanged = JSON.stringify(d.italy) !== JSON.stringify(italian
-      ? { ...italian, cadastralIncome: italian.cadastralIncome == null ? null : String(italian.cadastralIncome) }
-      : null);
+    const now = d.italy;
+    const detailsChanged = !now || !italian
+      ? !!now !== !!italian
+      : (["municipalityCode", "cadastralSheet", "cadastralParcel", "cadastralSubunit", "cadastralCategory", "historic", "freeLoanToRelative"] as const)
+          .some((k) => (now[k] ?? null) !== (italian[k] ?? null))
+        || (now.cadastralIncome === null ? null : Number(now.cadastralIncome)) !== italian.cadastralIncome;
+    const h = holder();
     return {
       ...(name.trim() !== initial.name ? { name: name.trim() } : {}),
       ...(kind !== initial.kind ? { kind } : {}),
@@ -150,6 +178,8 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
       ...(Number(shareValue) !== initial.ownershipSharePct ? { ownershipSharePct: shareValue } : {}),
       ...(detailsChanged ? { details: d } : {}),
       ...(note.trim() !== (initial.note ?? "") ? { note: note.trim() } : {}),
+      ...(h.kind !== initial.holder.kind || h.name !== initial.holder.name ? { holder: h } : {}),
+      ...(appurtenantTo !== (initial.appurtenantToUuid ?? "") ? { appurtenantToUuid: appurtenantTo } : {}),
     };
   };
 
@@ -164,7 +194,7 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
             {PROPERTY_KINDS.map((k) => <option key={k} value={k}>{PROPERTY_KIND_LABELS[k]}</option>)}
           </select>
         </Field>
-        <Field label="Use">
+        <Field label={initial ? "Use today" : "Use"} hint={initial ? "Corrects the use it has now. If it changed on a day, use \"Use changed\" on its page." : undefined}>
           <select value={use} onChange={(e) => setUse(e.target.value as PropertyUse)} className={INPUT}>
             {PROPERTY_USES.map((u) => <option key={u} value={u}>{PROPERTY_USE_LABELS[u]}</option>)}
           </select>
@@ -216,19 +246,48 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
             <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
           </div>
         </Field>
+        <Field label="Held by" hint={holderKind === "company" ? "A company's property has no primary residence." : "You, unless you name someone."}>
+          <div className="flex gap-2">
+            <select value={holderKind} onChange={(e) => setHolderKind(e.target.value as HolderKind)} aria-label="Held by" className={`${INPUT.replace("w-full", "")} w-36 shrink-0`}>
+              {(Object.keys(HOLDER_KIND_LABELS) as HolderKind[]).map((k) => <option key={k} value={k}>{HOLDER_KIND_LABELS[k]}</option>)}
+            </select>
+            <input value={holderName} onChange={(e) => setHolderName(e.target.value)} maxLength={HOLDER_NAME_MAX} placeholder={holderKind === "company" ? "Company name" : "Optional"} aria-label="Holder's name" className={`${INPUT} min-w-0 flex-1`} />
+          </div>
+        </Field>
+        <Field label="Belongs to" hint={hasAppurtenances ? "Other properties belong to it, so it can't belong to one." : "A garage or a cellar that goes with a house (pertinenza)."}>
+          <select value={appurtenantTo} onChange={(e) => setAppurtenantTo(e.target.value)} disabled={hasAppurtenances || owners.length === 0} className={INPUT}>
+            <option value="">No other property</option>
+            {owners.map((p) => <option key={p.uuid} value={p.uuid}>{p.name}</option>)}
+          </select>
+        </Field>
       </Section>
 
       {italy && (
         <details className="rounded-2xl border border-slate-200 px-4 py-3 group" open={!!italian}>
-          <summary className="cursor-pointer text-[11px] font-black uppercase tracking-widest text-slate-500">Land registry (optional)</summary>
-          <p className="text-[11px] text-slate-400 mt-1">What property taxes are computed from, as the visura catastale writes it.</p>
+          <summary className="cursor-pointer text-[11px] font-black uppercase tracking-widest text-slate-500">Land registry (for IMU)</summary>
+          <p className="text-[11px] text-slate-400 mt-1">
+            What IMU is computed from, as the visura catastale writes it: the municipality, the category and the cadastral income are needed.
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
-            <Field label="Municipality code"><input value={cadastre.municipalityCode} onChange={(e) => setCadastre({ ...cadastre, municipalityCode: e.target.value })} placeholder="F205" className={INPUT} /></Field>
+            <Field label="Municipality" className="sm:col-span-3">
+              <MunicipalityPicker code={cadastre.municipalityCode} onChange={(code) => setCadastre({ ...cadastre, municipalityCode: code })} />
+            </Field>
             <Field label="Category"><input value={cadastre.cadastralCategory} onChange={(e) => setCadastre({ ...cadastre, cadastralCategory: e.target.value })} placeholder="A/2" className={INPUT} /></Field>
             <Field label="Cadastral income (€)"><input value={cadastre.cadastralIncome} onChange={(e) => setCadastre({ ...cadastre, cadastralIncome: e.target.value })} inputMode="decimal" placeholder="1032.91" className={INPUT} /></Field>
             <Field label="Sheet (foglio)"><input value={cadastre.cadastralSheet} onChange={(e) => setCadastre({ ...cadastre, cadastralSheet: e.target.value })} placeholder="12" className={INPUT} /></Field>
             <Field label="Parcel (particella)"><input value={cadastre.cadastralParcel} onChange={(e) => setCadastre({ ...cadastre, cadastralParcel: e.target.value })} placeholder="345" className={INPUT} /></Field>
             <Field label="Subunit (subalterno)"><input value={cadastre.cadastralSubunit} onChange={(e) => setCadastre({ ...cadastre, cadastralSubunit: e.target.value })} placeholder="6" className={INPUT} /></Field>
+          </div>
+          <div className="mt-3 space-y-2">
+            <Check checked={historic} onChange={setHistoric} label="Listed as of historic or artistic interest" hint="IMU on half the base." />
+            {use === "free_loan" && (
+              <Check
+                checked={freeLoanToRelative}
+                onChange={setFreeLoanToRelative}
+                label="Lent to a parent or a child, on IMU's conditions"
+                hint="They live in it, the contract is registered, you own no other home in Italy but your own in the same municipality, and it isn't A/1, A/8 or A/9: IMU on half the base."
+              />
+            )}
           </div>
         </details>
       )}
@@ -425,6 +484,18 @@ export function useNewProperty(defaultCurrency = "EUR") {
   );
 
   return { fields, problems, started: property.started, request };
+}
+
+function Check({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint: string }) {
+  return (
+    <label className="flex items-start gap-2.5 cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#C49A3C]" />
+      <span>
+        <span className="block text-[13px] font-semibold text-slate-700">{label}</span>
+        <span className="block text-[11px] text-slate-400">{hint}</span>
+      </span>
+    </label>
+  );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

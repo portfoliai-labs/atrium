@@ -4,7 +4,8 @@
 import { useState } from "react";
 import { Landmark, Pencil, Percent as PercentIcon, Scale } from "lucide-react";
 import { realEstateService } from "../../../services/realEstateService";
-import { errorText, today } from "../../../lib/wallets";
+import { today } from "../../../lib/wallets";
+import { fieldErrorText } from "../../../lib/realEstate";
 import type { Mortgage, Property } from "../../../models/RealEstate";
 import { DialogShell, Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
 import { Percent, monthAfter, useMortgageFields, usePropertyFields } from "./NewPropertyFields";
@@ -20,7 +21,7 @@ function useSave(onSaved: () => void, fallback: string) {
       await action();
       onSaved();
     } catch (err) {
-      setError(errorText(err, fallback));
+      setError(fieldErrorText(err, fallback));
       setBusy(false);
     }
   };

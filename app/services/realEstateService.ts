@@ -3,7 +3,8 @@ import type {
   Mortgage, MortgageInput, MortgageSchedule, MortgageUpdateRequest, Property, PropertyCreateRequest,
   PropertyCreateResponse, PropertyTransaction, PropertyTransactionFilters, PropertyTransactionInput,
   PropertyTransactionList, PropertyTransactionUpdateRequest, PropertyUpdateRequest, RealEstateOverview,
-  RealEstateSummary, Valuation, ValuationInput, Amount,
+  RealEstateSummary, Valuation, ValuationInput, Amount, Municipality, Property as PropertyResponse, PropertyUse, TaxList, TaxRate,
+  RentalContract, RentalContractInput, RentalContractUpdateRequest, TaxpayerYear, TaxpayerYearInput,
 } from "../models/RealEstate";
 import { apiFetch } from "./apiClient";
 
@@ -13,7 +14,12 @@ import { apiFetch } from "./apiClient";
 // InvalidMortgageError / InvalidRateChangeError / InvalidValuationError (422, as FastAPI's own),
 // PropertyArchivedError (409, a write on an archived property), PropertyHasTransactionsError (409,
 // a currency change), MortgageHasTransactionsError (409, deleting a mortgage that transactions
-// name). A demo account's writes are refused before they leave (see lib/demo).
+// name), InvalidUseChangeError (422, a use change), InvalidTaxRateError (422, a tax the property's
+// country doesn't have, or a rate on the rents' tax), TaxRateNotFoundError (404),
+// InvalidRentalContractError (422), RentalContractNotFoundError (404), InvalidTaxpayerYearError
+// (422), TaxpayerYearNotFoundError (404). InvalidPropertyError, InvalidUseChangeError
+// and InvalidTaxRateError say which `field` (ApiError.metadata.field), as the bodies name it. A demo
+// account's writes are refused before they leave (see lib/demo).
 
 const BASE = "/v1/real-estate";
 
@@ -162,5 +168,82 @@ export const realEstateService = {
   // DELETE /v1/real-estate/valuations/{v}
   async removeValuation(valuationUuid: string): Promise<void> {
     await apiFetch(`${BASE}/valuations/${valuationUuid}`, { method: "DELETE" });
+  },
+
+  // POST /v1/real-estate/properties/{p}/use-changes — the use from a day on; one on that day is replaced.
+  async changeUse(propertyUuid: string, effectiveOn: string, use: PropertyUse): Promise<PropertyResponse> {
+    return apiFetch<PropertyResponse>(`${BASE}/properties/${propertyUuid}/use-changes`, { method: "POST", body: JSON.stringify({ effectiveOn, use }) });
+  },
+
+  // DELETE /v1/real-estate/properties/{p}/use-changes/{YYYY-MM-DD}
+  async removeUseChange(propertyUuid: string, effectiveOn: string): Promise<PropertyResponse> {
+    return apiFetch<PropertyResponse>(`${BASE}/properties/${propertyUuid}/use-changes/${effectiveOn}`, { method: "DELETE" });
+  },
+
+  // GET /v1/real-estate/taxes (every property owned in the year; the archived ones when asked) or
+  // /properties/{p}/taxes. This year by default.
+  async taxes(propertyUuid: string | null, year?: number, includeArchived = false): Promise<TaxList> {
+    const params = new URLSearchParams();
+    if (year !== undefined) params.set("year", String(year));
+    if (!propertyUuid && includeArchived) params.set("includeArchived", "true");
+    const query = params.toString() ? `?${params}` : "";
+    return apiFetch<TaxList>(`${propertyUuid ? `${BASE}/properties/${propertyUuid}/taxes` : `${BASE}/taxes`}${query}`);
+  },
+
+  // PUT /v1/real-estate/properties/{p}/tax-rates/property_tax/{year} — the user's own rate for
+  // every taxed month of that year, in place of the one found.
+  async setTaxRate(propertyUuid: string, year: number, ratePct: Amount): Promise<TaxRate> {
+    return apiFetch<TaxRate>(`${BASE}/properties/${propertyUuid}/tax-rates/property_tax/${year}`, { method: "PUT", body: JSON.stringify({ ratePct }) });
+  },
+
+  // DELETE /v1/real-estate/properties/{p}/tax-rates/property_tax/{year} — 404 when none is set.
+  async removeTaxRate(propertyUuid: string, year: number): Promise<void> {
+    await apiFetch(`${BASE}/properties/${propertyUuid}/tax-rates/property_tax/${year}`, { method: "DELETE" });
+  },
+
+  // GET /v1/real-estate/rental-contracts (every property's, archived ones' too) or
+  // /properties/{p}/rental-contracts — by start.
+  async rentalContracts(propertyUuid: string | null): Promise<RentalContract[]> {
+    return apiFetch<RentalContract[]>(propertyUuid ? `${BASE}/properties/${propertyUuid}/rental-contracts` : `${BASE}/rental-contracts`);
+  },
+
+  // POST /v1/real-estate/properties/{p}/rental-contracts
+  async addRentalContract(propertyUuid: string, payload: RentalContractInput): Promise<RentalContract> {
+    return apiFetch<RentalContract>(`${BASE}/properties/${propertyUuid}/rental-contracts`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // PATCH /v1/real-estate/rental-contracts/{c}
+  async updateRentalContract(contractUuid: string, payload: RentalContractUpdateRequest): Promise<RentalContract> {
+    return apiFetch<RentalContract>(`${BASE}/rental-contracts/${contractUuid}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+
+  // DELETE /v1/real-estate/rental-contracts/{c}
+  async removeRentalContract(contractUuid: string): Promise<void> {
+    await apiFetch(`${BASE}/rental-contracts/${contractUuid}`, { method: "DELETE" });
+  },
+
+  // GET /v1/real-estate/taxpayer-years — a year's, or every year's (by year, then holder: the user first).
+  async taxpayerYears(year?: number): Promise<TaxpayerYear[]> {
+    return apiFetch<TaxpayerYear[]>(`${BASE}/taxpayer-years${year !== undefined ? `?year=${year}` : ""}`);
+  },
+
+  // PUT /v1/real-estate/taxpayer-years — replaces the whole record of that year and holder.
+  async putTaxpayerYear(payload: TaxpayerYearInput): Promise<TaxpayerYear> {
+    return apiFetch<TaxpayerYear>(`${BASE}/taxpayer-years`, { method: "PUT", body: JSON.stringify(payload) });
+  },
+
+  // DELETE /v1/real-estate/taxpayer-years/{year}?holderName= — 404 when none.
+  async removeTaxpayerYear(year: number, holderName?: string | null): Promise<void> {
+    await apiFetch(`${BASE}/taxpayer-years/${year}${holderName ? `?holderName=${encodeURIComponent(holderName)}` : ""}`, { method: "DELETE" });
+  },
+
+  // GET /v1/real-estate/municipalities — Italy's, by name (2-100 characters, accents ignored, at
+  // most `limit`) or by code (in the codes' order, unknown ones left out). Never both.
+  async municipalities({ search, codes, limit }: { search?: string; codes?: string[]; limit?: number }): Promise<Municipality[]> {
+    const params = new URLSearchParams({ country: "IT" });
+    if (search) params.set("search", search);
+    for (const c of codes ?? []) params.append("code", c);
+    if (limit !== undefined) params.set("limit", String(limit));
+    return apiFetch<Municipality[]>(`${BASE}/municipalities?${params}`);
   },
 };

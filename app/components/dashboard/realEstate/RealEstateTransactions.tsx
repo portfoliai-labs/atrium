@@ -24,7 +24,7 @@ export const ALL_PROPERTIES = "all";
 // The kinds, as the filter groups them.
 const KIND_GROUPS: { label: string; kinds: PropertyTransactionKind[] }[] = [
   { label: "Money in", kinds: ["rent", "short_stay_payout", "sale"] },
-  { label: "Running costs", kinds: ["expense", "property_tax", "works"] },
+  { label: "Running costs", kinds: ["expense", "property_tax", "income_tax", "works"] },
   { label: "Mortgage", kinds: ["mortgage_instalment", "mortgage_prepayment"] },
   { label: "Buying and selling", kinds: ["purchase", "purchase_cost", "sale_cost"] },
 ];
@@ -35,7 +35,7 @@ const IN_KINDS = new Set<PropertyTransactionKind>(["sale", "rent", "short_stay_p
 const KIND_COLORS: Record<PropertyTransactionKind, string> = {
   purchase: "#4a3aa7", purchase_cost: "#4a3aa7", sale: "#1baf7a", sale_cost: "#64748b",
   rent: "#1baf7a", short_stay_payout: "#eb6834", expense: "#e34948", works: "#a16207", property_tax: "#eda100",
-  mortgage_instalment: "#2a78d6", mortgage_prepayment: "#2a78d6",
+  mortgage_instalment: "#2a78d6", mortgage_prepayment: "#2a78d6", income_tax: "#eda100",
 };
 
 export function KindChip({ transaction }: { transaction: PropertyTransaction }) {
@@ -55,6 +55,8 @@ function detailOf(t: PropertyTransaction) {
   return [
     t.rentPeriod && `For ${monthName(t.rentPeriod)}`,
     t.taxYear && `Tax year ${t.taxYear}`,
+    t.platformFee != null && `Platform fee ${formatCurrency(t.platformFee, t.currency, 2)}`,
+    t.taxWithheld != null && `Tax withheld ${formatCurrency(t.taxWithheld, t.currency, 2)}`,
     t.instalmentNumber && `Instalment ${t.instalmentNumber}${t.interest != null ? `, ${formatCurrency(t.interest, t.currency, 2)} interest` : ""}`,
     t.prepaymentEffect && PREPAYMENT_EFFECT_LABELS[t.prepaymentEffect],
     t.incentive,
@@ -336,6 +338,8 @@ function TransactionEditDialog({ transaction: t, onClose, onSaved }: { transacti
   const interestText = t.interest != null ? String(t.interest) : "";
   const [interest, setInterest] = useState(interestText);
   const [effect, setEffect] = useState<PrepaymentEffect>(t.prepaymentEffect ?? "reduce_instalment");
+  const [platformFee, setPlatformFee] = useState(t.platformFee != null ? String(t.platformFee) : "");
+  const [taxWithheld, setTaxWithheld] = useState(t.taxWithheld != null ? String(t.taxWithheld) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -345,7 +349,8 @@ function TransactionEditDialog({ transaction: t, onClose, onSaved }: { transacti
   const valid = !!bookedOn && value !== null && Number(value) > 0
     && (taxYear.trim() === "" || /^\d{4}$/.test(taxYear.trim()))
     && (instalmentNumber.trim() === "" || /^\d+$/.test(instalmentNumber.trim()))
-    && (interest.trim() === "" || parseAmount(interest) !== null);
+    && (interest.trim() === "" || parseAmount(interest) !== null)
+    && [platformFee, taxWithheld].every((x) => x.trim() === "" || (parseAmount(x) !== null && Number(parseAmount(x)) >= 0));
 
   const submit = async () => {
     setBusy(true);
@@ -361,7 +366,12 @@ function TransactionEditDialog({ transaction: t, onClose, onSaved }: { transacti
       ...(t.costKind && costKind !== t.costKind ? { costKind } : {}),
       ...(t.kind === "expense" && expenseKind !== t.expenseKind ? { expenseKind } : {}),
       ...(t.kind === "rent" && rentPeriod && rentPeriod !== t.rentPeriod ? { rentPeriod } : {}),
-      ...(t.kind === "property_tax" && taxYear.trim() && Number(taxYear) !== t.taxYear ? { taxYear: Number(taxYear) } : {}),
+      ...((t.kind === "property_tax" || t.kind === "income_tax") && taxYear.trim() && Number(taxYear) !== t.taxYear ? { taxYear: Number(taxYear) } : {}),
+      // "" clears a payout's platform fee or withheld tax.
+      ...(t.kind === "short_stay_payout" && platformFee.trim() !== (t.platformFee != null ? String(t.platformFee) : "")
+        ? { platformFee: platformFee.trim() === "" ? "" : parseAmount(platformFee)! } : {}),
+      ...(t.kind === "short_stay_payout" && taxWithheld.trim() !== (t.taxWithheld != null ? String(t.taxWithheld) : "")
+        ? { taxWithheld: taxWithheld.trim() === "" ? "" : parseAmount(taxWithheld)! } : {}),
       ...(t.kind === "works" && incentive.trim() !== (t.incentive ?? "") ? { incentive: incentive.trim() } : {}),
       ...(t.kind === "mortgage_instalment" && instalmentNumber.trim() && Number(instalmentNumber) !== t.instalmentNumber ? { instalmentNumber: Number(instalmentNumber) } : {}),
       ...(t.kind === "mortgage_instalment" && interest.trim() !== interestText
@@ -421,7 +431,17 @@ function TransactionEditDialog({ transaction: t, onClose, onSaved }: { transacti
             <input type="month" value={rentPeriod} onChange={(e) => setRentPeriod(e.target.value)} className={INPUT} />
           </Field>
         )}
-        {t.kind === "property_tax" && (
+        {t.kind === "short_stay_payout" && (
+          <>
+            <Field label="Platform fee" hint="What the platform kept.">
+              <input value={platformFee} onChange={(e) => setPlatformFee(e.target.value)} inputMode="decimal" placeholder="Optional" className={INPUT} />
+            </Field>
+            <Field label="Tax withheld" hint="The 21% the platform withheld.">
+              <input value={taxWithheld} onChange={(e) => setTaxWithheld(e.target.value)} inputMode="decimal" placeholder="Optional" className={INPUT} />
+            </Field>
+          </>
+        )}
+        {(t.kind === "property_tax" || t.kind === "income_tax") && (
           <Field label="Tax year">
             <input value={taxYear} onChange={(e) => setTaxYear(e.target.value)} inputMode="numeric" className={INPUT} />
           </Field>

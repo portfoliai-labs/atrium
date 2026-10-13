@@ -10,8 +10,9 @@
 import { hashSeed, normal, round, seeded } from "./random";
 import { TRANSACTION_KIND_LABELS, type RealEstateSource } from "../realEstate";
 import type {
-  Mortgage, MortgageSchedule, Property as ApiProperty, PropertyTransaction, PropertyTransactionFilters,
-  PropertyUse, RealEstateMonth, RealEstateOverview, RealEstateSummary, Valuation,
+  ItalianDetails, Mortgage, MortgageSchedule, Municipality, Property as ApiProperty, PropertyTax, PropertyTransaction,
+  PropertyTransactionFilters, PropertyUse, RealEstateMonth, RealEstateOverview, RealEstateSummary, RentalContract, TaxInstalment,
+  TaxList, TaxPeriod, TaxpayerYear, UsePeriod, Valuation,
 } from "../../models/RealEstate";
 
 export type PropertyType = "Apartment" | "House" | "Commercial" | "Garage" | "Land";
@@ -477,11 +478,119 @@ const lenderOf = (p: Property) => LENDERS[p.id] ?? null;
 const LETTING: Record<string, { from: string; counterparty: string }> = {
   navigli: { from: "2020-01", counterparty: "G. Ferraris" },
   "santo-stefano": { from: "2021-06", counterparty: "Airbnb" },
-  "san-salvario": { from: "2023-01", counterparty: "L. Conti" },
+  "san-salvario": { from: "2023-03", counterparty: "L. Conti" },
   "prati-garage": { from: "2020-12", counterparty: "M. De Santis" },
 };
 
-const DEMO_TRANSACTIONS: PropertyTransaction[] = (() => {
+// The leases: Navigli's at a free rent under the cedolare; San Salvario's at an agreed rent in Turin
+// (housing there is tight: the cedolare at 10%, IMU at 75%); the garage's, a commercial lease taxed
+// with IRPEF.
+const DEMO_LEASES: RentalContract[] = [
+  { uuid: "navigli-lease", propertyUuid: "navigli", kind: "residential", startsOn: "2020-01-01", endsOn: null, monthlyRent: 1480, currency: "EUR", taxRegime: "flat_rate", highTensionMunicipality: false, tenant: "G. Ferraris", note: null, createdAt: "2019-12-20T09:00:00Z" },
+  { uuid: "san-salvario-lease", propertyUuid: "san-salvario", kind: "agreed", startsOn: "2023-03-01", endsOn: "2028-02-29", monthlyRent: 860, currency: "EUR", taxRegime: "flat_rate", highTensionMunicipality: true, tenant: "L. Conti", note: "3+2, canone concordato", createdAt: "2023-02-20T09:00:00Z" },
+  { uuid: "prati-garage-lease", propertyUuid: "prati-garage", kind: "commercial", startsOn: "2020-12-01", endsOn: null, monthlyRent: 190, currency: "EUR", taxRegime: "ordinary", highTensionMunicipality: false, tenant: "M. De Santis", note: null, createdAt: "2020-11-25T09:00:00Z" },
+];
+const AGREED = ["agreed", "transitional", "student"];
+const leasesOf = (p: Property) => DEMO_LEASES.filter((l) => l.propertyUuid === p.id);
+/** The lease running on a day. */
+const leaseOn = (p: Property, day: string) => leasesOf(p).find((l) => l.startsOn <= day && (!l.endsOn || l.endsOn >= day));
+
+// ── Italy's IMU, worked out as the API does (a simplified copy: no deductions) ──
+
+// Each property's land registry entry.
+const DEMO_ITALY: Record<string, ItalianDetails> = {
+  navigli: { municipalityCode: "F205", cadastralSheet: "512", cadastralParcel: "88", cadastralSubunit: "14", cadastralCategory: "A/2", cadastralIncome: 1032.91, historic: false, freeLoanToRelative: false },
+  "santo-stefano": { municipalityCode: "A944", cadastralSheet: "203", cadastralParcel: "41", cadastralSubunit: "7", cadastralCategory: "A/3", cadastralIncome: 640.41, historic: false, freeLoanToRelative: false },
+  "san-salvario": { municipalityCode: "L219", cadastralSheet: "1287", cadastralParcel: "102", cadastralSubunit: "21", cadastralCategory: "A/2", cadastralIncome: 723.04, historic: false, freeLoanToRelative: false },
+  "prati-garage": { municipalityCode: "H501", cadastralSheet: "376", cadastralParcel: "212", cadastralSubunit: "503", cadastralCategory: "C/6", cadastralIncome: 185.92, historic: false, freeLoanToRelative: false },
+};
+
+// The uses over time: San Salvario stood empty until it was let.
+const DEMO_USES: Record<string, UsePeriod[]> = {
+  "san-salvario": [{ effectiveOn: null, use: "vacant" }, { effectiveOn: "2023-03-01", use: "long_term_rental" }],
+};
+const usesOf = (p: Property): UsePeriod[] => DEMO_USES[p.id] ?? [{ effectiveOn: null, use: USE_OF[p.usage] }];
+const propertyUseOn = (p: Property, day: string) => usesOf(p).filter((u) => !u.effectiveOn || u.effectiveOn <= day).at(-1)!.use;
+
+// The cadastral multiplier by category.
+function multiplier(category: string) {
+  if (category === "A/10" || category === "D/5") return 80;
+  if (category.startsWith("A") || ["C/2", "C/6", "C/7"].includes(category)) return 160;
+  if (category.startsWith("B") || ["C/3", "C/4", "C/5"].includes(category)) return 140;
+  if (category === "C/1") return 55;
+  return 65;
+}
+
+// The municipalities' rate for other buildings, by year; Turin hasn't published 2026's yet.
+const MUNICIPAL_RATES: Record<string, Record<number, number>> = {
+  F205: { 2020: 1.06, 2021: 1.06, 2022: 1.06, 2023: 1.06, 2024: 1.14, 2025: 1.14, 2026: 1.14 },
+  A944: { 2020: 1.06, 2021: 1.06, 2022: 1.06, 2023: 1.06, 2024: 1.06, 2025: 1.06, 2026: 1.06 },
+  L219: { 2020: 1.06, 2021: 1.06, 2022: 1.06, 2023: 1.06, 2024: 1.06, 2025: 1.06 },
+  H501: { 2020: 1.06, 2021: 1.06, 2022: 1.06, 2023: 1.06, 2024: 1.06, 2025: 1.06, 2026: 1.06 },
+};
+
+/** A day, moved past a weekend to the Monday. */
+function workingDay(day: string) {
+  const [y, m, d] = day.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  const shift = date.getDay() === 6 ? 2 : date.getDay() === 0 ? 1 : 0;
+  date.setDate(date.getDate() + shift);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** A property's IMU for a year, before what was paid (see demoTaxes). */
+function computeImu(p: Property, year: number): PropertyTax {
+  const italy = DEMO_ITALY[p.id];
+  const base: PropertyTax = {
+    propertyUuid: p.id, kind: "property_tax", name: "IMU", country: "IT", year, currency: "EUR", status: "computed", notComputed: null,
+    missingFields: [], amount: 0, paidAmount: 0, withheldAmount: 0, instalments: [], periods: [],
+    provisional: year > 2026 || (year === 2026 && DEMO_TODAY < "2026-10-28"),
+  };
+  if (year < 2020) return { ...base, status: "not_computed", notComputed: "unsupported_year" };
+  const [py, pm, pd] = p.purchaseDate.split("-").map(Number);
+  // A month counts when owned for most of it (the 15th: the purchase month counts if bought by then).
+  const firstMonth = py < year ? 1 : pd <= 15 ? pm : pm + 1;
+  const rates = MUNICIPAL_RATES[italy.municipalityCode!];
+  const rateYear = rates[year] !== undefined ? year : Math.max(...Object.keys(rates).map(Number).filter((y) => y < year));
+  const ratePct = rates[rateYear];
+  const taxableBase = round(italy.cadastralIncome! * 1.05 * multiplier(italy.cadastralCategory!), 2);
+  const periods: TaxPeriod[] = [];
+  for (let month = firstMonth; month <= 12; month++) {
+    const day = `${year}-${pad(month)}-15`;
+    const use = propertyUseOn(p, day);
+    // Under a lease at an agreed rent: IMU at 75%.
+    const agreed = AGREED.includes(leaseOn(p, day)?.kind ?? "");
+    const last = periods.at(-1);
+    if (last && last.use === use && last.lastMonth === month - 1 && last.reductions.includes("agreed_rent") === agreed) {
+      last.lastMonth = month;
+      last.months += 1;
+    } else {
+      periods.push({
+        firstMonth: month, lastMonth: month, months: 1, use, rateClass: use === "primary_residence" ? "primary_residence" : "other_buildings",
+        taxableBase, reductions: agreed ? ["agreed_rent"] : [], ratePct, rateSource: rateYear === year ? "municipality" : "municipality_earlier_year",
+        rateYear: rateYear === year ? null : rateYear, deduction: 0, amount: 0, regime: null, income: 0, alternativeAmount: null, rentalContractUuid: null,
+      });
+    }
+  }
+  for (const period of periods) {
+    period.amount = round((taxableBase * ratePct / 100) * period.months / 12 * (period.reductions.includes("agreed_rent") ? 0.75 : 1), 2);
+  }
+  const total = Math.round(periods.reduce((s, x) => s + x.amount, 0));
+  if (total === 0) return { ...base, status: "exempt", periods };
+  const first = Math.round(total / 2);
+  return {
+    ...base,
+    amount: total,
+    periods,
+    instalments: [
+      { number: 1, dueOn: workingDay(`${year}-06-16`), amount: first, paid: false, transactionUuids: [] },
+      { number: 2, dueOn: workingDay(`${year}-12-16`), amount: total - first, paid: false, transactionUuids: [] },
+    ],
+  };
+}
+
+// Every transaction but the payments of the rents' tax (worked out from these: see DEMO_TRANSACTIONS).
+const BASE_TRANSACTIONS: PropertyTransaction[] = (() => {
   const out: PropertyTransaction[] = [];
   let n = 0;
   const add = (p: Property, kind: PropertyTransaction["kind"], bookedOn: string, amount: number, extra: Partial<PropertyTransaction> = {}) => {
@@ -490,7 +599,7 @@ const DEMO_TRANSACTIONS: PropertyTransaction[] = (() => {
       uuid: `ret-${n++}`, propertyUuid: p.id, kind, bookedOn, amount: round(amount, 2), currency: "EUR",
       description: extra.description ?? TRANSACTION_KIND_LABELS[kind], counterparty: null, note: null, costKind: null, expenseKind: null,
       rentPeriod: null, taxYear: null, incentive: null, mortgageUuid: null, instalmentNumber: null, interest: null,
-      prepaymentEffect: null, createdAt: `${bookedOn}T09:00:00Z`, ...extra,
+      prepaymentEffect: null, createdAt: `${bookedOn}T09:00:00Z`, platformFee: null, taxWithheld: null, ...extra,
     });
   };
 
@@ -507,16 +616,26 @@ const DEMO_TRANSACTIONS: PropertyTransaction[] = (() => {
       const mi = Number(month.slice(5)) - 1;
       if (letting && month >= letting.from) {
         if (p.usage === "Short-term rental") {
-          // The platform pays out what's left after its fee and the cleaning.
-          const payout = shortTermAnalysis(p).monthly[mi].revenue * 0.65 * (0.85 + rand() * 0.3);
-          add(p, "short_stay_payout", `${month}-05`, payout, { counterparty: letting.counterparty, description: "Airbnb payout" });
+          // What the guests paid; the platform keeps its fee and, from 2024, withholds the 21%.
+          const gross = round(shortTermAnalysis(p).monthly[mi].revenue * 0.8 * (0.85 + rand() * 0.3), 2);
+          const platformFee = round(gross * 0.15, 2);
+          const taxWithheld = month >= "2024-01" ? round(gross * 0.21, 2) : null;
+          add(p, "short_stay_payout", `${month}-05`, gross - platformFee - (taxWithheld ?? 0), {
+            counterparty: letting.counterparty, description: "Airbnb payout", platformFee, taxWithheld,
+          });
         } else {
           add(p, "rent", `${month}-05`, p.monthlyRent, { counterparty: letting.counterparty, rentPeriod: month });
         }
       }
       add(p, "expense", `${month}-10`, -p.monthlyCondo, { expenseKind: "condo_fees", counterparty: "Condo administrator", description: "Condo fees" });
-      // IMU, half in June and half in December.
-      if (mi === 5 || mi === 11) add(p, "property_tax", `${month}-16`, -p.yearlyPropertyTax / 2, { taxYear: Number(month.slice(0, 4)), description: "IMU" });
+      // IMU, its first instalment in June and the balance in December, as worked out (before 2020, a
+      // flat sum).
+      if (mi === 5 || mi === 11) {
+        const taxYear = Number(month.slice(0, 4));
+        const instalment = taxYear >= 2020 ? computeImu(p, taxYear).instalments[mi === 5 ? 0 : 1] : undefined;
+        if (taxYear < 2020) add(p, "property_tax", `${month}-16`, -p.yearlyPropertyTax / 2, { taxYear, description: "IMU" });
+        else if (instalment) add(p, "property_tax", instalment.dueOn, -instalment.amount, { taxYear, description: `IMU ${taxYear} — ${mi === 5 ? "first instalment" : "balance"}` });
+      }
       // The odd repair.
       if (rand() > 0.9) add(p, "expense", `${month}-${pad(12 + Math.floor(rand() * 14))}`, -round(120 + rand() * 600), { expenseKind: "maintenance", description: "Repair" });
     }
@@ -539,6 +658,116 @@ const DEMO_TRANSACTIONS: PropertyTransaction[] = (() => {
   }
   // Newest first, as the API lists them.
   return out.sort((a, b) => b.bookedOn.localeCompare(a.bookedOn) || b.uuid.localeCompare(a.uuid, undefined, { numeric: true }));
+})();
+
+// ── The tax on rents: Italy's cedolare secca or IRPEF, worked out as the API does (simplified) ──
+
+// The taxpayer's other income and surcharges, year by year: what IRPEF needs.
+const DEMO_TAXPAYERS: TaxpayerYear[] = [2024, 2025, 2026].map((year, i) => ({
+  year, holderName: null, otherIncome: [38000, 40000, 42000][i], surchargesPct: [2.33, 2.33, 2.53][i], reducedRatePropertyUuid: null, shortStayRegime: null,
+}));
+
+/** IRPEF on an income (2024's brackets: 23% to 28,000, 35% to 50,000, 43% above). */
+function irpef(income: number) {
+  return Math.min(income, 28000) * 0.23 + Math.max(0, Math.min(income, 50000) - 28000) * 0.35 + Math.max(0, income - 50000) * 0.43;
+}
+
+/** What IRPEF (with the surcharges) adds on a rent's taxable base, on top of the other income. */
+function irpefOn(base: number, taxpayer: TaxpayerYear | undefined) {
+  if (!taxpayer || taxpayer.otherIncome === null) return null;
+  const other = taxpayer.otherIncome;
+  return round(irpef(other + base) - irpef(other) + base * ((taxpayer.surchargesPct ?? 0) / 100), 2);
+}
+
+const ACCONTO_MIN = 51.65;
+const ACCONTO_SPLIT = 257.52;
+
+/** A property's rents' tax for a year, before what was paid: undefined with no rents that year. */
+function computeRentalTax(p: Property, year: number): PropertyTax | undefined {
+  const leases = leasesOf(p).filter((l) => l.startsOn <= `${year}-12-31` && (!l.endsOn || l.endsOn >= `${year}-01-01`));
+  const payouts = BASE_TRANSACTIONS.filter((t) => t.propertyUuid === p.id && t.kind === "short_stay_payout" && t.bookedOn.startsWith(`${year}-`));
+  if (leases.length === 0 && payouts.length === 0) return undefined;
+  const base: PropertyTax = {
+    propertyUuid: p.id, kind: "rental_income_tax", name: "Cedolare secca", country: "IT", year, currency: "EUR", status: "computed",
+    notComputed: null, missingFields: [], amount: 0, paidAmount: 0, withheldAmount: 0, instalments: [], periods: [], provisional: year >= 2026,
+  };
+  if (year < 2024) return { ...base, status: "not_computed", notComputed: "unsupported_year" };
+  const taxpayer = DEMO_TAXPAYERS.find((t) => t.year === year);
+  const periods: TaxPeriod[] = [];
+  for (const l of leases) {
+    const firstMonth = l.startsOn < `${year}-01-01` ? 1 : Number(l.startsOn.slice(5, 7));
+    const lastMonth = !l.endsOn || l.endsOn > `${year}-12-31` ? 12 : Number(l.endsOn.slice(5, 7));
+    const months = lastMonth - firstMonth + 1;
+    const income = round(l.monthlyRent * months, 2);
+    const agreedTight = AGREED.includes(l.kind) && l.highTensionMunicipality;
+    // IRPEF's base: the rent less the 5% flat deduction, and on 70% at an agreed rent where housing is tight.
+    const irpefBase = round(income * 0.95 * (agreedTight ? 0.7 : 1), 2);
+    const flat = round(income * (agreedTight ? 0.1 : 0.21), 2);
+    const ordinary = irpefOn(irpefBase, taxpayer);
+    const isFlat = l.taxRegime === "flat_rate";
+    periods.push({
+      firstMonth, lastMonth, months, use: propertyUseOn(p, `${year}-${pad(firstMonth)}-15`),
+      rateClass: isFlat ? (agreedTight ? "flat_rate_agreed" : "flat_rate") : "ordinary",
+      taxableBase: isFlat ? income : irpefBase, reductions: agreedTight ? ["agreed_rent"] : [],
+      ratePct: isFlat ? (agreedTight ? 10 : 21) : ordinary === null ? 0 : round((ordinary / irpefBase) * 100, 2),
+      rateSource: "legal", rateYear: null, deduction: 0, amount: isFlat ? flat : ordinary ?? 0,
+      regime: l.taxRegime, income, alternativeAmount: isFlat ? ordinary : l.kind === "commercial" ? null : flat, rentalContractUuid: l.uuid,
+    });
+  }
+  if (payouts.length > 0) {
+    const months = payouts.map((t) => Number(t.bookedOn.slice(5, 7)));
+    const gross = round(payouts.reduce((s, t) => s + t.amount + (t.platformFee ?? 0) + (t.taxWithheld ?? 0), 0), 2);
+    periods.push({
+      firstMonth: Math.min(...months), lastMonth: Math.max(...months), months: new Set(months).size, use: "short_term_rental",
+      rateClass: "flat_rate_short_stay", taxableBase: gross, reductions: [], ratePct: 21, rateSource: "legal", rateYear: null, deduction: 0,
+      amount: round(gross * 0.21, 2), regime: "flat_rate", income: gross, alternativeAmount: irpefOn(round(gross * 0.95, 2), taxpayer), rentalContractUuid: null,
+    });
+    base.withheldAmount = round(payouts.reduce((s, t) => s + (t.taxWithheld ?? 0), 0), 2);
+  }
+  const regimes = new Set(periods.map((x) => x.regime));
+  const name = regimes.size > 1 ? "Cedolare secca e IRPEF" : regimes.has("ordinary") ? "IRPEF" : "Cedolare secca";
+  if (regimes.has("ordinary") && (!taxpayer || taxpayer.otherIncome === null)) {
+    return { ...base, name, status: "not_computed", notComputed: "missing_details", missingFields: ["taxpayer.otherIncome"], withheldAmount: base.withheldAmount };
+  }
+  const exact = periods.reduce((s, x) => s + x.amount, 0);
+  const amount = Math.round(exact);
+  // The cedolare's payments on account come from last year's net: 40% by 30 June and 60% by 30
+  // November (only November when small, none when tiny); the balance with the return, by 30 June
+  // of the next year.
+  const previous = year > 2024 ? computeRentalTax(p, year - 1) : undefined;
+  const previousNet = previous && previous.status === "computed"
+    ? previous.periods.filter((x) => x.regime === "flat_rate").reduce((s, x) => s + x.amount, 0) - previous.withheldAmount
+    : 0;
+  const onAccount = previousNet > ACCONTO_SPLIT
+    ? [{ dueOn: workingDay(`${year}-06-30`), amount: Math.round(previousNet * 0.4) }, { dueOn: workingDay(`${year}-11-30`), amount: Math.round(previousNet * 0.6) }]
+    : previousNet > ACCONTO_MIN ? [{ dueOn: workingDay(`${year}-11-30`), amount: Math.round(previousNet) }] : [];
+  const paidOnAccount = onAccount.reduce((s, x) => s + x.amount, 0);
+  const balance = Math.max(0, Math.round(exact - base.withheldAmount - paidOnAccount));
+  const instalments: TaxInstalment[] = [...onAccount, { dueOn: workingDay(`${year + 1}-06-30`), amount: balance }]
+    .map((x, i) => ({ number: i + 1, ...x, paid: false, transactionUuids: [] }));
+  return { ...base, name, amount, periods, instalments };
+}
+
+// The payments of the rents' tax, as each instalment fell due (to the sample's today).
+const DEMO_TRANSACTIONS: PropertyTransaction[] = (() => {
+  const payments: PropertyTransaction[] = [];
+  for (const p of PROPERTIES) {
+    for (const year of [2024, 2025, 2026]) {
+      const tax = computeRentalTax(p, year);
+      if (!tax || tax.status !== "computed") continue;
+      tax.instalments.forEach((i, index) => {
+        if (i.amount <= 0 || i.dueOn > DEMO_TODAY) return;
+        const last = index === tax.instalments.length - 1;
+        payments.push({
+          uuid: `ret-tax-${p.id}-${year}-${i.number}`, propertyUuid: p.id, kind: "income_tax", bookedOn: i.dueOn, amount: -i.amount, currency: "EUR",
+          description: `${tax.name} ${year} — ${last ? "balance" : "payment on account"}`, counterparty: "Agenzia delle Entrate", note: null,
+          costKind: null, expenseKind: null, rentPeriod: null, taxYear: year, incentive: null, mortgageUuid: null, instalmentNumber: null,
+          interest: null, prepaymentEffect: null, createdAt: `${i.dueOn}T09:00:00Z`, platformFee: null, taxWithheld: null,
+        });
+      });
+    }
+  }
+  return [...BASE_TRANSACTIONS, ...payments].sort((a, b) => b.bookedOn.localeCompare(a.bookedOn) || b.uuid.localeCompare(a.uuid, undefined, { numeric: true }));
 })();
 
 const transactionsOf = (propertyUuid: string | null) =>
@@ -574,7 +803,7 @@ function propertyMonth(p: Property, month: string): RealEstateMonth {
   const inMonth = transactionsOf(p.id).filter((t) => t.bookedOn.startsWith(month));
   const sum = (kinds: string[]) => inMonth.filter((t) => kinds.includes(t.kind)).reduce((s, t) => s + t.amount, 0);
   const income = sum(["rent", "short_stay_payout"]);
-  const expenses = -sum(["expense", "property_tax"]);
+  const expenses = -sum(["expense", "property_tax", "income_tax"]);
   const mortgagePayments = -sum(["mortgage_instalment", "mortgage_prepayment"]);
   const mortgageInterest = inMonth.reduce((s, t) => s + (t.interest ?? 0), 0);
   // The month's end, or today for this one.
@@ -612,7 +841,10 @@ export const DEMO_PROPERTIES: ApiProperty[] = PROPERTIES.map((p) => {
     uuid: p.id,
     name: p.name,
     kind: p.type.toLowerCase() as ApiProperty["kind"],
-    use: USE_OF[p.usage],
+    use: propertyUseOn(p, DEMO_TODAY),
+    uses: usesOf(p),
+    holder: { kind: "person", name: null },
+    appurtenantToUuid: null,
     address: { country: "IT", street: p.address, locality: p.city, region: null, postalCode: null, neighbourhood: zoneById(p.zoneId).name, location: null },
     currency: "EUR",
     surfaceSqm: p.sqm,
@@ -620,7 +852,7 @@ export const DEMO_PROPERTIES: ApiProperty[] = PROPERTIES.map((p) => {
     yearBuilt: p.yearBuilt,
     energyRating: p.energyClass === "—" ? null : p.energyClass,
     ownershipSharePct: 100,
-    details: { italy: null },
+    details: { italy: DEMO_ITALY[p.id] },
     note: null,
     purchasedOn: p.purchaseDate,
     soldOn: null,
@@ -700,6 +932,75 @@ function matches(t: PropertyTransaction, f: PropertyTransactionFilters) {
   return true;
 }
 
+/**
+ * A tax with what its transactions of that tax year paid (property_tax for IMU, income_tax for the
+ * rents'): money out counts, a refund is taken off, never below 0; it fills the instalments in order.
+ */
+function withPayments(tax: PropertyTax, kind: "property_tax" | "income_tax"): PropertyTax {
+  const payments = DEMO_TRANSACTIONS.filter((t) => t.propertyUuid === tax.propertyUuid && t.kind === kind && t.taxYear === tax.year)
+    .sort((a, b) => a.bookedOn.localeCompare(b.bookedOn));
+  const paidAmount = Math.max(0, round(-payments.reduce((s, t) => s + t.amount, 0), 2));
+  // Each payment's share of the running total, refunds left out of it.
+  let running = 0;
+  const shares = payments.filter((t) => t.amount < 0).map((t) => {
+    const from = running;
+    running += -t.amount;
+    return { uuid: t.uuid, from, to: running };
+  });
+  // An instalment is paid once what was paid covers it and those before it; it lists the payments
+  // whose share reaches it.
+  let start = 0;
+  const instalments = tax.instalments.map((i) => {
+    const end = start + i.amount;
+    const listed = shares.filter((x) => x.from < end && x.to > start).map((x) => x.uuid);
+    start = end;
+    return { ...i, paid: paidAmount >= end, transactionUuids: listed };
+  });
+  return { ...tax, instalments, paidAmount };
+}
+
+/** The year's taxes of each property owned in it: its IMU, then its rents' tax when it had rents. */
+function demoTaxes(propertyUuid: string | null, year: number): TaxList {
+  const taxes = PROPERTIES
+    .filter((p) => (!propertyUuid || p.id === propertyUuid) && Number(p.purchaseDate.slice(0, 4)) <= year)
+    .flatMap((p) => {
+      const rental = computeRentalTax(p, year);
+      return [withPayments(computeImu(p, year), "property_tax"), ...(rental ? [withPayments(rental, "income_tax")] : [])];
+    });
+  const amount = taxes.filter((t) => t.status === "computed").reduce((s, t) => s + t.amount, 0);
+  return { taxes, totals: amount > 0 ? [{ currency: "EUR", amount }] : [] };
+}
+
+// A few municipalities to search, as the API's list has them (Italy's, by codice catastale).
+const MUNICIPALITIES: Municipality[] = [
+  { code: "F205", name: "Milano", province: "MI", region: "Lombardia" },
+  { code: "A944", name: "Bologna", province: "BO", region: "Emilia-Romagna" },
+  { code: "L219", name: "Torino", province: "TO", region: "Piemonte" },
+  { code: "H501", name: "Roma", province: "RM", region: "Lazio" },
+  { code: "F839", name: "Napoli", province: "NA", region: "Campania" },
+  { code: "D612", name: "Firenze", province: "FI", region: "Toscana" },
+  { code: "L736", name: "Venezia", province: "VE", region: "Veneto" },
+  { code: "D969", name: "Genova", province: "GE", region: "Liguria" },
+  { code: "G273", name: "Palermo", province: "PA", region: "Sicilia" },
+  { code: "A662", name: "Bari", province: "BA", region: "Puglia" },
+  { code: "H223", name: "Reggio di Calabria", province: "RC", region: "Calabria" },
+  { code: "H224", name: "Reggio nell'Emilia", province: "RE", region: "Emilia-Romagna" },
+  { code: "A074", name: "Agliè", province: "TO", region: "Piemonte" },
+  { code: "B157", name: "Brescia", province: "BS", region: "Lombardia" },
+  { code: "A794", name: "Bergamo", province: "BG", region: "Lombardia" },
+].map((m) => ({ country: "IT", ...m }));
+
+const plain = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/** By name (exact, then starting with it, then containing it) or by code, as the API answers. */
+function demoMunicipalities({ search, codes }: { search?: string; codes?: string[] }) {
+  if (codes?.length) return codes.map((c) => MUNICIPALITIES.find((m) => m.code === c.toUpperCase())).filter((m): m is Municipality => !!m);
+  const q = plain(search ?? "");
+  if (q.length < 2) return [];
+  const rank = (m: Municipality) => (plain(m.name) === q ? 0 : plain(m.name).startsWith(q) ? 1 : 2);
+  return MUNICIPALITIES.filter((m) => plain(m.name).includes(q)).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).slice(0, 20);
+}
+
 /** A demo account's real estate, read as the API would serve it. */
 export const demoRealEstateSource: RealEstateSource = {
   overview: async () => demoOverview(),
@@ -723,4 +1024,8 @@ export const demoRealEstateSource: RealEstateSource = {
     };
   },
   valuations: async (propertyUuid) => DEMO_VALUATIONS.filter((v) => v.propertyUuid === propertyUuid),
+  taxes: async (propertyUuid, year) => demoTaxes(propertyUuid, year ?? Number(DEMO_TODAY.slice(0, 4))),
+  municipalities: async (query) => demoMunicipalities(query),
+  rentalContracts: async (propertyUuid) => DEMO_LEASES.filter((l) => !propertyUuid || l.propertyUuid === propertyUuid),
+  taxpayerYears: async (year) => DEMO_TAXPAYERS.filter((t) => year === undefined || t.year === year),
 };

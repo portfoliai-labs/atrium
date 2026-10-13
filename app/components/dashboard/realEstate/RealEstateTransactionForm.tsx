@@ -6,8 +6,8 @@ import { createPortal } from "react-dom";
 import { AlertCircle, Building2, Hammer, HandCoins, Home, KeyRound, Landmark, Loader2, Receipt, X, type LucideIcon } from "lucide-react";
 import { useRealEstate } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
-import { EXPENSE_KIND_LABELS, PREPAYMENT_EFFECT_LABELS } from "../../../lib/realEstate";
-import { errorText, today } from "../../../lib/wallets";
+import { EXPENSE_KIND_LABELS, PREPAYMENT_EFFECT_LABELS, fieldErrorText } from "../../../lib/realEstate";
+import { today } from "../../../lib/wallets";
 import { formatCurrency } from "../../../lib/format";
 import type { ExpenseKind, Mortgage, PrepaymentEffect, PropertyTransactionInput } from "../../../models/RealEstate";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
@@ -15,6 +15,17 @@ import { Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
 import { useNewProperty } from "./NewPropertyFields";
 
 export type RealEstateEntryKind = "purchase" | "sale" | "rent" | "expense" | "works" | "mortgage";
+
+/** A tax payment to record, filled in from its instalment (the property's tax cards). */
+export interface TaxPaymentPrefill {
+  // IMU, or the rents' tax.
+  kind: "property_tax" | "income_tax";
+  year: number;
+  // What's still due on it, positive.
+  amount: number;
+  dueOn: string;
+  description: string;
+}
 
 const KINDS: { value: RealEstateEntryKind; label: string; icon: LucideIcon }[] = [
   { value: "purchase", label: "Purchase", icon: Home },
@@ -25,10 +36,12 @@ const KINDS: { value: RealEstateEntryKind; label: string; icon: LucideIcon }[] =
   { value: "mortgage", label: "Mortgage", icon: Landmark },
 ];
 
-// An expense's type: the API's expense kinds, and property taxes (a kind of their own).
-type ExpenseType = ExpenseKind | "property_tax";
+// An expense's type: the API's expense kinds, and the taxes (kinds of their own).
+type ExpenseType = ExpenseKind | "property_tax" | "income_tax";
+const TAX_TYPES: ExpenseType[] = ["property_tax", "income_tax"];
 const EXPENSE_TYPES: { value: ExpenseType; label: string }[] = [
   { value: "property_tax", label: "Property tax (IMU)" },
+  { value: "income_tax", label: "Tax on rents (cedolare / IRPEF)" },
   ...(Object.keys(EXPENSE_KIND_LABELS) as ExpenseKind[]).map((k) => ({ value: k, label: EXPENSE_KIND_LABELS[k] })),
 ];
 
@@ -42,34 +55,38 @@ const EXPENSE_TYPES: { value: ExpenseType; label: string }[] = [
  * (its payoff booked as a prepayment, the mortgage closed on the sale day): the API doesn't close
  * them by itself. A demo account can fill it in but not save it.
  */
-export function RealEstateTransactionForm({ initialKind = "purchase", initialPropertyUuid, readOnly = false, onCancel, onSaved }: {
+export function RealEstateTransactionForm({ initialKind = "purchase", initialPropertyUuid, taxPayment, readOnly = false, onCancel, onSaved }: {
   initialKind?: RealEstateEntryKind;
   initialPropertyUuid?: string;
+  // Opens on Expense, as that tax payment (taxYear set: it counts for that year's tax).
+  taxPayment?: TaxPaymentPrefill;
   readOnly?: boolean;
   onCancel: () => void;
   // The property the transaction went to (the new one, for a purchase).
   onSaved: (propertyUuid: string) => void;
 }) {
   const { properties, source, changed } = useRealEstate();
-  const [kind, setKind] = useState<RealEstateEntryKind>(initialKind);
+  const [kind, setKind] = useState<RealEstateEntryKind>(taxPayment ? "expense" : initialKind);
   const open = useMemo(() => properties.filter((p) => !p.archived && !p.soldOn), [properties]);
   const [propertyUuid, setPropertyUuid] = useState(initialPropertyUuid ?? open[0]?.uuid ?? "");
   const property = open.find((p) => p.uuid === propertyUuid) ?? open[0];
   const newProperty = useNewProperty(property?.currency ?? "EUR");
 
   // ── Shared by every kind but Purchase ──
-  const [bookedOn, setBookedOn] = useState(today());
-  const [amount, setAmount] = useState("");
+  const [bookedOn, setBookedOn] = useState(taxPayment?.dueOn ?? today());
+  const [amount, setAmount] = useState(taxPayment ? String(taxPayment.amount) : "");
   const [counterparty, setCounterparty] = useState("");
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(taxPayment?.description ?? "");
   const [note, setNote] = useState("");
   // Rent.
   const [payout, setPayout] = useState<boolean | null>(null);
   const [rentPeriod, setRentPeriod] = useState("");
+  const [platformFee, setPlatformFee] = useState("");
+  const [taxWithheld, setTaxWithheld] = useState("");
   // Expense.
-  const [expenseType, setExpenseType] = useState<ExpenseType>("condo_fees");
+  const [expenseType, setExpenseType] = useState<ExpenseType>(taxPayment?.kind ?? "condo_fees");
   const [refund, setRefund] = useState(false);
-  const [taxYear, setTaxYear] = useState("");
+  const [taxYear, setTaxYear] = useState(taxPayment ? String(taxPayment.year) : "");
   // Works.
   const [incentive, setIncentive] = useState("");
   // Mortgage.
@@ -104,7 +121,8 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
         !property && "a property",
         !bookedOn && "the day",
         !positive(amount) && (kind === "sale" ? "the sale price" : "the amount"),
-        kind === "expense" && expenseType === "property_tax" && taxYear.trim() !== "" && !/^\d{4}$/.test(taxYear.trim()) && "a valid tax year",
+        kind === "expense" && TAX_TYPES.includes(expenseType) && taxYear.trim() !== "" && !/^\d{4}$/.test(taxYear.trim()) && "a valid tax year",
+        kind === "rent" && isPayout && (!optionalAmount(platformFee) || !optionalAmount(taxWithheld)) && "a valid fee and tax withheld",
         kind === "mortgage" && !mortgage && "a mortgage",
         kind === "mortgage" && !prepayment && !optionalAmount(interest) && "a valid interest",
         kind === "mortgage" && !prepayment && instalmentNumber.trim() !== "" && !/^\d+$/.test(instalmentNumber.trim()) && "a valid instalment number",
@@ -134,11 +152,15 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
         ];
       case "rent":
         return [isPayout
-          ? { kind: "short_stay_payout", ...common, amount: value }
+          ? {
+              kind: "short_stay_payout", ...common, amount: value,
+              platformFee: platformFee.trim() ? parseAmount(platformFee) : null,
+              taxWithheld: taxWithheld.trim() ? parseAmount(taxWithheld) : null,
+            }
           : { kind: "rent", ...common, amount: value, rentPeriod: rentPeriod || null }];
       case "expense":
-        return [expenseType === "property_tax"
-          ? { kind: "property_tax", ...common, amount: `-${value}`, taxYear: taxYear.trim() ? Number(taxYear.trim()) : null }
+        return [expenseType === "property_tax" || expenseType === "income_tax"
+          ? { kind: expenseType, ...common, amount: `-${value}`, taxYear: taxYear.trim() ? Number(taxYear.trim()) : null }
           : { kind: "expense", ...common, amount: refund ? value : `-${value}`, expenseKind: expenseType }];
       case "works":
         return [{ kind: "works", ...common, amount: `-${value}`, incentive: incentive.trim() || null }];
@@ -174,7 +196,7 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
       changed();
       onSaved(property!.uuid);
     } catch (err) {
-      setError(errorText(err, kind === "purchase" ? "Unable to add this property." : "Unable to save this transaction."));
+      setError(fieldErrorText(err, kind === "purchase" ? "Unable to add this property." : "Unable to save this transaction."));
       setBusy(false);
     }
   };
@@ -216,7 +238,10 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
           <Field label="Day">
             <input type="date" value={bookedOn} onChange={(e) => setBookedOn(e.target.value)} className={INPUT} />
           </Field>
-          <Field label={`${kind === "sale" ? "Sale price" : "Amount"} (${currency})`} hint={kind === "sale" ? "Your part of it." : undefined}>
+          <Field
+            label={`${kind === "sale" ? "Sale price" : kind === "rent" && isPayout ? "Payout received" : "Amount"} (${currency})`}
+            hint={kind === "sale" ? "Your part of it." : kind === "rent" && isPayout ? "What reached your account." : undefined}
+          >
             <input
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
@@ -242,6 +267,16 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
               <Field label={isPayout ? "Platform" : "Tenant"}>
                 <input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} placeholder={isPayout ? "Airbnb" : "Optional"} className={INPUT} />
               </Field>
+              {isPayout && (
+                <>
+                  <Field label="Platform fee" hint="What the platform kept, from its statement.">
+                    <input value={platformFee} onChange={(e) => setPlatformFee(e.target.value)} inputMode="decimal" placeholder="Optional" className={INPUT} />
+                  </Field>
+                  <Field label="Tax withheld" hint="The 21% the platform withheld: it counts as paid.">
+                    <input value={taxWithheld} onChange={(e) => setTaxWithheld(e.target.value)} inputMode="decimal" placeholder="Optional" className={INPUT} />
+                  </Field>
+                </>
+              )}
             </>
           )}
 
@@ -252,8 +287,8 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
                   {EXPENSE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </Field>
-              {expenseType === "property_tax" ? (
-                <Field label="Tax year" hint="The booking day's year, unless you say.">
+              {TAX_TYPES.includes(expenseType) ? (
+                <Field label="Tax year" hint={`The ${expenseType === "property_tax" ? "IMU" : "rents' tax"} year it pays: the booking day's year, unless you say.`}>
                   <input value={taxYear} onChange={(e) => setTaxYear(e.target.value)} inputMode="numeric" placeholder={bookedOn.slice(0, 4)} className={INPUT} />
                 </Field>
               ) : (
@@ -411,9 +446,10 @@ function usePropertyMortgages(propertyUuid: string | undefined, source: ReturnTy
  * The real estate form in a dialog: the real estate's "Add transaction" (on Purchase while there's
  * no property yet) and Wealth's "Add property".
  */
-export function RealEstateTransactionDialog({ initialKind, initialPropertyUuid, onClose, onSaved }: {
+export function RealEstateTransactionDialog({ initialKind, initialPropertyUuid, taxPayment, onClose, onSaved }: {
   initialKind?: RealEstateEntryKind;
   initialPropertyUuid?: string;
+  taxPayment?: TaxPaymentPrefill;
   onClose: () => void;
   onSaved: (propertyUuid: string) => void;
 }) {
@@ -442,7 +478,7 @@ export function RealEstateTransactionDialog({ initialKind, initialPropertyUuid, 
             <span className="font-black text-white">Demo account — read only.</span> Try the form out; it can&apos;t be saved.
           </p>
         )}
-        <RealEstateTransactionForm initialKind={initialKind} initialPropertyUuid={initialPropertyUuid} readOnly={sample} onCancel={onClose} onSaved={onSaved} />
+        <RealEstateTransactionForm initialKind={initialKind} initialPropertyUuid={initialPropertyUuid} taxPayment={taxPayment} readOnly={sample} onCancel={onClose} onSaved={onSaved} />
       </div>
     </div>,
     document.body,

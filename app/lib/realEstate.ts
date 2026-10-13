@@ -5,11 +5,13 @@
 // data, see lib/mock/realEstate).
 
 import type {
-  CostKind, ExpenseKind, InstalmentFrequency, Mortgage, MortgageSchedule, PrepaymentEffect, PropertyKind,
-  PropertyTransactionFilters, PropertyTransactionKind, PropertyTransactionList, PropertyUse, RateIndex,
-  RealEstateOverview, RealEstateSummary, Valuation, ValuationSource,
+  CostKind, ExpenseKind, HolderKind, InstalmentFrequency, Mortgage, MortgageSchedule, Municipality, NotComputedReason,
+  PrepaymentEffect, PropertyKind, PropertyTransactionFilters, PropertyTransactionKind, PropertyTransactionList, PropertyUse,
+  RateIndex, RateSource, RealEstateOverview, RealEstateSummary, RentalContract, RentalContractKind, TaxList, TaxReduction,
+  TaxRegime, TaxpayerYear, Valuation, ValuationSource,
 } from "../models/RealEstate";
 import { realEstateService } from "../services/realEstateService";
+import { ApiError } from "../services/apiClient";
 
 export const PROPERTY_KIND_LABELS: Record<PropertyKind, string> = {
   apartment: "Apartment",
@@ -27,6 +29,8 @@ export const PROPERTY_USE_LABELS: Record<PropertyUse, string> = {
   long_term_rental: "Long-term rental",
   short_term_rental: "Short-term rental",
   vacant: "Vacant",
+  free_loan: "Lent free (comodato)",
+  uninhabitable: "Uninhabitable",
 };
 export const PROPERTY_USES = Object.keys(PROPERTY_USE_LABELS) as PropertyUse[];
 
@@ -42,6 +46,7 @@ export const TRANSACTION_KIND_LABELS: Record<PropertyTransactionKind, string> = 
   property_tax: "Property tax",
   mortgage_instalment: "Mortgage instalment",
   mortgage_prepayment: "Mortgage prepayment",
+  income_tax: "Tax on rents",
 };
 
 export const COST_KIND_LABELS: Record<CostKind, string> = {
@@ -89,6 +94,93 @@ export const VALUATION_SOURCE_LABELS: Record<ValuationSource, string> = {
   purchase_price: "Purchase price",
 };
 
+export const HOLDER_KIND_LABELS: Record<HolderKind, string> = { person: "A person", company: "A company" };
+
+// ── Taxes (Italy's IMU) ──
+
+// What each rate class means (the country's names: Italy's).
+export const RATE_CLASS_LABELS: Record<string, string> = {
+  primary_residence: "Primary residence: exempt",
+  primary_residence_luxury: "Luxury primary residence (A/1, A/8, A/9)",
+  appurtenance: "Appurtenance of the primary residence: exempt",
+  exempt_category: "Exempt category (group E)",
+  rural: "Rural building (D/10)",
+  group_d: "Productive building (group D)",
+  other_buildings: "Other buildings",
+  // The rents' tax.
+  flat_rate: "Cedolare secca, 21%",
+  flat_rate_agreed: "Cedolare secca on an agreed rent, 10%",
+  flat_rate_short_stay: "Cedolare secca on short stays, 21%",
+  flat_rate_short_stay_other: "Cedolare secca on short stays, 26% (a further apartment)",
+  ordinary: "IRPEF, at your rates",
+};
+export const rateClassLabel = (c: string) => RATE_CLASS_LABELS[c] ?? c.replaceAll("_", " ");
+
+export const REDUCTION_LABELS: Record<TaxReduction, string> = {
+  historic: "Historic building: half the base",
+  uninhabitable: "Uninhabitable: half the base",
+  free_loan_to_relative: "Lent to a relative: half the base",
+  agreed_rent: "Agreed rent",
+};
+
+/** Where a period's rate comes from, as a sentence. */
+export function rateSourceText(source: RateSource, year: number, rateYear: number | null) {
+  switch (source) {
+    case "user": return "Your rate";
+    case "municipality": return `The municipality's ${year} rate`;
+    case "municipality_earlier_year": return `The municipality's ${rateYear ?? "earlier"} rate: none published for ${year} yet`;
+    case "legal": return "The legal rate: the municipality hasn't published one";
+    case "exempt": return "Exempt";
+  }
+}
+
+export const NOT_COMPUTED_TEXT: Record<NotComputedReason, string> = {
+  missing_details: "Some land registry details are missing.",
+  unsupported_property: "Not computed for this property: land, a category F unit, a region with its own tax, or a currency other than euro.",
+  unsupported_year: "Not computed for that year.",
+  business_activity: "Short stays in more apartments than a person may let in the year: it's a business's income, not worked out here.",
+};
+
+export const RENTAL_CONTRACT_KIND_LABELS: Record<RentalContractKind, string> = {
+  residential: "Free rent (4+4)",
+  agreed: "Agreed rent (3+2)",
+  transitional: "Transitional",
+  student: "Students",
+  commercial: "Commercial",
+};
+export const RENTAL_CONTRACT_KINDS = Object.keys(RENTAL_CONTRACT_KIND_LABELS) as RentalContractKind[];
+// The kinds at an agreed rent, Italy's only: IMU at 75%, and the cedolare at 10% where housing is tight.
+export const AGREED_KINDS: RentalContractKind[] = ["agreed", "transitional", "student"];
+
+export const TAX_REGIME_LABELS: Record<TaxRegime, string> = {
+  flat_rate: "Cedolare secca",
+  ordinary: "IRPEF",
+};
+
+// The fields as the API names them (PATCH /properties, errors' `field`), as the form shows them.
+export const PROPERTY_FIELD_LABELS: Record<string, string> = {
+  name: "Name", kind: "Kind", use: "Use", address: "Address", "address.country": "Country", "address.street": "Street",
+  "address.locality": "Town", "address.region": "Region", "address.postalCode": "Postal code", "address.neighbourhood": "Neighbourhood",
+  "address.location": "Location", currency: "Currency", surfaceSqm: "Surface", rooms: "Rooms", yearBuilt: "Year built",
+  energyRating: "Energy rating", ownershipSharePct: "Your share", note: "Note", details: "Land registry",
+  "details.municipalityCode": "Municipality", "details.cadastralCategory": "Cadastral category", "details.cadastralIncome": "Cadastral income",
+  "details.cadastralSheet": "Sheet", "details.cadastralParcel": "Parcel", "details.cadastralSubunit": "Subunit",
+  "holder.name": "Holder's name", appurtenantToUuid: "Belongs to", effectiveOn: "From", ratePct: "Rate", year: "Year",
+  // Leases and taxpayers.
+  startsOn: "Start", endsOn: "End", monthlyRent: "Monthly rent", taxRegime: "Tax regime",
+  highTensionMunicipality: "High housing tension", tenant: "Tenant", "taxpayer.otherIncome": "Your other income",
+  otherIncome: "Other income", surchargesPct: "Surcharges", reducedRatePropertyUuid: "Short stays at 21%",
+  shortStayRegime: "Short stays' regime", holderName: "Taxpayer", platformFee: "Platform fee", taxWithheld: "Tax withheld",
+};
+export const fieldLabel = (field: string) => PROPERTY_FIELD_LABELS[field] ?? field;
+
+/** An API error's text, led by the field it names (InvalidPropertyError's `field`…), or `fallback`. */
+export function fieldErrorText(err: unknown, fallback: string) {
+  if (!(err instanceof Error) || !err.message) return fallback;
+  const field = err instanceof ApiError ? err.metadata.field : undefined;
+  return field ? `${fieldLabel(field)}: ${err.message}` : err.message;
+}
+
 /** Energy ratings offered on the form (any other can be typed). */
 export const ENERGY_RATINGS = ["A4", "A3", "A2", "A1", "B", "C", "D", "E", "F", "G"];
 
@@ -111,6 +203,13 @@ export interface RealEstateSource {
   mortgages(propertyUuid: string | null): Promise<Mortgage[]>;
   schedule(mortgageUuid: string): Promise<MortgageSchedule>;
   valuations(propertyUuid: string): Promise<Valuation[]>;
+  // Every property's of the year (archived ones too when asked), or one's.
+  taxes(propertyUuid: string | null, year?: number, includeArchived?: boolean): Promise<TaxList>;
+  municipalities(query: { search?: string; codes?: string[] }): Promise<Municipality[]>;
+  // Every property's leases (archived ones' too), or one's, by start.
+  rentalContracts(propertyUuid: string | null): Promise<RentalContract[]>;
+  // A year's, or every year's.
+  taxpayerYears(year?: number): Promise<TaxpayerYear[]>;
 }
 
 export const apiRealEstateSource: RealEstateSource = {
@@ -120,4 +219,8 @@ export const apiRealEstateSource: RealEstateSource = {
   mortgages: (propertyUuid) => realEstateService.mortgages(propertyUuid),
   schedule: (mortgageUuid) => realEstateService.schedule(mortgageUuid),
   valuations: (propertyUuid) => realEstateService.valuations(propertyUuid),
+  taxes: (propertyUuid, year, includeArchived) => realEstateService.taxes(propertyUuid, year, includeArchived),
+  municipalities: (query) => realEstateService.municipalities(query),
+  rentalContracts: (propertyUuid) => realEstateService.rentalContracts(propertyUuid),
+  taxpayerYears: (year) => realEstateService.taxpayerYears(year),
 };
