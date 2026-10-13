@@ -9,7 +9,8 @@ import type {
   PrepaymentEffect, PropertyKind, PropertyTransactionFilters, PropertyTransactionKind, PropertyTransactionList, PropertyUse,
   RateIndex, RateSource, RealEstateOverview, RealEstateSummary, RentalContract, RentalContractKind, TaxList, TaxReduction,
   TaxRegime, TaxpayerYear, Valuation, ValuationSource, AcquisitionKind, IncentiveKind, PropertyTax, SaleSimulationRequest,
-  MovementLinkProposal, RealEstateAlertFinding, RealEstateAlertParams, RealEstateAlertRule, RealEstateAlertType,
+  MovementLinkProposal, PrepaymentSimulation, PrepaymentSimulationRequest, RefinancingSimulation, RefinancingSimulationRequest,
+  RealEstateAlertFinding, RealEstateAlertParams, RealEstateAlertRule, RealEstateAlertType,
 } from "../models/RealEstate";
 import { realEstateService } from "../services/realEstateService";
 import { ApiError } from "../services/apiClient";
@@ -198,6 +199,9 @@ export const PROPERTY_FIELD_LABELS: Record<string, string> = {
   // Alert rules.
   propertyUuid: "Property", params: "The rule", "params.dayOfMonth": "Day of the month", "params.daysBefore": "Days",
   "params.daysAfter": "Days", "params.thresholdPct": "Threshold",
+  // Mortgage simulations.
+  prepaidOn: "The day", refinancedOn: "The day", amount: "Amount", costs: "Costs", "rate.fixedPct": "Rate",
+  "rate.variable.spreadPct": "Spread", "rate.variable.initialPct": "Rate today", termMonths: "Term", frequency: "Frequency",
 };
 export const fieldLabel = (field: string) => PROPERTY_FIELD_LABELS[field] ?? field;
 
@@ -376,6 +380,9 @@ export interface RealEstateSource {
   movementLinkProposals(propertyUuid: string | null, bookedFrom: string, bookedTo: string): Promise<MovementLinkProposal[]>;
   // Every rule, or a property's (its own and those on every property), each with what it finds today.
   alertRules(propertyUuid: string | null): Promise<RealEstateAlertRule[]>;
+  // A mortgage's schedule were part of it repaid, or were it refinanced: nothing is stored.
+  simulatePrepayment(mortgageUuid: string, request: PrepaymentSimulationRequest): Promise<PrepaymentSimulation>;
+  simulateRefinancing(mortgageUuid: string, request: RefinancingSimulationRequest): Promise<RefinancingSimulation>;
 }
 
 export const apiRealEstateSource: RealEstateSource = {
@@ -392,4 +399,6 @@ export const apiRealEstateSource: RealEstateSource = {
   simulateSale: (propertyUuid, request) => realEstateService.simulateSale(propertyUuid, request),
   movementLinkProposals: (propertyUuid, bookedFrom, bookedTo) => realEstateService.movementLinkProposals(propertyUuid, bookedFrom, bookedTo),
   alertRules: (propertyUuid) => realEstateService.alertRules(propertyUuid),
+  simulatePrepayment: (mortgageUuid, request) => realEstateService.simulatePrepayment(mortgageUuid, request),
+  simulateRefinancing: (mortgageUuid, request) => realEstateService.simulateRefinancing(mortgageUuid, request),
 };

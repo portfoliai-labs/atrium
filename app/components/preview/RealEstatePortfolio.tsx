@@ -6,7 +6,7 @@ import {
   BarChart, Bar, LineChart, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ReferenceLine, ReferenceDot, Legend, CartesianGrid, ComposedChart,
 } from "recharts";
-import { Building2, Download, FileSearch, FileText, Home, Landmark, MapPin, Sparkles } from "lucide-react";
+import { Building2, Download, FileSearch, FileText, Home, MapPin, Sparkles } from "lucide-react";
 import { Breadcrumb, type Crumb } from "../dashboard/Breadcrumb";
 import { formatCompact, formatCurrency } from "../../lib/format";
 import { CATEGORICAL_PALETTE } from "../../lib/chartColors";
@@ -298,7 +298,6 @@ function RealEstateReports() {
 function Roadmap() {
   const items = [
     { icon: <FileSearch className="h-4 w-4" />, title: "Valuation from comparables", text: "Estimate each property from recent sales of similar homes nearby, not just the zone index." },
-    { icon: <Landmark className="h-4 w-4" />, title: "Refinancing", text: "What switching rate or lender would save on each mortgage, costs included." },
     { icon: <Home className="h-4 w-4" />, title: "Renovation ROI", text: "What an energy-class upgrade adds to value and rent, net of incentives." },
     { icon: <Building2 className="h-4 w-4" />, title: "Real estate next to securities", text: "Property value and equity counted in the Dashboard's net worth and in Compare." },
     { icon: <Sparkles className="h-4 w-4" />, title: "AI deal check", text: "Paste a listing: fair price, expected yield and short-stay score before you buy." },

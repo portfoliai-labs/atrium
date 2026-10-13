@@ -868,3 +868,72 @@ export interface RealEstateAlertRuleUpdateRequest {
   notifyInApp?: boolean;
   enabled?: boolean;
 }
+
+// ── Mortgage simulations (nothing is stored) ──
+
+/** A mortgage's schedule from a day on: as it stands, or as a prepayment or refinancing would leave it. */
+export interface ScheduleOutlook {
+  // Owed at the end of the day, after that day's instalment and, simulated, the prepayment.
+  residualDebt: number;
+  // Due after the day, oldest first.
+  instalments: Instalment[];
+  instalmentCount: number;
+  // 0 when none is left.
+  nextPayment: number;
+  ratePct: number;
+  lastInstalmentOn: string | null;
+  // The instalments' interest, summed.
+  interest: number;
+  totalPaid: number;
+}
+
+export interface PrepaymentSimulationRequest {
+  // Today or later, while something is still owed.
+  prepaidOn: string;
+  // > 0; more than is owed pays the mortgage off.
+  amount: Amount;
+  // Default reduce_instalment.
+  effect?: PrepaymentEffect;
+  // The bank's charges, ≥ 0 (Italy: none on a person's home loan).
+  costs?: Amount;
+}
+
+export interface PrepaymentSimulation {
+  currency: string;
+  // The amount applied: at most what was owed.
+  prepaid: number;
+  current: ScheduleOutlook;
+  simulated: ScheduleOutlook;
+  interestSaved: number;
+  costs: number;
+  // interestSaved - costs.
+  netSaving: number;
+}
+
+/** A surroga or renegotiation: the residual debt moved to a new rate and term, no extra money. */
+export interface RefinancingSimulationRequest {
+  refinancedOn: string;
+  rate: MortgageRateInput;
+  // 1-600; default: the months left, rounded up to whole instalments.
+  termMonths?: number;
+  // Default: the current one.
+  frequency?: InstalmentFrequency;
+  // Notary, appraisal, fees, ≥ 0 (Italy: none on a surroga).
+  costs?: Amount;
+}
+
+export interface RefinancingSimulation {
+  currency: string;
+  // Owed on the day: the new mortgage's principal.
+  principal: number;
+  termMonths: number;
+  current: ScheduleOutlook;
+  refinanced: ScheduleOutlook;
+  // Negative when the new schedule costs more interest (a longer term).
+  interestSaved: number;
+  costs: number;
+  netSaving: number;
+  // With costs only: the first new instalment by which the interest saved covers them; null if never.
+  breakEvenInstalment: number | null;
+  breakEvenOn: string | null;
+}

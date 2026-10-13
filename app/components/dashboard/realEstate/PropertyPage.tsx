@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Archive, ChevronDown, ChevronUp, Loader2, Trash2, X } from "lucide-react";
+import { Archive, Calculator, ChevronDown, ChevronUp, Loader2, Trash2, X } from "lucide-react";
 import { useRealEstate, useRealEstateSummary } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { formatCurrency } from "../../../lib/format";
@@ -25,6 +25,7 @@ import { PropertyTaxModule, PropertyUsesModule } from "./PropertyTaxes";
 import { LeasesModule, TaxpayerYearDialog } from "./PropertyRentals";
 import { SaleSimulatorModule } from "./SaleTax";
 import { alertsCounter, useAlertRules } from "./RealEstateAlerts";
+import { MortgageSimulatorDialog } from "./MortgageSimulator";
 
 const ARCHIVED_TITLE = "An archived property is read only";
 const pct = (v: number, digits = 1) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}%`;
@@ -53,6 +54,7 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
   const summary = useRealEstateSummary(property.uuid, (property.purchasedOn ?? property.createdAt).slice(0, 7));
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [rateFor, setRateFor] = useState<Mortgage | null>(null);
+  const [simulating, setSimulating] = useState<Mortgage | null>(null);
   const [taxPayment, setTaxPayment] = useState<TaxPaymentPrefill | null>(null);
   const [taxpayerYear, setTaxpayerYear] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -154,6 +156,7 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
         version={version}
         readOnly={readOnly}
         onChangeRate={setRateFor}
+        onSimulate={setSimulating}
         onChanged={changed}
       />
 
@@ -165,6 +168,15 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
 
       {dialog === "transaction" && (
         <RealEstateTransactionDialog initialKind="rent" initialPropertyUuid={property.uuid} onClose={close} onSaved={close} />
+      )}
+      {simulating && (
+        <MortgageSimulatorDialog
+          property={property}
+          mortgage={simulating}
+          readOnly={readOnly}
+          onClose={() => setSimulating(null)}
+          onRecorded={() => { setSimulating(null); changed(); }}
+        />
       )}
       {taxpayerYear !== null && (
         <TaxpayerYearDialog year={taxpayerYear} onClose={() => setTaxpayerYear(null)} onSaved={() => { setTaxpayerYear(null); changed(); }} />
@@ -250,12 +262,14 @@ function rateText(m: Mortgage) {
 }
 
 /** The property's mortgages, open first: each with its figures, its schedule and its rate changes. */
-function MortgagesModule({ property, source, version, readOnly, onChangeRate, onChanged }: {
+function MortgagesModule({ property, source, version, readOnly, onChangeRate, onSimulate, onChanged }: {
   property: Property;
   source: Source;
   version: number;
   readOnly: boolean;
   onChangeRate: (m: Mortgage) => void;
+  // Prepaying or refinancing it, simulated (read only too: nothing is stored until recorded).
+  onSimulate: (m: Mortgage) => void;
   onChanged: () => void;
 }) {
   const mortgages = useRead(`mortgages:${property.uuid}`, () => source.mortgages(property.uuid), version);
@@ -299,6 +313,7 @@ function MortgagesModule({ property, source, version, readOnly, onChangeRate, on
             readOnly={readOnly}
             busy={busy !== null}
             onChangeRate={() => onChangeRate(m)}
+            onSimulate={() => onSimulate(m)}
             onRemoveRate={(day) => act(m.uuid, () => realEstateService.removeRateChange(m.uuid, day), "Unable to remove this rate change.")}
             onToggleClosed={() => act(m.uuid, () => realEstateService.updateMortgage(m.uuid, { closedOn: m.closedOn ? "" : today() }), "Unable to change this mortgage.")}
             onDelete={() => { setError(null); setDeleting(m); }}
@@ -320,7 +335,7 @@ function MortgagesModule({ property, source, version, readOnly, onChangeRate, on
   );
 }
 
-function MortgageCard({ mortgage: m, source, version, money, readOnly, busy, onChangeRate, onRemoveRate, onToggleClosed, onDelete }: {
+function MortgageCard({ mortgage: m, source, version, money, readOnly, busy, onChangeRate, onSimulate, onRemoveRate, onToggleClosed, onDelete }: {
   mortgage: Mortgage;
   source: Source;
   version: number;
@@ -328,6 +343,7 @@ function MortgageCard({ mortgage: m, source, version, money, readOnly, busy, onC
   readOnly: boolean;
   busy: boolean;
   onChangeRate: () => void;
+  onSimulate: () => void;
   onRemoveRate: (day: string) => void;
   onToggleClosed: () => void;
   onDelete: () => void;
@@ -347,13 +363,20 @@ function MortgageCard({ mortgage: m, source, version, money, readOnly, busy, onC
             {money(m.principal)} over {m.termMonths % 12 === 0 ? `${m.termMonths / 12} years` : `${m.termMonths} months`} · {FREQUENCY_LABELS[m.frequency]} · {rateText(m)}
           </p>
         </div>
-        {!readOnly && (
-          <div className="flex flex-wrap gap-2">
-            {!m.closedOn && <button type="button" disabled={busy} onClick={onChangeRate} className={button}>Change rate</button>}
-            <button type="button" disabled={busy} onClick={onToggleClosed} className={button}>{m.closedOn ? "Reopen" : "Close"}</button>
-            <button type="button" disabled={busy} onClick={onDelete} aria-label="Delete mortgage" className={`${button} text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {!m.closedOn && m.residualDebt > 0 && (
+            <button type="button" disabled={busy} onClick={onSimulate} className={`${button} inline-flex items-center gap-1.5 text-[#8A6A28] border-[#E0DACC] hover:border-[#C49A3C]`}>
+              <Calculator className="h-3 w-3" /> Prepay or refinance
+            </button>
+          )}
+          {!readOnly && (
+            <>
+              {!m.closedOn && <button type="button" disabled={busy} onClick={onChangeRate} className={button}>Change rate</button>}
+              <button type="button" disabled={busy} onClick={onToggleClosed} className={button}>{m.closedOn ? "Reopen" : "Close"}</button>
+              <button type="button" disabled={busy} onClick={onDelete} aria-label="Delete mortgage" className={`${button} text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
+            </>
+          )}
+        </div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-2 text-[12px]">
         <Stat label="Left to repay" value={money(m.residualDebt)} />

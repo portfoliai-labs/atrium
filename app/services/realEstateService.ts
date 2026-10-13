@@ -7,6 +7,7 @@ import type {
   RentalContract, RentalContractInput, RentalContractUpdateRequest, TaxpayerYear, TaxpayerYearInput,
   PropertyTax, SaleSimulationRequest, MovementLinkProposal,
   RealEstateAlertRule, RealEstateAlertRuleInput, RealEstateAlertRuleUpdateRequest,
+  PrepaymentSimulation, PrepaymentSimulationRequest, RefinancingSimulation, RefinancingSimulationRequest,
 } from "../models/RealEstate";
 import { apiFetch } from "./apiClient";
 
@@ -156,6 +157,20 @@ export const realEstateService = {
   // GET /v1/real-estate/mortgages/{m}/schedule — computed on read.
   async schedule(mortgageUuid: string): Promise<MortgageSchedule> {
     return apiFetch<MortgageSchedule>(`${BASE}/mortgages/${mortgageUuid}/schedule`);
+  },
+
+  // POST /v1/real-estate/mortgages/{m}/prepayment-simulation — the schedule were part of the debt
+  // (or all of it) repaid on a day; nothing is stored. 422 (field prepaidOn) on a past day or a
+  // mortgage that owes nothing.
+  async simulatePrepayment(mortgageUuid: string, payload: PrepaymentSimulationRequest): Promise<PrepaymentSimulation> {
+    return apiFetch<PrepaymentSimulation>(`${BASE}/mortgages/${mortgageUuid}/prepayment-simulation`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // POST /v1/real-estate/mortgages/{m}/refinancing-simulation — the residual debt moved to a new
+  // rate and term (a surroga, a renegotiation); nothing is stored. A variable rate is taken as
+  // today's for the whole term, on both sides.
+  async simulateRefinancing(mortgageUuid: string, payload: RefinancingSimulationRequest): Promise<RefinancingSimulation> {
+    return apiFetch<RefinancingSimulation>(`${BASE}/mortgages/${mortgageUuid}/refinancing-simulation`, { method: "POST", body: JSON.stringify(payload) });
   },
 
   // GET /v1/real-estate/properties/{p}/valuations — newest first.

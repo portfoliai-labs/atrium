@@ -13,6 +13,7 @@ import type {
   ItalianDetails, Mortgage, MortgageSchedule, Municipality, Property as ApiProperty, PropertyTax, PropertyTransaction, SaleSimulationRequest,
   PropertyTransactionFilters, PropertyUse, RealEstateMonth, RealEstateOverview, RealEstateSummary, RentalContract, TaxInstalment,
   TaxList, TaxPeriod, TaxpayerYear, UsePeriod, Valuation, RealEstateAlertFinding, RealEstateAlertParams, RealEstateAlertRule,
+  Instalment, ScheduleOutlook, PrepaymentSimulationRequest, RefinancingSimulationRequest, PrepaymentSimulation, RefinancingSimulation,
 } from "../../models/RealEstate";
 
 export type PropertyType = "Apartment" | "House" | "Commercial" | "Garage" | "Land";
@@ -1109,6 +1110,93 @@ const DEMO_ALERT_RULES: RealEstateAlertRule[] = DEMO_RULES.map((rule) => {
   };
 });
 
+// ── Mortgage simulations: a prepayment, a refinancing (simplified copies of the API's) ──
+
+const PERIOD_MONTHS = { monthly: 1, quarterly: 3, semiannual: 6 } as const;
+
+/**
+ * Equal instalments on `debt` at `ratePct`: `count` of them, or `payment` each until it's repaid;
+ * due on `dueOn(i)`, numbered from `first`.
+ */
+function amortise(debt: number, ratePct: number, periodMonths: number, dueOn: (i: number) => string, first: number, plan: { count: number } | { payment: number }): Instalment[] {
+  const r = (ratePct / 100) * (periodMonths / 12);
+  const payment = "payment" in plan ? plan.payment : r === 0 ? debt / plan.count : (debt * r) / (1 - (1 + r) ** -plan.count);
+  const rows: Instalment[] = [];
+  for (let i = 0; debt > 0.005 && i < 1200; i++) {
+    const interest = debt * r;
+    const last = "count" in plan ? i === plan.count - 1 : payment - interest >= debt;
+    const principal = last ? debt : Math.min(debt, payment - interest);
+    debt = Math.max(0, debt - principal);
+    rows.push({
+      number: first + i, dueOn: dueOn(i), payment: round(principal + interest, 2), principal: round(principal, 2),
+      interest: round(interest, 2), residualDebt: round(debt, 2), ratePct, transactionUuid: null,
+    });
+  }
+  return rows;
+}
+
+function outlook(debt: number, ratePct: number, instalments: Instalment[]): ScheduleOutlook {
+  return {
+    residualDebt: round(debt, 2),
+    instalments,
+    instalmentCount: instalments.length,
+    nextPayment: instalments[0]?.payment ?? 0,
+    ratePct,
+    lastInstalmentOn: instalments.at(-1)?.dueOn ?? null,
+    interest: round(instalments.reduce((s, i) => s + i.interest, 0), 2),
+    totalPaid: round(instalments.reduce((s, i) => s + i.payment, 0), 2),
+  };
+}
+
+/** The schedule from `day` on, as it stands; refused before the sample's today or once repaid. */
+function currentOutlook(mortgageUuid: string, day: string) {
+  const def = MORTGAGE_DEFS.find((d) => d.uuid === mortgageUuid);
+  if (!def) throw new Error("Mortgage not found.");
+  const rows = SCHEDULES.get(def.uuid)!;
+  const done = rows.filter((row) => row.dueOn <= day);
+  const debt = done.length ? done.at(-1)!.residualDebt : def.property.mortgage!.principal;
+  const left = rows.filter((row) => row.dueOn > day).map((row) => ({ ...row, transactionUuid: null }));
+  if (day < DEMO_TODAY || debt <= 0) throw new Error("The day must be today or later, while something is still owed.");
+  return { def, debt, left, current: outlook(debt, left[0]?.ratePct ?? def.rateChanges.at(-1)!.ratePct, left) };
+}
+
+function demoPrepayment(mortgageUuid: string, request: PrepaymentSimulationRequest): PrepaymentSimulation {
+  const { debt, left, current } = currentOutlook(mortgageUuid, request.prepaidOn);
+  const prepaid = round(Math.min(Number(request.amount), debt), 2);
+  const after = debt - prepaid;
+  const dueOn = (i: number) => left[i]?.dueOn ?? addMonths(left.at(-1)!.dueOn, i - left.length + 1);
+  const rows = after <= 0 ? [] : amortise(after, current.ratePct, 1, dueOn, left[0].number,
+    request.effect === "shorten_term" ? { payment: current.nextPayment } : { count: left.length });
+  const simulated = outlook(after, current.ratePct, rows);
+  const costs = Number(request.costs ?? 0);
+  const interestSaved = round(current.interest - simulated.interest, 2);
+  return { currency: "EUR", prepaid, current, simulated, interestSaved, costs, netSaving: round(interestSaved - costs, 2) };
+}
+
+function demoRefinancing(mortgageUuid: string, request: RefinancingSimulationRequest): RefinancingSimulation {
+  const { debt, left, current } = currentOutlook(mortgageUuid, request.refinancedOn);
+  const period = PERIOD_MONTHS[request.frequency ?? "monthly"];
+  const termMonths = request.termMonths ?? Math.ceil(left.length / period) * period;
+  const ratePct = Number(request.rate.fixedPct ?? request.rate.variable!.initialPct);
+  const rows = amortise(debt, ratePct, period, (i) => addMonths(request.refinancedOn, (i + 1) * period), 1, { count: termMonths / period });
+  const refinanced = outlook(debt, ratePct, rows);
+  const costs = Number(request.costs ?? 0);
+  const interestSaved = round(current.interest - refinanced.interest, 2);
+  // The first new instalment by which the interest saved since the day covers the costs.
+  let breakEven: Instalment | null = null;
+  if (costs > 0) {
+    for (const row of rows) {
+      const before = current.instalments.filter((i) => i.dueOn <= row.dueOn).reduce((s, i) => s + i.interest, 0);
+      const now = rows.filter((i) => i.number <= row.number).reduce((s, i) => s + i.interest, 0);
+      if (before - now >= costs) { breakEven = row; break; }
+    }
+  }
+  return {
+    currency: "EUR", principal: round(debt, 2), termMonths, current, refinanced, interestSaved, costs, netSaving: round(interestSaved - costs, 2),
+    breakEvenInstalment: breakEven?.number ?? null, breakEvenOn: breakEven?.dueOn ?? null,
+  };
+}
+
 /** A demo account's real estate, read as the API would serve it. */
 export const demoRealEstateSource: RealEstateSource = {
   overview: async () => demoOverview(),
@@ -1142,5 +1230,7 @@ export const demoRealEstateSource: RealEstateSource = {
   },
   // The sample wallets and properties aren't linked: nothing to propose.
   movementLinkProposals: async () => [],
+  simulatePrepayment: async (mortgageUuid, request) => demoPrepayment(mortgageUuid, request),
+  simulateRefinancing: async (mortgageUuid, request) => demoRefinancing(mortgageUuid, request),
   alertRules: async (propertyUuid) => DEMO_ALERT_RULES.filter((r) => !propertyUuid || !r.propertyUuid || r.propertyUuid === propertyUuid),
 };
