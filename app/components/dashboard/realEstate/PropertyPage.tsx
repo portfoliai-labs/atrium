@@ -23,6 +23,7 @@ import { MortgageDialog, PropertyEditDialog, RateChangeDialog, ValuationDialog }
 import { RealEstateTransactionDialog, type TaxPaymentPrefill } from "./RealEstateTransactionForm";
 import { PropertyTaxModule, PropertyUsesModule } from "./PropertyTaxes";
 import { LeasesModule, TaxpayerYearDialog } from "./PropertyRentals";
+import { SaleSimulatorModule } from "./SaleTax";
 
 const ARCHIVED_TITLE = "An archived property is read only";
 const pct = (v: number, digits = 1) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}%`;
@@ -35,7 +36,7 @@ type Dialog = "transaction" | "valuation" | "mortgage" | "edit" | "archive" | "d
  * share, how that stands against what was put in, its year in figures and what can be done with it
  * (a transaction, a valuation, a mortgage, its settings, archive, delete); under it its value since
  * the purchase and its last 12 months' cash flow, its taxes (Italy's IMU and the tax on its rents,
- * PropertyTaxModule), its leases, its mortgages (each with its schedule and rate changes, closed or
+ * PropertyTaxModule), its leases, what a sale would be taxed (SaleSimulatorModule), its mortgages (each with its schedule and rate changes, closed or
  * reopened), its valuations, its use over time and its details. Its amounts are in its own
  * currency. An archived property, and a demo account's, are read only.
  */
@@ -138,6 +139,8 @@ export function PropertyPage({ property, trail, onOpenTransactions, onGone }: {
       />
 
       <LeasesModule property={property} readOnly={readOnly} onChanged={changed} />
+
+      {property.address.country === "IT" && !property.soldOn && !property.archived && <SaleSimulatorModule property={property} />}
 
       <MortgagesModule
         property={property}

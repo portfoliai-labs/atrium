@@ -6,20 +6,21 @@ import { createPortal } from "react-dom";
 import { AlertCircle, Building2, Hammer, HandCoins, Home, KeyRound, Landmark, Loader2, Receipt, X, type LucideIcon } from "lucide-react";
 import { useRealEstate } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
-import { EXPENSE_KIND_LABELS, PREPAYMENT_EFFECT_LABELS, fieldErrorText } from "../../../lib/realEstate";
+import { EXPENSE_KIND_LABELS, INCENTIVE_KIND_LABELS, PREPAYMENT_EFFECT_LABELS, fieldErrorText } from "../../../lib/realEstate";
 import { today } from "../../../lib/wallets";
 import { formatCurrency } from "../../../lib/format";
-import type { ExpenseKind, Mortgage, PrepaymentEffect, PropertyTransactionInput } from "../../../models/RealEstate";
+import type { ExpenseKind, IncentiveKind, Mortgage, PrepaymentEffect, PropertyTransactionInput, TaxRegime } from "../../../models/RealEstate";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
 import { useNewProperty } from "./NewPropertyFields";
+import { SaleTaxSummary, useSaleSimulation } from "./SaleTax";
 
 export type RealEstateEntryKind = "purchase" | "sale" | "rent" | "expense" | "works" | "mortgage";
 
 /** A tax payment to record, filled in from its instalment (the property's tax cards). */
 export interface TaxPaymentPrefill {
-  // IMU, or the rents' tax.
-  kind: "property_tax" | "income_tax";
+  // IMU, the rents' tax, or a sale's.
+  kind: "property_tax" | "income_tax" | "capital_gains_tax";
   year: number;
   // What's still due on it, positive.
   amount: number;
@@ -37,11 +38,13 @@ const KINDS: { value: RealEstateEntryKind; label: string; icon: LucideIcon }[] =
 ];
 
 // An expense's type: the API's expense kinds, and the taxes (kinds of their own).
-type ExpenseType = ExpenseKind | "property_tax" | "income_tax";
-const TAX_TYPES: ExpenseType[] = ["property_tax", "income_tax"];
+type ExpenseType = ExpenseKind | "property_tax" | "income_tax" | "capital_gains_tax";
+const TAX_TYPES: ExpenseType[] = ["property_tax", "income_tax", "capital_gains_tax"];
+const TAX_YEAR_NAMES: Record<string, string> = { property_tax: "IMU", income_tax: "rents' tax", capital_gains_tax: "sale's tax" };
 const EXPENSE_TYPES: { value: ExpenseType; label: string }[] = [
   { value: "property_tax", label: "Property tax (IMU)" },
   { value: "income_tax", label: "Tax on rents (cedolare / IRPEF)" },
+  { value: "capital_gains_tax", label: "Tax on a sale's gain" },
   ...(Object.keys(EXPENSE_KIND_LABELS) as ExpenseKind[]).map((k) => ({ value: k, label: EXPENSE_KIND_LABELS[k] })),
 ];
 
@@ -89,6 +92,10 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
   const [taxYear, setTaxYear] = useState(taxPayment ? String(taxPayment.year) : "");
   // Works.
   const [incentive, setIncentive] = useState("");
+  const [incentiveKind, setIncentiveKind] = useState<IncentiveKind | "">("");
+  const [worksCompletedOn, setWorksCompletedOn] = useState("");
+  // Sale.
+  const [saleRegime, setSaleRegime] = useState<TaxRegime>("flat_rate");
   // Mortgage.
   const [mortgageUuid, setMortgageUuid] = useState("");
   const [prepayment, setPrepayment] = useState(false);
@@ -142,7 +149,7 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
     switch (kind) {
       case "sale":
         return [
-          { kind: "sale", ...common, amount: value },
+          { kind: "sale", ...common, amount: value, taxRegime: saleRegime },
           ...(positive(agencyFee) ? [{ kind: "sale_cost" as const, bookedOn, costKind: "agency" as const, amount: `-${parseAmount(agencyFee)}` }] : []),
           ...(positive(otherCosts) ? [{ kind: "sale_cost" as const, bookedOn, costKind: "other" as const, amount: `-${parseAmount(otherCosts)}` }] : []),
           ...settlements.map(({ m, s }) => ({
@@ -159,11 +166,14 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
             }
           : { kind: "rent", ...common, amount: value, rentPeriod: rentPeriod || null }];
       case "expense":
-        return [expenseType === "property_tax" || expenseType === "income_tax"
+        return [expenseType === "property_tax" || expenseType === "income_tax" || expenseType === "capital_gains_tax"
           ? { kind: expenseType, ...common, amount: `-${value}`, taxYear: taxYear.trim() ? Number(taxYear.trim()) : null }
           : { kind: "expense", ...common, amount: refund ? value : `-${value}`, expenseKind: expenseType }];
       case "works":
-        return [{ kind: "works", ...common, amount: `-${value}`, incentive: incentive.trim() || null }];
+        return [{
+          kind: "works", ...common, amount: `-${value}`, incentive: incentive.trim() || null,
+          incentiveKind: incentiveKind || null, worksCompletedOn: worksCompletedOn || null,
+        }];
       case "mortgage":
         return [prepayment
           ? { kind: "mortgage_prepayment", ...common, amount: `-${value}`, mortgageUuid: mortgage!.uuid, prepaymentEffect: effect }
@@ -288,7 +298,7 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
                 </select>
               </Field>
               {TAX_TYPES.includes(expenseType) ? (
-                <Field label="Tax year" hint={`The ${expenseType === "property_tax" ? "IMU" : "rents' tax"} year it pays: the booking day's year, unless you say.`}>
+                <Field label="Tax year" hint={`The ${TAX_YEAR_NAMES[expenseType]} year it pays: the booking day's year, unless you say.`}>
                   <input value={taxYear} onChange={(e) => setTaxYear(e.target.value)} inputMode="numeric" placeholder={bookedOn.slice(0, 4)} className={INPUT} />
                 </Field>
               ) : (
@@ -307,6 +317,15 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
             <>
               <Field label="Tax incentive">
                 <input value={incentive} onChange={(e) => setIncentive(e.target.value)} placeholder="Bonus ristrutturazione 50%" className={INPUT} />
+              </Field>
+              <Field label="Incentive, for the taxes" hint="Superbonus works change how a sale is taxed.">
+                <select value={incentiveKind} onChange={(e) => setIncentiveKind(e.target.value as IncentiveKind | "")} className={INPUT}>
+                  <option value="">None</option>
+                  {(Object.keys(INCENTIVE_KIND_LABELS) as IncentiveKind[]).map((k) => <option key={k} value={k}>{INCENTIVE_KIND_LABELS[k]}</option>)}
+                </select>
+              </Field>
+              <Field label="Works ended on" hint={incentiveKind.startsWith("superbonus") ? "Needed: a sale's tax counts from it." : "Optional."}>
+                <input type="date" value={worksCompletedOn} onChange={(e) => setWorksCompletedOn(e.target.value)} className={INPUT} />
               </Field>
               <Field label="Contractor">
                 <input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} placeholder="Optional" className={INPUT} />
@@ -361,6 +380,25 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
               <Field label="Buyer">
                 <input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} placeholder="Optional" className={INPUT} />
               </Field>
+              <Field label="Gain taxed">
+                <select value={saleRegime} onChange={(e) => setSaleRegime(e.target.value as TaxRegime)} className={INPUT}>
+                  <option value="flat_rate">At the deed: 26% substitute tax, via the notary</option>
+                  <option value="ordinary">With IRPEF, in the return</option>
+                </select>
+              </Field>
+              <SalePreview
+                propertyUuid={property.uuid}
+                currency={currency}
+                request={bookedOn && positive(amount) && optionalAmount(agencyFee) && optionalAmount(otherCosts) ? {
+                  soldOn: bookedOn,
+                  price: amountValue!,
+                  costs: [
+                    ...(positive(agencyFee) ? [{ kind: "agency" as const, amount: parseAmount(agencyFee)! }] : []),
+                    ...(positive(otherCosts) ? [{ kind: "other" as const, amount: parseAmount(otherCosts)! }] : []),
+                  ],
+                  regime: saleRegime,
+                } : null}
+              />
               {mortgages && mortgages.length > 0 && (
                 <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 space-y-3">
                   <p className="text-[11px] font-black uppercase tracking-widest text-slate-700">Its mortgages</p>
@@ -422,6 +460,25 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
           {kind === "purchase" ? "Add property" : kind === "sale" ? "Record sale" : "Add transaction"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** The tax the sale being filled in would mean, worked out as it's typed. */
+function SalePreview({ propertyUuid, currency, request }: {
+  propertyUuid: string;
+  currency: string;
+  request: Parameters<typeof useSaleSimulation>[1];
+}) {
+  const { tax, error } = useSaleSimulation(propertyUuid, request);
+  if (!request) return null;
+  return (
+    <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 space-y-2">
+      <p className="text-[11px] font-black uppercase tracking-widest text-slate-700">The tax on this sale</p>
+      {error ? <p className="text-[12.5px] text-rose-600">{error}</p>
+        : tax === undefined ? <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />
+        : tax === null ? <p className="text-[12.5px] text-slate-400">No rules for a sale in this country.</p>
+        : <SaleTaxSummary tax={tax} currency={currency} />}
     </div>
   );
 }

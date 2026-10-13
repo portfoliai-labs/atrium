@@ -5,6 +5,7 @@ import type {
   PropertyTransactionList, PropertyTransactionUpdateRequest, PropertyUpdateRequest, RealEstateOverview,
   RealEstateSummary, Valuation, ValuationInput, Amount, Municipality, Property as PropertyResponse, PropertyUse, TaxList, TaxRate,
   RentalContract, RentalContractInput, RentalContractUpdateRequest, TaxpayerYear, TaxpayerYearInput,
+  PropertyTax, SaleSimulationRequest,
 } from "../models/RealEstate";
 import { apiFetch } from "./apiClient";
 
@@ -235,6 +236,17 @@ export const realEstateService = {
   // DELETE /v1/real-estate/taxpayer-years/{year}?holderName= — 404 when none.
   async removeTaxpayerYear(year: number, holderName?: string | null): Promise<void> {
     await apiFetch(`${BASE}/taxpayer-years/${year}${holderName ? `?holderName=${encodeURIComponent(holderName)}` : ""}`, { method: "DELETE" });
+  },
+
+  // POST /v1/real-estate/properties/{p}/sale-simulation — the sale's tax were it sold so; nothing is
+  // stored. Null when the property's country has no rules for it. 422 (field soldOn) before its
+  // acquisition.
+  async simulateSale(propertyUuid: string, payload: SaleSimulationRequest): Promise<PropertyTax | null> {
+    const response = await apiFetch<{ tax: PropertyTax | null }>(`${BASE}/properties/${propertyUuid}/sale-simulation`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return response.tax;
   },
 
   // GET /v1/real-estate/municipalities — Italy's, by name (2-100 characters, accents ignored, at

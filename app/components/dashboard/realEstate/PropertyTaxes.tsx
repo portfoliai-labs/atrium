@@ -17,6 +17,7 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { DialogShell, Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
 import { Percent } from "./NewPropertyFields";
 import type { TaxPaymentPrefill } from "./RealEstateTransactionForm";
+import { SaleTaxSummary } from "./SaleTax";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const monthsText = (first: number, last: number) => (first === 1 && last === 12 ? "All year" : first === last ? MONTHS[first - 1] : `${MONTHS[first - 1]}–${MONTHS[last - 1]}`);
@@ -24,8 +25,9 @@ const BUTTON = "px-3 py-1.5 rounded-lg border border-slate-200 text-[11px] font-
 
 /**
  * PROPERTY TAXES — a property's taxes for a year (this one by default; any since its purchase, from
- * 2020), side by side: its IMU (ImuCard) and, when it had rents or short stays, the tax on them
- * (RentalTaxCard: Italy's cedolare secca or IRPEF). Only for a country that has them (Italy).
+ * 2020), side by side: its IMU (ImuCard); when it had rents or short stays, the tax on them
+ * (RentalTaxCard: Italy's cedolare secca or IRPEF); in the year it was sold, the tax on the sale's
+ * gain (SaleTaxCard). Only for a country that has them (Italy).
  */
 export function PropertyTaxModule({ property, readOnly, onEdit, onEditTaxpayer, onRecordPayment }: {
   property: Property;
@@ -60,6 +62,7 @@ export function PropertyTaxModule({ property, readOnly, onEdit, onEditTaxpayer, 
   const list = state?.key === key ? state.list : undefined;
   const imu = list?.taxes.find((t) => t.kind === "property_tax");
   const rents = list?.taxes.find((t) => t.kind === "rental_income_tax");
+  const sale = list?.taxes.find((t) => t.kind === "capital_gains_tax");
   const yearPicker = years.length > 1 && (
     <select value={year} onChange={(e) => setYear(Number(e.target.value))} aria-label="Year" className="h-8 px-2.5 rounded-lg border border-[#E0DACC] bg-white text-xs font-bold text-[#1c1917] outline-none">
       {years.map((y) => <option key={y} value={y}>{y}</option>)}
@@ -68,7 +71,7 @@ export function PropertyTaxModule({ property, readOnly, onEdit, onEditTaxpayer, 
   const common = { property, year, readOnly, onRecordPayment };
 
   return (
-    <div className={`grid grid-cols-1 ${rents ? "xl:grid-cols-2" : ""} gap-6`}>
+    <div className={`grid grid-cols-1 ${rents || sale ? "xl:grid-cols-2" : ""} gap-6`}>
       <ImuCard {...common} list={list} tax={imu} right={yearPicker || undefined} onEdit={onEdit} />
       {rents && (
         <RentalTaxCard
@@ -79,6 +82,7 @@ export function PropertyTaxModule({ property, readOnly, onEdit, onEditTaxpayer, 
           onEditTaxpayer={() => onEditTaxpayer(year)}
         />
       )}
+      {sale && <SaleTaxCard {...common} tax={sale} />}
     </div>
   );
 }
@@ -265,6 +269,37 @@ function RentalTaxCard({ property, year, readOnly, onRecordPayment, right, tax, 
             {!readOnly && (
               <button type="button" onClick={onEditTaxpayer} className={BUTTON}>Your {year} tax details</button>
             )}
+          </>
+        )}
+      </div>
+    </Module>
+  );
+}
+
+/**
+ * THE SALE'S TAX — the year the property was sold: the tax on its gain (26% at the deed, or IRPEF
+ * with the return), how the gain is made up, what the other way would cost, and its payment, with
+ * the way to record it. Not taxed: why.
+ */
+function SaleTaxCard({ property, year, readOnly, onRecordPayment, tax }: CardProps & { tax: PropertyTax }) {
+  const money = (v: number) => formatCurrency(v, tax.currency ?? property.currency, 0);
+  const flat = tax.periods[0]?.regime !== "ordinary";
+  return (
+    <Module>
+      <ModuleHead title={`The sale's tax, ${year}`} desc="The tax on the gain the sale made, at your share." />
+      <div className={`${MODULE_BODY} space-y-4`}>
+        <SaleTaxSummary tax={tax} currency={tax.currency ?? property.currency} />
+        {tax.status === "computed" && (
+          <>
+            <PaidLine tax={tax} money={money} />
+            <Instalments
+              tax={tax}
+              money={money}
+              readOnly={readOnly}
+              names={[flat ? "At the deed, via the notary" : `With the ${year + 1} return`]}
+              kind="capital_gains_tax"
+              onRecordPayment={onRecordPayment}
+            />
           </>
         )}
       </div>

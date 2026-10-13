@@ -4,12 +4,12 @@
 import { useState } from "react";
 import { useRealEstate } from "../../../context/RealEstateContext";
 import {
-  ENERGY_RATINGS, FREQUENCY_LABELS, HOLDER_KIND_LABELS, PROPERTY_KINDS, PROPERTY_KIND_LABELS, PROPERTY_USES, PROPERTY_USE_LABELS,
+  ACQUISITION_KIND_LABELS, ENERGY_RATINGS, FREQUENCY_LABELS, HOLDER_KIND_LABELS, PROPERTY_KINDS, PROPERTY_KIND_LABELS, PROPERTY_USES, PROPERTY_USE_LABELS,
   RATE_INDEX_LABELS, sqftToSqm,
 } from "../../../lib/realEstate";
 import { COMMON_CURRENCIES, today } from "../../../lib/wallets";
 import type {
-  CostKind, HolderKind, InstalmentFrequency, MortgageInput, Property, PropertyCreateRequest, PropertyInput, PropertyKind,
+  AcquisitionKind, CostKind, HolderKind, InstalmentFrequency, MortgageInput, Property, PropertyCreateRequest, PropertyInput, PropertyKind,
   PropertyUpdateRequest, PropertyUse, RateIndex,
 } from "../../../models/RealEstate";
 import { Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
@@ -72,6 +72,11 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
   const [holderName, setHolderName] = useState(text(initial?.holder.name));
   const [appurtenantTo, setAppurtenantTo] = useState(initial?.appurtenantToUuid ?? "");
   const [historic, setHistoric] = useState(italian?.historic ?? false);
+  // How it was acquired when not through a purchase tracked here (see acquisitionFields).
+  const [acquisitionKind, setAcquisitionKind] = useState<AcquisitionKind>(initial?.acquisition.kind ?? "inheritance");
+  const [acquiredOn, setAcquiredOn] = useState(initial?.acquisition.acquiredOn ?? "");
+  const [donorPurchasedOn, setDonorPurchasedOn] = useState(initial?.acquisition.donorPurchasedOn ?? "");
+  const [donorCost, setDonorCost] = useState(text(initial?.acquisition.donorCost));
   const [freeLoanToRelative, setFreeLoanToRelative] = useState(italian?.freeLoanToRelative ?? false);
   // What it can belong to: another property, not archived, not itself an appurtenance. One that
   // has appurtenances of its own can't belong to another.
@@ -132,6 +137,52 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
       }
     : { italy: null });
   const holder = () => ({ kind: holderKind, name: holderName.trim() || null });
+  const donorCostValue = parseAmount(donorCost);
+  const acquisition = () => ({
+    kind: acquisitionKind,
+    acquiredOn: acquisitionKind === "purchase" ? null : acquiredOn || null,
+    donorPurchasedOn: acquisitionKind === "donation" ? donorPurchasedOn || null : null,
+    donorCost: acquisitionKind === "donation" && donorCost.trim() ? donorCostValue : null,
+  });
+  // What the acquisition's fields lack, when they're shown.
+  const acquisitionProblems = [
+    acquisitionKind !== "purchase" && acquiredOn > today() && "an acquisition day that isn't in the future",
+    acquisitionKind === "donation" && donorCost.trim() !== "" && (donorCostValue === null || Number(donorCostValue) < 0) && "a valid donor's cost",
+  ].filter(Boolean) as string[];
+  const acquisitionChanges = (): PropertyUpdateRequest => {
+    if (!initial) return {};
+    const a = acquisition();
+    const b = initial.acquisition;
+    const changed = a.kind !== b.kind || a.acquiredOn !== b.acquiredOn || a.donorPurchasedOn !== b.donorPurchasedOn
+      || (a.donorCost === null ? null : Number(a.donorCost)) !== b.donorCost;
+    return changed ? { acquisition: a } : {};
+  };
+  const acquisitionFields = (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <Field label="How you got it" hint="It decides whether a sale's gain is taxed: never an inheritance's.">
+        <select value={acquisitionKind} onChange={(e) => setAcquisitionKind(e.target.value as AcquisitionKind)} className={INPUT}>
+          {(Object.keys(ACQUISITION_KIND_LABELS) as AcquisitionKind[]).map((k) => <option key={k} value={k}>{ACQUISITION_KIND_LABELS[k]}</option>)}
+        </select>
+      </Field>
+      {acquisitionKind !== "purchase" ? (
+        <Field label={acquisitionKind === "inheritance" ? "Inherited on" : "Donated on"}>
+          <input type="date" value={acquiredOn} max={today()} onChange={(e) => setAcquiredOn(e.target.value)} className={INPUT} />
+        </Field>
+      ) : (
+        <p className="self-end text-[11px] text-slate-400 pb-2">A sale&apos;s tax needs its purchase: add it as a Purchase transaction when you can.</p>
+      )}
+      {acquisitionKind === "donation" && (
+        <>
+          <Field label="The donor bought it on" hint="A sale's tax counts from the donor's purchase.">
+            <input type="date" value={donorPurchasedOn} max={today()} onChange={(e) => setDonorPurchasedOn(e.target.value)} className={INPUT} />
+          </Field>
+          <Field label="What it cost the donor" hint="With its costs: your part of it.">
+            <input value={donorCost} onChange={(e) => setDonorCost(e.target.value)} inputMode="decimal" placeholder="Optional" className={INPUT} />
+          </Field>
+        </>
+      )}
+    </div>
+  );
   const surfaceText = surfaceSqm === null ? null : String(Math.round(surfaceSqm * 100) / 100);
 
   const input = (): PropertyInput => ({
@@ -298,7 +349,10 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
     </>
   );
 
-  return { fields, problems, started: name.trim() !== "", input, changes, currencyCode, surfaceSqm };
+  return {
+    fields, problems, started: name.trim() !== "", input, changes, currencyCode, surfaceSqm,
+    acquisitionFields, acquisitionProblems, acquisition, acquisitionChanges,
+  };
 }
 
 /**
@@ -432,10 +486,12 @@ export function useNewProperty(defaultCurrency = "EUR") {
     ...(bought && (!purchasedOn || priceValue === null || Number(priceValue) <= 0) ? ["the purchase day and price"] : []),
     ...(bought && costValues.some((c) => c.invalid) ? ["valid purchase costs"] : []),
     ...(mortgaged ? mortgage.problems : []),
+    ...(!bought ? property.acquisitionProblems : []),
   ];
 
   const request = (): PropertyCreateRequest => ({
     ...property.input(),
+    acquisition: bought ? { kind: "purchase" } : property.acquisition(),
     purchase: bought ? {
       purchasedOn,
       price: priceValue!,
@@ -467,6 +523,8 @@ export function useNewProperty(defaultCurrency = "EUR") {
           </Field>
         ))}
       </Toggleable>
+
+      {!bought && property.acquisitionFields}
 
       <Toggleable title="Mortgage" checked={mortgaged} onChange={setMortgaged} hint="Equal instalments (French amortisation); the schedule is worked out for you.">
         {mortgage.fields}

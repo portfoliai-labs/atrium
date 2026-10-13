@@ -8,7 +8,7 @@ import type {
   CostKind, ExpenseKind, HolderKind, InstalmentFrequency, Mortgage, MortgageSchedule, Municipality, NotComputedReason,
   PrepaymentEffect, PropertyKind, PropertyTransactionFilters, PropertyTransactionKind, PropertyTransactionList, PropertyUse,
   RateIndex, RateSource, RealEstateOverview, RealEstateSummary, RentalContract, RentalContractKind, TaxList, TaxReduction,
-  TaxRegime, TaxpayerYear, Valuation, ValuationSource,
+  TaxRegime, TaxpayerYear, Valuation, ValuationSource, AcquisitionKind, IncentiveKind, PropertyTax, SaleSimulationRequest,
 } from "../models/RealEstate";
 import { realEstateService } from "../services/realEstateService";
 import { ApiError } from "../services/apiClient";
@@ -47,6 +47,7 @@ export const TRANSACTION_KIND_LABELS: Record<PropertyTransactionKind, string> = 
   mortgage_instalment: "Mortgage instalment",
   mortgage_prepayment: "Mortgage prepayment",
   income_tax: "Tax on rents",
+  capital_gains_tax: "Tax on a sale's gain",
 };
 
 export const COST_KIND_LABELS: Record<CostKind, string> = {
@@ -96,6 +97,18 @@ export const VALUATION_SOURCE_LABELS: Record<ValuationSource, string> = {
 
 export const HOLDER_KIND_LABELS: Record<HolderKind, string> = { person: "A person", company: "A company" };
 
+export const ACQUISITION_KIND_LABELS: Record<AcquisitionKind, string> = {
+  purchase: "Bought (before tracking it here)",
+  inheritance: "Inherited",
+  donation: "Donated to me",
+};
+
+export const INCENTIVE_KIND_LABELS: Record<IncentiveKind, string> = {
+  superbonus_110_transferred: "Superbonus 110%, credit transferred or discounted",
+  superbonus: "Superbonus, deducted in the return",
+  other: "Another incentive (50% bonus, ecobonus…)",
+};
+
 // ── Taxes (Italy's IMU) ──
 
 // What each rate class means (the country's names: Italy's).
@@ -113,6 +126,10 @@ export const RATE_CLASS_LABELS: Record<string, string> = {
   flat_rate_short_stay: "Cedolare secca on short stays, 21%",
   flat_rate_short_stay_other: "Cedolare secca on short stays, 26% (a further apartment)",
   ordinary: "IRPEF, at your rates",
+  // A sale's gain.
+  substitute_tax: "Substitute tax at the deed, 26%",
+  inherited: "Inherited: a sale's gain is never taxed",
+  outside_window: "Held long enough: the gain isn't taxed",
 };
 export const rateClassLabel = (c: string) => RATE_CLASS_LABELS[c] ?? c.replaceAll("_", " ");
 
@@ -171,6 +188,10 @@ export const PROPERTY_FIELD_LABELS: Record<string, string> = {
   highTensionMunicipality: "High housing tension", tenant: "Tenant", "taxpayer.otherIncome": "Your other income",
   otherIncome: "Other income", surchargesPct: "Surcharges", reducedRatePropertyUuid: "Short stays at 21%",
   shortStayRegime: "Short stays' regime", holderName: "Taxpayer", platformFee: "Platform fee", taxWithheld: "Tax withheld",
+  // Sales.
+  purchase: "The purchase", "acquisition.kind": "How you got it", "acquisition.acquiredOn": "The day you got it",
+  "acquisition.donorPurchasedOn": "The donor's purchase day", "acquisition.donorCost": "The donor's cost",
+  "works.worksCompletedOn": "The day the works ended", soldOn: "The sale's day", price: "The sale price",
 };
 export const fieldLabel = (field: string) => PROPERTY_FIELD_LABELS[field] ?? field;
 
@@ -210,6 +231,7 @@ export interface RealEstateSource {
   rentalContracts(propertyUuid: string | null): Promise<RentalContract[]>;
   // A year's, or every year's.
   taxpayerYears(year?: number): Promise<TaxpayerYear[]>;
+  simulateSale(propertyUuid: string, request: SaleSimulationRequest): Promise<PropertyTax | null>;
 }
 
 export const apiRealEstateSource: RealEstateSource = {
@@ -223,4 +245,5 @@ export const apiRealEstateSource: RealEstateSource = {
   municipalities: (query) => realEstateService.municipalities(query),
   rentalContracts: (propertyUuid) => realEstateService.rentalContracts(propertyUuid),
   taxpayerYears: (year) => realEstateService.taxpayerYears(year),
+  simulateSale: (propertyUuid, request) => realEstateService.simulateSale(propertyUuid, request),
 };

@@ -10,7 +10,7 @@
 import { hashSeed, normal, round, seeded } from "./random";
 import { TRANSACTION_KIND_LABELS, type RealEstateSource } from "../realEstate";
 import type {
-  ItalianDetails, Mortgage, MortgageSchedule, Municipality, Property as ApiProperty, PropertyTax, PropertyTransaction,
+  ItalianDetails, Mortgage, MortgageSchedule, Municipality, Property as ApiProperty, PropertyTax, PropertyTransaction, SaleSimulationRequest,
   PropertyTransactionFilters, PropertyUse, RealEstateMonth, RealEstateOverview, RealEstateSummary, RentalContract, TaxInstalment,
   TaxList, TaxPeriod, TaxpayerYear, UsePeriod, Valuation,
 } from "../../models/RealEstate";
@@ -543,7 +543,7 @@ function computeImu(p: Property, year: number): PropertyTax {
   const italy = DEMO_ITALY[p.id];
   const base: PropertyTax = {
     propertyUuid: p.id, kind: "property_tax", name: "IMU", country: "IT", year, currency: "EUR", status: "computed", notComputed: null,
-    missingFields: [], amount: 0, paidAmount: 0, withheldAmount: 0, instalments: [], periods: [],
+    missingFields: [], amount: 0, paidAmount: 0, withheldAmount: 0, instalments: [], periods: [], capitalGain: null,
     provisional: year > 2026 || (year === 2026 && DEMO_TODAY < "2026-10-28"),
   };
   if (year < 2020) return { ...base, status: "not_computed", notComputed: "unsupported_year" };
@@ -599,7 +599,8 @@ const BASE_TRANSACTIONS: PropertyTransaction[] = (() => {
       uuid: `ret-${n++}`, propertyUuid: p.id, kind, bookedOn, amount: round(amount, 2), currency: "EUR",
       description: extra.description ?? TRANSACTION_KIND_LABELS[kind], counterparty: null, note: null, costKind: null, expenseKind: null,
       rentPeriod: null, taxYear: null, incentive: null, mortgageUuid: null, instalmentNumber: null, interest: null,
-      prepaymentEffect: null, createdAt: `${bookedOn}T09:00:00Z`, platformFee: null, taxWithheld: null, ...extra,
+      prepaymentEffect: null, createdAt: `${bookedOn}T09:00:00Z`, platformFee: null, taxWithheld: null, incentiveKind: null,
+      worksCompletedOn: null, taxRegime: null, ...extra,
     });
   };
 
@@ -645,9 +646,13 @@ const BASE_TRANSACTIONS: PropertyTransaction[] = (() => {
   }
 
   const byId = (id: string) => PROPERTIES.find((p) => p.id === id)!;
-  add(byId("navigli"), "works", "2019-10-02", -18400, { description: "Bathroom and kitchen renovation", incentive: "Bonus ristrutturazione 50%" });
+  add(byId("navigli"), "works", "2019-10-02", -18400, {
+    description: "Bathroom and kitchen renovation", incentive: "Bonus ristrutturazione 50%", incentiveKind: "other", worksCompletedOn: "2019-12-20",
+  });
   add(byId("santo-stefano"), "expense", "2021-05-18", -9600, { expenseKind: "furnishing", description: "Furnishing for short stays" });
-  add(byId("san-salvario"), "works", "2022-11-21", -7200, { description: "New windows", incentive: "Ecobonus 50%" });
+  add(byId("san-salvario"), "works", "2022-11-21", -7200, {
+    description: "New windows", incentive: "Ecobonus 50%", incentiveKind: "other", worksCompletedOn: "2022-12-15",
+  });
 
   for (const def of MORTGAGE_DEFS) {
     for (const row of SCHEDULES.get(def.uuid)!) {
@@ -690,6 +695,7 @@ function computeRentalTax(p: Property, year: number): PropertyTax | undefined {
   const base: PropertyTax = {
     propertyUuid: p.id, kind: "rental_income_tax", name: "Cedolare secca", country: "IT", year, currency: "EUR", status: "computed",
     notComputed: null, missingFields: [], amount: 0, paidAmount: 0, withheldAmount: 0, instalments: [], periods: [], provisional: year >= 2026,
+    capitalGain: null,
   };
   if (year < 2024) return { ...base, status: "not_computed", notComputed: "unsupported_year" };
   const taxpayer = DEMO_TAXPAYERS.find((t) => t.year === year);
@@ -763,6 +769,7 @@ const DEMO_TRANSACTIONS: PropertyTransaction[] = (() => {
           description: `${tax.name} ${year} — ${last ? "balance" : "payment on account"}`, counterparty: "Agenzia delle Entrate", note: null,
           costKind: null, expenseKind: null, rentPeriod: null, taxYear: year, incentive: null, mortgageUuid: null, instalmentNumber: null,
           interest: null, prepaymentEffect: null, createdAt: `${i.dueOn}T09:00:00Z`, platformFee: null, taxWithheld: null,
+          incentiveKind: null, worksCompletedOn: null, taxRegime: null,
         });
       });
     }
@@ -845,6 +852,7 @@ export const DEMO_PROPERTIES: ApiProperty[] = PROPERTIES.map((p) => {
     uses: usesOf(p),
     holder: { kind: "person", name: null },
     appurtenantToUuid: null,
+    acquisition: { kind: "purchase", acquiredOn: null, donorPurchasedOn: null, donorCost: null },
     address: { country: "IT", street: p.address, locality: p.city, region: null, postalCode: null, neighbourhood: zoneById(p.zoneId).name, location: null },
     currency: "EUR",
     surfaceSqm: p.sqm,
@@ -1001,6 +1009,47 @@ function demoMunicipalities({ search, codes }: { search?: string; codes?: string
   return MUNICIPALITIES.filter((m) => plain(m.name).includes(q)).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).slice(0, 20);
 }
 
+/**
+ * A sale's tax were the property sold so (a simplified copy of the API's): the gain over the
+ * purchase, its costs and the works, taxed when sold within 5 years of the purchase (none of the
+ * sample's works are Superbonus); 26% at the deed, or IRPEF with the return, each with the other's
+ * cost; the user's primary residence isn't taxed.
+ */
+function demoSaleTax(p: Property, request: SaleSimulationRequest): PropertyTax {
+  const soldOn = request.soldOn;
+  const year = Number(soldOn.slice(0, 4));
+  const price = Number(request.price);
+  const saleCosts = (request.costs ?? []).reduce((s, c) => s + Number(c.amount), 0);
+  const works = -transactionsOf(p.id).filter((t) => t.kind === "works" && t.bookedOn <= soldOn).reduce((s, t) => s + t.amount, 0);
+  const [y, m, d] = p.purchaseDate.split("-").map(Number);
+  const end = new Date(y + 5, m - 1, d - 1);
+  const taxedUntil = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
+  const gain = round(price - saleCosts - p.purchasePrice - p.purchaseCosts - works, 2);
+  const capitalGain = {
+    soldOn, salePrice: price, saleCosts, acquisitionCost: p.purchasePrice, acquisitionCosts: p.purchaseCosts, works, worksExcluded: 0,
+    gain, rule: soldOn <= taxedUntil ? ("within_five_years" as const) : null, taxedUntil,
+  };
+  const ordinary = request.regime === "ordinary";
+  const taxed = soldOn <= taxedUntil && propertyUseOn(p, soldOn) !== "primary_residence";
+  const base = Math.max(0, gain);
+  const flat = round(base * 0.26, 2);
+  const irpefCost = irpefOn(base, DEMO_TAXPAYERS.find((t) => t.year === year));
+  const amount = !taxed ? 0 : Math.round(ordinary ? irpefCost ?? 0 : flat);
+  const period: TaxPeriod = {
+    firstMonth: Number(soldOn.slice(5, 7)), lastMonth: Number(soldOn.slice(5, 7)), months: 1, use: propertyUseOn(p, soldOn),
+    rateClass: !taxed ? (soldOn > taxedUntil ? "outside_window" : "primary_residence") : ordinary ? "ordinary" : "substitute_tax",
+    taxableBase: taxed ? base : 0, reductions: [], ratePct: !taxed ? 0 : ordinary ? (base > 0 && irpefCost ? round((irpefCost / base) * 100, 2) : 0) : 26,
+    rateSource: taxed ? "legal" : "exempt", rateYear: null, deduction: 0, amount, regime: ordinary ? "ordinary" : "flat_rate",
+    income: price, alternativeAmount: !taxed ? null : ordinary ? flat : irpefCost, rentalContractUuid: null,
+  };
+  return {
+    propertyUuid: p.id, kind: "capital_gains_tax", name: ordinary ? "IRPEF sulla plusvalenza" : "Imposta sostitutiva sulla plusvalenza",
+    country: "IT", year, currency: "EUR", status: taxed ? "computed" : "exempt", notComputed: null, missingFields: [], amount,
+    instalments: taxed && amount > 0 ? [{ number: 1, dueOn: ordinary ? workingDay(`${year + 1}-06-30`) : soldOn, amount, paid: false, transactionUuids: [] }] : [],
+    periods: [period], provisional: false, paidAmount: 0, withheldAmount: 0, capitalGain,
+  };
+}
+
 /** A demo account's real estate, read as the API would serve it. */
 export const demoRealEstateSource: RealEstateSource = {
   overview: async () => demoOverview(),
@@ -1028,4 +1077,8 @@ export const demoRealEstateSource: RealEstateSource = {
   municipalities: async (query) => demoMunicipalities(query),
   rentalContracts: async (propertyUuid) => DEMO_LEASES.filter((l) => !propertyUuid || l.propertyUuid === propertyUuid),
   taxpayerYears: async (year) => DEMO_TAXPAYERS.filter((t) => year === undefined || t.year === year),
+  simulateSale: async (propertyUuid, request) => {
+    const p = PROPERTIES.find((x) => x.id === propertyUuid);
+    return p ? demoSaleTax(p, request) : null;
+  },
 };

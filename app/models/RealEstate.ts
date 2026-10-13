@@ -16,6 +16,25 @@ export type PropertyUse =
 // Who holds a property: its taxes differ (a company has no primary residence).
 export type HolderKind = "person" | "company";
 
+// How the holder came to own it: whether a sale's gain is taxed (Italy: never an inheritance's; a
+// donation's from the donor's purchase, at the donor's cost).
+export type AcquisitionKind = "purchase" | "inheritance" | "donation";
+
+/** A property inherited or donated takes no purchase (422). Days aren't after today. */
+export interface Acquisition {
+  kind: AcquisitionKind;
+  // An inheritance's or a donation's day; null for a purchase (its transaction's).
+  acquiredOn: string | null;
+  // A donation's: the day the donor bought it, and what it cost them with its costs (the user's part).
+  donorPurchasedOn: string | null;
+  donorCost: number | null;
+}
+
+// The incentive works claim, as far as the taxes tell them apart. superbonus_110_transferred (Italy):
+// the Superbonus at 110%, its credit transferred or discounted: a sale within 10 years of the works'
+// end is taxed, the works counting for nothing within 5 years of their end, for half after.
+export type IncentiveKind = "superbonus_110_transferred" | "superbonus" | "other";
+
 // purchase_price: no valuation yet, so the purchase price. Only read, never recorded.
 export type ValuationSource = "user_estimate" | "appraisal" | "purchase_price";
 
@@ -27,7 +46,9 @@ export type PropertyTransactionKind =
   | "rent" | "short_stay_payout" | "expense" | "works" | "property_tax"
   | "mortgage_instalment" | "mortgage_prepayment"
   // The tax on the rents (Italy: the cedolare secca, or IRPEF's part): taxYear, negative.
-  | "income_tax";
+  | "income_tax"
+  // The tax on a sale's gain (Italy: the notary's substitute tax, or IRPEF's part): taxYear, negative.
+  | "capital_gains_tax";
 
 // "taxes": registration, stamp and transfer taxes.
 export type CostKind = "notary" | "agency" | "taxes" | "other";
@@ -143,6 +164,7 @@ export interface Property {
   // Another of the user's properties this one belongs to (a garage or a cellar to the house, Italy's
   // pertinenza), one level deep.
   appurtenantToUuid: string | null;
+  acquisition: Acquisition;
   address: Address;
   // ISO 4217: every amount of the property's.
   currency: string;
@@ -184,6 +206,8 @@ export interface PropertyInput {
   // The user, a person, by default.
   holder?: Holder | null;
   appurtenantToUuid?: string | null;
+  // A purchase by default (its day and price are its purchase transaction's).
+  acquisition?: { kind: AcquisitionKind; acquiredOn?: string | null; donorPurchasedOn?: string | null; donorCost?: Amount | null } | null;
 }
 
 export type ItalianDetailsInput = Partial<Omit<ItalianDetails, "cadastralIncome">> & { cadastralIncome?: Amount | null };
@@ -258,6 +282,12 @@ export interface PropertyTransaction {
   // paid the amount and both: what the tax is levied on.
   platformFee: number | null;
   taxWithheld: number | null;
+  // works: the incentive as the taxes tell it apart, and the day the works ended (needed by a sale's
+  // tax for Superbonus works).
+  incentiveKind: IncentiveKind | null;
+  worksCompletedOn: string | null;
+  // sale: how its gain is taxed (flat_rate: the notary's 26%; ordinary: IRPEF with the return).
+  taxRegime: TaxRegime | null;
 }
 
 /**
@@ -288,6 +318,11 @@ export interface PropertyTransactionInput {
   // short_stay_payout only, 0 and up.
   platformFee?: Amount | null;
   taxWithheld?: Amount | null;
+  // works only.
+  incentiveKind?: IncentiveKind | null;
+  worksCompletedOn?: string | null;
+  // sale only; null: flat_rate.
+  taxRegime?: TaxRegime | null;
 }
 
 // The fields to change: null or left out keeps the value. "" clears counterparty, note and
@@ -465,9 +500,10 @@ export interface RealEstateSummary {
 
 // ── Taxes ──
 
-// property_tax: the yearly tax on owning a property (Italy's IMU). rental_income_tax: the tax on
-// its rents (Italy's cedolare secca or IRPEF), from praedium 0.4; not shown yet.
-export type TaxKind = "property_tax" | "rental_income_tax";
+// property_tax: the yearly tax on owning a property (Italy's IMU). rental_income_tax: the tax on its
+// rents (Italy's cedolare secca or IRPEF). capital_gains_tax: the tax on a sale's gain, for the
+// sale's year (Italy's 26% substitute tax at the deed, or IRPEF with the return).
+export type TaxKind = "property_tax" | "rental_income_tax" | "capital_gains_tax";
 
 // exempt: not owed for any month of the year (Italy: a primary residence). not_computed:
 // `notComputed` says why.
@@ -568,6 +604,40 @@ export interface PropertyTax {
   paidAmount: number;
   // The rents' tax: what the platforms withheld on the short stays, paid already. IMU: 0.
   withheldAmount: number;
+  // The sale's tax: its gain; null for an inheritance, when not computed, and for the other taxes.
+  capitalGain: CapitalGain | null;
+}
+
+// within_five_years: sold within 5 years of the purchase (a donation: the donor's). superbonus:
+// within 10 years of the end of Superbonus works.
+export type GainRule = "within_five_years" | "superbonus";
+
+/** A sale's gain as its tax counts it, the user's part. */
+export interface CapitalGain {
+  soldOn: string;
+  salePrice: number;
+  saleCosts: number;
+  // The purchase's price (a donation: the donor's cost) and its costs.
+  acquisitionCost: number;
+  acquisitionCosts: number;
+  // The works counted in the cost, and those the rules leave out (Superbonus at 110% transferred).
+  works: number;
+  worksExcluded: number;
+  // Negative is a loss, untaxed. Not yet revalued by ISTAT's FOI index (held over 5 years).
+  gain: number;
+  // Null when no window taxes it.
+  rule: GainRule | null;
+  // The last day a sale is still taxed: from the day after, the gain isn't.
+  taxedUntil: string | null;
+}
+
+/** A sale to simulate, the user's part: nothing is stored, a sale recorded is replaced. */
+export interface SaleSimulationRequest {
+  soldOn: string;
+  price: Amount;
+  costs?: { kind: CostKind; amount: Amount }[];
+  // Null: flat_rate.
+  regime?: TaxRegime | null;
 }
 
 /** `totals`: the computed taxes' sum per currency, never converted. */
