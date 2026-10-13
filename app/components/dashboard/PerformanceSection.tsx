@@ -25,6 +25,8 @@ import { usePortfolio } from "../../context/PortfolioContext";
 import { useDetail, useInsights, type Insights, type SectionState } from "../../hooks/useInsights";
 import { pushDashboardEntry, readDashboardEntry, type DashboardOverlay } from "../../lib/dashboardHistory";
 import { NoDataEmptyState } from "./NoDataEmptyState";
+import { BondRatesModule } from "./MarketRates";
+import { isBondClass } from "../../lib/rates";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { PageHeader } from "./PageHeader";
 import { ExploreView, ExploreHostContext, ExplorePanel, DataTable, type DataColumn, type ExploreHeader } from "./ExploreView";
@@ -45,17 +47,17 @@ const fullDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US",
 // and the composition bars so one colour always means the same series. The benchmark grey is
 // deliberately dark enough (slate-500) to stay visible on the white card and against the
 // slate-100 bar tracks.
-const PORTFOLIO_COLOR = "#C49A3C";
+export const PORTFOLIO_COLOR = "#C49A3C";
 const BENCHMARK_COLOR = "#64748b";
 
 // Axis tick labels (months, dates, values) on every chart in this file — slate-500, since the
 // lighter slate-400 they used to have washed out against the white card.
-const AXIS_TICK_COLOR = "#57534e";
+export const AXIS_TICK_COLOR = "#57534e";
 
 // Shared recharts tooltip box. The text colour is set explicitly: recharts leaves the date
 // label uncoloured, so it inherits the page's text colour — near-white in dark mode (see
 // globals.css) — on the tooltip's white background, making it unreadable.
-const TOOLTIP_STYLE: React.CSSProperties = {
+export const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: 8, borderColor: "#e2e8f0", fontSize: 12, color: "#334155",
 };
 
@@ -1945,7 +1947,8 @@ const ASSET_RANGE_LABELS: Record<AssetChartRange, string> = { "1M": "1 month", "
 
 /**
  * ASSET EXPLORE — one holding's own page, opened from a row of HoldingsExplorer: its price
- * over a chosen range (GET /v1/assets/{ticker}), what the asset is (identifiers, class,
+ * over a chosen range (GET /v1/assets/{ticker}), for a bond the rates it's priced against
+ * (BondRatesModule), what the asset is (identifiers, class,
  * sector or TER…), what it's made of when it's a fund, and the user's own position in it
  * (GET /positions/{assetId}, fetched alongside: the asset endpoint knows nothing about
  * portfolios).
@@ -2098,6 +2101,8 @@ function AssetExplore({ ticker, assetId, portfolioUuid, revision }: { ticker: st
           {data.pricesAsOf && <NoteS className="pt-2">Last close on {fullDateLabel(data.pricesAsOf)}, {formatCurrency(last ?? 0, unit, 2)}.</NoteS>}
         </div>
       </Module>
+
+      {isBondClass(data.assetClass) && <BondRatesModule isin={data.isin} name={data.name} currency={data.quoteCurrency} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-[22px]">
         {position.data && <PositionPanel position={position.data} />}
