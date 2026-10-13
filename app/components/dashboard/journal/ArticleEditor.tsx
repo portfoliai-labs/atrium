@@ -494,7 +494,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             maxLength={DEK_MAX}
             onChange={(e) => change({ dek: e.target.value.replace(/\n/g, " ") })}
             rows={2}
-            placeholder="The line under the title: what the reader will take away"
+            placeholder="Subtitle (optional): one line on what the reader will take away"
             className={`w-full resize-none bg-transparent text-base md:text-lg text-slate-500 leading-relaxed outline-none placeholder:text-slate-300 ${flagged === "dek" ? "underline decoration-rose-400" : ""}`}
           />
           <BodyEditor key={bodyKey} initial={initialBody} onChange={onBodyChange} editorRef={editorRef} />

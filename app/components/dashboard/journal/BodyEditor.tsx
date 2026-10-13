@@ -159,7 +159,7 @@ const EXTENSIONS = [
   ListItem.extend({ content: "paragraph" }),
   QuoteNode,
   ArticleImageNode,
-  Placeholder.configure({ placeholder: "Write your article…" }),
+  Placeholder.configure({ placeholder: "Write the article here. Headings, lists, quotes and images are in the bar above." }),
 ];
 
 // ── Pointing at a block ──
@@ -201,6 +201,12 @@ function ToolButton({ active = false, disabled = false, label, onClick, children
   );
 }
 
+// The toolbar of a document nobody has touched yet.
+const NO_MARKS = {
+  bold: false, italic: false, link: false, h2: false, h3: false, paragraph: true,
+  bullet: false, ordered: false, quote: false, canUndo: false, canRedo: false, inHeading: false,
+};
+
 const Divider = () => <span className="w-px h-5 bg-slate-200 mx-1" />;
 
 /**
@@ -233,7 +239,7 @@ export function BodyEditor({ initial, onChange, editorRef, disabled = false }: {
     onUpdate: ({ editor }) => onChange(editor.getJSON()),
   });
 
-  const state = useEditorState({
+  const toolbar = useEditorState({
     editor,
     selector: ({ editor }) => editor ? {
       bold: editor.isActive("bold"),
@@ -252,9 +258,12 @@ export function BodyEditor({ initial, onChange, editorRef, disabled = false }: {
     } : null,
   });
 
-  if (!editor || !state) {
+  if (!editor) {
     return <div className="min-h-[360px] rounded-2xl border border-slate-200 bg-slate-50/50 animate-pulse" />;
   }
+  // The toolbar's state follows the editor's transactions, so it's only there after the first:
+  // until then, a fresh document's.
+  const state = toolbar ?? NO_MARKS;
 
   const openLink = () => {
     setLinkValue(String(editor.getAttributes("link").href ?? ""));
