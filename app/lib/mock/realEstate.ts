@@ -12,7 +12,7 @@ import { TRANSACTION_KIND_LABELS, type RealEstateSource } from "../realEstate";
 import type {
   ItalianDetails, Mortgage, MortgageSchedule, Municipality, Property as ApiProperty, PropertyTax, PropertyTransaction, SaleSimulationRequest,
   PropertyTransactionFilters, PropertyUse, RealEstateMonth, RealEstateOverview, RealEstateSummary, RentalContract, TaxInstalment,
-  TaxList, TaxPeriod, TaxpayerYear, UsePeriod, Valuation,
+  TaxList, TaxPeriod, TaxpayerYear, UsePeriod, Valuation, RealEstateAlertFinding, RealEstateAlertParams, RealEstateAlertRule,
 } from "../../models/RealEstate";
 
 export type PropertyType = "Apartment" | "House" | "Commercial" | "Garage" | "Land";
@@ -342,7 +342,7 @@ export const REAL_ESTATE_TRANSACTIONS: RealEstateTransaction[] = (() => {
   return out.sort((a, b) => b.date.localeCompare(a.date));
 })();
 
-// ── Reports and alerts ─────────────────────────────────────────────────────────────────────
+// ── Reports ─────────────────────────────────────────────────────────────────────
 
 export interface RealEstateReport {
   id: string;
@@ -360,25 +360,6 @@ export const REAL_ESTATE_REPORTS: RealEstateReport[] = [
   { id: "r5", title: "2025 rental income summary", detail: "Rents by property, flat tax (cedolare secca) and deductible costs, for the tax return", date: "2026-04-20", kind: "Tax" },
   { id: "r6", title: "Q1 2026 portfolio report", detail: "Values against their zones, rents collected, mortgage balances", date: "2026-03-31", kind: "Quarterly" },
   { id: "r7", title: "Annual valuation 2025", detail: "Each property's estimated value from its zone index and comparable sales", date: "2026-01-15", kind: "Valuation" },
-];
-
-export interface RealEstateAlert {
-  id: string;
-  title: string;
-  detail: string;
-  scope: string; // a property's name, or "Every property"
-  enabled: boolean;
-  triggered: boolean;
-}
-
-export const REAL_ESTATE_ALERTS: RealEstateAlert[] = [
-  { id: "ra1", title: "Rent not received", detail: "No rent by the 10th of the month", scope: "Every rented property", enabled: true, triggered: false },
-  { id: "ra2", title: "Zone prices falling", detail: "Price per m² in the neighbourhood drops more than 5% in a quarter", scope: "Every property", enabled: true, triggered: false },
-  { id: "ra3", title: "Property tax due", detail: "IMU instalment due within 15 days (16 June, 16 December)", scope: "Every property", enabled: true, triggered: false },
-  { id: "ra4", title: "Short-stay occupancy low", detail: "Occupancy under 55% over the last 30 days", scope: "Santo Stefano studio", enabled: true, triggered: true },
-  { id: "ra5", title: "Rent below market", detail: "Rent collected more than 10% under the zone's market rent", scope: "Every rented property", enabled: false, triggered: false },
-  { id: "ra6", title: "Mortgage rate reset", detail: "A variable-rate mortgage changes its rate", scope: "San Salvario two-bed", enabled: true, triggered: false },
-  { id: "ra7", title: "Loan-to-value above 60%", detail: "Mortgage debt passes 60% of the estimated value", scope: "Every property", enabled: false, triggered: false },
 ];
 
 // ── The same portfolio in the API's shapes (demoRealEstateSource) ───────────────────────────
@@ -624,7 +605,8 @@ const BASE_TRANSACTIONS: PropertyTransaction[] = (() => {
           add(p, "short_stay_payout", `${month}-05`, gross - platformFee - (taxWithheld ?? 0), {
             counterparty: letting.counterparty, description: "Airbnb payout", platformFee, taxWithheld,
           });
-        } else {
+        } else if (!(p.id === "prati-garage" && month === DEMO_MONTH)) {
+          // The garage's rent for this month hasn't come in: the alerts' sample finds it.
           add(p, "rent", `${month}-05`, p.monthlyRent, { counterparty: letting.counterparty, rentPeriod: month });
         }
       }
@@ -1052,6 +1034,81 @@ function demoSaleTax(p: Property, request: SaleSimulationRequest): PropertyTax {
   };
 }
 
+// ── Alerts: a few rules, and what each finds on the sample's today ──
+
+const addDays = (day: string, n: number) => {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+type DemoRuleDef = Pick<RealEstateAlertRule, "uuid" | "propertyUuid" | "params" | "notifyEmail" | "notifyInApp" | "enabled" | "createdAt">;
+const DEMO_RULES: DemoRuleDef[] = [
+  { uuid: "rule-rent", propertyUuid: null, params: { type: "rent_unpaid", dayOfMonth: 10 }, notifyEmail: true, notifyInApp: true, enabled: true, createdAt: "2026-01-10T09:00:00Z" },
+  { uuid: "rule-tax", propertyUuid: null, params: { type: "tax_due", daysBefore: 90 }, notifyEmail: true, notifyInApp: true, enabled: true, createdAt: "2026-01-10T09:05:00Z" },
+  { uuid: "rule-mortgage", propertyUuid: null, params: { type: "mortgage_instalment_unpaid", daysAfter: 5 }, notifyEmail: false, notifyInApp: true, enabled: true, createdAt: "2026-01-10T09:10:00Z" },
+  { uuid: "rule-lease", propertyUuid: "san-salvario", params: { type: "lease_ending", daysBefore: 180 }, notifyEmail: true, notifyInApp: true, enabled: true, createdAt: "2026-02-02T18:00:00Z" },
+  { uuid: "rule-ltv", propertyUuid: null, params: { type: "loan_to_value", thresholdPct: 60 }, notifyEmail: true, notifyInApp: true, enabled: false, createdAt: "2026-03-15T08:30:00Z" },
+];
+
+const NO_FINDING = {
+  dueOn: null, amount: null, rentalContractUuid: null, tenant: null, rentPeriod: null, mortgageUuid: null, instalmentNumber: null,
+  lender: null, taxKind: null, taxName: null, taxYear: null, loanToValuePct: null, residualDebt: null, valueAtShare: null,
+};
+
+/** What a rule finds on the sample's today, as the API's check would (simplified). */
+function demoFindings(rule: DemoRuleDef): RealEstateAlertFinding[] {
+  if (!rule.enabled) return [];
+  const params: RealEstateAlertParams = rule.params;
+  const scoped = PROPERTIES.filter((p) => !rule.propertyUuid || p.id === rule.propertyUuid);
+  const base = (p: Property, key: string) => ({ ...NO_FINDING, key, kind: params.type, propertyUuid: p.id, propertyName: p.name, currency: "EUR" });
+  const out: RealEstateAlertFinding[] = scoped.flatMap((p): RealEstateAlertFinding[] => {
+    switch (params.type) {
+      case "rent_unpaid":
+        return leasesOf(p).flatMap((l) => [0, -1, -2].flatMap((shift) => {
+          const month = addMonths(`${DEMO_MONTH}-01`, shift).slice(0, 7);
+          if (l.startsOn > monthEnd(month) || (l.endsOn && l.endsOn < `${month}-01`)) return [];
+          const dueOn = [`${month}-${pad(params.dayOfMonth)}`, l.startsOn].sort().at(-1)!;
+          const paid = DEMO_TRANSACTIONS.some((t) => t.propertyUuid === p.id && t.kind === "rent" && (t.rentPeriod ?? t.bookedOn.slice(0, 7)) === month);
+          return dueOn > DEMO_TODAY || paid ? [] : [{ ...base(p, `${l.uuid}:${month}`), dueOn, amount: l.monthlyRent, rentalContractUuid: l.uuid, tenant: l.tenant, rentPeriod: month }];
+        }));
+      case "tax_due": {
+        const year = Number(DEMO_TODAY.slice(0, 4));
+        return [year - 1, year].flatMap((y) => demoTaxes(p.id, y).taxes).flatMap((t) => t.instalments
+          .filter((i) => !i.paid && i.amount > 0 && i.dueOn <= addDays(DEMO_TODAY, params.daysBefore))
+          .map((i) => ({ ...base(p, `${p.id}:${t.kind}:${t.year}:${i.number}`), dueOn: i.dueOn, amount: i.amount, taxKind: t.kind, taxName: t.name, taxYear: t.year })));
+      }
+      case "mortgage_instalment_unpaid":
+        return MORTGAGE_DEFS.filter((def) => def.property.id === p.id).flatMap((def) => SCHEDULES.get(def.uuid)!
+          .filter((row) => addDays(row.dueOn, params.daysAfter) <= DEMO_TODAY && addDays(row.dueOn, 90) >= DEMO_TODAY)
+          .filter((row) => !DEMO_TRANSACTIONS.some((t) => t.mortgageUuid === def.uuid && t.instalmentNumber === row.number))
+          .map((row) => ({ ...base(p, `${def.uuid}:${row.number}`), dueOn: row.dueOn, amount: row.payment, mortgageUuid: def.uuid, instalmentNumber: row.number, lender: lenderOf(p) })));
+      case "lease_ending":
+        return leasesOf(p)
+          .filter((l) => l.endsOn && l.endsOn >= DEMO_TODAY && l.endsOn <= addDays(DEMO_TODAY, params.daysBefore))
+          .map((l) => ({ ...base(p, l.uuid), dueOn: l.endsOn, amount: l.monthlyRent, rentalContractUuid: l.uuid, tenant: l.tenant }));
+      case "loan_to_value": {
+        const f = DEMO_PROPERTIES.find((x) => x.uuid === p.id)!.figures;
+        return f.loanToValuePct !== null && f.loanToValuePct > Number(params.thresholdPct)
+          ? [{ ...base(p, p.id), loanToValuePct: round(f.loanToValuePct, 2), residualDebt: f.residualDebt, valueAtShare: f.valueAtShare }]
+          : [];
+      }
+    }
+  });
+  return out.sort((a, b) => (a.dueOn ?? "").localeCompare(b.dueOn ?? "") || a.propertyName.localeCompare(b.propertyName));
+}
+
+const DEMO_ALERT_RULES: RealEstateAlertRule[] = DEMO_RULES.map((rule) => {
+  const findings = demoFindings(rule);
+  return {
+    ...rule,
+    findings,
+    lastCheckedAt: `${DEMO_TODAY}T05:00:00Z`,
+    lastTriggeredAt: findings.length ? `${DEMO_TODAY}T05:00:00Z` : null,
+    updatedAt: rule.createdAt,
+  };
+});
+
 /** A demo account's real estate, read as the API would serve it. */
 export const demoRealEstateSource: RealEstateSource = {
   overview: async () => demoOverview(),
@@ -1085,4 +1142,5 @@ export const demoRealEstateSource: RealEstateSource = {
   },
   // The sample wallets and properties aren't linked: nothing to propose.
   movementLinkProposals: async () => [],
+  alertRules: async (propertyUuid) => DEMO_ALERT_RULES.filter((r) => !propertyUuid || !r.propertyUuid || r.propertyUuid === propertyUuid),
 };

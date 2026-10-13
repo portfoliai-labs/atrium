@@ -784,3 +784,87 @@ export interface TaxpayerYearInput {
   reducedRatePropertyUuid?: string | null;
   shortStayRegime?: TaxRegime | null;
 }
+
+// ── Alerts ──
+
+export type RealEstateAlertType = "rent_unpaid" | "tax_due" | "mortgage_instalment_unpaid" | "lease_ending" | "loan_to_value";
+
+/** What a rule watches, by `type`. */
+export type RealEstateAlertParams =
+  // A lease's rent for a month has no rent transaction for that month by that day (1-28): the
+  // current month and the two before.
+  | { type: "rent_unpaid"; dayOfMonth: number }
+  // A tax instalment (this year's and last year's) not paid and due within N days (0-90), overdue
+  // ones included.
+  | { type: "tax_due"; daysBefore: number }
+  // A mortgage instalment with no transaction N days (0-60) after its due day, up to 90 days after.
+  | { type: "mortgage_instalment_unpaid"; daysAfter: number }
+  // A lease ending within N days (1-365).
+  | { type: "lease_ending"; daysBefore: number }
+  // Residual debt over the value at the share above the threshold (>0, ≤200), in percent.
+  | { type: "loan_to_value"; thresholdPct: number | string };
+
+/** A fact a rule finds today: only its kind's fields are set, the others null. Amounts are the user's share. */
+export interface RealEstateAlertFinding {
+  // Stable while the fact lasts.
+  key: string;
+  kind: RealEstateAlertType;
+  propertyUuid: string;
+  propertyName: string;
+  currency: string;
+  // The rent's due day, the instalment's due day, the lease's last day; null for loan-to-value.
+  dueOn: string | null;
+  // The month's rent, the tax instalment, the mortgage instalment, or the lease's monthly rent.
+  amount: number | null;
+  // rent_unpaid and lease_ending.
+  rentalContractUuid: string | null;
+  tenant: string | null;
+  rentPeriod: string | null; // "YYYY-MM"
+  // mortgage_instalment_unpaid.
+  mortgageUuid: string | null;
+  instalmentNumber: number | null;
+  lender: string | null;
+  // tax_due.
+  taxKind: TaxKind | null;
+  taxName: string | null;
+  taxYear: number | null;
+  // loan_to_value.
+  loanToValuePct: number | null;
+  residualDebt: number | null;
+  valueAtShare: number | null;
+}
+
+/**
+ * A rule, checked every morning: it notifies only the facts it hadn't found at its previous check.
+ * `findings` is what it finds now ([] while disabled); those found when it was created, changed or
+ * re-enabled are known already and not notified.
+ */
+export interface RealEstateAlertRule {
+  uuid: string;
+  // Null: every property.
+  propertyUuid: string | null;
+  params: RealEstateAlertParams;
+  notifyEmail: boolean;
+  notifyInApp: boolean;
+  enabled: boolean;
+  findings: RealEstateAlertFinding[];
+  lastCheckedAt: string | null;
+  lastTriggeredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RealEstateAlertRuleInput {
+  propertyUuid?: string | null;
+  params: RealEstateAlertParams;
+  notifyEmail?: boolean;
+  notifyInApp?: boolean;
+}
+
+// Only the fields sent change; params may switch type.
+export interface RealEstateAlertRuleUpdateRequest {
+  params?: RealEstateAlertParams;
+  notifyEmail?: boolean;
+  notifyInApp?: boolean;
+  enabled?: boolean;
+}

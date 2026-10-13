@@ -19,11 +19,12 @@ import { RealEstateTransactionDialog, type RealEstateEntryKind } from "./RealEst
 import { ALL_PROPERTIES, RealEstateTransactions } from "./RealEstateTransactions";
 import { RealEstateInsights } from "./RealEstateInsights";
 import { PropertyPage } from "./PropertyPage";
+import { RealEstateAlerts, alertsCounter, useAlertRules } from "./RealEstateAlerts";
 
-// The real estate's pages: its own, a property's, and those its header leads to. Reports and
-// Alerts aren't in the API yet: a demo account's previews (components/preview/RealEstatePortfolio).
-export type RealEstatePage = "home" | "property" | "insights" | "transactions" | RealEstatePreviewPage;
-const PREVIEW_PAGES: RealEstatePreviewPage[] = ["reports", "alerts"];
+// The real estate's pages: its own, a property's, and those its header leads to. Reports aren't
+// in the API yet: a demo account's preview (components/preview/RealEstatePortfolio).
+export type RealEstatePage = "home" | "property" | "insights" | "transactions" | "alerts" | RealEstatePreviewPage;
+const PREVIEW_PAGES: RealEstatePreviewPage[] = ["reports"];
 
 const VALUE_COLOR = "#C49A3C";
 
@@ -45,8 +46,8 @@ const toneOf = (v: number | null | undefined): "gain" | "loss" | undefined => (v
  * reference currency (the overview's); a property whose currency can't be converted today is
  * listed in its own but takes no share. New properties and their transactions are added from one
  * form (RealEstateTransactionForm): a property comes with its Purchase. Transactions can be every
- * property's or one's (`property`). A demo account's are sample data, read only, and it also has
- * Reports and Alerts, previews. A property that's gone (deleted, an old link) opens the real
+ * property's or one's (`property`), and so can the Alerts (RealEstateAlerts). A demo account's are
+ * sample data, read only, and it also has Reports, a preview. A property that's gone (deleted, an old link) opens the real
  * estate's own page.
  */
 export function RealEstateNode({ page: requested, property: propertyUuid, rootTrail, onOpen }: {
@@ -68,6 +69,7 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
   const summary = useRealEstateSummary(null, firstMonth, undefined, !loading && page === "home");
   const [entry, setEntry] = useState<RealEstateEntryKind | null>(null);
   const count = useTransactionTotal(source, version);
+  const alertRules = useAlertRules(null, !loading && page === "home");
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
 
@@ -91,6 +93,7 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
         property={property}
         trail={trail}
         onOpenTransactions={() => onOpen("transactions", property.uuid)}
+        onOpenAlerts={() => onOpen("alerts", property.uuid)}
         onGone={() => onOpen("home")}
       />
     );
@@ -124,7 +127,11 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
     );
   }
 
-  if (page === "reports" || page === "alerts") {
+  if (page === "alerts") {
+    return <RealEstateAlerts key={property?.uuid ?? "all"} trail={trail} property={property} onOpenProperty={(uuid) => onOpen("property", uuid)} />;
+  }
+
+  if (page === "reports") {
     return <RealEstatePortfolio trail={rootTrail} page={page} onOpenHome={() => onOpen("home")} />;
   }
 
@@ -141,6 +148,8 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
   const counters: PageCounter[] = [
     { key: "transactions", label: "transactions", count, onClick: () => onOpen("transactions") },
     { key: "insights", label: "insights", onClick: () => onOpen("insights") },
+    // None while the API has no alerts.
+    ...(alertRules === null ? [] : [alertsCounter(alertRules, () => onOpen("alerts"))]),
     ...(sample ? PREVIEW_PAGES.map((p) => ({ key: p, label: p, onClick: () => onOpen(p) })) : []),
   ];
 
@@ -532,3 +541,4 @@ function ArchivedList({ archived, onOpen }: { archived: Property[]; onOpen: (uui
     </section>
   );
 }
+

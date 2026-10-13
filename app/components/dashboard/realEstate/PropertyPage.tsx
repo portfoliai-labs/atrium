@@ -24,6 +24,7 @@ import { RealEstateTransactionDialog, type TaxPaymentPrefill } from "./RealEstat
 import { PropertyTaxModule, PropertyUsesModule } from "./PropertyTaxes";
 import { LeasesModule, TaxpayerYearDialog } from "./PropertyRentals";
 import { SaleSimulatorModule } from "./SaleTax";
+import { alertsCounter, useAlertRules } from "./RealEstateAlerts";
 
 const ARCHIVED_TITLE = "An archived property is read only";
 const pct = (v: number, digits = 1) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}%`;
@@ -40,10 +41,11 @@ type Dialog = "transaction" | "valuation" | "mortgage" | "edit" | "archive" | "d
  * reopened), its valuations, its use over time and its details. Its amounts are in its own
  * currency. An archived property, and a demo account's, are read only.
  */
-export function PropertyPage({ property, trail, onOpenTransactions, onGone }: {
+export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts, onGone }: {
   property: Property;
   trail: Crumb[];
   onOpenTransactions: () => void;
+  onOpenAlerts: () => void;
   // After it's deleted.
   onGone: () => void;
 }) {
@@ -56,6 +58,7 @@ export function PropertyPage({ property, trail, onOpenTransactions, onGone }: {
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const count = useTransactionCount(property.uuid);
+  const alertRules = useAlertRules(property.uuid);
 
   const f = property.figures;
   const money = (v: number) => formatCurrency(v, property.currency, 0);
@@ -114,7 +117,10 @@ export function PropertyPage({ property, trail, onOpenTransactions, onGone }: {
         value={money(f.valueAtShare)}
         change={gain === null ? null : { text: `${pct(gain)} on what was put in`, tone: toneOf(gain) }}
         note={note}
-        counters={[{ key: "transactions", label: "transactions", count, onClick: onOpenTransactions }]}
+        counters={[
+          { key: "transactions", label: "transactions", count, onClick: onOpenTransactions },
+          ...(alertRules === null ? [] : [alertsCounter(alertRules, onOpenAlerts, property.uuid)]),
+        ]}
         actions={actions}
         figures={figures}
       />

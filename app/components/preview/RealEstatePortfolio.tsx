@@ -6,13 +6,12 @@ import {
   BarChart, Bar, LineChart, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ReferenceLine, ReferenceDot, Legend, CartesianGrid, ComposedChart,
 } from "recharts";
-import { BellRing, Building2, Download, FileSearch, FileText, Home, Landmark, MapPin, Plus, Sparkles } from "lucide-react";
+import { Building2, Download, FileSearch, FileText, Home, Landmark, MapPin, Sparkles } from "lucide-react";
 import { Breadcrumb, type Crumb } from "../dashboard/Breadcrumb";
-import { Toggle } from "../dashboard/Toggle";
 import { formatCompact, formatCurrency } from "../../lib/format";
 import { CATEGORICAL_PALETTE } from "../../lib/chartColors";
 import {
-  PROPERTIES, ZONES, QUARTERS, REAL_ESTATE_REPORTS, REAL_ESTATE_ALERTS, zoneById, zoneMarketTrend, zoneNow, zoneYoY, zoneGrossYield,
+  PROPERTIES, ZONES, QUARTERS, REAL_ESTATE_REPORTS, zoneById, zoneMarketTrend, zoneNow, zoneYoY, zoneGrossYield,
   propertyValue, shortTermAnalysis,
   type Property, type RealEstateReport,
 } from "../../lib/mock/realEstate";
@@ -21,16 +20,16 @@ import { AXIS_TICK, ComingSoonButton, Panel, Pills, PreviewBadge, PreviewBanner,
 const eur = (v: number) => formatCurrency(v, "EUR", 0);
 const GOLD = "#C49A3C";
 
-export type RealEstatePreviewPage = "reports" | "alerts";
+export type RealEstatePreviewPage = "reports";
 
 const PAGE_LABELS: Record<RealEstatePreviewPage, string> = {
-  reports: "Reports", alerts: "Alerts",
+  reports: "Reports",
 };
 
 /**
  * REAL ESTATE PAGES (preview) — the real estate's pages the API doesn't have yet, a demo account's
- * only, opened from the real estate's own page (dashboard/realEstate/RealEstateNode): Reports and
- * Alerts. `trail` leads up to Wealth; "Real estate" is added to it. Everything comes from
+ * only, opened from the real estate's own page (dashboard/realEstate/RealEstateNode): Reports.
+ * `trail` leads up to Wealth; "Real estate" is added to it. Everything comes from
  * lib/mock/realEstate.
  */
 export function RealEstatePortfolio({
@@ -41,7 +40,6 @@ export function RealEstatePortfolio({
     <div className="space-y-6 pb-12">
       <Breadcrumb trail={pageTrail} current={PAGE_LABELS[page]} right={pageAction(page)} />
       {page === "reports" && <RealEstateReports />}
-      {page === "alerts" && <RealEstateAlerts />}
     </div>
   );
 }
@@ -50,8 +48,6 @@ function pageAction(page: RealEstatePreviewPage) {
   switch (page) {
     case "reports":
       return <ComingSoonButton icon={<FileText className="h-3.5 w-3.5" />}>Generate report</ComingSoonButton>;
-    case "alerts":
-      return <ComingSoonButton icon={<Plus className="h-3.5 w-3.5" />}>New alert</ComingSoonButton>;
   }
 }
 
@@ -291,40 +287,6 @@ function RealEstateReports() {
               <button type="button" disabled title="Coming soon" className="p-2.5 rounded-xl border border-slate-200 text-slate-300 cursor-not-allowed shrink-0">
                 <Download className="h-4 w-4" />
               </button>
-            </li>
-          ))}
-        </ul>
-      </Panel>
-    </>
-  );
-}
-
-function RealEstateAlerts() {
-  const [alerts, setAlerts] = useState(REAL_ESTATE_ALERTS);
-  return (
-    <>
-      <PreviewBanner feature="Real estate alerts">Sample rules. Switching them on or off works on this page only and isn&apos;t saved.</PreviewBanner>
-      <Panel title="Alert rules" subtitle="Notifications will arrive by email and in the bell at the top.">
-        <ul className="divide-y divide-slate-100">
-          {alerts.map((a) => (
-            <li key={a.id} className="px-6 md:px-7 py-4 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${a.enabled && a.triggered ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-400"}`}>
-                  <BellRing className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-black text-slate-900">
-                    {a.title}
-                    {a.enabled && a.triggered && <span className="ml-2 px-1.5 py-0.5 rounded-full bg-rose-50 text-[9px] font-black uppercase tracking-wider text-rose-600 align-middle">Triggered</span>}
-                  </p>
-                  <p className="text-[11px] font-semibold text-slate-400">{a.detail} · {a.scope}</p>
-                </div>
-              </div>
-              <Toggle
-                checked={a.enabled}
-                label={a.title}
-                onChange={(v) => setAlerts((list) => list.map((x) => (x.id === a.id ? { ...x, enabled: v } : x)))}
-              />
             </li>
           ))}
         </ul>

@@ -9,10 +9,12 @@ import type {
   PrepaymentEffect, PropertyKind, PropertyTransactionFilters, PropertyTransactionKind, PropertyTransactionList, PropertyUse,
   RateIndex, RateSource, RealEstateOverview, RealEstateSummary, RentalContract, RentalContractKind, TaxList, TaxReduction,
   TaxRegime, TaxpayerYear, Valuation, ValuationSource, AcquisitionKind, IncentiveKind, PropertyTax, SaleSimulationRequest,
-  MovementLinkProposal,
+  MovementLinkProposal, RealEstateAlertFinding, RealEstateAlertParams, RealEstateAlertRule, RealEstateAlertType,
 } from "../models/RealEstate";
 import { realEstateService } from "../services/realEstateService";
 import { ApiError } from "../services/apiClient";
+import { formatCurrency } from "./format";
+import { dayLabel, today } from "./wallets";
 
 export const PROPERTY_KIND_LABELS: Record<PropertyKind, string> = {
   apartment: "Apartment",
@@ -193,6 +195,9 @@ export const PROPERTY_FIELD_LABELS: Record<string, string> = {
   purchase: "The purchase", "acquisition.kind": "How you got it", "acquisition.acquiredOn": "The day you got it",
   "acquisition.donorPurchasedOn": "The donor's purchase day", "acquisition.donorCost": "The donor's cost",
   "works.worksCompletedOn": "The day the works ended", soldOn: "The sale's day", price: "The sale price",
+  // Alert rules.
+  propertyUuid: "Property", params: "The rule", "params.dayOfMonth": "Day of the month", "params.daysBefore": "Days",
+  "params.daysAfter": "Days", "params.thresholdPct": "Threshold",
 };
 export const fieldLabel = (field: string) => PROPERTY_FIELD_LABELS[field] ?? field;
 
@@ -209,6 +214,139 @@ export const ENERGY_RATINGS = ["A4", "A3", "A2", "A1", "B", "C", "D", "E", "F", 
 const SQFT_PER_SQM = 10.7639;
 export const sqmToSqft = (sqm: number) => sqm * SQFT_PER_SQM;
 export const sqftToSqm = (sqft: number) => sqft / SQFT_PER_SQM;
+
+// ── Alerts ──
+
+/** Each kind of rule: its name, what it watches, and the one number it takes. */
+export const ALERT_TYPES: Record<RealEstateAlertType, {
+  label: string;
+  desc: string;
+  param: { key: string; label: string; min: number; max: number; initial: number; unit: string; decimal?: boolean };
+}> = {
+  rent_unpaid: {
+    label: "Rent not received",
+    desc: "A lease's rent with no rent recorded for its month by a day of the month (this month and the two before).",
+    param: { key: "dayOfMonth", label: "By day of the month", min: 1, max: 28, initial: 10, unit: "" },
+  },
+  tax_due: {
+    label: "Tax falling due",
+    desc: "An instalment of IMU, of the rents' tax or of a sale's tax not paid yet and due soon, overdue ones too.",
+    param: { key: "daysBefore", label: "Days before it's due", min: 0, max: 90, initial: 15, unit: "days" },
+  },
+  mortgage_instalment_unpaid: {
+    label: "Mortgage instalment not recorded",
+    desc: "An instalment with no transaction some days after its due day (up to 90 days after it).",
+    param: { key: "daysAfter", label: "Days after its due day", min: 0, max: 60, initial: 5, unit: "days" },
+  },
+  lease_ending: {
+    label: "Lease ending",
+    desc: "A lease whose last day is near: time to renew it or find a tenant.",
+    param: { key: "daysBefore", label: "Days before it ends", min: 1, max: 365, initial: 90, unit: "days" },
+  },
+  loan_to_value: {
+    label: "Loan-to-value too high",
+    desc: "Your mortgage debt above a share of what your part of the property is worth.",
+    param: { key: "thresholdPct", label: "Above", min: 0, max: 200, initial: 60, unit: "%", decimal: true },
+  },
+};
+export const ALERT_TYPE_LIST = Object.keys(ALERT_TYPES) as RealEstateAlertType[];
+
+/** A rule's one number (its params' only field besides `type`). */
+export const alertParamValue = (params: RealEstateAlertParams) =>
+  Number((params as unknown as Record<string, number | string>)[ALERT_TYPES[params.type].param.key]);
+
+/** A rule's params from its kind and number. */
+export const alertParams = (type: RealEstateAlertType, value: number | string) =>
+  ({ type, [ALERT_TYPES[type].param.key]: value }) as RealEstateAlertParams;
+
+const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
+const days = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
+const pctText = (v: number) => `${Number(v.toFixed(1))}%`;
+
+/** What a rule watches, in a line. */
+export function alertRuleText(params: RealEstateAlertParams) {
+  switch (params.type) {
+    case "rent_unpaid": return `No rent by the ${ordinal(params.dayOfMonth)} of the month`;
+    case "tax_due": return params.daysBefore === 0 ? "A tax instalment due today or overdue" : `A tax instalment due within ${days(params.daysBefore)}`;
+    case "mortgage_instalment_unpaid":
+      return params.daysAfter === 0 ? "A mortgage instalment not recorded on its due day" : `A mortgage instalment not recorded ${days(params.daysAfter)} after its due day`;
+    case "lease_ending": return `A lease ending within ${days(params.daysBefore)}`;
+    case "loan_to_value": return `Loan-to-value above ${pctText(Number(params.thresholdPct))}`;
+  }
+}
+
+const monthName = (period: string) => {
+  const [y, m] = period.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+};
+
+/** A finding, said: what happened, and its figures (the property is left to the caller). */
+export function alertFindingText(f: RealEstateAlertFinding): { title: string; detail: string } {
+  const money = (v: number | null) => (v === null ? null : formatCurrency(v, f.currency, 0));
+  const due = f.dueOn ? (f.dueOn < today() ? `was due ${dayLabel(f.dueOn)}` : `due ${dayLabel(f.dueOn)}`) : null;
+  const join = (...parts: (string | null)[]) => parts.filter(Boolean).join(" · ");
+  switch (f.kind) {
+    case "rent_unpaid":
+      return { title: `${f.rentPeriod ? monthName(f.rentPeriod) : "A month"}'s rent not received`, detail: join(f.tenant, money(f.amount), due) };
+    case "tax_due":
+      return { title: `${f.taxName ?? "A tax"}${f.taxYear ? ` ${f.taxYear}` : ""}: an instalment not paid`, detail: join(money(f.amount), due) };
+    case "mortgage_instalment_unpaid":
+      return { title: `Mortgage instalment${f.instalmentNumber ? ` ${f.instalmentNumber}` : ""} not recorded`, detail: join(f.lender, money(f.amount), due) };
+    case "lease_ending":
+      return {
+        title: `${f.tenant ? `${f.tenant}'s lease` : "A lease"} ends ${f.dueOn ? dayLabel(f.dueOn) : "soon"}`,
+        detail: join(f.amount === null ? null : `${money(f.amount)} a month`),
+      };
+    case "loan_to_value":
+      return {
+        title: `Loan-to-value at ${f.loanToValuePct === null ? "—" : pctText(f.loanToValuePct)}`,
+        detail: join(f.residualDebt === null ? null : `${money(f.residualDebt)} of debt`, f.valueAtShare === null ? null : `on ${money(f.valueAtShare)} of value`),
+      };
+  }
+}
+
+/** A REAL_ESTATE_ALERT notification's finding (snake_case, decimals as strings, rent_period a month's first day) as the API's. */
+export function findingFromPayload(p: Record<string, unknown>): RealEstateAlertFinding {
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const num = (v: unknown) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
+  return {
+    key: str(p.key) ?? "",
+    kind: p.kind as RealEstateAlertType,
+    propertyUuid: str(p.property_uuid) ?? "",
+    propertyName: str(p.property_name) ?? "A property",
+    currency: str(p.currency) ?? "EUR",
+    dueOn: str(p.due_on),
+    amount: num(p.amount),
+    rentalContractUuid: str(p.rental_contract_uuid),
+    tenant: str(p.tenant),
+    rentPeriod: str(p.rent_period)?.slice(0, 7) ?? null,
+    mortgageUuid: str(p.mortgage_uuid),
+    instalmentNumber: num(p.instalment_number),
+    lender: str(p.lender),
+    taxKind: str(p.tax_kind) as RealEstateAlertFinding["taxKind"],
+    taxName: str(p.tax_name),
+    taxYear: num(p.tax_year),
+    loanToValuePct: num(p.loan_to_value_pct),
+    residualDebt: num(p.residual_debt),
+    valueAtShare: num(p.value_at_share),
+  };
+}
+
+/** A finding's identity across rules: its key is stable, but only read with its kind and property. */
+export const findingKey = (f: RealEstateAlertFinding) => `${f.propertyUuid}:${f.kind}:${f.key}`;
+
+/** The facts found by the enabled rules, once each (two rules can find the same), by due day then property. */
+export function currentFindings(rules: RealEstateAlertRule[], propertyUuid?: string) {
+  const seen = new Map<string, RealEstateAlertFinding>();
+  for (const r of rules) {
+    if (!r.enabled) continue;
+    for (const f of r.findings) {
+      if (propertyUuid && f.propertyUuid !== propertyUuid) continue;
+      seen.set(findingKey(f), f);
+    }
+  }
+  return [...seen.values()].sort((a, b) => (a.dueOn ?? "").localeCompare(b.dueOn ?? "") || a.propertyName.localeCompare(b.propertyName));
+}
 
 // ── Where the figures come from ──
 
@@ -236,6 +374,8 @@ export interface RealEstateSource {
   // Every non-archived property's, or one's: the wallets' movements that may be its transactions
   // not linked, or its instalments not recorded, in a range of at most 366 days.
   movementLinkProposals(propertyUuid: string | null, bookedFrom: string, bookedTo: string): Promise<MovementLinkProposal[]>;
+  // Every rule, or a property's (its own and those on every property), each with what it finds today.
+  alertRules(propertyUuid: string | null): Promise<RealEstateAlertRule[]>;
 }
 
 export const apiRealEstateSource: RealEstateSource = {
@@ -251,4 +391,5 @@ export const apiRealEstateSource: RealEstateSource = {
   taxpayerYears: (year) => realEstateService.taxpayerYears(year),
   simulateSale: (propertyUuid, request) => realEstateService.simulateSale(propertyUuid, request),
   movementLinkProposals: (propertyUuid, bookedFrom, bookedTo) => realEstateService.movementLinkProposals(propertyUuid, bookedFrom, bookedTo),
+  alertRules: (propertyUuid) => realEstateService.alertRules(propertyUuid),
 };

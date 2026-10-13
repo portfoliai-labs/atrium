@@ -6,6 +6,7 @@ import type {
   RealEstateSummary, Valuation, ValuationInput, Amount, Municipality, Property as PropertyResponse, PropertyUse, TaxList, TaxRate,
   RentalContract, RentalContractInput, RentalContractUpdateRequest, TaxpayerYear, TaxpayerYearInput,
   PropertyTax, SaleSimulationRequest, MovementLinkProposal,
+  RealEstateAlertRule, RealEstateAlertRuleInput, RealEstateAlertRuleUpdateRequest,
 } from "../models/RealEstate";
 import { apiFetch } from "./apiClient";
 
@@ -18,7 +19,8 @@ import { apiFetch } from "./apiClient";
 // name), InvalidUseChangeError (422, a use change), InvalidTaxRateError (422, a tax the property's
 // country doesn't have, or a rate on the rents' tax), TaxRateNotFoundError (404),
 // InvalidRentalContractError (422), RentalContractNotFoundError (404), InvalidTaxpayerYearError
-// (422), TaxpayerYearNotFoundError (404). InvalidPropertyError, InvalidUseChangeError
+// (422), TaxpayerYearNotFoundError (404), InvalidAlertRuleError (422, with `field`),
+// AlertRuleLimitReachedError (409, at 50 rules), AlertRuleNotFoundError (404). InvalidPropertyError, InvalidUseChangeError
 // and InvalidTaxRateError say which `field` (ApiError.metadata.field), as the bodies name it. A demo
 // account's writes are refused before they leave (see lib/demo).
 
@@ -256,6 +258,27 @@ export const realEstateService = {
   async movementLinkProposals(propertyUuid: string | null, bookedFrom: string, bookedTo: string): Promise<MovementLinkProposal[]> {
     const base = propertyUuid ? `${BASE}/properties/${propertyUuid}/movement-link-proposals` : `${BASE}/movement-link-proposals`;
     return apiFetch<MovementLinkProposal[]>(`${base}?${new URLSearchParams({ bookedFrom, bookedTo })}`);
+  },
+
+  // GET /v1/real-estate/alert-rules (every rule, oldest first) or /properties/{p}/alert-rules (that
+  // property's and those on every property: theirs carry findings for every property).
+  async alertRules(propertyUuid: string | null): Promise<RealEstateAlertRule[]> {
+    return apiFetch<RealEstateAlertRule[]>(propertyUuid ? `${BASE}/properties/${propertyUuid}/alert-rules` : `${BASE}/alert-rules`);
+  },
+
+  // POST /v1/real-estate/alert-rules — what it finds now is known already: not notified.
+  async addAlertRule(payload: RealEstateAlertRuleInput): Promise<RealEstateAlertRule> {
+    return apiFetch<RealEstateAlertRule>(`${BASE}/alert-rules`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // PATCH /v1/real-estate/alert-rules/{r} — only the fields sent change.
+  async updateAlertRule(ruleUuid: string, payload: RealEstateAlertRuleUpdateRequest): Promise<RealEstateAlertRule> {
+    return apiFetch<RealEstateAlertRule>(`${BASE}/alert-rules/${ruleUuid}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+
+  // DELETE /v1/real-estate/alert-rules/{r}
+  async removeAlertRule(ruleUuid: string): Promise<void> {
+    await apiFetch(`${BASE}/alert-rules/${ruleUuid}`, { method: "DELETE" });
   },
 
   // GET /v1/real-estate/municipalities — Italy's, by name (2-100 characters, accents ignored, at

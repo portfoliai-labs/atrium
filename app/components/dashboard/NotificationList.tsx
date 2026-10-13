@@ -7,6 +7,8 @@ import { categoryLabel, formatAlertPct, formatRange, WINDOW_LABEL } from "../../
 import type { AlertWindow } from "../../models/Alert";
 import { WEALTH_SECTION } from "../../lib/dashboardNav";
 import type { WealthView } from "./WealthSection";
+import { ALERT_TYPES, alertFindingText, findingFromPayload } from "../../lib/realEstate";
+import type { RealEstateAlertType } from "../../models/RealEstate";
 
 interface NotificationListProps {
   notifications: NotificationResponse[];
@@ -167,6 +169,24 @@ function getStrategySharedSummary(n: NotificationResponse): { title: string; det
   };
 }
 
+// A real estate alert rule's check that found something new (type REAL_ESTATE_ALERT), one per rule
+// per check. Payload (snake_case): event_id, rule_uuid, kind and findings, each as the API's
+// RealEstateAlertFinding (findingFromPayload). It links to the real estate's Alerts.
+function getRealEstateAlertSummary(n: NotificationResponse): { title: string; detail: string } {
+  const p = n.payload ?? {};
+  const findings = Array.isArray(p.findings) ? (p.findings as Record<string, unknown>[]).map(findingFromPayload) : [];
+  const label = ALERT_TYPES[p.kind as RealEstateAlertType]?.label ?? "Real estate alert";
+  if (findings.length === 1) {
+    const text = alertFindingText(findings[0]);
+    return { title: `${findings[0].propertyName}: ${text.title}`, detail: text.detail };
+  }
+  const names = [...new Set(findings.map((f) => f.propertyName))];
+  return {
+    title: findings.length > 1 ? `${label}: ${findings.length} found` : label,
+    detail: names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", "),
+  };
+}
+
 function formatDate(iso: string): string {
   const date = new Date(iso);
   const diffMs = Date.now() - date.getTime();
@@ -207,8 +227,10 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
         const isAlert = n.type === "ALERT_TRIGGERED";
         const isStrategyFailed = n.type === "STRATEGY_FAILED";
         const isStrategyShared = n.type === "STRATEGY_SHARED";
-        const cfg = isAlert ? ALERT_CONFIG : isStrategyFailed ? STATUS_CONFIG.FAILED : isStrategyShared ? STRATEGY_SHARED_CONFIG : getJobStatus(n);
+        const isRealEstateAlert = n.type === "REAL_ESTATE_ALERT";
+        const cfg = isAlert || isRealEstateAlert ? ALERT_CONFIG : isStrategyFailed ? STATUS_CONFIG.FAILED : isStrategyShared ? STRATEGY_SHARED_CONFIG : getJobStatus(n);
         const summary = isAlert ? getAlertSummary(n)
+          : isRealEstateAlert ? getRealEstateAlertSummary(n)
           : isStrategyFailed ? getStrategyFailedSummary(n)
             : isStrategyShared ? getStrategySharedSummary(n)
               : null;
@@ -266,6 +288,15 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
                   >
                     View report
                   </Link>
+                )}
+                {isRealEstateAlert && onOpenPage && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPage(WEALTH_SECTION, { kind: "realEstate", page: "alerts" } satisfies WealthView)}
+                    className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
+                  >
+                    View alerts
+                  </button>
                 )}
                 {isStrategyShared && portfolioUuid && onOpenPage && (
                   <button
