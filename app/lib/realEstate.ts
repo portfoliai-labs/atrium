@@ -10,7 +10,7 @@ import type {
   RateIndex, RateSource, RealEstateOverview, RealEstateSummary, RentalContract, RentalContractKind, TaxList, TaxReduction,
   TaxRegime, TaxpayerYear, Valuation, ValuationSource, AcquisitionKind, IncentiveKind, PropertyTax, SaleSimulationRequest,
   MovementLinkProposal, PrepaymentSimulation, PrepaymentSimulationRequest, RefinancingSimulation, RefinancingSimulationRequest,
-  RealEstateAlertFinding, MarketSemester, MarketZone, PropertyMarket, RealEstateAlertParams, RealEstateAlertRule, RealEstateAlertType,
+  RealEstateAlertFinding, MarketSalesSegment, MarketSemester, MarketZone, PropertyMarket, RealEstateAlertParams, RealEstateAlertRule, RealEstateAlertType,
 } from "../models/RealEstate";
 import { realEstateService } from "../services/realEstateService";
 import { ApiError } from "../services/apiClient";
@@ -351,6 +351,27 @@ export function alertFindingText(f: RealEstateAlertFinding): { title: string; de
 
 /** A semester, said: "H1 2026". */
 export const semesterLabel = (s: MarketSemester) => `H${s.half} ${s.year}`;
+
+/** OMI's sales segments, said. */
+export const SALES_SEGMENT_LABELS: Record<MarketSalesSegment, string> = {
+  residential: "Homes",
+  residential_up_to_50: "Homes up to 50 m²",
+  residential_50_85: "Homes 50–85 m²",
+  residential_85_115: "Homes 85–115 m²",
+  residential_115_145: "Homes 115–145 m²",
+  residential_over_145: "Homes over 145 m²",
+  appurtenant_garage: "Garages belonging to a home",
+  appurtenant_storage: "Store rooms belonging to a home",
+  offices: "Offices",
+  shops: "Shops",
+  storage_and_garages: "Garages and storage",
+  public_offices: "Public offices",
+  hotels: "Hotels",
+  banks: "Banks",
+  commercial_buildings: "Commercial buildings",
+  productive: "Productive buildings",
+  agricultural: "Agricultural buildings",
+};
 
 /** Where the market's figures come from, credited wherever they show (CC BY 4.0). */
 export const OMI_ATTRIBUTION = "Agenzia delle Entrate – OMI";

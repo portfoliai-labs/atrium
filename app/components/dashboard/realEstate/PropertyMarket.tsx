@@ -3,11 +3,11 @@
 
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, MapPin } from "lucide-react";
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useRealEstate } from "../../../context/RealEstateContext";
 import { formatCurrency } from "../../../lib/format";
-import { VALUATION_SOURCE_LABELS } from "../../../lib/realEstate";
-import type { MarketQuotation, MarketSemester, MarketTrend, Property, PropertyMarket } from "../../../models/RealEstate";
+import { SALES_SEGMENT_LABELS, VALUATION_SOURCE_LABELS } from "../../../lib/realEstate";
+import type { MarketQuotation, MarketSales, MarketSemester, MarketTrend, Property, PropertyMarket } from "../../../models/RealEstate";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { AXIS_TICK, PreviewBadge, TOOLTIP_STYLE } from "../../preview/PreviewKit";
 
@@ -29,7 +29,8 @@ const surfaceText = (s: MarketQuotation["saleSurface"]) => (s === "net" ? "net m
  * per m² for its kind of building, what the whole property would be worth within the sale range
  * against its value now, and its rent against the zone's. An indicative range, never an appraisal;
  * the source is credited wherever the figures show (CC BY 4.0). Without a zone it says what's
- * missing, or offers to pick one; nothing at all for a country with no source.
+ * missing, or offers to pick one; nothing at all for a country with no source. The municipality's
+ * sales show whatever the zone's status, as they need only the municipality.
  */
 export function PropertyMarketModule({ property, readOnly, onEdit }: { property: Property; readOnly: boolean; onEdit: () => void }) {
   const { source, version, sample } = useRealEstate();
@@ -164,10 +165,11 @@ export function PropertyMarketModule({ property, readOnly, onEdit }: { property:
             )}
           </>
         )}
+        {market?.sales && market.sales.years.length > 0 && <Sales sales={market.sales} />}
         {market && (market.attribution || sample) && (
           <p className="text-[10.5px] text-slate-400">
             {market.attribution
-              ? <>Source: {market.attribution} (CC BY 4.0). Indicative ranges for the zone, not an appraisal of this property.</>
+              ? <>Source: {market.attribution} (CC BY 4.0).{market.quotation && " Indicative ranges for the zone, not an appraisal of this property."}</>
               : "Sample figures, made up for the demo: not the OMI's."}
           </p>
         )}
@@ -264,3 +266,61 @@ function Trend({ trend }: { trend: MarketTrend }) {
   );
 }
 
+
+const MARKET_SIZE_TEXT = "The Agenzia's ranking of the municipality's market by sales, from S to XXL.";
+const salesText = (v: number) => Math.round(v).toLocaleString("en-US");
+
+/**
+ * The municipality's sales by year (OMI's NTN, a share sold counting for its share): the property's
+ * segment, its change on the year before, and all the homes sold for context. Land has no segment:
+ * only the homes then.
+ */
+function Sales({ sales }: { sales: MarketSales }) {
+  const latest = sales.years.at(-1)!;
+  const segment = sales.segment && latest.transactions !== null ? SALES_SEGMENT_LABELS[sales.segment] : null;
+  // The segment's bars, else the homes'.
+  const bars = sales.years.map((y) => ({ year: String(y.year), sold: segment ? y.transactions : y.residentialTransactions }));
+  const chip = [sales.provincialCapital && "Provincial capital", sales.marketSize && `${sales.marketSize} market`].filter(Boolean).join(" · ");
+  // The segment's figures first, else the homes'.
+  const [count, change] = segment ? [latest.transactions!, sales.changeYearPct] : [latest.residentialTransactions, sales.residentialChangeYearPct];
+  return (
+    <div className="space-y-3 rounded-xl border border-slate-100 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[12.5px] font-bold text-slate-700">Sales in the municipality · {latest.year}</p>
+        {chip && (
+          <span title={sales.marketSize ? MARKET_SIZE_TEXT : undefined} className="rounded-full bg-[#F6F1E6] px-2.5 py-0.5 text-[10.5px] font-bold text-[#8A6A28]">
+            {chip}
+          </span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[10.5px] text-slate-400">{segment ?? "Homes"}</p>
+          <p className="flex items-baseline gap-2">
+            <span className="text-[20px] font-black text-slate-900 tabular-nums">{count === null ? "—" : salesText(count)}</span>
+            <span className="text-[11px] text-slate-500">sold</span>
+            {change !== null && <span className={`text-[12px] font-bold ${changeTone(change)}`}>{changeText(change)} on {latest.year - 1}</span>}
+          </p>
+          {segment && (
+            <p className="text-[11.5px] text-slate-500">
+              All homes in the municipality:{" "}
+              <span className="tabular-nums text-slate-700">{latest.residentialTransactions === null ? "—" : salesText(latest.residentialTransactions)}</span>
+              {sales.residentialChangeYearPct !== null && <span className={`font-bold ${changeTone(sales.residentialChangeYearPct)}`}> ({changeText(sales.residentialChangeYearPct)})</span>}
+            </p>
+          )}
+        </div>
+        {bars.length > 1 && (
+          <div className="h-20 w-full max-w-[260px]">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 260, height: 80 }}>
+              <BarChart data={bars} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                <XAxis dataKey="year" tick={AXIS_TICK} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "#f8fafc" }} formatter={(v) => [v === null ? "—" : salesText(Number(v)), "Sold"]} />
+                <Bar dataKey="sold" fill="#C49A3C" radius={[3, 3, 0, 0]} isAnimationActive={false} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

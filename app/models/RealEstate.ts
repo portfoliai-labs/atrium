@@ -1010,8 +1010,32 @@ export interface PropertyMarket {
   rent: { monthlyRent: number; monthlyRentPerSqm: number; position: "below" | "within" | "above"; rentalContractUuid?: string } | null;
   // The zone's middle prices by semester, for the quotation's building type and state; null unless available.
   trend?: MarketTrend | null;
+  // The municipality's yearly sales: null without data or a source, else whatever the status (it needs only the municipality).
+  sales?: MarketSales | null;
   // To show wherever these figures are (CC BY 4.0).
   attribution: string | null;
+}
+
+/** OMI's sales segments: a home by its surface class (m², upper bound inclusive), else its use. */
+export type MarketSalesSegment =
+  | "residential" | "residential_up_to_50" | "residential_50_85" | "residential_85_115" | "residential_115_145" | "residential_over_145"
+  | "appurtenant_garage" | "appurtenant_storage" | "offices" | "shops" | "storage_and_garages" | "public_offices"
+  | "hotels" | "banks" | "commercial_buildings" | "productive" | "agricultural";
+
+/**
+ * A municipality's sales by year, oldest first (OMI's NTN: units sold, each counted at the share
+ * sold, so decimals are normal): the property's segment (null for land) and all its homes. Changes
+ * in percent, the latest year against the one before; null until both are loaded.
+ */
+export interface MarketSales {
+  municipalityCode: string;
+  segment: MarketSalesSegment | null;
+  years: { year: number; transactions: number | null; residentialTransactions: number | null }[];
+  changeYearPct: number | null;
+  residentialChangeYearPct: number | null;
+  provincialCapital: boolean | null;
+  // The Agenzia's ranking of the municipality's market.
+  marketSize: "S" | "M" | "L" | "XL" | "XXL" | null;
 }
 
 /**

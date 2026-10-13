@@ -13,7 +13,7 @@ import type {
   ItalianDetails, Mortgage, MortgageSchedule, Municipality, Property as ApiProperty, PropertyTax, PropertyTransaction, SaleSimulationRequest,
   PropertyTransactionFilters, PropertyUse, RealEstateMonth, RealEstateOverview, RealEstateSummary, RentalContract, TaxInstalment,
   TaxList, TaxPeriod, TaxpayerYear, UsePeriod, Valuation, RealEstateAlertFinding, RealEstateAlertParams, RealEstateAlertRule,
-  Instalment, ScheduleOutlook, MarketQuotation, MarketTrend, MarketZone, PropertyMarket, PrepaymentSimulationRequest, RefinancingSimulationRequest, PrepaymentSimulation, RefinancingSimulation,
+  Instalment, ScheduleOutlook, MarketQuotation, MarketSales, MarketSalesSegment, MarketTrend, MarketZone, PropertyMarket, PrepaymentSimulationRequest, RefinancingSimulationRequest, PrepaymentSimulation, RefinancingSimulation,
 } from "../../models/RealEstate";
 
 export type PropertyType = "Apartment" | "House" | "Commercial" | "Garage" | "Land";
@@ -1292,6 +1292,46 @@ function demoTrend(z: Zone, q: MarketQuotation): MarketTrend {
   };
 }
 
+/** All homes sold in each city in 2025 (NTN), and the Agenzia's size of its market: made up, near enough. */
+const CITY_SALES: Record<string, { homes: number; size: MarketSales["marketSize"] }> = {
+  Milan: { homes: 25172.96, size: "XXL" }, Rome: { homes: 33410.4, size: "XXL" },
+  Turin: { homes: 13025.7, size: "XL" }, Bologna: { homes: 6482.3, size: "XL" },
+};
+// A segment's share of the homes sold; garages and storage counted on their own.
+const SEGMENT_SHARE: Partial<Record<MarketSalesSegment, number>> = {
+  residential_up_to_50: 0.14, residential_50_85: 0.38, residential_85_115: 0.26, residential_115_145: 0.12, residential_over_145: 0.1, storage_and_garages: 0.55,
+};
+
+function demoSegment(p: (typeof PROPERTIES)[number]): MarketSalesSegment {
+  // No appurtenance in the sample: a garage counts with garages and storage.
+  if (p.type === "Garage") return "storage_and_garages";
+  return p.sqm <= 50 ? "residential_up_to_50" : p.sqm <= 85 ? "residential_50_85" : p.sqm <= 115 ? "residential_85_115" : p.sqm <= 145 ? "residential_115_145" : "residential_over_145";
+}
+
+/** The city's sales over the last five years, moving with its zones' prices, a little noisily. */
+function demoSales(p: (typeof PROPERTIES)[number]): MarketSales {
+  const city = CITY_SALES[p.city];
+  const segment = demoSegment(p);
+  const rand = seeded(hashSeed(`sales:${p.city}`));
+  const swings = [-0.08, 0.16, -0.09, -0.02, 0.06].map((s) => s + (rand() - 0.5) * 0.04);
+  // Back from 2025's figure, each year's change undone.
+  const homes = [city.homes];
+  for (let i = swings.length - 1; i > 0; i--) homes.unshift(homes[0] / (1 + swings[i]));
+  const years = homes.map((h, i) => ({
+    year: 2021 + i,
+    transactions: round(h * SEGMENT_SHARE[segment]! * (1 + (rand() - 0.5) * 0.06), 2),
+    residentialTransactions: round(h, 2),
+  }));
+  const change = (a: number | null, b: number | null) => (a === null || b === null ? null : round((a / b - 1) * 100, 2));
+  const [last, prev] = [years.at(-1)!, years.at(-2)!];
+  return {
+    municipalityCode: CITY_CODES[p.city], segment, years,
+    changeYearPct: change(last.transactions, prev.transactions),
+    residentialChangeYearPct: change(last.residentialTransactions, prev.residentialTransactions),
+    provincialCapital: true, marketSize: city.size,
+  };
+}
+
 function demoMarket(propertyUuid: string): PropertyMarket {
   const p = PROPERTIES.find((x) => x.id === propertyUuid);
   if (!p) throw new Error("Property not found.");
@@ -1311,6 +1351,7 @@ function demoMarket(propertyUuid: string): PropertyMarket {
       position: perSqm < quotation.rentMin! ? "below" : perSqm > quotation.rentMax! ? "above" : "within",
     } : null,
     trend: demoTrend(zone.zone, quotation),
+    sales: demoSales(p),
     // Made-up figures: not the OMI's, so not credited to it.
     attribution: null,
   };
