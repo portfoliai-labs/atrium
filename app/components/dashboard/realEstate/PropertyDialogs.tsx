@@ -4,7 +4,8 @@
 import { useState } from "react";
 import { Landmark, Pencil, Percent as PercentIcon, Scale } from "lucide-react";
 import { realEstateService } from "../../../services/realEstateService";
-import { errorText, today } from "../../../lib/wallets";
+import { today } from "../../../lib/wallets";
+import { fieldErrorText } from "../../../lib/realEstate";
 import type { Mortgage, Property } from "../../../models/RealEstate";
 import { DialogShell, Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
 import { Percent, monthAfter, useMortgageFields, usePropertyFields } from "./NewPropertyFields";
@@ -20,7 +21,7 @@ function useSave(onSaved: () => void, fallback: string) {
       await action();
       onSaved();
     } catch (err) {
-      setError(errorText(err, fallback));
+      setError(fieldErrorText(err, fallback));
       setBusy(false);
     }
   };
@@ -31,20 +32,29 @@ function useSave(onSaved: () => void, fallback: string) {
 export function PropertyEditDialog({ property, onClose, onSaved }: { property: Property; onClose: () => void; onSaved: () => void }) {
   const form = usePropertyFields(property);
   const { busy, error, run } = useSave(onSaved, "Unable to save this property.");
-  const changes = form.changes();
+  // Bought through a purchase transaction: that's its acquisition, not to change here.
+  const bought = property.acquisition.kind === "purchase" && !!property.purchasedOn;
+  const changes = { ...form.changes(), ...(bought ? {} : form.acquisitionChanges()) };
+  const problems = [...form.problems, ...(bought ? [] : form.acquisitionProblems)];
   return (
     <DialogShell
       icon={<Pencil className="h-5 w-5" />}
       title={`Edit ${property.name}`}
       busy={busy}
-      error={error ?? (form.problems.length > 0 ? `Still needed: ${form.problems.join(", ")}.` : null)}
+      error={error ?? (problems.length > 0 ? `Still needed: ${problems.join(", ")}.` : null)}
       submitLabel="Save"
-      canSubmit={form.problems.length === 0}
+      canSubmit={problems.length === 0}
       onSubmit={() => run(() => (Object.keys(changes).length > 0 ? realEstateService.update(property.uuid, changes) : Promise.resolve()))}
       onClose={onClose}
       wide
     >
       {form.fields}
+      {!bought && (
+        <fieldset className="space-y-3">
+          <legend className="text-[11px] font-black uppercase tracking-widest text-slate-700 mb-3">Acquisition</legend>
+          {form.acquisitionFields}
+        </fieldset>
+      )}
     </DialogShell>
   );
 }

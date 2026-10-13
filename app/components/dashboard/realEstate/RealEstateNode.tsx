@@ -8,8 +8,8 @@ import { useRealEstate, useRealEstateOverview, useRealEstateSummary } from "../.
 import { CATEGORICAL_PALETTE } from "../../../lib/chartColors";
 import { formatCompact, formatCurrency } from "../../../lib/format";
 import { PROPERTY_KIND_LABELS, PROPERTY_USE_LABELS } from "../../../lib/realEstate";
-import { monthLabel } from "../../../lib/wallets";
-import type { Property, PropertyUse } from "../../../models/RealEstate";
+import { dayLabel, monthLabel, today } from "../../../lib/wallets";
+import type { Property, PropertyUse, TaxList } from "../../../models/RealEstate";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
 import { PageHeader, type PageAction, type PageCounter, type PageFigure } from "../PageHeader";
 import { Fig, Figs, MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
@@ -19,16 +19,18 @@ import { RealEstateTransactionDialog, type RealEstateEntryKind } from "./RealEst
 import { ALL_PROPERTIES, RealEstateTransactions } from "./RealEstateTransactions";
 import { RealEstateInsights } from "./RealEstateInsights";
 import { PropertyPage } from "./PropertyPage";
+import { RealEstateAlerts, alertsCounter, useAlertRules } from "./RealEstateAlerts";
 
-// The real estate's pages: its own, a property's, and those its header leads to. Reports and
-// Alerts aren't in the API yet: a demo account's previews (components/preview/RealEstatePortfolio).
-export type RealEstatePage = "home" | "property" | "insights" | "transactions" | RealEstatePreviewPage;
-const PREVIEW_PAGES: RealEstatePreviewPage[] = ["reports", "alerts"];
+// The real estate's pages: its own, a property's, and those its header leads to. Reports aren't
+// in the API yet: a demo account's preview (components/preview/RealEstatePortfolio).
+export type RealEstatePage = "home" | "property" | "insights" | "transactions" | "alerts" | RealEstatePreviewPage;
+const PREVIEW_PAGES: RealEstatePreviewPage[] = ["reports"];
 
 const VALUE_COLOR = "#C49A3C";
 
 const USE_COLORS: Record<PropertyUse, string> = {
   primary_residence: "#2a78d6", second_home: "#4a3aa7", long_term_rental: "#1baf7a", short_term_rental: "#eb6834", vacant: "#94a3b8",
+  free_loan: "#e87ba4", uninhabitable: "#a16207",
 };
 
 const pct = (v: number, digits = 1) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}%`;
@@ -44,8 +46,8 @@ const toneOf = (v: number | null | undefined): "gain" | "loss" | undefined => (v
  * reference currency (the overview's); a property whose currency can't be converted today is
  * listed in its own but takes no share. New properties and their transactions are added from one
  * form (RealEstateTransactionForm): a property comes with its Purchase. Transactions can be every
- * property's or one's (`property`). A demo account's are sample data, read only, and it also has
- * Reports and Alerts, previews. A property that's gone (deleted, an old link) opens the real
+ * property's or one's (`property`), and so can the Alerts (RealEstateAlerts). A demo account's are
+ * sample data, read only, and it also has Reports, a preview. A property that's gone (deleted, an old link) opens the real
  * estate's own page.
  */
 export function RealEstateNode({ page: requested, property: propertyUuid, rootTrail, onOpen }: {
@@ -67,6 +69,7 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
   const summary = useRealEstateSummary(null, firstMonth, undefined, !loading && page === "home");
   const [entry, setEntry] = useState<RealEstateEntryKind | null>(null);
   const count = useTransactionTotal(source, version);
+  const alertRules = useAlertRules(null, !loading && page === "home");
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
 
@@ -90,6 +93,7 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
         property={property}
         trail={trail}
         onOpenTransactions={() => onOpen("transactions", property.uuid)}
+        onOpenAlerts={() => onOpen("alerts", property.uuid)}
         onGone={() => onOpen("home")}
       />
     );
@@ -123,7 +127,11 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
     );
   }
 
-  if (page === "reports" || page === "alerts") {
+  if (page === "alerts") {
+    return <RealEstateAlerts key={property?.uuid ?? "all"} trail={trail} property={property} onOpenProperty={(uuid) => onOpen("property", uuid)} />;
+  }
+
+  if (page === "reports") {
     return <RealEstatePortfolio trail={rootTrail} page={page} onOpenHome={() => onOpen("home")} />;
   }
 
@@ -140,6 +148,8 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
   const counters: PageCounter[] = [
     { key: "transactions", label: "transactions", count, onClick: () => onOpen("transactions") },
     { key: "insights", label: "insights", onClick: () => onOpen("insights") },
+    // None while the API has no alerts.
+    ...(alertRules === null ? [] : [alertsCounter(alertRules, () => onOpen("alerts"))]),
     ...(sample ? PREVIEW_PAGES.map((p) => ({ key: p, label: p, onClick: () => onOpen(p) })) : []),
   ];
 
@@ -170,11 +180,100 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
             <PropertiesComposition properties={active} currency={currency} onOpen={(uuid) => onOpen("property", uuid)} />
             <CashFlowModule summary={summary} />
           </div>
+          <TaxesModule properties={active} onOpen={(uuid) => onOpen("property", uuid)} />
         </>
       )}
       <ArchivedList archived={archived} onOpen={(uuid) => onOpen("property", uuid)} />
       {dialog}
     </div>
+  );
+}
+
+/**
+ * This year's taxes across the properties (Italy's IMU, and the tax on rents: cedolare secca or
+ * IRPEF): what they come to, what's been paid (the platforms' withholding included), what's left and
+ * the next due day; then each property's, opening its page (where its taxes are worked out and
+ * paid). Shown only when some property has them (one in Italy).
+ */
+function TaxesModule({ properties, onOpen }: { properties: Property[]; onOpen: (uuid: string) => void }) {
+  const { source, version } = useRealEstate();
+  const year = Number(today().slice(0, 4));
+  const taxed = properties.some((p) => p.address.country === "IT");
+  const [state, setState] = useState<{ version: number; list: TaxList | null } | null>(null);
+  useEffect(() => {
+    if (!taxed) return;
+    let cancelled = false;
+    source.taxes(null, year)
+      .then((list) => { if (!cancelled) setState({ version, list }); })
+      .catch(() => { if (!cancelled) setState({ version, list: null }); });
+    return () => { cancelled = true; };
+  }, [source, version, year, taxed]);
+  if (!taxed) return null;
+  const list = state?.version === version ? state.list : undefined;
+  const byUuid = new Map(properties.map((p) => [p.uuid, p]));
+  const taxes = list?.taxes.filter((t) => byUuid.has(t.propertyUuid)) ?? [];
+  // In euro: the tax is Italy's.
+  const money = (v: number) => formatCurrency(v, "EUR", 0);
+  const owed = taxes.reduce((s, t) => s + t.amount, 0);
+  const paid = taxes.reduce((s, t) => s + Math.min(t.paidAmount + t.withheldAmount, t.amount), 0);
+  const next = taxes.flatMap((t) => t.instalments.filter((i) => !i.paid && i.amount > 0)).map((i) => i.dueOn).sort()[0];
+  const provisional = taxes.some((t) => t.provisional && t.status === "computed");
+  const missing = taxes.filter((t) => t.status === "not_computed").length;
+
+  return (
+    <Module>
+      <ModuleHead
+        title={`Taxes ${year}`}
+        desc="IMU and the tax on rents this year, at your share. Open a property to see how they're worked out and record a payment."
+        right={provisional ? <span className="px-2 py-0.5 rounded-full bg-amber-50 text-[10px] font-black uppercase tracking-wider text-amber-700">Estimate</span> : undefined}
+      />
+      <div className={`${MODULE_BODY} space-y-4`}>
+        {list === undefined ? (
+          <p className="text-[12.5px] text-[#a8a29e]">Loading…</p>
+        ) : list === null ? (
+          <p className="text-[12.5px] text-rose-600">Unable to work out the taxes right now.</p>
+        ) : taxes.length === 0 ? (
+          <p className="text-[12.5px] text-[#a8a29e]">No property tax this year.</p>
+        ) : (
+          <>
+            <Figs>
+              <Fig label="Owed" value={money(owed)} strong />
+              <Fig label="Paid" value={money(paid)} tone={paid > 0 ? "gain" : undefined} />
+              <Fig label="Left" value={money(Math.max(0, owed - paid))} sub={next ? `Next due ${dayLabel(next)}` : owed > 0 ? "All paid" : undefined} />
+            </Figs>
+            {missing > 0 && (
+              <p className="text-[12px] font-semibold text-amber-700">
+                {missing === 1 ? "One tax isn't" : `${missing} taxes aren't`} worked out: open the property to see what&apos;s missing.
+              </p>
+            )}
+            <ul className="divide-y divide-[#EEE9DD]">
+              {taxes.map((t) => {
+                const p = byUuid.get(t.propertyUuid)!;
+                const due = t.instalments.find((i) => !i.paid && i.amount > 0);
+                const status = t.status === "exempt" ? "Exempt"
+                  : t.status === "not_computed" ? (t.notComputed === "missing_details" ? "Details missing" : "Not worked out")
+                  : !due ? "Paid"
+                  : due.dueOn < today() ? `Overdue since ${dayLabel(due.dueOn)}`
+                  : `Due by ${dayLabel(due.dueOn)}`;
+                const tone = t.status === "not_computed" ? "text-amber-700" : !due ? "text-emerald-600" : due.dueOn < today() ? "text-rose-600" : "text-slate-500";
+                return (
+                  <li key={`${t.propertyUuid}:${t.kind}`}>
+                    <button type="button" onClick={() => onOpen(t.propertyUuid)} className="w-full flex items-center gap-3 py-2.5 text-left hover:bg-[#F7F5EF] rounded-lg px-1.5 transition-colors">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-bold text-slate-800">{p.name} <span className="font-semibold text-slate-400">· {t.name}</span></span>
+                        <span className={`block text-[11.5px] font-semibold ${tone}`}>{status}</span>
+                      </span>
+                      <span className="font-bold tabular-nums text-slate-900">{t.status === "computed" ? money(t.amount) : "—"}</span>
+                      <ChevronRight className="h-4 w-4 text-[#a8a29e]" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </div>
+    </Module>
   );
 }
 
@@ -442,3 +541,4 @@ function ArchivedList({ archived, onOpen }: { archived: Property[]; onOpen: (uui
     </section>
   );
 }
+

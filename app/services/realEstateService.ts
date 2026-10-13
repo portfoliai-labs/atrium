@@ -3,7 +3,12 @@ import type {
   Mortgage, MortgageInput, MortgageSchedule, MortgageUpdateRequest, Property, PropertyCreateRequest,
   PropertyCreateResponse, PropertyTransaction, PropertyTransactionFilters, PropertyTransactionInput,
   PropertyTransactionList, PropertyTransactionUpdateRequest, PropertyUpdateRequest, RealEstateOverview,
-  RealEstateSummary, Valuation, ValuationInput, Amount,
+  RealEstateSummary, Valuation, ValuationInput, Amount, Municipality, Property as PropertyResponse, PropertyUse, TaxList, TaxRate,
+  RentalContract, RentalContractInput, RentalContractUpdateRequest, TaxpayerYear, TaxpayerYearInput,
+  PropertyTax, SaleSimulationRequest, MovementLinkProposal,
+  RealEstateAlertRule, RealEstateAlertRuleInput, RealEstateAlertRuleUpdateRequest,
+  PrepaymentSimulation, PrepaymentSimulationRequest, RefinancingSimulation, RefinancingSimulationRequest,
+  MarketZone, PropertyMarket,
 } from "../models/RealEstate";
 import { apiFetch } from "./apiClient";
 
@@ -13,7 +18,13 @@ import { apiFetch } from "./apiClient";
 // InvalidMortgageError / InvalidRateChangeError / InvalidValuationError (422, as FastAPI's own),
 // PropertyArchivedError (409, a write on an archived property), PropertyHasTransactionsError (409,
 // a currency change), MortgageHasTransactionsError (409, deleting a mortgage that transactions
-// name). A demo account's writes are refused before they leave (see lib/demo).
+// name), InvalidUseChangeError (422, a use change), InvalidTaxRateError (422, a tax the property's
+// country doesn't have, or a rate on the rents' tax), TaxRateNotFoundError (404),
+// InvalidRentalContractError (422), RentalContractNotFoundError (404), InvalidTaxpayerYearError
+// (422), TaxpayerYearNotFoundError (404), InvalidAlertRuleError (422, with `field`),
+// AlertRuleLimitReachedError (409, at 50 rules), AlertRuleNotFoundError (404). InvalidPropertyError, InvalidUseChangeError
+// and InvalidTaxRateError say which `field` (ApiError.metadata.field), as the bodies name it. A demo
+// account's writes are refused before they leave (see lib/demo).
 
 const BASE = "/v1/real-estate";
 
@@ -149,6 +160,20 @@ export const realEstateService = {
     return apiFetch<MortgageSchedule>(`${BASE}/mortgages/${mortgageUuid}/schedule`);
   },
 
+  // POST /v1/real-estate/mortgages/{m}/prepayment-simulation — the schedule were part of the debt
+  // (or all of it) repaid on a day; nothing is stored. 422 (field prepaidOn) on a past day or a
+  // mortgage that owes nothing.
+  async simulatePrepayment(mortgageUuid: string, payload: PrepaymentSimulationRequest): Promise<PrepaymentSimulation> {
+    return apiFetch<PrepaymentSimulation>(`${BASE}/mortgages/${mortgageUuid}/prepayment-simulation`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // POST /v1/real-estate/mortgages/{m}/refinancing-simulation — the residual debt moved to a new
+  // rate and term (a surroga, a renegotiation); nothing is stored. A variable rate is taken as
+  // today's for the whole term, on both sides.
+  async simulateRefinancing(mortgageUuid: string, payload: RefinancingSimulationRequest): Promise<RefinancingSimulation> {
+    return apiFetch<RefinancingSimulation>(`${BASE}/mortgages/${mortgageUuid}/refinancing-simulation`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
   // GET /v1/real-estate/properties/{p}/valuations — newest first.
   async valuations(propertyUuid: string): Promise<Valuation[]> {
     return apiFetch<Valuation[]>(`${BASE}/properties/${propertyUuid}/valuations`);
@@ -162,5 +187,134 @@ export const realEstateService = {
   // DELETE /v1/real-estate/valuations/{v}
   async removeValuation(valuationUuid: string): Promise<void> {
     await apiFetch(`${BASE}/valuations/${valuationUuid}`, { method: "DELETE" });
+  },
+
+  // POST /v1/real-estate/properties/{p}/use-changes — the use from a day on; one on that day is replaced.
+  async changeUse(propertyUuid: string, effectiveOn: string, use: PropertyUse): Promise<PropertyResponse> {
+    return apiFetch<PropertyResponse>(`${BASE}/properties/${propertyUuid}/use-changes`, { method: "POST", body: JSON.stringify({ effectiveOn, use }) });
+  },
+
+  // DELETE /v1/real-estate/properties/{p}/use-changes/{YYYY-MM-DD}
+  async removeUseChange(propertyUuid: string, effectiveOn: string): Promise<PropertyResponse> {
+    return apiFetch<PropertyResponse>(`${BASE}/properties/${propertyUuid}/use-changes/${effectiveOn}`, { method: "DELETE" });
+  },
+
+  // GET /v1/real-estate/taxes (every property owned in the year; the archived ones when asked) or
+  // /properties/{p}/taxes. This year by default.
+  async taxes(propertyUuid: string | null, year?: number, includeArchived = false): Promise<TaxList> {
+    const params = new URLSearchParams();
+    if (year !== undefined) params.set("year", String(year));
+    if (!propertyUuid && includeArchived) params.set("includeArchived", "true");
+    const query = params.toString() ? `?${params}` : "";
+    return apiFetch<TaxList>(`${propertyUuid ? `${BASE}/properties/${propertyUuid}/taxes` : `${BASE}/taxes`}${query}`);
+  },
+
+  // PUT /v1/real-estate/properties/{p}/tax-rates/property_tax/{year} — the user's own rate for
+  // every taxed month of that year, in place of the one found.
+  async setTaxRate(propertyUuid: string, year: number, ratePct: Amount): Promise<TaxRate> {
+    return apiFetch<TaxRate>(`${BASE}/properties/${propertyUuid}/tax-rates/property_tax/${year}`, { method: "PUT", body: JSON.stringify({ ratePct }) });
+  },
+
+  // DELETE /v1/real-estate/properties/{p}/tax-rates/property_tax/{year} — 404 when none is set.
+  async removeTaxRate(propertyUuid: string, year: number): Promise<void> {
+    await apiFetch(`${BASE}/properties/${propertyUuid}/tax-rates/property_tax/${year}`, { method: "DELETE" });
+  },
+
+  // GET /v1/real-estate/rental-contracts (every property's, archived ones' too) or
+  // /properties/{p}/rental-contracts — by start.
+  async rentalContracts(propertyUuid: string | null): Promise<RentalContract[]> {
+    return apiFetch<RentalContract[]>(propertyUuid ? `${BASE}/properties/${propertyUuid}/rental-contracts` : `${BASE}/rental-contracts`);
+  },
+
+  // POST /v1/real-estate/properties/{p}/rental-contracts
+  async addRentalContract(propertyUuid: string, payload: RentalContractInput): Promise<RentalContract> {
+    return apiFetch<RentalContract>(`${BASE}/properties/${propertyUuid}/rental-contracts`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // PATCH /v1/real-estate/rental-contracts/{c}
+  async updateRentalContract(contractUuid: string, payload: RentalContractUpdateRequest): Promise<RentalContract> {
+    return apiFetch<RentalContract>(`${BASE}/rental-contracts/${contractUuid}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+
+  // DELETE /v1/real-estate/rental-contracts/{c}
+  async removeRentalContract(contractUuid: string): Promise<void> {
+    await apiFetch(`${BASE}/rental-contracts/${contractUuid}`, { method: "DELETE" });
+  },
+
+  // GET /v1/real-estate/taxpayer-years — a year's, or every year's (by year, then holder: the user first).
+  async taxpayerYears(year?: number): Promise<TaxpayerYear[]> {
+    return apiFetch<TaxpayerYear[]>(`${BASE}/taxpayer-years${year !== undefined ? `?year=${year}` : ""}`);
+  },
+
+  // PUT /v1/real-estate/taxpayer-years — replaces the whole record of that year and holder.
+  async putTaxpayerYear(payload: TaxpayerYearInput): Promise<TaxpayerYear> {
+    return apiFetch<TaxpayerYear>(`${BASE}/taxpayer-years`, { method: "PUT", body: JSON.stringify(payload) });
+  },
+
+  // DELETE /v1/real-estate/taxpayer-years/{year}?holderName= — 404 when none.
+  async removeTaxpayerYear(year: number, holderName?: string | null): Promise<void> {
+    await apiFetch(`${BASE}/taxpayer-years/${year}${holderName ? `?holderName=${encodeURIComponent(holderName)}` : ""}`, { method: "DELETE" });
+  },
+
+  // POST /v1/real-estate/properties/{p}/sale-simulation — the sale's tax were it sold so; nothing is
+  // stored. Null when the property's country has no rules for it. 422 (field soldOn) before its
+  // acquisition.
+  async simulateSale(propertyUuid: string, payload: SaleSimulationRequest): Promise<PropertyTax | null> {
+    const response = await apiFetch<{ tax: PropertyTax | null }>(`${BASE}/properties/${propertyUuid}/sale-simulation`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return response.tax;
+  },
+
+  // GET /v1/real-estate/movement-link-proposals (every non-archived property's) or
+  // /properties/{p}/movement-link-proposals — the wallets' movements that may be the transactions
+  // booked in the range and not linked, or pay the instalments due in it and not recorded. At most
+  // 366 days; 503 when the wallets can't be asked.
+  async movementLinkProposals(propertyUuid: string | null, bookedFrom: string, bookedTo: string): Promise<MovementLinkProposal[]> {
+    const base = propertyUuid ? `${BASE}/properties/${propertyUuid}/movement-link-proposals` : `${BASE}/movement-link-proposals`;
+    return apiFetch<MovementLinkProposal[]>(`${base}?${new URLSearchParams({ bookedFrom, bookedTo })}`);
+  },
+
+  // GET /v1/real-estate/alert-rules (every rule, oldest first) or /properties/{p}/alert-rules (that
+  // property's and those on every property: theirs carry findings for every property).
+  async alertRules(propertyUuid: string | null): Promise<RealEstateAlertRule[]> {
+    return apiFetch<RealEstateAlertRule[]>(propertyUuid ? `${BASE}/properties/${propertyUuid}/alert-rules` : `${BASE}/alert-rules`);
+  },
+
+  // POST /v1/real-estate/alert-rules — what it finds now is known already: not notified.
+  async addAlertRule(payload: RealEstateAlertRuleInput): Promise<RealEstateAlertRule> {
+    return apiFetch<RealEstateAlertRule>(`${BASE}/alert-rules`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // PATCH /v1/real-estate/alert-rules/{r} — only the fields sent change.
+  async updateAlertRule(ruleUuid: string, payload: RealEstateAlertRuleUpdateRequest): Promise<RealEstateAlertRule> {
+    return apiFetch<RealEstateAlertRule>(`${BASE}/alert-rules/${ruleUuid}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+
+  // DELETE /v1/real-estate/alert-rules/{r}
+  async removeAlertRule(ruleUuid: string): Promise<void> {
+    await apiFetch(`${BASE}/alert-rules/${ruleUuid}`, { method: "DELETE" });
+  },
+
+  // GET /v1/real-estate/municipalities/{code}/market-zones — a municipality's OMI zones, by code;
+  // empty when none are loaded.
+  async marketZones(municipalityCode: string): Promise<MarketZone[]> {
+    return apiFetch<MarketZone[]>(`${BASE}/municipalities/${encodeURIComponent(municipalityCode)}/market-zones?country=IT`);
+  },
+
+  // GET /v1/real-estate/properties/{p}/market — its zone's market range, its value and rent against it.
+  async market(propertyUuid: string): Promise<PropertyMarket> {
+    return apiFetch<PropertyMarket>(`${BASE}/properties/${propertyUuid}/market`);
+  },
+
+  // GET /v1/real-estate/municipalities — Italy's, by name (2-100 characters, accents ignored, at
+  // most `limit`) or by code (in the codes' order, unknown ones left out). Never both.
+  async municipalities({ search, codes, limit }: { search?: string; codes?: string[]; limit?: number }): Promise<Municipality[]> {
+    const params = new URLSearchParams({ country: "IT" });
+    if (search) params.set("search", search);
+    for (const c of codes ?? []) params.append("code", c);
+    if (limit !== undefined) params.set("limit", String(limit));
+    return apiFetch<Municipality[]>(`${BASE}/municipalities?${params}`);
   },
 };

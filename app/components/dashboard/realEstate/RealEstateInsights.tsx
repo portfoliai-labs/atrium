@@ -17,6 +17,8 @@ const USE_STYLE: Record<Property["use"], string> = {
   long_term_rental: "bg-emerald-50 text-emerald-700",
   short_term_rental: "bg-orange-50 text-orange-700",
   vacant: "bg-slate-100 text-slate-500",
+  free_loan: "bg-pink-50 text-pink-700",
+  uninhabitable: "bg-amber-50 text-amber-700",
 };
 
 const signedPct = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)}%`;

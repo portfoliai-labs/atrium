@@ -7,15 +7,16 @@ import { useRealEstate } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { formatCurrency } from "../../../lib/format";
 import {
-  COST_KIND_LABELS, EXPENSE_KIND_LABELS, PREPAYMENT_EFFECT_LABELS, TRANSACTION_KIND_LABELS,
+  COST_KIND_LABELS, EXPENSE_KIND_LABELS, INCENTIVE_KIND_LABELS, PREPAYMENT_EFFECT_LABELS, TRANSACTION_KIND_LABELS, fieldErrorText,
 } from "../../../lib/realEstate";
 import { dayLabel, errorText, monthName } from "../../../lib/wallets";
 import type {
-  CostKind, ExpenseKind, PrepaymentEffect, PropertyTransaction, PropertyTransactionFilters, PropertyTransactionKind,
-  PropertyTransactionUpdateRequest,
+  CostKind, ExpenseKind, IncentiveKind, PrepaymentEffect, PropertyTransaction, PropertyTransactionFilters, PropertyTransactionKind,
+  PropertyTransactionUpdateRequest, TaxRegime,
 } from "../../../models/RealEstate";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { DialogShell, Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
+import { MovementLinkField, MovementLinkMark, MovementProposals } from "./MovementLinks";
 
 const PAGE = 50;
 const SELECT = "h-9 px-3 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 outline-none";
@@ -24,9 +25,9 @@ export const ALL_PROPERTIES = "all";
 // The kinds, as the filter groups them.
 const KIND_GROUPS: { label: string; kinds: PropertyTransactionKind[] }[] = [
   { label: "Money in", kinds: ["rent", "short_stay_payout", "sale"] },
-  { label: "Running costs", kinds: ["expense", "property_tax", "works"] },
+  { label: "Running costs", kinds: ["expense", "property_tax", "income_tax", "works"] },
   { label: "Mortgage", kinds: ["mortgage_instalment", "mortgage_prepayment"] },
-  { label: "Buying and selling", kinds: ["purchase", "purchase_cost", "sale_cost"] },
+  { label: "Buying and selling", kinds: ["purchase", "purchase_cost", "sale_cost", "capital_gains_tax"] },
 ];
 
 // Money in, by kind; an expense goes either way (a refund is money in).
@@ -35,7 +36,7 @@ const IN_KINDS = new Set<PropertyTransactionKind>(["sale", "rent", "short_stay_p
 const KIND_COLORS: Record<PropertyTransactionKind, string> = {
   purchase: "#4a3aa7", purchase_cost: "#4a3aa7", sale: "#1baf7a", sale_cost: "#64748b",
   rent: "#1baf7a", short_stay_payout: "#eb6834", expense: "#e34948", works: "#a16207", property_tax: "#eda100",
-  mortgage_instalment: "#2a78d6", mortgage_prepayment: "#2a78d6",
+  mortgage_instalment: "#2a78d6", mortgage_prepayment: "#2a78d6", income_tax: "#eda100", capital_gains_tax: "#eda100",
 };
 
 export function KindChip({ transaction }: { transaction: PropertyTransaction }) {
@@ -55,6 +56,11 @@ function detailOf(t: PropertyTransaction) {
   return [
     t.rentPeriod && `For ${monthName(t.rentPeriod)}`,
     t.taxYear && `Tax year ${t.taxYear}`,
+    t.taxRegime && t.kind === "sale" && (t.taxRegime === "flat_rate" ? "Gain taxed at the deed (26%)" : "Gain taxed with IRPEF"),
+    t.incentiveKind && INCENTIVE_KIND_LABELS[t.incentiveKind],
+    t.worksCompletedOn && `Ended ${dayLabel(t.worksCompletedOn)}`,
+    t.platformFee != null && `Platform fee ${formatCurrency(t.platformFee, t.currency, 2)}`,
+    t.taxWithheld != null && `Tax withheld ${formatCurrency(t.taxWithheld, t.currency, 2)}`,
     t.instalmentNumber && `Instalment ${t.instalmentNumber}${t.interest != null ? `, ${formatCurrency(t.interest, t.currency, 2)} interest` : ""}`,
     t.prepaymentEffect && PREPAYMENT_EFFECT_LABELS[t.prepaymentEffect],
     t.incentive,
@@ -67,8 +73,9 @@ function detailOf(t: PropertyTransaction) {
  * Every property's transactions, or one's (the list widens to all of them from its own filter):
  * searched, filtered and paged by the API, newest first, with the net of everything that matches
  * per currency. A transaction opens to be changed (not its kind or mortgage: delete it and add
- * another); several picked together can be deleted. An archived property's, and a demo account's,
- * are read only.
+ * another) and linked to its wallet movement; several picked together can be deleted. Above them,
+ * the wallets' movements that may be transactions not linked yet, or instalments not recorded. An
+ * archived property's, and a demo account's, are read only.
  */
 export function RealEstateTransactions({ initial, readOnly }: { initial: string; readOnly: boolean }) {
   const { properties, source, version, changed } = useRealEstate();
@@ -193,6 +200,10 @@ export function RealEstateTransactions({ initial, readOnly }: { initial: string;
         </div>
       </div>
 
+      {!readOnly && !(scope && byUuid.get(scope)?.archived) && (
+        <MovementProposals propertyUuid={scope} from={from} to={to} transactions={rows} />
+      )}
+
       {picked.length > 0 && (
         <div className="sticky top-20 z-10 bg-[#1c1917] text-white rounded-2xl shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
           <span className="text-sm font-bold">{picked.length} selected</span>
@@ -266,7 +277,7 @@ export function RealEstateTransactions({ initial, readOnly }: { initial: string;
                       )}
                       <td className={`${readOnly ? "pl-6" : "pl-2"} pr-3 py-3 whitespace-nowrap text-slate-500`}>{dayLabel(t.bookedOn)}</td>
                       <td className="px-3 py-3 min-w-48">
-                        <p className="font-semibold text-slate-800">{t.description}</p>
+                        <p className="flex items-center gap-1.5 font-semibold text-slate-800">{t.description}<MovementLinkMark transaction={t} /></p>
                         {detail && <p className="text-[11px] text-slate-400 truncate max-w-md">{detail}</p>}
                       </td>
                       <td className="px-3 py-3"><KindChip transaction={t} /></td>
@@ -336,6 +347,12 @@ function TransactionEditDialog({ transaction: t, onClose, onSaved }: { transacti
   const interestText = t.interest != null ? String(t.interest) : "";
   const [interest, setInterest] = useState(interestText);
   const [effect, setEffect] = useState<PrepaymentEffect>(t.prepaymentEffect ?? "reduce_instalment");
+  const [platformFee, setPlatformFee] = useState(t.platformFee != null ? String(t.platformFee) : "");
+  const [taxWithheld, setTaxWithheld] = useState(t.taxWithheld != null ? String(t.taxWithheld) : "");
+  const [incentiveKind, setIncentiveKind] = useState<IncentiveKind | "">(t.incentiveKind ?? "");
+  const [worksCompletedOn, setWorksCompletedOn] = useState(t.worksCompletedOn ?? "");
+  const [taxRegime, setTaxRegime] = useState<TaxRegime>(t.taxRegime ?? "flat_rate");
+  const [movementUuid, setMovementUuid] = useState(t.movementUuid ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -345,7 +362,8 @@ function TransactionEditDialog({ transaction: t, onClose, onSaved }: { transacti
   const valid = !!bookedOn && value !== null && Number(value) > 0
     && (taxYear.trim() === "" || /^\d{4}$/.test(taxYear.trim()))
     && (instalmentNumber.trim() === "" || /^\d+$/.test(instalmentNumber.trim()))
-    && (interest.trim() === "" || parseAmount(interest) !== null);
+    && (interest.trim() === "" || parseAmount(interest) !== null)
+    && [platformFee, taxWithheld].every((x) => x.trim() === "" || (parseAmount(x) !== null && Number(parseAmount(x)) >= 0));
 
   const submit = async () => {
     setBusy(true);
@@ -361,18 +379,28 @@ function TransactionEditDialog({ transaction: t, onClose, onSaved }: { transacti
       ...(t.costKind && costKind !== t.costKind ? { costKind } : {}),
       ...(t.kind === "expense" && expenseKind !== t.expenseKind ? { expenseKind } : {}),
       ...(t.kind === "rent" && rentPeriod && rentPeriod !== t.rentPeriod ? { rentPeriod } : {}),
-      ...(t.kind === "property_tax" && taxYear.trim() && Number(taxYear) !== t.taxYear ? { taxYear: Number(taxYear) } : {}),
+      ...(t.kind === "works" && incentiveKind && incentiveKind !== t.incentiveKind ? { incentiveKind } : {}),
+      ...(t.kind === "works" && worksCompletedOn && worksCompletedOn !== t.worksCompletedOn ? { worksCompletedOn } : {}),
+      ...(t.kind === "sale" && taxRegime !== (t.taxRegime ?? "flat_rate") ? { taxRegime } : {}),
+      ...((t.kind === "property_tax" || t.kind === "income_tax" || t.kind === "capital_gains_tax") && taxYear.trim() && Number(taxYear) !== t.taxYear ? { taxYear: Number(taxYear) } : {}),
+      // "" clears a payout's platform fee or withheld tax.
+      ...(t.kind === "short_stay_payout" && platformFee.trim() !== (t.platformFee != null ? String(t.platformFee) : "")
+        ? { platformFee: platformFee.trim() === "" ? "" : parseAmount(platformFee)! } : {}),
+      ...(t.kind === "short_stay_payout" && taxWithheld.trim() !== (t.taxWithheld != null ? String(t.taxWithheld) : "")
+        ? { taxWithheld: taxWithheld.trim() === "" ? "" : parseAmount(taxWithheld)! } : {}),
       ...(t.kind === "works" && incentive.trim() !== (t.incentive ?? "") ? { incentive: incentive.trim() } : {}),
       ...(t.kind === "mortgage_instalment" && instalmentNumber.trim() && Number(instalmentNumber) !== t.instalmentNumber ? { instalmentNumber: Number(instalmentNumber) } : {}),
       ...(t.kind === "mortgage_instalment" && interest.trim() !== interestText
         ? { interest: interest.trim() === "" ? "" : parseAmount(interest)! } : {}),
       ...(t.kind === "mortgage_prepayment" && effect !== t.prepaymentEffect ? { prepaymentEffect: effect } : {}),
+      // "" unlinks it.
+      ...(movementUuid !== (t.movementUuid ?? "") ? { movementUuid } : {}),
     };
     try {
       if (Object.keys(changes).length > 0) await realEstateService.updateTransaction(t.uuid, changes);
       onSaved();
     } catch (err) {
-      setError(errorText(err, "Unable to save this transaction."));
+      setError(fieldErrorText(err, "Unable to save this transaction."));
       setBusy(false);
     }
   };
@@ -421,7 +449,38 @@ function TransactionEditDialog({ transaction: t, onClose, onSaved }: { transacti
             <input type="month" value={rentPeriod} onChange={(e) => setRentPeriod(e.target.value)} className={INPUT} />
           </Field>
         )}
-        {t.kind === "property_tax" && (
+        {t.kind === "short_stay_payout" && (
+          <>
+            <Field label="Platform fee" hint="What the platform kept.">
+              <input value={platformFee} onChange={(e) => setPlatformFee(e.target.value)} inputMode="decimal" placeholder="Optional" className={INPUT} />
+            </Field>
+            <Field label="Tax withheld" hint="The 21% the platform withheld.">
+              <input value={taxWithheld} onChange={(e) => setTaxWithheld(e.target.value)} inputMode="decimal" placeholder="Optional" className={INPUT} />
+            </Field>
+          </>
+        )}
+        {t.kind === "works" && (
+          <>
+            <Field label="Incentive, for the taxes" hint="Superbonus works change how a sale is taxed.">
+              <select value={incentiveKind} onChange={(e) => setIncentiveKind(e.target.value as IncentiveKind)} className={INPUT}>
+                <option value="" disabled>None said</option>
+                {(Object.keys(INCENTIVE_KIND_LABELS) as IncentiveKind[]).map((k) => <option key={k} value={k}>{INCENTIVE_KIND_LABELS[k]}</option>)}
+              </select>
+            </Field>
+            <Field label="Works ended on" hint="Needed for Superbonus works.">
+              <input type="date" value={worksCompletedOn} onChange={(e) => setWorksCompletedOn(e.target.value)} className={INPUT} />
+            </Field>
+          </>
+        )}
+        {t.kind === "sale" && (
+          <Field label="Gain taxed">
+            <select value={taxRegime} onChange={(e) => setTaxRegime(e.target.value as TaxRegime)} className={INPUT}>
+              <option value="flat_rate">At the deed: 26% substitute tax, via the notary</option>
+              <option value="ordinary">With IRPEF, in the return</option>
+            </select>
+          </Field>
+        )}
+        {(t.kind === "property_tax" || t.kind === "income_tax" || t.kind === "capital_gains_tax") && (
           <Field label="Tax year">
             <input value={taxYear} onChange={(e) => setTaxYear(e.target.value)} inputMode="numeric" className={INPUT} />
           </Field>
@@ -457,6 +516,10 @@ function TransactionEditDialog({ transaction: t, onClose, onSaved }: { transacti
         <Field label="Note" className="sm:col-span-2">
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={`${INPUT} h-auto py-2.5`} />
         </Field>
+        <div className="sm:col-span-2 space-y-1.5">
+          <span className="block text-[11px] font-black uppercase tracking-widest text-slate-400">Wallet movement</span>
+          <MovementLinkField transaction={t} bookedOn={bookedOn} moneyIn={positiveIn} value={movementUuid} onChange={setMovementUuid} />
+        </div>
       </div>
     </DialogShell>
   );
