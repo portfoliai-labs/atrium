@@ -36,7 +36,8 @@ export interface Acquisition {
 export type IncentiveKind = "superbonus_110_transferred" | "superbonus" | "other";
 
 // purchase_price: no valuation yet, so the purchase price. Only read, never recorded.
-export type ValuationSource = "user_estimate" | "appraisal" | "purchase_price";
+// market_zone: no valuation of the user's, the middle of the zone's market range (Italy: OMI).
+export type ValuationSource = "user_estimate" | "appraisal" | "market_zone" | "purchase_price";
 
 // Each kind has its sign (money in positive): the purchase, its costs, works, expenses, property
 // taxes and the mortgage's payments are negative; the sale, rents and short-stay payouts positive.
@@ -95,6 +96,9 @@ export interface ItalianDetails {
   // base (to a parent or child who lives in it, a registered contract, no other home of the
   // lender's in Italy but their own in the same municipality, not A/1, A/8, A/9).
   freeLoanToRelative: boolean;
+  // The OMI market zone the user picked ("B1"), of the municipality's; null: the one the address's
+  // location falls in.
+  omiZone?: string | null;
 }
 
 /** A person without a name is the user. */
@@ -937,3 +941,59 @@ export interface RefinancingSimulation {
   breakEvenInstalment: number | null;
   breakEvenOn: string | null;
 }
+
+// ── Market (Italy: the OMI, Agenzia delle Entrate) ──
+
+export interface MarketSemester {
+  year: number;
+  half: 1 | 2;
+}
+
+/** A municipality's market zone: its code ("B1"), its band (central, semi-central…) and what it covers. */
+export interface MarketZone {
+  country: string;
+  municipalityCode: string;
+  code: string;
+  band: string;
+  description: string;
+  semester: MarketSemester;
+}
+
+/** A zone's quotation for a kind of building, per m²: the sale range, and the rent's a month. */
+export interface MarketQuotation {
+  semester: MarketSemester;
+  buildingTypeCode: string;
+  buildingType: string;
+  // The state of repair quoted ("normal", "excellent"…).
+  state: string;
+  saleMin: number;
+  saleMax: number;
+  saleSurface: "gross" | "net" | null;
+  rentMin: number | null;
+  rentMax: number | null;
+  rentSurface: "gross" | "net" | null;
+}
+
+export type MarketStatus = "available" | "no_source" | "missing_fields" | "no_data" | "no_zone" | "not_quoted";
+
+/** What the market of a property's zone says of it: an indicative range, not an appraisal. */
+export interface PropertyMarket {
+  propertyUuid: string;
+  status: MarketStatus;
+  // missing_fields: address.location, details.municipality_code; available: surface_sqm (the value needs it).
+  missingFields: string[];
+  zone: MarketZone | null;
+  // How the zone was found: picked by the user, or from the address's location.
+  match: "user" | "location" | null;
+  // For the property's kind.
+  quotation: MarketQuotation | null;
+  // Every kind of building the zone has.
+  zoneQuotations: MarketQuotation[];
+  // The whole property's, in EUR: the surface by the sale range.
+  value: { low: number; mid: number; high: number } | null;
+  // Today's lease against the zone's rents.
+  rent: { monthlyRent: number; monthlyRentPerSqm: number; position: "below" | "within" | "above" } | null;
+  // To show wherever these figures are (CC BY 4.0).
+  attribution: string | null;
+}
+

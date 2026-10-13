@@ -13,7 +13,7 @@ import type {
   ItalianDetails, Mortgage, MortgageSchedule, Municipality, Property as ApiProperty, PropertyTax, PropertyTransaction, SaleSimulationRequest,
   PropertyTransactionFilters, PropertyUse, RealEstateMonth, RealEstateOverview, RealEstateSummary, RentalContract, TaxInstalment,
   TaxList, TaxPeriod, TaxpayerYear, UsePeriod, Valuation, RealEstateAlertFinding, RealEstateAlertParams, RealEstateAlertRule,
-  Instalment, ScheduleOutlook, PrepaymentSimulationRequest, RefinancingSimulationRequest, PrepaymentSimulation, RefinancingSimulation,
+  Instalment, ScheduleOutlook, MarketQuotation, MarketZone, PropertyMarket, PrepaymentSimulationRequest, RefinancingSimulationRequest, PrepaymentSimulation, RefinancingSimulation,
 } from "../../models/RealEstate";
 
 export type PropertyType = "Apartment" | "House" | "Commercial" | "Garage" | "Land";
@@ -487,6 +487,12 @@ const DEMO_ITALY: Record<string, ItalianDetails> = {
   "prati-garage": { municipalityCode: "H501", cadastralSheet: "376", cadastralParcel: "212", cadastralSubunit: "503", cadastralCategory: "C/6", cadastralIncome: 185.92, historic: false, freeLoanToRelative: false },
 };
 
+// The market's zones (made up, OMI-like): each city's code, the semester quoted, and the
+// properties whose zone the user picked (the others' is found from the address's location).
+const CITY_CODES: Record<string, string> = { Milan: "F205", Bologna: "A944", Turin: "L219", Rome: "H501" };
+const SEMESTER = { year: 2026, half: 1 as const };
+const PICKED_ZONE = new Set(["navigli"]);
+
 // The uses over time: San Salvario stood empty until it was let.
 const DEMO_USES: Record<string, UsePeriod[]> = {
   "san-salvario": [{ effectiveOn: null, use: "vacant" }, { effectiveOn: "2023-03-01", use: "long_term_rental" }],
@@ -843,7 +849,7 @@ export const DEMO_PROPERTIES: ApiProperty[] = PROPERTIES.map((p) => {
     yearBuilt: p.yearBuilt,
     energyRating: p.energyClass === "—" ? null : p.energyClass,
     ownershipSharePct: 100,
-    details: { italy: DEMO_ITALY[p.id] },
+    details: { italy: { ...DEMO_ITALY[p.id], omiZone: PICKED_ZONE.has(p.id) ? demoZonesOf(p.city).find((z) => z.zone.id === p.zoneId)!.code : null } },
     note: null,
     purchasedOn: p.purchaseDate,
     soldOn: null,
@@ -1197,6 +1203,64 @@ function demoRefinancing(mortgageUuid: string, request: RefinancingSimulationReq
   };
 }
 
+// ── The market: OMI-like zones and quotations, made up from the sample's neighbourhoods ──
+
+const step = (v: number, by: number) => Math.round(v / by) * by;
+
+/** A city's zones, as OMI codes them: the dearest central (B), then semi-central (C), then outlying (D). */
+function demoZonesOf(city: string): (MarketZone & { zone: Zone })[] {
+  const zones = ZONES.filter((z) => z.city === city).sort((a, b) => zoneNow(b) - zoneNow(a));
+  const counts: Record<string, number> = {};
+  return zones.map((z, i) => {
+    const letter = i === 0 ? "B" : i < zones.length - 1 ? "C" : "D";
+    counts[letter] = (counts[letter] ?? 0) + 1;
+    return {
+      country: "IT", municipalityCode: CITY_CODES[city], code: `${letter}${counts[letter]}`,
+      band: letter === "B" ? "Centrale" : letter === "C" ? "Semicentrale" : "Periferica",
+      description: z.name.toUpperCase(), semester: SEMESTER, zone: z,
+    };
+  }).sort((a, b) => a.code.localeCompare(b.code));
+}
+
+const BUILDING_TYPES = [
+  { code: "20", name: "Abitazioni civili", sale: 1, rent: 1 },
+  { code: "21", name: "Abitazioni signorili", sale: 1.3, rent: 1.25 },
+  { code: "6", name: "Box", sale: 0.42, rent: 0.62 },
+  { code: "5", name: "Negozi", sale: 1.1, rent: 1.35 },
+];
+
+function demoQuotations(z: Zone): MarketQuotation[] {
+  const now = zoneNow(z);
+  return BUILDING_TYPES.map((t) => ({
+    semester: SEMESTER, buildingTypeCode: t.code, buildingType: t.name, state: "Normale",
+    saleMin: step(now * t.sale * 0.88, 50), saleMax: step(now * t.sale * 1.12, 50), saleSurface: "gross" as const,
+    rentMin: round(z.rentPerSqm * t.rent * 0.85, 1), rentMax: round(z.rentPerSqm * t.rent * 1.15, 1), rentSurface: "gross" as const,
+  }));
+}
+
+function demoMarket(propertyUuid: string): PropertyMarket {
+  const p = PROPERTIES.find((x) => x.id === propertyUuid);
+  if (!p) throw new Error("Property not found.");
+  const zone = demoZonesOf(p.city).find((z) => z.zone.id === p.zoneId)!;
+  const zoneQuotations = demoQuotations(zone.zone);
+  const quotation = zoneQuotations.find((q) => q.buildingType === (p.type === "Garage" ? "Box" : "Abitazioni civili"))!;
+  const lease = leaseOn(p, DEMO_TODAY);
+  const perSqm = lease ? round(lease.monthlyRent / p.sqm, 2) : null;
+  const { zone: _omit, ...publicZone } = zone;
+  void _omit;
+  return {
+    propertyUuid, status: "available", missingFields: [], zone: publicZone, match: PICKED_ZONE.has(p.id) ? "user" : "location",
+    quotation, zoneQuotations,
+    value: { low: round(p.sqm * quotation.saleMin, 0), mid: round(p.sqm * (quotation.saleMin + quotation.saleMax) / 2, 0), high: round(p.sqm * quotation.saleMax, 0) },
+    rent: lease && perSqm !== null ? {
+      monthlyRent: lease.monthlyRent, monthlyRentPerSqm: perSqm,
+      position: perSqm < quotation.rentMin! ? "below" : perSqm > quotation.rentMax! ? "above" : "within",
+    } : null,
+    // Made-up figures: not the OMI's, so not credited to it.
+    attribution: null,
+  };
+}
+
 /** A demo account's real estate, read as the API would serve it. */
 export const demoRealEstateSource: RealEstateSource = {
   overview: async () => demoOverview(),
@@ -1232,5 +1296,10 @@ export const demoRealEstateSource: RealEstateSource = {
   movementLinkProposals: async () => [],
   simulatePrepayment: async (mortgageUuid, request) => demoPrepayment(mortgageUuid, request),
   simulateRefinancing: async (mortgageUuid, request) => demoRefinancing(mortgageUuid, request),
+  marketZones: async (code) => {
+    const city = Object.keys(CITY_CODES).find((c) => CITY_CODES[c] === code.toUpperCase());
+    return city ? demoZonesOf(city).map(({ zone: _omit, ...z }) => { void _omit; return z; }) : [];
+  },
+  market: async (propertyUuid) => demoMarket(propertyUuid),
   alertRules: async (propertyUuid) => DEMO_ALERT_RULES.filter((r) => !propertyUuid || !r.propertyUuid || r.propertyUuid === propertyUuid),
 };

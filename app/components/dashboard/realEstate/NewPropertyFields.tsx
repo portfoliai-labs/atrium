@@ -1,7 +1,7 @@
 // components/dashboard/realEstate/NewPropertyFields.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRealEstate } from "../../../context/RealEstateContext";
 import {
   ACQUISITION_KIND_LABELS, ENERGY_RATINGS, FREQUENCY_LABELS, HOLDER_KIND_LABELS, PROPERTY_KINDS, PROPERTY_KIND_LABELS, PROPERTY_USES, PROPERTY_USE_LABELS,
@@ -9,7 +9,7 @@ import {
 } from "../../../lib/realEstate";
 import { COMMON_CURRENCIES, today } from "../../../lib/wallets";
 import type {
-  AcquisitionKind, CostKind, HolderKind, InstalmentFrequency, MortgageInput, Property, PropertyCreateRequest, PropertyInput, PropertyKind,
+  AcquisitionKind, CostKind, HolderKind, InstalmentFrequency, MarketZone, MortgageInput, Property, PropertyCreateRequest, PropertyInput, PropertyKind,
   PropertyUpdateRequest, PropertyUse, RateIndex,
 } from "../../../models/RealEstate";
 import { Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
@@ -80,7 +80,7 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
   const [freeLoanToRelative, setFreeLoanToRelative] = useState(italian?.freeLoanToRelative ?? false);
   // What it can belong to: another property, not archived, not itself an appurtenance. One that
   // has appurtenances of its own can't belong to another.
-  const { properties } = useRealEstate();
+  const { properties, source } = useRealEstate();
   const hasAppurtenances = !!initial && properties.some((p) => p.appurtenantToUuid === initial.uuid);
   const owners = properties.filter((p) => p.uuid !== initial?.uuid && !p.archived && !p.appurtenantToUuid);
   // Italy's land registry.
@@ -88,6 +88,19 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
     municipalityCode: text(italian?.municipalityCode), cadastralSheet: text(italian?.cadastralSheet), cadastralParcel: text(italian?.cadastralParcel),
     cadastralSubunit: text(italian?.cadastralSubunit), cadastralCategory: text(italian?.cadastralCategory), cadastralIncome: text(italian?.cadastralIncome),
   });
+  // Its market zone (OMI), of the municipality's: "" finds it from the address's location.
+  const [omiZone, setOmiZone] = useState(italian?.omiZone ?? "");
+  const zoneMunicipality = cadastre.municipalityCode.trim().toUpperCase();
+  const [zones, setZones] = useState<{ code: string; list: MarketZone[] | null } | null>(null);
+  useEffect(() => {
+    if (!zoneMunicipality) return;
+    let cancelled = false;
+    source.marketZones(zoneMunicipality)
+      .then((list) => { if (!cancelled) setZones({ code: zoneMunicipality, list }); })
+      .catch(() => { if (!cancelled) setZones({ code: zoneMunicipality, list: null }); });
+    return () => { cancelled = true; };
+  }, [source, zoneMunicipality]);
+  const municipalityZones = zones?.code === zoneMunicipality ? zones.list : undefined;
 
   const countryCode = country.trim().toUpperCase();
   const currencyCode = currency.trim().toUpperCase();
@@ -122,7 +135,8 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
     location: initial?.address.location ?? null,
   });
   const loanToRelative = use === "free_loan" && freeLoanToRelative;
-  const details = () => (italy && (Object.values(cadastre).some((v) => v.trim()) || historic || loanToRelative)
+  const zoneCode = zoneMunicipality ? omiZone : "";
+  const details = () => (italy && (Object.values(cadastre).some((v) => v.trim()) || historic || loanToRelative || zoneCode)
     ? {
         italy: {
           municipalityCode: cadastre.municipalityCode.trim().toUpperCase() || null,
@@ -133,6 +147,8 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
           cadastralIncome,
           historic,
           freeLoanToRelative: loanToRelative,
+          // Sent whole with the rest: left out, a PATCH would drop the zone picked.
+          omiZone: zoneCode || null,
         },
       }
     : { italy: null });
@@ -212,7 +228,7 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
     const now = d.italy;
     const detailsChanged = !now || !italian
       ? !!now !== !!italian
-      : (["municipalityCode", "cadastralSheet", "cadastralParcel", "cadastralSubunit", "cadastralCategory", "historic", "freeLoanToRelative"] as const)
+      : (["municipalityCode", "cadastralSheet", "cadastralParcel", "cadastralSubunit", "cadastralCategory", "historic", "freeLoanToRelative", "omiZone"] as const)
           .some((k) => (now[k] ?? null) !== (italian[k] ?? null))
         || (now.cadastralIncome === null ? null : Number(now.cadastralIncome)) !== italian.cadastralIncome;
     const h = holder();
@@ -315,14 +331,26 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
 
       {italy && (
         <details className="rounded-2xl border border-slate-200 px-4 py-3 group" open={!!italian}>
-          <summary className="cursor-pointer text-[11px] font-black uppercase tracking-widest text-slate-500">Land registry (for IMU)</summary>
+          <summary className="cursor-pointer text-[11px] font-black uppercase tracking-widest text-slate-500">Land registry (for IMU and the market)</summary>
           <p className="text-[11px] text-slate-400 mt-1">
             What IMU is computed from, as the visura catastale writes it: the municipality, the category and the cadastral income are needed.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
             <Field label="Municipality" className="sm:col-span-3">
-              <MunicipalityPicker code={cadastre.municipalityCode} onChange={(code) => setCadastre({ ...cadastre, municipalityCode: code })} />
+              <MunicipalityPicker
+                code={cadastre.municipalityCode}
+                onChange={(code) => { setCadastre({ ...cadastre, municipalityCode: code }); if (code !== cadastre.municipalityCode) setOmiZone(""); }}
+              />
             </Field>
+            {zoneMunicipality && municipalityZones !== null && (municipalityZones === undefined || municipalityZones.length > 0) && (
+              <Field label="Market zone (OMI)" className="sm:col-span-3" hint="The zone its market range comes from. Automatic finds it from the address's location.">
+                <select value={omiZone} onChange={(e) => setOmiZone(e.target.value)} disabled={municipalityZones === undefined} className={INPUT}>
+                  <option value="">Automatic (from the address&apos;s location)</option>
+                  {omiZone && !municipalityZones?.some((z) => z.code === omiZone) && <option value={omiZone}>{omiZone}</option>}
+                  {municipalityZones?.map((z) => <option key={z.code} value={z.code}>{z.code} · {z.band} · {z.description}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Category"><input value={cadastre.cadastralCategory} onChange={(e) => setCadastre({ ...cadastre, cadastralCategory: e.target.value })} placeholder="A/2" className={INPUT} /></Field>
             <Field label="Cadastral income (€)"><input value={cadastre.cadastralIncome} onChange={(e) => setCadastre({ ...cadastre, cadastralIncome: e.target.value })} inputMode="decimal" placeholder="1032.91" className={INPUT} /></Field>
             <Field label="Sheet (foglio)"><input value={cadastre.cadastralSheet} onChange={(e) => setCadastre({ ...cadastre, cadastralSheet: e.target.value })} placeholder="12" className={INPUT} /></Field>

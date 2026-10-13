@@ -10,7 +10,7 @@ import type {
   RateIndex, RateSource, RealEstateOverview, RealEstateSummary, RentalContract, RentalContractKind, TaxList, TaxReduction,
   TaxRegime, TaxpayerYear, Valuation, ValuationSource, AcquisitionKind, IncentiveKind, PropertyTax, SaleSimulationRequest,
   MovementLinkProposal, PrepaymentSimulation, PrepaymentSimulationRequest, RefinancingSimulation, RefinancingSimulationRequest,
-  RealEstateAlertFinding, RealEstateAlertParams, RealEstateAlertRule, RealEstateAlertType,
+  RealEstateAlertFinding, MarketZone, PropertyMarket, RealEstateAlertParams, RealEstateAlertRule, RealEstateAlertType,
 } from "../models/RealEstate";
 import { realEstateService } from "../services/realEstateService";
 import { ApiError } from "../services/apiClient";
@@ -96,6 +96,7 @@ export const RATE_INDEX_LABELS: Record<RateIndex, string> = {
 export const VALUATION_SOURCE_LABELS: Record<ValuationSource, string> = {
   user_estimate: "Your estimate",
   appraisal: "Appraisal",
+  market_zone: "The zone's market",
   purchase_price: "Purchase price",
 };
 
@@ -201,6 +202,7 @@ export const PROPERTY_FIELD_LABELS: Record<string, string> = {
   "params.daysAfter": "Days", "params.thresholdPct": "Threshold",
   // Mortgage simulations.
   prepaidOn: "The day", refinancedOn: "The day", amount: "Amount", costs: "Costs", "rate.fixedPct": "Rate",
+  "details.omiZone": "Market zone", "details.omi_zone": "Market zone",
   "rate.variable.spreadPct": "Spread", "rate.variable.initialPct": "Rate today", termMonths: "Term", frequency: "Frequency",
 };
 export const fieldLabel = (field: string) => PROPERTY_FIELD_LABELS[field] ?? field;
@@ -383,6 +385,9 @@ export interface RealEstateSource {
   // A mortgage's schedule were part of it repaid, or were it refinanced: nothing is stored.
   simulatePrepayment(mortgageUuid: string, request: PrepaymentSimulationRequest): Promise<PrepaymentSimulation>;
   simulateRefinancing(mortgageUuid: string, request: RefinancingSimulationRequest): Promise<RefinancingSimulation>;
+  // A municipality's market zones (Italy's OMI), and a property's zone's market.
+  marketZones(municipalityCode: string): Promise<MarketZone[]>;
+  market(propertyUuid: string): Promise<PropertyMarket>;
 }
 
 export const apiRealEstateSource: RealEstateSource = {
@@ -401,4 +406,6 @@ export const apiRealEstateSource: RealEstateSource = {
   alertRules: (propertyUuid) => realEstateService.alertRules(propertyUuid),
   simulatePrepayment: (mortgageUuid, request) => realEstateService.simulatePrepayment(mortgageUuid, request),
   simulateRefinancing: (mortgageUuid, request) => realEstateService.simulateRefinancing(mortgageUuid, request),
+  marketZones: (municipalityCode) => realEstateService.marketZones(municipalityCode),
+  market: (propertyUuid) => realEstateService.market(propertyUuid),
 };

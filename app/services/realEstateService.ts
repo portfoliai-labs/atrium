@@ -8,6 +8,7 @@ import type {
   PropertyTax, SaleSimulationRequest, MovementLinkProposal,
   RealEstateAlertRule, RealEstateAlertRuleInput, RealEstateAlertRuleUpdateRequest,
   PrepaymentSimulation, PrepaymentSimulationRequest, RefinancingSimulation, RefinancingSimulationRequest,
+  MarketZone, PropertyMarket,
 } from "../models/RealEstate";
 import { apiFetch } from "./apiClient";
 
@@ -294,6 +295,17 @@ export const realEstateService = {
   // DELETE /v1/real-estate/alert-rules/{r}
   async removeAlertRule(ruleUuid: string): Promise<void> {
     await apiFetch(`${BASE}/alert-rules/${ruleUuid}`, { method: "DELETE" });
+  },
+
+  // GET /v1/real-estate/municipalities/{code}/market-zones — a municipality's OMI zones, by code;
+  // empty when none are loaded.
+  async marketZones(municipalityCode: string): Promise<MarketZone[]> {
+    return apiFetch<MarketZone[]>(`${BASE}/municipalities/${encodeURIComponent(municipalityCode)}/market-zones?country=IT`);
+  },
+
+  // GET /v1/real-estate/properties/{p}/market — its zone's market range, its value and rent against it.
+  async market(propertyUuid: string): Promise<PropertyMarket> {
+    return apiFetch<PropertyMarket>(`${BASE}/properties/${propertyUuid}/market`);
   },
 
   // GET /v1/real-estate/municipalities — Italy's, by name (2-100 characters, accents ignored, at
