@@ -1951,15 +1951,16 @@ const ASSET_RANGE_LABELS: Record<AssetChartRange, string> = { "1M": "1 month", "
  * over a chosen range (GET /v1/assets/{asset}: its listing, or the ticker it was recorded by), what the asset is (identifiers, class,
  * sector or TER…), what it's made of when it's a fund, and the user's own position in it
  * (GET /positions/{assetId}, fetched alongside: the asset endpoint knows nothing about
- * portfolios).
+ * portfolios), when there is a portfolio to read it in. Also the page a security found with the
+ * top bar's search opens on (AssetSection).
  *
  * Prices default to the user's reference currency, the one the rest of Insights is in; when
  * the asset is quoted in another one, a toggle switches to its own quote prices. Changing
  * range keeps the previous chart on screen (dimmed) until the new one arrives, since a ticker
  * nobody else holds can take a few seconds.
  */
-function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asset: string; assetId: string; portfolioUuid: string; revision: number }) {
-  const position = useDetail(() => portfolioService.getPosition(portfolioUuid, assetId), assetId, revision);
+export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asset: string; assetId: string; portfolioUuid?: string; revision: number }) {
+  const position = useDetail(portfolioUuid ? () => portfolioService.getPosition(portfolioUuid, assetId) : null, assetId, revision);
   const [range, setRange] = useState<AssetChartRange>("1Y");
   const [inQuoteCurrency, setInQuoteCurrency] = useState(false);
   // `forRange`: the range the last answer (data or error) was for — loading while it isn't the

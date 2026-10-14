@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { LogOut, Bell, Menu, X } from "lucide-react";
+import { LogOut, Bell, Menu, Search, X } from "lucide-react";
 import Image from "next/image";
 import { useUser } from "../../context/UserContext";
 import { useNotificationsContext } from "../../context/NotificationsContext";
 import { NotificationPanel } from "./NotificationPanel";
 import { SubscriptionPopover } from "./SubscriptionPopover";
+import { AssetSearchDialog } from "./AssetSearchDialog";
+import type { AssetView } from "./AssetSection";
+import { ASSET_SECTION } from "../../lib/dashboardNav";
 import { userService } from "../../services/userService";
 import { BetaBadge } from "../common/BetaBadge";
 import type { SubscriptionTier, SubscriptionResponse } from "../../models/User";
@@ -37,6 +40,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
     dismissAll,
   } = useNotificationsContext();
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
@@ -104,6 +108,27 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
 
       {/* RIGHT: Actions */}
       <div className="flex items-center gap-2 md:gap-3">
+
+        {/* Search: a security's page, from anywhere in the dashboard. */}
+        {onOpenPage && (
+          <button
+            onClick={() => setIsSearchOpen(true)}
+            title="Search securities"
+            aria-label="Search securities"
+            className="p-2 md:p-2.5 text-[#a8a29e] hover:text-[#1c1917] hover:bg-[#E0DACC] rounded-xl md:rounded-2xl transition-all"
+          >
+            <Search className="h-5 w-5" />
+          </button>
+        )}
+        {isSearchOpen && onOpenPage && (
+          <AssetSearchDialog
+            onClose={() => setIsSearchOpen(false)}
+            onPick={({ listingId, instrumentId, ticker, name }) => {
+              setIsSearchOpen(false);
+              onOpenPage(ASSET_SECTION, { listingId, instrumentId, ticker, name } satisfies AssetView);
+            }}
+          />
+        )}
 
         {/* Bell (mobile) — a fixed-width absolute dropdown has nowhere to sit on a
             narrow viewport without overflowing it, so mobile routes to the

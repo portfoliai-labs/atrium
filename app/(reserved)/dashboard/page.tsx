@@ -20,11 +20,12 @@ import { NewsPageSection } from "../../components/dashboard/NewsSection";
 import { WealthSection } from "../../components/dashboard/WealthSection";
 import { PlanSection } from "../../components/dashboard/PlanSection";
 import { JournalSection } from "../../components/dashboard/JournalSection";
+import { AssetSection } from "../../components/dashboard/AssetSection";
 import { SectionTrailProvider } from "../../components/dashboard/SectionTrail";
 import { Loader2 } from "lucide-react";
 import { DemoBanner } from "../../components/preview/DemoBanner";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
-import { CLIENTS_SECTION, EXPLORE_SECTION, JOURNAL_SECTION, PLAN_SECTION, WEALTH_SECTION, openPortfolioPage } from "../../lib/dashboardNav";
+import { ASSET_SECTION, CLIENTS_SECTION, EXPLORE_SECTION, JOURNAL_SECTION, PLAN_SECTION, WEALTH_SECTION, openPortfolioPage } from "../../lib/dashboardNav";
 
 // 'reports' and 'profile' are omitted here on purpose: neither investors nor advisors have a
 // sidebar entry for them anymore (Reports and Profile are hidden for now, Profile's
@@ -33,7 +34,7 @@ import { CLIENTS_SECTION, EXPLORE_SECTION, JOURNAL_SECTION, PLAN_SECTION, WEALTH
 // 'performance' is the investor's Wealth (an advisor's Insights).
 // 'discover' is gone (its News, Journal and Explore are sections, or Plan's, again): kept so a link
 // or history entry to it lands on where its page went, see below.
-const VALID_SECTIONS = ['overview', 'clients', 'upload', 'performance', 'plan', 'news', EXPLORE_SECTION, JOURNAL_SECTION, 'discover', 'settings', 'notifications'];
+const VALID_SECTIONS = ['overview', 'clients', 'upload', 'performance', 'plan', 'news', EXPLORE_SECTION, JOURNAL_SECTION, ASSET_SECTION, 'discover', 'settings', 'notifications'];
 // Sections that became part of another: the Wallets are Wealth's. A link or a history entry to the
 // old one lands on the new. (An investor's Explore is Plan's, see below.)
 const MOVED_SECTIONS: Record<string, string> = { blog: JOURNAL_SECTION, wallets: WEALTH_SECTION };
@@ -174,6 +175,10 @@ function DashboardPageContent() {
         return null;
       case JOURNAL_SECTION:
         return <JournalSection key={sectionVisit} />;
+      case ASSET_SECTION:
+        // The investor's position in the portfolio selected, when they hold it there; an advisor
+        // has none of their own to read it in.
+        return <AssetSection portfolioUuid={isAdvisor ? undefined : portfolio?.uuid} />;
       case 'discover':
         // Until it lands where its page went, see above.
         return null;

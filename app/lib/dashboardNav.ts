@@ -21,6 +21,8 @@ export const CLIENTS_SECTION = "clients";
 export const EXPLORE_SECTION = "explore";
 // The Journal: its articles, and each reader's and author's pages (see JournalSection).
 export const JOURNAL_SECTION = "journal";
+// A security's page, opened from the top bar's search (see AssetSection).
+export const ASSET_SECTION = "asset";
 
 type Navigate = (section: string) => void;
 
