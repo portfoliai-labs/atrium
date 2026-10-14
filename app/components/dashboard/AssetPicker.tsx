@@ -1,13 +1,10 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Loader2, Search, X } from "lucide-react";
 import { listingLine, type Listing, type ListingRef } from "../../models/Listing";
-import { LISTING_SEARCH_MIN_LENGTH, listingService } from "../../services/listingService";
-
-const SEARCH_DEBOUNCE_MS = 300;
-
-type SearchStatus = "idle" | "loading" | "done" | "error";
+import { LISTING_SEARCH_MIN_LENGTH } from "../../services/listingService";
+import { useListingSearch } from "../../hooks/useListingSearch";
 
 /**
  * ASSET PICKER — finds one of census' listings (GET /v1/listings) by name, ticker or ISIN, and
@@ -31,52 +28,17 @@ export function AssetPicker({
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Listing[]>([]);
-  const [status, setStatus] = useState<SearchStatus>("idle");
-  const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
 
-  const isSearchable = query.trim().length >= LISTING_SEARCH_MIN_LENGTH;
   const isTaken = (r: Listing) => excludeListingIds.includes(r.listingId) || excludeInstrumentIds.includes(r.instrumentId);
-
-  useEffect(() => {
-    if (query.trim().length < LISTING_SEARCH_MIN_LENGTH) return;
-    // A newer keystroke cancels the pending search and drops any answer still on its way.
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      try {
-        const found = await listingService.search(query, controller.signal);
-        if (controller.signal.aborted) return;
-        setResults(found);
-        setActive(found.findIndex((r) => !isTaken(r)));
-        setStatus("done");
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        setResults([]);
-        setError(err instanceof Error ? err.message : "Search failed.");
-        setStatus("error");
-      }
-    }, SEARCH_DEBOUNCE_MS);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-    // The exclusions only seed the highlighted row: it isn't a reason to search again.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  // Each answer highlights its first row that can be picked.
+  const { searchable: isSearchable, status, results, error } = useListingSearch(query, (found) => setActive(found.findIndex((r) => !isTaken(r))));
 
   const handleInput = (next: string) => {
     setQuery(next);
     setOpen(true);
-    setError(null);
-    if (next.trim().length < LISTING_SEARCH_MIN_LENGTH) {
-      setResults([]);
-      setStatus("idle");
-      setActive(-1);
-    } else {
-      setStatus("loading");
-    }
+    if (next.trim().length < LISTING_SEARCH_MIN_LENGTH) setActive(-1);
   };
 
   const pick = (listing: Listing) => {
@@ -84,8 +46,6 @@ export function AssetPicker({
     onChange(listing);
     setOpen(false);
     setQuery("");
-    setResults([]);
-    setStatus("idle");
   };
 
   const clear = () => {
