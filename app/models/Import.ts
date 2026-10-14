@@ -136,11 +136,23 @@ interface UnresolvedInstrumentResponse {
   candidates: InstrumentCandidateDTO[];
 }
 
+// An identifier the import took a listing for by itself, among several (the only one in the rows'
+// currency): its rows were recorded on `listing`. Moving them to another candidate is a PATCH of
+// each of `transaction_uuids` naming its listing_id.
+interface AutoResolvedInstrumentResponse {
+  raw_identifier: string;
+  row_indexes: number[];
+  listing: InstrumentCandidateDTO;
+  candidates: InstrumentCandidateDTO[];
+  transaction_uuids: string[];
+}
+
 interface CommitImportResponse {
   imported_count: number;
   issues: ImportRowIssueResponse[];
   integrity_warnings: ImportIntegrityWarningResponse[];
   unresolved_instruments: UnresolvedInstrumentResponse[];
+  auto_resolved_instruments?: AutoResolvedInstrumentResponse[];
 }
 
 export type {
@@ -163,6 +175,7 @@ export type {
   ImportIntegrityWarningResponse,
   UnresolvedReason,
   UnresolvedInstrumentResponse,
+  AutoResolvedInstrumentResponse,
   CommitImportResponse,
 };
 

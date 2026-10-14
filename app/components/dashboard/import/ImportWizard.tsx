@@ -17,8 +17,10 @@ import {
   valueCounts,
 } from "../../../lib/import";
 import { importService } from "../../../services/importService";
+import { transactionService } from "../../../services/transactionService";
 import {
   ColumnFieldMapping,
+  AutoResolvedInstrumentResponse,
   ColumnMappingDTO,
   CommitImportResponse,
   CommitMappingPayload,
@@ -33,6 +35,7 @@ import { PreviewBlock } from "./PreviewBlock";
 import { AnomaliesBlock } from "./AnomaliesBlock";
 import { CommitSummary } from "./CommitSummary";
 import { UnresolvedInstrumentsBlock } from "./UnresolvedInstrumentsBlock";
+import { AutoResolvedInstrumentsBlock } from "./AutoResolvedInstrumentsBlock";
 import { NUMERIC_TARGETS } from "./types";
 import type { Portfolio } from "../../../models/Portfolio";
 import { PortfolioSelect } from "../PortfolioSelect";
@@ -88,6 +91,14 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
   const [valueColumn, setValueColumn] = useState<string | null>(null);
   const [valueMapping, setValueMapping] = useState<ValueMappingRow[]>([]);
   const [commitResult, setCommitResult] = useState<CommitImportResponse | null>(null);
+  // The listings the import picked by itself, across every round (a recommit reports its own).
+  const [autoResolved, setAutoResolved] = useState<AutoResolvedInstrumentResponse[]>([]);
+  const keepAutoResolved = (result: CommitImportResponse) =>
+    setAutoResolved((prev) => {
+      const added = result.auto_resolved_instruments ?? [];
+      const keys = new Set(added.map((a) => a.raw_identifier));
+      return [...prev.filter((a) => !keys.has(a.raw_identifier)), ...added];
+    });
   const [committing, setCommitting] = useState(false);
   // Accumulates across recommits so a raw identifier resolved in an earlier round stays
   // resolved even though the backend re-processes the whole file from scratch each time.
@@ -295,6 +306,7 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
       };
       const result = await importService.commit(targetUuid, file, payload);
       setCommitResult(result);
+      keepAutoResolved(result);
       setPhase("done");
       onImported();
     } catch (err) {
@@ -330,6 +342,7 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
       };
       const result = await importService.commit(targetUuid, file, payload);
       setCommitResult(result);
+      keepAutoResolved(result);
       // A recommit persists new rows just like the initial commit does — the caller's list
       // needs telling again, or rows resolved in this round never show up without a reload.
       onImported();
@@ -339,6 +352,16 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
     } finally {
       setRecommitting(false);
     }
+  };
+
+  // Moves the transactions recorded on a listing the import picked to the one the user chose.
+  const moveAutoResolved = async (item: AutoResolvedInstrumentResponse, listing: AutoResolvedInstrumentResponse["listing"]) => {
+    if (!listing.listing_id) return;
+    for (const uuid of item.transaction_uuids) {
+      await transactionService.updateTransaction(targetUuid, uuid, { listing_id: listing.listing_id });
+    }
+    setAutoResolved((prev) => prev.map((a) => (a.raw_identifier === item.raw_identifier ? { ...a, listing } : a)));
+    onImported();
   };
 
   const TABS: { id: Tab; label: string; badge?: number }[] = [
@@ -423,6 +446,7 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
         {phase === "done" && commitResult && (
           <>
             <CommitSummary summary={commitResult} />
+            {autoResolved.length > 0 && <AutoResolvedInstrumentsBlock items={autoResolved} onMove={moveAutoResolved} />}
             {commitResult.unresolved_instruments.length > 0 && (
               <UnresolvedInstrumentsBlock
                 unresolved={commitResult.unresolved_instruments}
