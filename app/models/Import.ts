@@ -81,10 +81,10 @@ interface CategoricalColumnMappingDTO {
 type ValueMappingResponse = CategoricalColumnMappingDTO;
 
 // The instrument the user chose for a raw identifier: census' listing (as /v1/listings or a
-// candidate gives it), or a market-data ticker.
-type InstrumentOverridePayload =
-  | { listing_id: string }
-  | { ticker: string; isin?: string | null; exchange?: string | null };
+// candidate gives it).
+interface InstrumentOverridePayload {
+  listing_id: string;
+}
 
 // One of the listings found for an ambiguous ISIN (e.g. the same ETF on two markets) — offered
 // to the user as a pick instead of asking them to search for it.

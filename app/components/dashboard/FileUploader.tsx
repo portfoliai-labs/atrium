@@ -21,6 +21,8 @@ import {
 import { StandardTransaction } from "../../models/Report";
 import type { TransactionInput, TransactionResponse } from "../../models/Transaction";
 import { TransactionModal } from "./TransactionModal";
+import { ListingResolutionModal, type UnlistedInstrument } from "./ListingResolutionModal";
+import type { Listing } from "../../models/Listing";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FileMappingModal } from "./FileMappingModal";
 import { ImportWizard } from "./import/ImportWizard";
@@ -111,6 +113,10 @@ function toTransactionInput(tx: DisplayTransaction): TransactionInput {
     broker: tx.broker,
   };
 }
+
+// What a row without a listing names its security by, for the listing picked for it: its ISIN,
+// else its ticker.
+const instrumentKey = (tx: DisplayTransaction) => (tx.isin || tx.ticker || "").trim().toUpperCase();
 
 // Groups items by the portfolio they belong to, for writes that have to go portfolio by portfolio.
 function groupByPortfolio<T>(items: T[], portfolioOf: (item: T) => string): Map<string, T[]> {
@@ -324,6 +330,10 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
   }, [editingKey, manualTransactions, files, existingItems]);
 
   const canSubmit = pendingRows.length > 0 && confirmedFilesValid;
+  // The listing picked for each security a file's rows name (by instrumentKey), and the ones left
+  // to pick while the resolution is open: a transaction is saved on a listing.
+  const [listingsByInstrument, setListingsByInstrument] = useState<Record<string, Listing>>({});
+  const [unlisted, setUnlisted] = useState<UnlistedInstrument[] | null>(null);
 
   const processFileData = (
     rawData: RawRow[],
@@ -698,16 +708,35 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
     }
   };
 
-  const handleConfirmUpload = async () => {
+  const handleConfirmUpload = async (listings: Record<string, Listing> = listingsByInstrument) => {
     if (!canSubmit) return;
+    // A file's rows name their security by ticker or ISIN: each one's listing is picked first.
+    const needed = new Map<string, UnlistedInstrument>();
+    for (const { transaction: tx } of pendingRows) {
+      const key = instrumentKey(tx);
+      if (tx.listingId || listings[key]) continue;
+      const known = needed.get(key) ?? { key, ticker: tx.ticker, isin: tx.isin, currencies: [], rows: 0 };
+      needed.set(key, {
+        ...known,
+        currencies: known.currencies.includes(tx.currency) ? known.currencies : [...known.currencies, tx.currency],
+        rows: known.rows + 1,
+      });
+    }
+    if (needed.size > 0) {
+      setUnlisted(Array.from(needed.values()));
+      return;
+    }
     try {
       setLoading(true);
       // One save per destination portfolio.
       await Promise.all(
         Array.from(groupByPortfolio(pendingRows, r => r.portfolioUuid ?? defaultTarget)).map(([uuid, rows]) =>
-          transactionService.saveTransactions(uuid, rows.map(r => toTransactionInput(r.transaction))),
+          transactionService.saveTransactions(uuid, rows.map(r => toTransactionInput({
+            ...r.transaction, listingId: r.transaction.listingId ?? listings[instrumentKey(r.transaction)]?.listingId,
+          }))),
         ),
       );
+      setListingsByInstrument({});
       if (existingPage === 1) {
         await refreshExisting(1);
       } else {
@@ -781,6 +810,19 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
           onClose={() => setEditingKey(null)}
           onSave={(transaction) => { void handleUpdateTransaction(editingKey, transaction); setEditingKey(null); }}
           onDelete={() => { confirmAndDeleteKeys([editingKey]); setEditingKey(null); }}
+        />
+      )}
+
+      {unlisted && (
+        <ListingResolutionModal
+          instruments={unlisted}
+          onClose={() => setUnlisted(null)}
+          onResolved={(picked) => {
+            const listings = { ...listingsByInstrument, ...picked };
+            setListingsByInstrument(listings);
+            setUnlisted(null);
+            void handleConfirmUpload(listings);
+          }}
         />
       )}
 
@@ -936,7 +978,7 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
           headerAction={
             <button
               disabled={!canSubmit || loading}
-              onClick={handleConfirmUpload}
+              onClick={() => { void handleConfirmUpload(); }}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm ${
                 canSubmit ? "bg-slate-900 text-white hover:bg-blue-600" : "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
               }`}
