@@ -13,7 +13,8 @@ import { IMAGE_ACCEPT, journalService, uploadArticleImage } from "../../../servi
 import type {
   Article, ArticleAudience, ArticleCategory, ArticleContent, ArticleImage, ArticleInstrument, ArticleLanguage, Block,
 } from "../../../models/Journal";
-import type { AssetSearchResult } from "../../../models/AssetSearch";
+import { instrumentRef } from "../../../models/Journal";
+import type { Listing } from "../../../models/Listing";
 import {
   ALT_TEXT_MAX, CAPTION_MAX, CATEGORIES, CATEGORY_LABELS, DEK_MAX, DISCLOSURE_HELP, DISCLOSURE_MAX, DISCLOSURE_TITLE,
   LANGUAGES, LANGUAGE_LABELS, MAX_INSTRUMENTS, NOTE_MAX, TITLE_MAX, dateLabel, journalErrorText,
@@ -184,7 +185,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
       language: f.language,
       cover: f.cover ? { imageUuid: f.cover.imageUuid, altText: f.cover.altText.trim(), caption: f.cover.caption?.trim() || null } : null,
       body: blocks,
-      instruments: f.instruments,
+      instruments: f.instruments.map(instrumentRef),
       audience: isAdvisor ? f.audience : null,
       interestDisclosure: isAdvisor ? f.interestDisclosure.trim() || null : null,
     };
@@ -315,10 +316,11 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     }
   };
 
-  const addInstrument = (asset: AssetSearchResult | null) => {
-    if (!asset || form.instruments.length >= MAX_INSTRUMENTS) return;
-    if (form.instruments.some((i) => i.ticker === asset.ticker)) return;
-    change({ instruments: [...form.instruments, { ticker: asset.ticker, isin: asset.isin }] });
+  const addInstrument = (listing: Listing | null) => {
+    if (!listing || form.instruments.length >= MAX_INSTRUMENTS) return;
+    if (form.instruments.some((i) => i.instrumentId === listing.instrumentId)) return;
+    const { listingId, instrumentId, name, ticker, isin } = listing;
+    change({ instruments: [...form.instruments, { listingId, instrumentId, name, ticker, isin }] });
   };
 
   if (loadError) return <div className="pb-12 space-y-5"><BackLink label="Your articles" onClick={onBack} /><ErrorState message={loadError} /></div>;
@@ -596,11 +598,11 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
               <div className="flex flex-wrap gap-1.5">
                 {form.instruments.map((i, idx) => (
                   <span
-                    key={i.ticker}
+                    key={i.listingId ?? i.ticker}
                     className={`inline-flex items-center gap-1 rounded-full pl-3 pr-1.5 py-1 text-xs font-bold ${flagged === "instruments" && refusal?.index === idx ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700"}`}
                   >
                     {i.ticker}
-                    <button type="button" onClick={() => change({ instruments: form.instruments.filter((x) => x.ticker !== i.ticker) })} className="p-0.5 rounded-full hover:bg-slate-200" aria-label={`Remove ${i.ticker}`}>
+                    <button type="button" onClick={() => change({ instruments: form.instruments.filter((x) => x !== i) })} className="p-0.5 rounded-full hover:bg-slate-200" aria-label={`Remove ${i.ticker}`}>
                       <X className="h-3 w-3" />
                     </button>
                   </span>
@@ -613,7 +615,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
                 value={null}
                 onChange={addInstrument}
                 label="Add one"
-                excludeTickers={form.instruments.map((i) => i.ticker)}
+                excludeInstrumentIds={form.instruments.flatMap((i) => (i.instrumentId ? [i.instrumentId] : []))}
               />
             ) : (
               <p className="text-xs text-slate-400">Up to {MAX_INSTRUMENTS} instruments.</p>

@@ -9,7 +9,7 @@ import { adoptionService } from "../../services/adoptionService";
 import { alertService } from "../../services/alertService";
 import { openBacktestPage, openPlanPage } from "../../lib/dashboardNav";
 import { formatAlertPct, formatRange } from "../../lib/alerts";
-import { exchangeLabel } from "../../models/AssetSearch";
+import { exchangeLabel } from "../../models/Listing";
 import { targetLabel, type StrategyTarget } from "../../models/Strategy";
 import { ruleForTarget, targetRange, type AdoptedStrategy, type SharedStrategy } from "../../models/AdoptedStrategy";
 import type { AlertRuleResponse } from "../../models/Alert";

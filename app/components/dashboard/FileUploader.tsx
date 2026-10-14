@@ -36,9 +36,11 @@ const PENDING_PAGE_SIZE = 10;
 
 function pendingToDisplay(tx: StandardTransaction): DisplayTransaction {
   return {
+    listingId: tx.listingId ?? null,
     ticker: tx.ticker ?? null,
-    // Not-yet-saved rows haven't been through backend asset resolution, so no name yet.
-    name: null,
+    // A file's rows haven't been through backend asset resolution, so no name yet; a listing
+    // picked from the search has census'.
+    name: tx.name ?? null,
     isin: tx.isin ?? null,
     date: tx.date,
     operation: tx.operation,
@@ -53,6 +55,7 @@ function pendingToDisplay(tx: StandardTransaction): DisplayTransaction {
 
 function existingToDisplay(tx: TransactionResponse): DisplayTransaction {
   return {
+    listingId: tx.listing_id,
     ticker: tx.ticker,
     name: tx.name,
     isin: tx.isin,
@@ -86,17 +89,18 @@ function existingResponseToStandard(tx: TransactionResponse): StandardTransactio
     // back to it so the edit form always has a ticker to show/resubmit.
     ticker: tx.ticker ?? tx.isin ?? "",
     ...(tx.isin ? { isin: tx.isin } : {}),
+    ...(tx.listing_id ? { listingId: tx.listing_id } : {}),
+    ...(tx.name ? { name: tx.name } : {}),
   };
 }
 
-// The backend has no ticker-from-ISIN resolver exposed yet, so ISIN-only rows
-// fall back to using the ISIN as both asset_id and ticker.
+// A transaction on census' listing is sent by its listing_id alone: sending its ticker too would
+// move it off the listing. Without one (a file's rows, transactions recorded before listings) it
+// goes by ticker; ISIN-only rows fall back to using the ISIN as both asset_id and ticker.
 function toTransactionInput(tx: DisplayTransaction): TransactionInput {
   const ticker = tx.ticker ?? tx.isin ?? "";
   return {
-    asset_id: ticker,
-    isin: tx.isin,
-    ticker,
+    ...(tx.listingId ? { listing_id: tx.listingId } : { asset_id: ticker, isin: tx.isin, ticker }),
     date: tx.date,
     operation: tx.operation as TransactionInput["operation"],
     amount: tx.amount,

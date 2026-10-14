@@ -8,7 +8,7 @@ import { validateTransactions } from "../../lib/parser";
 import type { Portfolio } from "../../models/Portfolio";
 import { PortfolioSelect } from "./PortfolioSelect";
 import { AssetPicker } from "./AssetPicker";
-import type { AssetSearchResult } from "../../models/AssetSearch";
+import type { Listing, ListingRef } from "../../models/Listing";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 
 interface TransactionModalProps {
@@ -48,8 +48,12 @@ interface FormState {
   price: string;
   currency: string;
   fees: string;
+  // census' listing picked from the search; empty for a transaction recorded by a ticker, which
+  // keeps it until another security is picked.
+  listingId: string;
   ticker: string;
   isin: string;
+  name: string;
   broker: string;
 }
 
@@ -63,8 +67,10 @@ const emptyForm: FormState = {
   price: "",
   currency: "EUR",
   fees: "",
+  listingId: "",
   ticker: "",
   isin: "",
+  name: "",
   broker: "Manual",
 };
 
@@ -90,8 +96,10 @@ function toFormState(tx?: StandardTransaction): FormState {
     price: tx.price == null || Number.isNaN(tx.price) ? "" : String(tx.price),
     currency: tx.currency,
     fees: String(tx.fees ?? 0),
+    listingId: tx.listingId ?? "",
     ticker: tx.ticker ?? "",
     isin: tx.isin ?? "",
+    name: tx.name ?? "",
     broker: tx.broker,
   };
 }
@@ -160,11 +168,13 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete, por
   const [portfolioUuid, setPortfolioUuid] = useState(initial?.portfolioUuid ?? defaultPortfolioUuid ?? portfolios?.[0]?.uuid);
   const [errors, setErrors] = useState<string[]>([]);
   const isEdit = mode === "edit";
-  // A new transaction's security is picked from the search, which fills in ticker, ISIN and
-  // currency; typing them by hand stays possible for one the search doesn't find. A saved
-  // transaction opens on the fields it already has.
-  const [manualAsset, setManualAsset] = useState(isEdit);
-  const [pickedAsset, setPickedAsset] = useState<AssetSearchResult | null>(null);
+  // The security is picked from the search, which fills in the currency too. A saved
+  // transaction opens on the security it already has.
+  const [pickedAsset, setPickedAsset] = useState<ListingRef | null>(() => {
+    const saved = toFormState(initial);
+    if (!saved.ticker && !saved.listingId) return null;
+    return { listingId: saved.listingId || undefined, ticker: saved.ticker, name: saved.name || saved.ticker, isin: saved.isin || null };
+  });
 
   const set = <K extends keyof FormState>(key: K) => (value: string) =>
     setForm(prev => ({ ...prev, [key]: value }));
@@ -181,25 +191,16 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete, por
       ...(dividendType === "cash" ? { quantity: "", price: "" } : {}),
     }));
 
-  const pickAsset = (asset: AssetSearchResult | null) => {
-    setPickedAsset(asset);
+  const pickAsset = (listing: Listing | null) => {
+    setPickedAsset(listing);
     setForm(prev => ({
       ...prev,
-      ticker: asset?.ticker ?? "",
-      isin: asset?.isin ?? "",
-      currency: asset?.currency ?? prev.currency,
+      listingId: listing?.listingId ?? "",
+      ticker: listing?.ticker ?? "",
+      isin: listing?.isin ?? "",
+      name: listing?.name ?? "",
+      currency: listing?.currency ?? prev.currency,
     }));
-  };
-
-  const switchToManual = () => {
-    // The picked security, if any, carries over into the fields.
-    setPickedAsset(null);
-    setManualAsset(true);
-  };
-
-  const switchToSearch = () => {
-    pickAsset(null);
-    setManualAsset(false);
   };
 
   const showQuantityPrice = !isDividend || isStockDividend;
@@ -211,8 +212,8 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete, por
   const handleSubmit = () => {
     const foundErrors: string[] = [];
 
-    if (!form.ticker.trim())
-      foundErrors.push(manualAsset ? "Ticker is required." : "Pick a security.");
+    if (!form.listingId && !form.ticker.trim())
+      foundErrors.push("Pick a security.");
 
     // Blank means "not applicable" (e.g. a cash dividend) rather than 0 — only
     // parse when the user actually typed something.
@@ -240,6 +241,7 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete, por
       broker: form.broker.trim() || "Manual",
       ticker,
       ...(isin ? { isin } : {}),
+      ...(form.listingId ? { listingId: form.listingId, name: form.name } : {}),
       ...(portfolios && portfolioUuid ? { portfolioUuid } : {}),
     };
 
@@ -341,23 +343,7 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete, por
           </div>
         )}
 
-        <div className="space-y-1.5">
-          {manualAsset ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <InputField label="Ticker" value={form.ticker} onChange={set("ticker")} placeholder="AAPL" required />
-              <InputField label="ISIN" value={form.isin} onChange={set("isin")} placeholder="US0378331005" />
-            </div>
-          ) : (
-            <AssetPicker value={pickedAsset} onChange={pickAsset} required />
-          )}
-          <button
-            type="button"
-            onClick={manualAsset ? switchToSearch : switchToManual}
-            className="text-[11px] font-bold text-slate-400 hover:text-blue-600 transition-colors"
-          >
-            {manualAsset ? "Search for the security instead" : "Can't find it? Enter the ticker manually"}
-          </button>
-        </div>
+        <AssetPicker value={pickedAsset} onChange={pickAsset} required />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <InputField label="Date" type="date" value={form.date} onChange={set("date")} required />

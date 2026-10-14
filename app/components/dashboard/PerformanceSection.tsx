@@ -16,7 +16,7 @@ import {
 import { portfolioService } from "../../services/portfolioService";
 import { portfoliosService } from "../../services/portfoliosService";
 import { STRATEGY_PROXIES, simulatedPeriod, targetLabel, type StrategyFrequency, type StrategyParams, type StrategyResponse } from "../../models/Strategy";
-import { exchangeLabel } from "../../models/AssetSearch";
+import { exchangeLabel, listingLine } from "../../models/Listing";
 import { ApiError } from "../../services/apiClient";
 import { formatCompact, formatCurrency, formatQuantity } from "../../lib/format";
 import { toChartPoints } from "../../lib/series";
@@ -1452,8 +1452,8 @@ function HoldingsExplorer({
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [exploring, setExploring] = useState(false);
-  // The holding whose detail view (AssetExplore) is open. Rows without a ticker can't open one:
-  // the market-data endpoint is keyed by it.
+  // The holding whose detail view (AssetExplore) is open. Rows with neither a listing nor a
+  // ticker can't open one: the asset endpoint is keyed by them.
   const [exploringAsset, setExploringAsset] = useState<PortfolioHoldingResponse | null>(null);
 
   const items = useMemo((): CompositionItem[] => {
@@ -1477,7 +1477,7 @@ function HoldingsExplorer({
         value: h.marketValue,
         weightPct: h.weightPct,
         color: palette(i),
-        onOpen: h.ticker ? () => setExploringAsset(h) : undefined,
+        onOpen: assetKeyOf(h) ? () => setExploringAsset(h) : undefined,
       }));
     }
     if (breakdown === "class") {
@@ -1710,9 +1710,9 @@ function HoldingsExplorer({
           />
         </ExploreView>
       )}
-      {exploringAsset?.ticker && (
-        <ExploreView title={exploringAsset.ticker} onClose={() => setExploringAsset(null)}>
-          <AssetExplore ticker={exploringAsset.ticker} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={slot.revision} />
+      {exploringAsset && assetKeyOf(exploringAsset) && (
+        <ExploreView title={exploringAsset.ticker ?? exploringAsset.name} onClose={() => setExploringAsset(null)}>
+          <AssetExplore asset={assetKeyOf(exploringAsset)!} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={slot.revision} />
         </ExploreView>
       )}
     </Module>
@@ -1835,7 +1835,7 @@ function CompositionExplore({
                   dataKey="size"
                   nameKey="name"
                   isAnimationActive={false}
-                  content={(node) => <HoldingsMapCell node={node} onOpen={(assetId) => { const h = holdings.find((x) => x.assetId === assetId); if (h?.ticker) onOpenAsset(h); }} />}
+                  content={(node) => <HoldingsMapCell node={node} onOpen={(assetId) => { const h = holdings.find((x) => x.assetId === assetId); if (h && assetKeyOf(h)) onOpenAsset(h); }} />}
                 />
               </ResponsiveContainer>
             </div>
@@ -1941,11 +1941,14 @@ function HoldingsMapCell({ node, onOpen }: { node: TreemapNode; onOpen: (assetId
 }
 
 const ASSET_RANGES: AssetChartRange[] = ["1M", "6M", "1Y", "5Y", "MAX"];
+/** What the asset page asks for a holding by: its listing, else the ticker it was recorded by. */
+const assetKeyOf = (h: Pick<PortfolioHoldingResponse, "listingId" | "ticker">) => h.listingId || h.ticker;
+
 const ASSET_RANGE_LABELS: Record<AssetChartRange, string> = { "1M": "1 month", "6M": "6 months", "1Y": "1 year", "5Y": "5 years", MAX: "all time" };
 
 /**
  * ASSET EXPLORE — one holding's own page, opened from a row of HoldingsExplorer: its price
- * over a chosen range (GET /v1/assets/{ticker}), what the asset is (identifiers, class,
+ * over a chosen range (GET /v1/assets/{asset}: its listing, or the ticker it was recorded by), what the asset is (identifiers, class,
  * sector or TER…), what it's made of when it's a fund, and the user's own position in it
  * (GET /positions/{assetId}, fetched alongside: the asset endpoint knows nothing about
  * portfolios).
@@ -1955,7 +1958,7 @@ const ASSET_RANGE_LABELS: Record<AssetChartRange, string> = { "1M": "1 month", "
  * range keeps the previous chart on screen (dimmed) until the new one arrives, since a ticker
  * nobody else holds can take a few seconds.
  */
-function AssetExplore({ ticker, assetId, portfolioUuid, revision }: { ticker: string; assetId: string; portfolioUuid: string; revision: number }) {
+function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asset: string; assetId: string; portfolioUuid: string; revision: number }) {
   const position = useDetail(() => portfolioService.getPosition(portfolioUuid, assetId), assetId, revision);
   const [range, setRange] = useState<AssetChartRange>("1Y");
   const [inQuoteCurrency, setInQuoteCurrency] = useState(false);
@@ -1967,7 +1970,7 @@ function AssetExplore({ ticker, assetId, portfolioUuid, revision }: { ticker: st
 
   useEffect(() => {
     let cancelled = false;
-    portfolioService.getAssetDetail(ticker, range)
+    portfolioService.getAssetDetail(asset, range)
       .then((data) => { if (!cancelled) setState({ data, error: null, forRange: range }); })
       .catch((err) => {
         if (cancelled) return;
@@ -1977,7 +1980,7 @@ function AssetExplore({ ticker, assetId, portfolioUuid, revision }: { ticker: st
         setState((prev) => ({ ...prev, error, forRange: range }));
       });
     return () => { cancelled = true; };
-  }, [ticker, range]);
+  }, [asset, range]);
 
   const loading = state.forRange !== range;
   const error = loading ? null : state.error;
@@ -2004,6 +2007,7 @@ function AssetExplore({ ticker, assetId, portfolioUuid, revision }: { ticker: st
 
   const facts: { label: string; value: string }[] = [
     { label: "Ticker", value: data.ticker },
+    ...(data.listing?.exchangeMic ? [{ label: "Market", value: exchangeLabel(data.listing.exchangeMic, data.listing.exchangeName)! }] : []),
     ...(data.isin ? [{ label: "ISIN", value: data.isin }] : []),
     { label: "Asset class", value: data.assetClass },
     ...(data.sector ? [{ label: "Sector", value: data.sector }] : []),
@@ -2032,7 +2036,7 @@ function AssetExplore({ ticker, assetId, portfolioUuid, revision }: { ticker: st
         title={data.name}
         value={held ? formatCurrency(held.marketValue, posCurrency, 0) : last !== undefined ? formatCurrency(last, unit, 2) : undefined}
         change={held ? { text: `${formatPct(held.roiPct)} since first buy`, tone: toneOfValue(held.roiPct) } : null}
-        note={data.ticker}
+        note={data.listing ? listingLine(data.listing) : data.ticker}
         figures={held ? [
           { label: "Position", value: formatCurrency(held.marketValue, posCurrency, 0), sub: `${formatQuantity(held.quantity)} ${data.assetClass === "Crypto" ? data.ticker : "shares"}` },
           { label: "Return", value: formatPct(held.roiPct), sub: "Since first buy", tone: toneOfValue(held.roiPct) },

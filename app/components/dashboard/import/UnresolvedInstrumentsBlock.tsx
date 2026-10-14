@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
-import { InstrumentCandidateDTO, InstrumentOverridePayload, UnresolvedInstrumentResponse } from "../../../models/Import";
+import { InstrumentOverridePayload, UnresolvedInstrumentResponse } from "../../../models/Import";
+import type { Listing } from "../../../models/Listing";
+import { AssetPicker } from "../AssetPicker";
 
 interface UnresolvedInstrumentsBlockProps {
   unresolved: UnresolvedInstrumentResponse[];
@@ -10,49 +12,36 @@ interface UnresolvedInstrumentsBlockProps {
   submitting: boolean;
 }
 
-interface Draft {
-  ticker: string;
-  isin: string;
-  exchange: string;
-  selectedCandidateIndex: number | null;
-}
+// The listing chosen for a raw identifier: one of its candidates, or one found with the search.
+type Draft = { kind: "candidate"; index: number; listingId: string } | { kind: "search"; listing: Listing };
 
-const EMPTY_DRAFT: Draft = { ticker: "", isin: "", exchange: "", selectedCandidateIndex: null };
+const REASON_TEXT: Record<UnresolvedInstrumentResponse["reason"], string> = {
+  ambiguous: "Multiple listings match this ISIN — pick the market:",
+  not_found: "Nothing matched it — search for the security:",
+  not_priced: "No provider prices the listing found for it — search for another one:",
+};
 
 export function UnresolvedInstrumentsBlock({ unresolved, onRecommit, submitting }: UnresolvedInstrumentsBlockProps) {
-  // Keyed by raw_identifier — carries over across recommits so a row the user already typed
-  // into or picked (but didn't submit yet, or that's still unresolved for an unrelated reason)
-  // isn't lost.
+  // Keyed by raw_identifier — carries over across recommits so a row the user already picked
+  // (but didn't submit yet, or that's still unresolved for an unrelated reason) isn't lost.
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
 
-  const setField = (rawIdentifier: string, field: "ticker" | "isin", value: string) => {
+  const choose = (rawIdentifier: string, draft: Draft | null) =>
     setDrafts((prev) => {
-      const current = prev[rawIdentifier] ?? EMPTY_DRAFT;
-      return { ...prev, [rawIdentifier]: { ...current, [field]: value, selectedCandidateIndex: null } };
+      const next = { ...prev };
+      if (draft) next[rawIdentifier] = draft;
+      else delete next[rawIdentifier];
+      return next;
     });
-  };
 
-  const selectCandidate = (rawIdentifier: string, index: number, candidate: InstrumentCandidateDTO) => {
-    setDrafts((prev) => ({
-      ...prev,
-      [rawIdentifier]: {
-        ticker: candidate.ticker,
-        isin: candidate.isin ?? "",
-        exchange: candidate.exchange ?? "",
-        selectedCandidateIndex: index,
-      },
-    }));
-  };
-
-  const readyCount = unresolved.filter((u) => (drafts[u.raw_identifier]?.ticker ?? "").trim().length > 0).length;
+  const listingIdOf = (draft: Draft | undefined) => (draft?.kind === "candidate" ? draft.listingId : draft?.listing.listingId);
+  const readyCount = unresolved.filter((u) => listingIdOf(drafts[u.raw_identifier])).length;
 
   const handleSubmit = () => {
     const overrides: Record<string, InstrumentOverridePayload> = {};
     for (const u of unresolved) {
-      const draft = drafts[u.raw_identifier];
-      const ticker = draft?.ticker.trim();
-      if (!ticker) continue;
-      overrides[u.raw_identifier] = { ticker, isin: draft?.isin.trim() || null, exchange: draft?.exchange.trim() || null };
+      const listingId = listingIdOf(drafts[u.raw_identifier]);
+      if (listingId) overrides[u.raw_identifier] = { listing_id: listingId };
     }
     if (Object.keys(overrides).length === 0) return;
     onRecommit(overrides);
@@ -69,8 +58,9 @@ export function UnresolvedInstrumentsBlock({ unresolved, onRecommit, submitting 
       </p>
       <div className="space-y-2.5">
         {unresolved.map((u) => {
-          const draft = drafts[u.raw_identifier] ?? EMPTY_DRAFT;
-          const isAmbiguous = u.reason === "ambiguous" && u.candidates.length > 0;
+          const draft = drafts[u.raw_identifier];
+          // Only census' listings can be picked: a candidate without one is left out.
+          const candidates = u.candidates.filter((c) => c.listing_id);
           return (
             <div key={u.raw_identifier} className="border border-amber-200 bg-amber-50/40 rounded-2xl p-3 space-y-2.5">
               <div className="flex items-center justify-between">
@@ -79,30 +69,33 @@ export function UnresolvedInstrumentsBlock({ unresolved, onRecommit, submitting 
                   {u.row_indexes.length} row{u.row_indexes.length !== 1 ? "s" : ""}
                 </span>
               </div>
+              <p className="text-[11px] font-semibold text-amber-700">
+                {candidates.length > 0 ? REASON_TEXT.ambiguous : REASON_TEXT[u.reason === "ambiguous" ? "not_found" : u.reason]}
+              </p>
 
-              {isAmbiguous ? (
+              {candidates.length > 0 && (
                 <div className="space-y-1.5">
-                  <p className="text-[11px] font-semibold text-amber-700">Multiple listings match this ISIN — pick the market:</p>
-                  {u.candidates.map((c, i) => {
-                    const selected = draft.selectedCandidateIndex === i;
+                  {candidates.map((c, i) => {
+                    const selected = draft?.kind === "candidate" && draft.index === i;
                     return (
                       <label
-                        key={`${c.ticker}-${c.exchange ?? i}`}
+                        key={c.listing_id}
                         className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl border text-xs cursor-pointer transition-colors ${
                           selected ? "border-slate-900 bg-white" : "border-slate-200 bg-white/70 hover:border-slate-300"
                         } ${submitting ? "opacity-50 pointer-events-none" : ""}`}
                       >
-                        <span className="flex items-center gap-2">
+                        <span className="flex items-center gap-2 min-w-0">
                           <input
                             type="radio"
                             name={`candidate-${u.raw_identifier}`}
                             checked={selected}
-                            onChange={() => selectCandidate(u.raw_identifier, i, c)}
+                            onChange={() => choose(u.raw_identifier, { kind: "candidate", index: i, listingId: c.listing_id! })}
                             disabled={submitting}
                           />
                           <span className="font-mono font-semibold text-slate-700">{c.ticker}</span>
+                          {c.name && <span className="text-slate-500 truncate">{c.name}</span>}
                         </span>
-                        <span className="flex items-center gap-2 text-slate-500">
+                        <span className="flex items-center gap-2 text-slate-500 shrink-0">
                           {c.exchange_name && <span>{c.exchange_name}</span>}
                           {c.exchange && <span className="font-mono">{c.exchange}</span>}
                           {c.currency && <span className="font-bold text-slate-600">{c.currency}</span>}
@@ -111,26 +104,13 @@ export function UnresolvedInstrumentsBlock({ unresolved, onRecommit, submitting 
                     );
                   })}
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={draft.ticker}
-                    onChange={(e) => setField(u.raw_identifier, "ticker", e.target.value)}
-                    placeholder="Ticker, e.g. AAPL"
-                    disabled={submitting}
-                    className="text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 font-semibold outline-none transition-all focus:ring-4 focus:ring-slate-50 focus:border-slate-300 w-32 disabled:opacity-50"
-                  />
-                  <input
-                    type="text"
-                    value={draft.isin}
-                    onChange={(e) => setField(u.raw_identifier, "isin", e.target.value)}
-                    placeholder="ISIN (optional)"
-                    disabled={submitting}
-                    className="text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 font-semibold outline-none transition-all focus:ring-4 focus:ring-slate-50 focus:border-slate-300 w-36 disabled:opacity-50"
-                  />
-                </div>
               )}
+
+              <AssetPicker
+                value={draft?.kind === "search" ? draft.listing : null}
+                onChange={(listing) => choose(u.raw_identifier, listing ? { kind: "search", listing } : null)}
+                label={candidates.length > 0 ? "Or search for another listing" : "Security"}
+              />
             </div>
           );
         })}

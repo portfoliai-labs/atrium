@@ -4,11 +4,14 @@
 // Matches TransactionOperation enum from backend
 type TransactionOperation = 'buy' | 'sell' | 'dividend' | 'other';
 
-// Matches TransactionInput DTO (POST /v1/transactions/, POST /v1/transactions/validate)
+// Matches TransactionInput DTO (POST /v1/transactions/, POST /v1/transactions/validate). With
+// listing_id (census' listing, as /v1/listings gives it) the backend takes the identifiers from
+// census: asset_id, isin and ticker aren't sent. One no provider prices is a 422.
 interface TransactionInput {
-  asset_id: string;
+  listing_id?: string | null;
+  asset_id?: string;
   isin?: string | null;
-  ticker: string;
+  ticker?: string;
   date: string;
   operation: TransactionOperation;
   amount: number;
@@ -26,6 +29,8 @@ interface TransactionResponse {
   // The portfolio the row belongs to — differs from the listed one only on the aggregate.
   portfolio_uuid: string;
   asset_id: string;
+  // census' listing; null for one recorded by a market-data ticker.
+  listing_id: string | null;
   isin: string | null;
   ticker: string | null;
   name: string | null;
@@ -51,6 +56,8 @@ interface TransactionListResponse {
 
 // Matches TransactionUpdatePayload DTO (PATCH /v1/transactions/{uuid})
 interface TransactionUpdatePayload {
+  // Moves it to census' listing, its identifiers then census'.
+  listing_id?: string | null;
   asset_id?: string | null;
   isin?: string | null;
   ticker?: string | null;
@@ -66,6 +73,7 @@ interface TransactionUpdatePayload {
 
 // Matches TransactionValidationResult DTO (POST /v1/transactions/validate)
 interface TransactionValidationResult {
+  listing_id?: string | null;
   asset_id: string;
   ticker: string | null;
   isin: string | null;

@@ -6,6 +6,8 @@ import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, CircleDollarSi
 // Normalized shape both pending (client-parsed StandardTransaction) and existing
 // (backend TransactionResponse) rows are converted into before reaching this component.
 export interface DisplayTransaction {
+  // census' listing, what is sent when there is one (ticker, name and isin then only shown).
+  listingId?: string | null;
   ticker: string | null;
   name: string | null;
   isin: string | null;

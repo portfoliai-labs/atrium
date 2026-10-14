@@ -6,7 +6,7 @@ import { Bookmark, BookmarkCheck, EyeOff, Flag, Info, Loader2, PenLine } from "l
 import { useUser } from "../../../context/UserContext";
 import { useJournal } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
-import type { Article } from "../../../models/Journal";
+import type { Article, ArticleInstrument } from "../../../models/Journal";
 import {
   DISCLOSURE_TITLE, EDITORS_NOTICE, NOT_ADVICE_NOTICE, REASON_LABELS, authorName, dateLabel, isArticleNotFound, journalErrorText,
 } from "../../../lib/journal";
@@ -27,7 +27,7 @@ export function ArticleDocument({ article, actions, onAuthor, onInstrument }: {
   article: Article;
   actions?: React.ReactNode;
   onAuthor?: () => void;
-  onInstrument?: (ticker: string, isin: string | null) => void;
+  onInstrument?: (instrument: ArticleInstrument) => void;
 }) {
   const byEditors = article.author.kind === "editor";
   const name = authorName(article.author);
@@ -60,10 +60,10 @@ export function ArticleDocument({ article, actions, onAuthor, onInstrument }: {
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-1">About</span>
             {article.instruments.map((i) => (
               <button
-                key={i.ticker}
+                key={i.listingId ?? i.ticker}
                 type="button"
                 disabled={!onInstrument}
-                onClick={() => onInstrument?.(i.ticker, i.isin)}
+                onClick={() => onInstrument?.(i)}
                 title={onInstrument ? `More articles about ${i.ticker}` : undefined}
                 className="rounded-full border border-slate-200 px-3 py-1 text-xs font-bold text-slate-600 enabled:hover:border-[#C49A3C]/50 enabled:hover:text-[#9a7424]"
               >
@@ -197,7 +197,7 @@ export function ArticleReader({ slug, onBack, onEdit, onFilter }: {
         article={article}
         actions={actions}
         onAuthor={authorUuid ? () => onFilter({ author: { uuid: authorUuid, name: authorName(author) } }) : undefined}
-        onInstrument={(ticker, isin) => onFilter({ instrument: { ticker, isin } })}
+        onInstrument={(i) => onFilter({ instrument: { ticker: i.ticker, isin: i.isin, instrumentId: i.instrumentId } })}
       />
       {reporting && <ReportDialog articleUuid={article.uuid} onClose={() => setReporting(false)} />}
     </div>

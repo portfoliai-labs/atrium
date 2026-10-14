@@ -2,56 +2,51 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Loader2, Search, X } from "lucide-react";
-import { exchangeLabel, type AssetSearchResult } from "../../models/AssetSearch";
-import { ASSET_SEARCH_MIN_LENGTH, assetSearchService } from "../../services/assetSearchService";
+import { listingLine, type Listing, type ListingRef } from "../../models/Listing";
+import { LISTING_SEARCH_MIN_LENGTH, listingService } from "../../services/listingService";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
 type SearchStatus = "idle" | "loading" | "done" | "error";
 
-/** "VWCE.DE · Xetra (XETR) · EUR · ETF": what tells apart the listings of one ISIN. */
-export function assetListingLine(asset: Pick<AssetSearchResult, "ticker" | "exchangeMic" | "currency" | "assetClass">): string {
-  return [asset.ticker, exchangeLabel(asset.exchangeMic), asset.currency, asset.assetClass].filter(Boolean).join(" · ");
-}
-
 /**
- * ASSET PICKER — finds a security the backend can price (GET /v1/asset-search) by name, ticker
- * or ISIN, and picks one of its listings. Searches as the user types, once they pause; once
- * picked, the field shows the security with a button to pick another. Listings in
- * `excludeTickers`, or of an ISIN in `excludeIsins`, are listed but can't be picked (e.g. the
- * securities a strategy already holds).
+ * ASSET PICKER — finds one of census' listings (GET /v1/listings) by name, ticker or ISIN, and
+ * picks it. Searches as the user types, once they pause; once picked, the field shows the
+ * listing with a button to pick another. Listings in `excludeListingIds`, or of an instrument in
+ * `excludeInstrumentIds`, are listed but can't be picked (e.g. the securities a strategy already
+ * holds).
  */
 export function AssetPicker({
-  value, onChange, label = "Security", placeholder = "Name, ticker or ISIN", excludeTickers = [], excludeIsins = [], required = false, autoFocus = false,
+  value, onChange, label = "Security", placeholder = "Name, ticker or ISIN", excludeListingIds = [], excludeInstrumentIds = [], required = false, autoFocus = false,
 }: {
-  value: AssetSearchResult | null;
-  onChange: (asset: AssetSearchResult | null) => void;
+  value: ListingRef | null;
+  onChange: (listing: Listing | null) => void;
   label?: string;
   placeholder?: string;
-  excludeTickers?: string[];
-  excludeIsins?: string[];
+  excludeListingIds?: string[];
+  excludeInstrumentIds?: string[];
   required?: boolean;
   autoFocus?: boolean;
 }) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<AssetSearchResult[]>([]);
+  const [results, setResults] = useState<Listing[]>([]);
   const [status, setStatus] = useState<SearchStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
 
-  const isSearchable = query.trim().length >= ASSET_SEARCH_MIN_LENGTH;
-  const isTaken = (r: AssetSearchResult) => excludeTickers.includes(r.ticker) || (r.isin != null && excludeIsins.includes(r.isin));
+  const isSearchable = query.trim().length >= LISTING_SEARCH_MIN_LENGTH;
+  const isTaken = (r: Listing) => excludeListingIds.includes(r.listingId) || excludeInstrumentIds.includes(r.instrumentId);
 
   useEffect(() => {
-    if (query.trim().length < ASSET_SEARCH_MIN_LENGTH) return;
+    if (query.trim().length < LISTING_SEARCH_MIN_LENGTH) return;
     // A newer keystroke cancels the pending search and drops any answer still on its way.
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const found = await assetSearchService.search(query, controller.signal);
+        const found = await listingService.search(query, controller.signal);
         if (controller.signal.aborted) return;
         setResults(found);
         setActive(found.findIndex((r) => !isTaken(r)));
@@ -75,7 +70,7 @@ export function AssetPicker({
     setQuery(next);
     setOpen(true);
     setError(null);
-    if (next.trim().length < ASSET_SEARCH_MIN_LENGTH) {
+    if (next.trim().length < LISTING_SEARCH_MIN_LENGTH) {
       setResults([]);
       setStatus("idle");
       setActive(-1);
@@ -84,9 +79,9 @@ export function AssetPicker({
     }
   };
 
-  const pick = (asset: AssetSearchResult) => {
-    if (isTaken(asset)) return;
-    onChange(asset);
+  const pick = (listing: Listing) => {
+    if (isTaken(listing)) return;
+    onChange(listing);
     setOpen(false);
     setQuery("");
     setResults([]);
@@ -141,7 +136,7 @@ export function AssetPicker({
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold text-slate-900 truncate">{value.name}</p>
             <p className="text-[11px] font-semibold text-slate-500 truncate">
-              {assetListingLine(value)}{value.isin ? ` · ${value.isin}` : ""}
+              {listingLine(value)}{value.isin ? ` · ${value.isin}` : ""}
             </p>
           </div>
           <button
@@ -197,7 +192,7 @@ export function AssetPicker({
         <div className="absolute z-10 left-0 right-0 mt-1.5 rounded-2xl bg-white border border-slate-200 shadow-xl shadow-slate-200/60 overflow-hidden">
           {!isSearchable ? (
             <p className="px-4 py-3 text-xs font-semibold text-slate-400">
-              Type at least {ASSET_SEARCH_MIN_LENGTH} characters — name, ticker or ISIN.
+              Type at least {LISTING_SEARCH_MIN_LENGTH} characters — name, ticker or ISIN.
             </p>
           ) : status === "loading" ? (
             <p className="px-4 py-3 text-xs font-semibold text-slate-400">Searching…</p>
@@ -205,7 +200,7 @@ export function AssetPicker({
             <p className="px-4 py-3 text-xs font-semibold text-rose-600">{error}</p>
           ) : results.length === 0 ? (
             <p className="px-4 py-3 text-xs font-semibold text-slate-500">
-              No priced security matches &ldquo;{query.trim()}&rdquo;.
+              No security matches &ldquo;{query.trim()}&rdquo;.
             </p>
           ) : (
             <ul id={listId} role="listbox" className="max-h-72 overflow-y-auto custom-scrollbar py-1">
@@ -213,7 +208,7 @@ export function AssetPicker({
                 const taken = isTaken(r);
                 return (
                   <li
-                    key={`${r.ticker}-${r.exchangeMic ?? ""}`}
+                    key={r.listingId}
                     id={`${listId}-${i}`}
                     role="option"
                     aria-selected={i === active}
@@ -227,7 +222,12 @@ export function AssetPicker({
                   >
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-slate-900 truncate">{r.name}</p>
-                      <p className="text-[11px] font-semibold text-slate-500 truncate">{assetListingLine(r)}</p>
+                      <p
+                        className="text-[11px] font-semibold text-slate-500 truncate"
+                        title={r.currencyConfirmed ? undefined : `${r.currency}: presumed from the market until a price confirms it`}
+                      >
+                        {listingLine(r)}
+                      </p>
                     </div>
                     <span className="text-[10px] font-semibold text-slate-400 shrink-0">
                       {taken ? "Already added" : r.isin}

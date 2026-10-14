@@ -50,13 +50,14 @@ export function ArticleList({ filters, onFilters, onOpen }: {
       category,
       q,
       authorUuid: author?.uuid,
-      ticker: instrument?.ticker,
-      isin: instrument?.isin ?? undefined,
+      ...(instrument?.instrumentId
+        ? { instrumentId: instrument.instrumentId }
+        : { ticker: instrument?.ticker, isin: instrument?.isin ?? undefined }),
       preferredLanguage: language,
       limit: PAGE_SIZE,
       offset,
     }),
-    JSON.stringify([mode, category, q, author?.uuid, instrument?.ticker, instrument?.isin, language]),
+    JSON.stringify([mode, category, q, author?.uuid, instrument?.instrumentId, instrument?.ticker, instrument?.isin, language]),
   );
 
   const narrowed = !!(category || q || author || instrument);

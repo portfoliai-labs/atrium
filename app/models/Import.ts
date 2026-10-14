@@ -80,15 +80,19 @@ interface CategoricalColumnMappingDTO {
 
 type ValueMappingResponse = CategoricalColumnMappingDTO;
 
-interface InstrumentOverridePayload {
-  ticker: string;
-  isin?: string | null;
-  exchange?: string | null;
-}
+// The instrument the user chose for a raw identifier: census' listing (as /v1/listings or a
+// candidate gives it), or a market-data ticker.
+type InstrumentOverridePayload =
+  | { listing_id: string }
+  | { ticker: string; isin?: string | null; exchange?: string | null };
 
-// A single resolved listing OpenFIGI found for an ambiguous ISIN (e.g. the same ETF on two
-// markets) — offered to the user as a pick instead of asking them to type a ticker blind.
+// One of the listings found for an ambiguous ISIN (e.g. the same ETF on two markets) — offered
+// to the user as a pick instead of asking them to search for it.
 interface InstrumentCandidateDTO {
+  // census' listing and its instrument: what an override names.
+  listing_id?: string | null;
+  instrument_id?: string | null;
+  name?: string | null;
   ticker: string;
   isin?: string | null;
   exchange?: string | null; // raw MIC, e.g. "XMIL"
@@ -119,11 +123,11 @@ interface ImportIntegrityWarningResponse {
   row_indexes: number[];
 }
 
-// "ambiguous" means OpenFIGI found more than one listing and the row's currency wasn't enough
-// to narrow it to one — `candidates` then carries every listing found, for the user to pick
-// from. "not_found" (the original, still-default case) means candidates is always empty and
-// the user has to type a ticker/ISIN by hand, exactly as before this field existed.
-type UnresolvedReason = "not_found" | "ambiguous";
+// "ambiguous" means more than one listing was found and the row's currency or exchange wasn't
+// enough to narrow it to one — `candidates` then carries every listing found, for the user to
+// pick from. "not_found" means candidates is empty; "not_priced" that the listing found isn't
+// priced by any provider. Either way the user searches for the listing.
+type UnresolvedReason = "not_found" | "ambiguous" | "not_priced";
 
 interface UnresolvedInstrumentResponse {
   raw_identifier: string;
