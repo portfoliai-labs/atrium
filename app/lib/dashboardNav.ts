@@ -8,7 +8,7 @@
 
 import { pushDashboardEntry } from "./dashboardHistory";
 import type { WealthView, PortfolioPage } from "../components/dashboard/WealthSection";
-import type { PlanPage } from "../components/dashboard/PlanSection";
+import type { PlanPage, PlanToolPage } from "../components/dashboard/PlanSection";
 import type { WalletPage } from "../components/dashboard/wallets/WalletNode";
 
 // The dashboard's section ids (see the dashboard page). Wealth keeps "performance", the id it had
@@ -57,6 +57,10 @@ export const openRealEstatePage = (onNavigate: Navigate, property?: string) =>
 
 export const openPlanPage = (onNavigate: Navigate, page: Exclude<PlanPage, "backtest" | "explore">) =>
   openSectionView(onNavigate, PLAN_SECTION, { page });
+
+/** Plan's Projection or Stress test, on one portfolio (All portfolios included). */
+export const openPlanToolPage = (onNavigate: Navigate, page: PlanToolPage, portfolioUuid: string) =>
+  openSectionView(onNavigate, PLAN_SECTION, { page, portfolio: portfolioUuid });
 
 /** A backtest's page, under Plan's Strategy. */
 export const openBacktestPage = (onNavigate: Navigate, portfolioUuid: string) =>

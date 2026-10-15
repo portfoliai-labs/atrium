@@ -91,21 +91,23 @@ function requestOf(question: Question, forms: Forms): { request: ProjectionReque
  * spelled out under them. Inputs are in today's money, balances nominal: the page says so. Under 12
  * months of returns the backend refuses, and the page says why and when to come back.
  */
-export function ProjectionPage({ portfolioUuid, trail, eyebrow }: { portfolioUuid: string; trail: Crumb[]; eyebrow?: string }) {
+// `picker`: the form's first field, the portfolio it runs on (Plan's).
+export function ProjectionPage({ portfolioUuid, trail, eyebrow, picker }: { portfolioUuid: string; trail: Crumb[]; eyebrow?: string; picker?: React.ReactNode }) {
   const [question, setQuestion] = useState<Question>("goal");
   const [forms, setForms] = useState<Forms>(INITIAL_FORMS);
-  const [outcomes, setOutcomes] = useState<Partial<Record<Question, Outcome>>>({});
+  // By portfolio and question (`${portfolioUuid}:${question}`): another portfolio picked keeps the form.
+  const [outcomes, setOutcomes] = useState<Partial<Record<string, Outcome>>>({});
   const [running, setRunning] = useState(false);
   // The reference currency, once a run has said it.
   const [currency, setCurrency] = useState<string | null>(null);
 
   const built = requestOf(question, forms);
   const problem = "problem" in built ? built.problem : null;
-  const outcome = outcomes[question];
+  const outcome = outcomes[`${portfolioUuid}:${question}`];
 
   const run = async () => {
     if (!("request" in built)) return;
-    const asked = question;
+    const asked = `${portfolioUuid}:${question}`;
     setRunning(true);
     try {
       const data = await projectionService.run(portfolioUuid, built.request);
@@ -141,95 +143,144 @@ export function ProjectionPage({ portfolioUuid, trail, eyebrow }: { portfolioUui
         </p>
       </div>
 
-      <Module>
-        <ModuleHead title="Question" />
-        <div className={`${MODULE_BODY} space-y-5`}>
-          <div role="tablist" aria-label="Question" className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {QUESTIONS.map((q) => (
-              <button
-                key={q.id}
-                type="button"
-                role="tab"
-                aria-selected={question === q.id}
-                onClick={() => setQuestion(q.id)}
-                className={`text-left rounded-2xl border px-4 py-3.5 transition-colors ${
-                  question === q.id ? "border-[#C49A3C] bg-[#FBF6EA]" : "border-[#EEE9DD] bg-white hover:border-[#C49A3C]/60"
-                }`}
-              >
-                <span className="block text-[13px] font-black text-[#1c1917]">{q.label}</span>
-                <span className="block text-[11.5px] text-[#78716c] mt-1 leading-snug">{q.detail}</span>
-              </button>
-            ))}
-          </div>
+      {/* The question on the left, what it gives on the right: wide screens fill with the answer. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] gap-6 items-start">
+        {/* Its own box: Module fills its grid cell, which would stretch it to the answer's height. */}
+        <div className="lg:sticky lg:top-6">
+          <Module>
+            <ModuleHead title="Question" />
+            <div className={`${MODULE_BODY} space-y-5`}>
+              {picker}
+              <div role="tablist" aria-label="Question" className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-2.5">
+                {QUESTIONS.map((q) => (
+                  <button
+                    key={q.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={question === q.id}
+                    onClick={() => setQuestion(q.id)}
+                    className={`text-left rounded-2xl border px-4 py-3 transition-colors ${
+                      question === q.id ? "border-[#C49A3C] bg-[#FBF6EA]" : "border-[#EEE9DD] bg-white hover:border-[#C49A3C]/60"
+                    }`}
+                  >
+                    <span className="block text-[13px] font-black text-[#1c1917]">{q.label}</span>
+                    <span className="block text-[11.5px] text-[#78716c] mt-1 leading-snug">{q.detail}</span>
+                  </button>
+                ))}
+              </div>
 
-          <form
-            onSubmit={(e) => { e.preventDefault(); void run(); }}
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end"
-          >
-            {question === "goal" && (
-              <>
-                <Field label="Amount to reach" suffix={unit} value={forms.goal.targetAmount} onChange={(v) => set("goal", "targetAmount", v)} />
-                <Field label="Added each month" suffix={unit} placeholder="0" value={forms.goal.monthlyContribution} onChange={(v) => set("goal", "monthlyContribution", v)} />
-                <Field label="Deadline" suffix="years" placeholder="None" value={forms.goal.targetHorizonYears} onChange={(v) => set("goal", "targetHorizonYears", v)} />
-              </>
-            )}
-            {question === "survival" && (
-              <>
-                <Field label="Withdrawn each month" suffix={unit} value={forms.survival.monthlyWithdrawal} onChange={(v) => set("survival", "monthlyWithdrawal", v)} />
-                <Field label="Years in retirement" suffix="years" value={forms.survival.horizonYears} onChange={(v) => set("survival", "horizonYears", v)} />
-                <Field label="Years until retirement" suffix="years" value={forms.survival.yearsUntilRetirement} onChange={(v) => set("survival", "yearsUntilRetirement", v)} />
-                <Field label="Added each month until then" suffix={unit} placeholder="0" value={forms.survival.monthlyContribution} onChange={(v) => set("survival", "monthlyContribution", v)} />
-              </>
-            )}
-            {question === "safeWithdrawal" && (
-              <>
-                <Field label="Years in retirement" suffix="years" value={forms.safeWithdrawal.horizonYears} onChange={(v) => set("safeWithdrawal", "horizonYears", v)} />
-                <Field label="Years until retirement" suffix="years" value={forms.safeWithdrawal.yearsUntilRetirement} onChange={(v) => set("safeWithdrawal", "yearsUntilRetirement", v)} />
-                <Field label="Added each month until then" suffix={unit} placeholder="0" value={forms.safeWithdrawal.monthlyContribution} onChange={(v) => set("safeWithdrawal", "monthlyContribution", v)} />
-                <Field label="Success rate" suffix="%" value={forms.safeWithdrawal.targetSuccessPct} onChange={(v) => set("safeWithdrawal", "targetSuccessPct", v)} />
-              </>
-            )}
-            <div className="sm:col-span-2 lg:col-span-4 flex flex-wrap items-center justify-between gap-3">
-              <span className="text-xs font-bold text-amber-700">{problem}</span>
-              <button
-                type="submit"
-                disabled={problem !== null || running}
-                className="flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              <form
+                onSubmit={(e) => { e.preventDefault(); void run(); }}
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4 pt-5 border-t border-[#EEE9DD]"
               >
-                {running && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Run the projection
-              </button>
+                {question === "goal" && (
+                  <>
+                    <Field label="Amount to reach" suffix={unit} value={forms.goal.targetAmount} onChange={(v) => set("goal", "targetAmount", v)} />
+                    <Field label="Added each month" suffix={unit} placeholder="0" value={forms.goal.monthlyContribution} onChange={(v) => set("goal", "monthlyContribution", v)} />
+                    <Field label="Deadline" suffix="years" placeholder="None" value={forms.goal.targetHorizonYears} onChange={(v) => set("goal", "targetHorizonYears", v)} />
+                  </>
+                )}
+                {question === "survival" && (
+                  <>
+                    <Field label="Withdrawn each month" suffix={unit} value={forms.survival.monthlyWithdrawal} onChange={(v) => set("survival", "monthlyWithdrawal", v)} />
+                    <Field label="Years in retirement" suffix="years" value={forms.survival.horizonYears} onChange={(v) => set("survival", "horizonYears", v)} />
+                    <Field label="Years until retirement" suffix="years" value={forms.survival.yearsUntilRetirement} onChange={(v) => set("survival", "yearsUntilRetirement", v)} />
+                    <Field label="Added each month until then" suffix={unit} placeholder="0" value={forms.survival.monthlyContribution} onChange={(v) => set("survival", "monthlyContribution", v)} />
+                  </>
+                )}
+                {question === "safeWithdrawal" && (
+                  <>
+                    <Field label="Years in retirement" suffix="years" value={forms.safeWithdrawal.horizonYears} onChange={(v) => set("safeWithdrawal", "horizonYears", v)} />
+                    <Field label="Years until retirement" suffix="years" value={forms.safeWithdrawal.yearsUntilRetirement} onChange={(v) => set("safeWithdrawal", "yearsUntilRetirement", v)} />
+                    <Field label="Added each month until then" suffix={unit} placeholder="0" value={forms.safeWithdrawal.monthlyContribution} onChange={(v) => set("safeWithdrawal", "monthlyContribution", v)} />
+                    <Field label="Success rate" suffix="%" value={forms.safeWithdrawal.targetSuccessPct} onChange={(v) => set("safeWithdrawal", "targetSuccessPct", v)} />
+                  </>
+                )}
+                <div className="sm:col-span-2 lg:col-span-1 flex flex-col gap-2 pt-1">
+                  {problem && <span className="text-xs font-bold text-amber-700">{problem}</span>}
+                  <button
+                    type="submit"
+                    disabled={problem !== null || running}
+                    className="flex items-center justify-center gap-2 h-11 w-full px-4 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {running && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    Run the projection
+                  </button>
+                </div>
+              </form>
             </div>
-          </form>
+          </Module>
         </div>
-      </Module>
 
-      {outcome?.tooShort ? (
-        <Module>
-          <div className="px-6 py-6 flex items-start gap-3 text-[13px] text-[#57534e]">
-            <Hourglass className="h-5 w-5 shrink-0 text-[#C49A3C]" />
-            {outcome.tooShort.months === 0 ? (
-              <p>
-                Nothing to project yet: the portfolio holds nothing, or hasn&apos;t been rebuilt since it was created. It&apos;s rebuilt overnight (at 04:00) and after each edit; try again once it has been.
-              </p>
-            ) : (
-              <p>
-                Not enough history to project yet: {outcome.tooShort.months === null
-                  ? `a projection needs ${PROJECTION_MIN_MONTHS} months of returns the positions held share.`
-                  : `the positions held have ${outcome.tooShort.months} ${outcome.tooShort.months === 1 ? "month" : "months"} of returns together, and a projection needs ${PROJECTION_MIN_MONTHS}.`} It comes once they have them.
-              </p>
-            )}
-          </div>
-        </Module>
-      ) : outcome?.error ? (
-        <p className="flex items-center gap-2 text-sm font-semibold text-[#e11d48]"><AlertTriangle className="h-4 w-4" /> {outcome.error}</p>
-      ) : outcome?.data ? (
-        <div className={`space-y-6 transition-opacity ${running ? "opacity-50" : ""}`}>
-          <Result data={outcome.data} />
-          <Basis data={outcome.data} />
+        <div className="min-w-0 space-y-6">
+          {outcome?.tooShort ? (
+            <Module>
+              <div className="px-6 py-6 flex items-start gap-3 text-[13px] text-[#57534e]">
+                <Hourglass className="h-5 w-5 shrink-0 text-[#C49A3C]" />
+                {outcome.tooShort.months === 0 ? (
+                  <p>
+                    Nothing to project yet: the portfolio holds nothing, or hasn&apos;t been rebuilt since it was created. It&apos;s rebuilt overnight (at 04:00) and after each edit; try again once it has been.
+                  </p>
+                ) : (
+                  <p>
+                    Not enough history to project yet: {outcome.tooShort.months === null
+                      ? `a projection needs ${PROJECTION_MIN_MONTHS} months of returns the positions held share.`
+                      : `the positions held have ${outcome.tooShort.months} ${outcome.tooShort.months === 1 ? "month" : "months"} of returns together, and a projection needs ${PROJECTION_MIN_MONTHS}.`} It comes once they have them.
+                  </p>
+                )}
+              </div>
+            </Module>
+          ) : outcome?.error ? (
+            <Module>
+              <p className="px-6 py-6 flex items-center gap-2 text-sm font-semibold text-[#e11d48]"><AlertTriangle className="h-4 w-4 shrink-0" /> {outcome.error}</p>
+            </Module>
+          ) : outcome?.data ? (
+            <div className={`space-y-6 transition-opacity ${running ? "opacity-50" : ""}`}>
+              <Result data={outcome.data} />
+              <Basis data={outcome.data} />
+            </div>
+          ) : (
+            <Awaiting question={question} running={running} />
+          )}
         </div>
-      ) : null}
+      </div>
     </div>
+  );
+}
+
+// What each question's answer shows, before it's run.
+const AWAITING: Record<Question, { title: string; figures: string[]; fan: boolean }> = {
+  goal: { title: "Reaching the goal", figures: ["Chance of reaching it", "By the deadline", "Median time", "In poor markets"], fan: true },
+  survival: { title: "Whether it lasts", figures: ["Lasts the whole time", "Median at retirement", "Median at the end", "End, poor markets"], fan: true },
+  safeWithdrawal: { title: "Safe withdrawal", figures: ["Each month", "Withdrawal rate", "Lasts in", "Median at retirement"], fan: false },
+};
+
+/**
+ * AWAITING — the answer's place before a run: the figures it will give, blank, and the balance's
+ * fan drawn faintly where the question has one, so the page reads whole from the start.
+ */
+function Awaiting({ question, running }: { question: Question; running: boolean }) {
+  const a = AWAITING[question];
+  return (
+    <Module>
+      <ModuleHead title={a.title} desc={running ? "Running thousands of simulated markets…" : "Fill in the question and run the projection"} />
+      <div className={`${MODULE_BODY} space-y-5 ${running ? "animate-pulse" : ""}`}>
+        <Figs>
+          {a.figures.map((label, i) => <Fig key={label} label={label} value="—" strong={i === 0} />)}
+        </Figs>
+        {a.fan ? (
+          <svg viewBox="0 0 400 160" preserveAspectRatio="none" className="w-full h-72" aria-hidden>
+            <path d="M0 120 C 120 100, 240 70, 400 20 L 400 120 C 240 125, 120 128, 0 120 Z" fill={GOLD} opacity={0.1} />
+            <path d="M0 120 C 120 113, 240 100, 400 72" fill="none" stroke={GOLD} strokeOpacity={0.35} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+            <line x1="0" y1="150" x2="400" y2="150" stroke="#EEE9DD" vectorEffect="non-scaling-stroke" />
+          </svg>
+        ) : (
+          <p className="text-[12.5px] text-[#78716c] leading-relaxed max-w-xl">
+            The largest monthly withdrawal that lasts the years in retirement in the share of simulated markets you ask, in today&apos;s money.
+          </p>
+        )}
+      </div>
+    </Module>
   );
 }
 

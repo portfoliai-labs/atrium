@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowUpRight, ChevronRight, History, Plus, Target, Telescope, Trash2, Wrench, X } from "lucide-react";
+import { ArrowUpRight, ChevronRight, History, Info, Plus, Target, Telescope, Trash2, Wrench, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
@@ -20,22 +20,30 @@ import { StrategiesExplore } from "./StrategiesExplore";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AdoptStrategyDialog } from "./AdoptStrategyDialog";
 import { VirtualBadge } from "./BacktestMarks";
+import { portfolioColorMap } from "../../lib/chartColors";
+import { PortfolioPicker } from "./PortfolioPicker";
+import { ProjectionPage } from "./projection/ProjectionPage";
+import { StressTestPage } from "./stress/StressTestPage";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import { Panel, PreviewBanner } from "../preview/PreviewKit";
 
 // Under Strategy: "builder", the form for a new backtest; "backtest", one backtest's page;
 // "explore", the strategies catalog (StrategiesExplore), to look at before making one's own.
-export type PlanPage = "profile" | "goals" | "retirement" | "strategy" | "builder" | "backtest" | "explore";
+// "projection" and "stress": a real portfolio's (All portfolios' included) Projection and Stress
+// test, the one picked on the page (a backtest's are its own pages, under Strategy).
+export type PlanPage = "profile" | "goals" | "retirement" | "strategy" | "projection" | "stress" | "builder" | "backtest" | "explore";
+export type PlanToolPage = Extract<PlanPage, "projection" | "stress">;
 // A backtest's pages: its own, and its generated transactions.
 export type BacktestPage = "overview" | "transactions" | "stress" | "projection";
 
-// Explore adds the open strategy's publication.
-type PlanView = { page: PlanPage; uuid?: string; sub?: BacktestPage; publicationId?: string };
+// Explore adds the open strategy's publication; Projection and Stress test the portfolio picked
+// (the investments when none is).
+type PlanView = { page: PlanPage; uuid?: string; sub?: BacktestPage; publicationId?: string; portfolio?: string };
 
 const SECTION = PLAN_SECTION;
 
 // The pages a demo account sees only: previews, with nothing behind them yet.
-const PREVIEW_PAGES: PlanPage[] = ["profile", "goals", "retirement"];
+export const PREVIEW_PAGES: PlanPage[] = ["profile", "goals", "retirement"];
 
 type ListedPlanPage = Exclude<PlanPage, "builder" | "backtest" | "explore">;
 
@@ -44,11 +52,13 @@ export const PLAN_PAGE_LABELS: Record<ListedPlanPage, string> = {
   goals: "Goals",
   retirement: "Retirement",
   strategy: "Strategy",
+  projection: "Projection",
+  stress: "Stress test",
 };
 
 /** The pages listed under Plan for this account, in order. */
 export const planPages = (isDemo: boolean): ListedPlanPage[] =>
-  isDemo ? ["profile", "goals", "retirement", "strategy"] : ["strategy"];
+  isDemo ? ["profile", "goals", "retirement", "strategy", "projection", "stress"] : ["strategy", "projection", "stress"];
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 const createdLabel = (iso: string) =>
@@ -57,7 +67,8 @@ const createdLabel = (iso: string) =>
 /**
  * PLAN SECTION — where the user is heading, and how they mean to invest to get there: their
  * investor profile (the start of an investor policy statement), their goals and a retirement
- * simulation, all previews for a demo account for now, and Strategy, which backtests a strategy
+ * simulation, all previews for a demo account for now; Projection and Stress test, on the
+ * portfolio picked (PortfolioTool); and Strategy, which backtests a strategy
  * into a virtual portfolio (StrategyBuilder), or first looks at the ones advisors publish
  * (Explore, read only), and adopts one on a portfolio in Wealth
  * (AdoptStrategyDialog): each of its targets a range there, with an alert saying where the
@@ -79,6 +90,7 @@ export function PlanSection({ onNavigate }: { onNavigate: (section: string) => v
       return view.uuid ? { page, uuid: view.uuid, sub: view.sub === "transactions" || view.sub === "stress" || view.sub === "projection" ? view.sub : "overview" } : { page: "strategy" };
     }
     if (page === "explore" && typeof view.publicationId === "string") return { page, publicationId: view.publicationId };
+    if ((page === "projection" || page === "stress") && typeof view.portfolio === "string") return { page, portfolio: view.portfolio };
     return { page };
   };
   const [view, setView] = useState<PlanView>(viewFromHistory);
@@ -108,6 +120,15 @@ export function PlanSection({ onNavigate }: { onNavigate: (section: string) => v
   const openBacktest = (uuid: string, sub: BacktestPage = "overview") => goView({ page: "backtest", uuid, sub });
   const strategyTrail: Crumb[] = [{ label: "Strategy", onClick: () => go("strategy") }];
 
+  if (page === "projection" || page === "stress") {
+    // Another portfolio picked: the same page, on it (the entry replaced, not a step back).
+    const pick = (portfolio: string) => {
+      const next = { page, portfolio };
+      pushDashboardEntry({ section: SECTION, view: next }, true);
+      setView(next);
+    };
+    return <PortfolioTool tool={page} portfolioUuid={view.portfolio} onPick={pick} />;
+  }
   if (page === "builder") {
     return <StrategyBuilder trail={strategyTrail} onCreated={(uuid) => openBacktest(uuid)} />;
   }
@@ -153,6 +174,28 @@ export function PlanSection({ onNavigate }: { onNavigate: (section: string) => v
       {(page === "strategy" || page === "backtest") && <StrategyPage onBuild={() => go("builder")} onExplore={() => go("explore")} onOpen={openBacktest} onNavigate={onNavigate} />}
     </div>
   );
+}
+
+/**
+ * PORTFOLIO TOOL — Plan's Projection or Stress test, on the portfolio picked as the first field of
+ * its form (PortfolioPicker): All portfolios (the investments) unless another is, then each real
+ * portfolio. Picking another keeps what's typed. A portfolio's header in Wealth opens it on that
+ * portfolio. An advisor's client's stay on the client's Wealth.
+ */
+function PortfolioTool({ tool, portfolioUuid, onPick }: { tool: PlanToolPage; portfolioUuid?: string; onPick: (uuid: string) => void }) {
+  const { portfolios } = usePortfolio();
+  const aggregate = portfolios.find((p) => p.isAggregate);
+  const choices = [
+    ...(aggregate ? [aggregate] : []),
+    ...portfolios.filter((p) => !p.isVirtual).sort((a, b) => Number(b.isDefault) - Number(a.isDefault)),
+  ];
+  // One gone since (deleted, a link from another account): the investments.
+  const portfolio = choices.find((p) => p.uuid === portfolioUuid) ?? investmentsOf(portfolios);
+  if (!portfolio) return null;
+  const picker = <PortfolioPicker portfolios={choices} value={portfolio.uuid} onChange={onPick} colorOf={portfolioColorMap(portfolios)} />;
+  return tool === "projection"
+    ? <ProjectionPage portfolioUuid={portfolio.uuid} trail={[]} picker={picker} />
+    : <StressTestPage portfolioUuid={portfolio.uuid} trail={[]} picker={picker} />;
 }
 
 /** How Plan's pages chain together, the current one marked: a way between them too. */
@@ -307,10 +350,11 @@ function StrategyPage({ onBuild, onExplore, onOpen, onNavigate }: {
 
   return (
     <>
-      <Breadcrumb
-        trail={[]}
-        current="Strategy"
-        right={
+      <Breadcrumb trail={[]} current="Strategy" />
+      {/* Titled as Projection and Stress test are, New strategy beside the title. */}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Strategy</h1>
           <button
             type="button"
             onClick={() => setChoosing(true)}
@@ -318,13 +362,14 @@ function StrategyPage({ onBuild, onExplore, onOpen, onNavigate }: {
           >
             <Plus className="h-3.5 w-3.5" /> New strategy
           </button>
-        }
-      />
-      <p className="text-[13px] text-slate-500 leading-relaxed max-w-2xl">
-        {canPublish
-          ? "Backtest a strategy on historical prices. Adopt it on a client's portfolio: each of its targets becomes a range, and an alert tells you where the portfolio stands against it; share it to let the client read it. Or publish it to Explore, for everyone to read."
-          : "Backtest how you would invest on historical prices, or first explore the strategies advisors publish. When one of yours fits, adopt it on one of your portfolios: each of its targets becomes a range, and an alert says where the portfolio stands against it."}
-      </p>
+        </div>
+        <p className="flex items-start gap-2 text-[12.5px] text-[#78716c] max-w-3xl">
+          <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          {canPublish
+            ? "Backtest a strategy on historical prices. Adopt it on a client's portfolio: each of its targets becomes a range, and an alert tells you where the portfolio stands against it; share it to let the client read it. Or publish it to Explore, for everyone to read."
+            : "Backtest how you would invest on historical prices, or first explore the strategies advisors publish. When one of yours fits, adopt it on one of your portfolios: each of its targets becomes a range, and an alert says where the portfolio stands against it."}
+        </p>
+      </div>
 
       {backtests.length === 0 ? (
         <button

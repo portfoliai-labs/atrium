@@ -12,7 +12,7 @@ import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
 import { useWallets } from "../../context/WalletsContext";
 import { useRealEstate } from "../../context/RealEstateContext";
 import { ALL_WALLETS, KIND_LABELS, walletColor } from "../../lib/wallets";
-import { PLAN_PAGE_LABELS, planPages } from "./PlanSection";
+import { PLAN_PAGE_LABELS, PREVIEW_PAGES, planPages } from "./PlanSection";
 import { journalRowOf, type JournalView } from "./JournalSection";
 import { useJournal } from "../../context/JournalContext";
 import { UserRole, SubscriptionTier } from "../../models/User";
@@ -109,7 +109,7 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     view: { page },
     // Strategy's form for a new backtest, each backtest and Explore are under Strategy.
     active: view?.page === page || (page === 'strategy' && (view?.page === 'builder' || view?.page === 'backtest' || view?.page === 'explore')),
-    preview: page !== 'strategy',
+    preview: PREVIEW_PAGES.includes(page),
   }));
 
   // The Journal, for everyone (the written articles where the backend doesn't have it yet); under

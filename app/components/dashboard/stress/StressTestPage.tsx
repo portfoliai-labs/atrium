@@ -50,7 +50,8 @@ const TDR = "py-2.5 pl-4 text-right tabular-nums align-top whitespace-nowrap";
  * comes from (its own prices, its category's stand-in index, the shock, or nothing: kept flat),
  * and the cash by currency. A simulation: nothing is recorded.
  */
-export function StressTestPage({ portfolioUuid, trail, eyebrow }: { portfolioUuid: string; trail: Crumb[]; eyebrow?: string }) {
+// `picker`: above the scenarios, the portfolio it runs on (Plan's).
+export function StressTestPage({ portfolioUuid, trail, eyebrow, picker }: { portfolioUuid: string; trail: Crumb[]; eyebrow?: string; picker?: React.ReactNode }) {
   return (
     <div className="space-y-6 pb-12">
       <Breadcrumb trail={trail} current="Stress test" />
@@ -62,12 +63,16 @@ export function StressTestPage({ portfolioUuid, trail, eyebrow }: { portfolioUui
           How a past crisis, or the shocks you pick, would hit the portfolio as it is today. A simulation on past prices: nothing is recorded, and it says nothing of what comes next.
         </p>
       </div>
-      <StressTestPanel portfolioUuid={portfolioUuid} />
+      <StressTestPanel portfolioUuid={portfolioUuid} picker={picker} />
     </div>
   );
 }
 
-export function StressTestPanel({ portfolioUuid }: { portfolioUuid: string }) {
+/**
+ * The scenario on the left (the portfolio first, when `picker` is given), its impact on the right:
+ * wide screens fill with the answer. Stacked on narrow ones.
+ */
+export function StressTestPanel({ portfolioUuid, picker }: { portfolioUuid: string; picker?: React.ReactNode }) {
   const [choice, setChoice] = useState<Choice>("global_financial");
   const [draft, setDraft] = useState<Draft>({ categories: [{ key: "equity", text: "-30" }], currencies: [] });
   // The custom shocks last run: they run again only when asked.
@@ -100,32 +105,47 @@ export function StressTestPanel({ portfolioUuid }: { portfolioUuid: string }) {
   const loading = requestKey !== null && current === null;
 
   return (
-    <>
-      <Module>
-        <ModuleHead title="Scenario" />
-        <div className={`${MODULE_BODY} space-y-4`}>
-          <div role="radiogroup" aria-label="Scenario" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {STRESS_CRISES.map((c) => (
-              <ScenarioCard key={c.crisis} selected={choice === c.crisis} onSelect={() => setChoice(c.crisis)} title={c.label} sub={`${dateLabel(c.startDate)} – ${dateLabel(c.endDate)}`} detail={c.detail} />
-            ))}
-            <ScenarioCard selected={choice === "custom"} onSelect={() => setChoice("custom")} title="Your own shocks" sub="By asset category and currency" detail="Move each category and currency by the change you pick" />
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] gap-6 items-start">
+      {/* Its own box: Module fills its grid cell, which would stretch it to the answer's height. */}
+      <div className="lg:sticky lg:top-6">
+        <Module>
+          <ModuleHead title="Scenario" />
+          <div className={`${MODULE_BODY} space-y-4`}>
+            {picker}
+            <div role="radiogroup" aria-label="Scenario" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2.5">
+              {STRESS_CRISES.map((c) => (
+                <ScenarioCard key={c.crisis} selected={choice === c.crisis} onSelect={() => setChoice(c.crisis)} title={c.label} sub={`${dateLabel(c.startDate)} – ${dateLabel(c.endDate)}`} detail={c.detail} />
+              ))}
+              <ScenarioCard selected={choice === "custom"} onSelect={() => setChoice("custom")} title="Your own shocks" sub="By asset category and currency" detail="Move each category and currency by the change you pick" />
+            </div>
+            {choice === "custom" && (
+              <CustomEditor draft={draft} onChange={setDraft} referenceCurrency={currency} running={loading && customRun !== null} onRun={setCustomRun} />
+            )}
           </div>
-          {choice === "custom" && (
-            <CustomEditor draft={draft} onChange={setDraft} referenceCurrency={currency} running={loading && customRun !== null} onRun={setCustomRun} />
-          )}
-        </div>
-      </Module>
+        </Module>
+      </div>
 
-      {shown?.error ? (
-        <p className="flex items-center gap-2 text-sm font-semibold text-[#e11d48]"><AlertTriangle className="h-4 w-4" /> {shown.error}</p>
-      ) : shown?.data ? (
-        <div className={`space-y-6 transition-opacity ${loading ? "opacity-50" : ""}`}>
-          <Result data={shown.data} />
-        </div>
-      ) : requestKey ? (
-        <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-[#C49A3C]" /></div>
-      ) : null}
-    </>
+      <div className="min-w-0 space-y-6">
+        {shown?.error ? (
+          <Module>
+            <p className="px-6 py-6 flex items-center gap-2 text-sm font-semibold text-[#e11d48]"><AlertTriangle className="h-4 w-4 shrink-0" /> {shown.error}</p>
+          </Module>
+        ) : shown?.data ? (
+          <div className={`space-y-6 transition-opacity ${loading ? "opacity-50" : ""}`}>
+            <Result data={shown.data} />
+          </div>
+        ) : (
+          <Module>
+            <ModuleHead title="Impact on the portfolio" desc={requestKey ? "Running the scenario…" : "Set your shocks and run them"} />
+            <div className={`${MODULE_BODY} flex items-center justify-center py-16`}>
+              {requestKey
+                ? <Loader2 className="h-6 w-6 animate-spin text-[#C49A3C]" />
+                : <p className="text-[12.5px] text-[#78716c] text-center max-w-sm">The value before and after, what each category adds to the change, and every position.</p>}
+            </div>
+          </Module>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -179,7 +199,7 @@ function CustomEditor({ draft, onChange, referenceCurrency, running, onRun }: {
 
   return (
     <div className="rounded-2xl bg-[#FBFAF6] border border-[#EEE9DD] p-4 space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-5">
         <ShockList
           title="Asset categories"
           note="Cash moves cash-like funds, not the cash balance"

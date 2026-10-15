@@ -13,7 +13,7 @@ import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
 import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
 import { formatCompact, formatCurrency } from "../../lib/format";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
-import { PLAN_SECTION, WEALTH_SECTION, openClientPage, openPlanPage } from "../../lib/dashboardNav";
+import { PLAN_SECTION, WEALTH_SECTION, openClientPage, openPlanPage, openPlanToolPage } from "../../lib/dashboardNav";
 import { useMyPublications } from "../../hooks/useMyPublications";
 import { publicationService } from "../../services/publicationService";
 import { PublishStrategyDialog } from "./PublishStrategyDialog";
@@ -57,6 +57,7 @@ import { requestSettingsTab } from "./SettingsSection";
 // "taxes": the investments' (All portfolios', or the only portfolio's), the owner's taxes on them all.
 // "stress": how a past crisis, or shocks picked, would hit it as it is today (a backtest's too).
 // "projection": a Monte Carlo of where it could go as it is: a goal, withdrawals, the safe withdrawal.
+// The investor's own two are Plan's (PortfolioTool): here a client's, a backtest's, and old links.
 // "manualAssets": the user's investments with no market price, valued by hand (the investments').
 export type PortfolioPage = "overview" | "transactions" | "alerts" | "reports" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "stress" | "projection" | "manualAssets";
 
@@ -444,6 +445,10 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const [visit, setVisit] = useState(0);
 
   const open = (next: PortfolioPage) => onOpen(portfolio.uuid, next);
+  // Projection and Stress test: the investor's are Plan's, opened on this portfolio; a client's
+  // (an advisor's Plan has no client) and a backtest's are its own pages.
+  const openTool = (tool: "projection" | "stress") =>
+    client || backtest ? open(tool) : openPlanToolPage(onNavigate, tool, portfolio.uuid);
   const nodeCrumb: Crumb = {
     label: portfolio.name,
     onClick: () => {
@@ -471,8 +476,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
             ]
           : [{ label: "Publish to Explore", onClick: () => setDialog("publish"), ...(publications === undefined ? { disabled: true } : {}) }]
           : []),
-        { label: "Stress test", onClick: () => open("stress") },
-        { label: "Projection", onClick: () => open("projection") },
+        { label: "Stress test", onClick: () => openTool("stress") },
+        { label: "Projection", onClick: () => openTool("projection") },
         { label: "Delete backtest", danger: true, onClick: () => setDialog("delete"), ...demo },
       ]
     : portfolio.isAggregate
@@ -482,8 +487,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           ...(real.length > 1 ? [{ label: "Compare", onClick: () => open("compare") }] : []),
           ...strategyAction,
           { label: "Taxes", onClick: () => open("taxes") },
-          { label: "Stress test", onClick: () => open("stress") },
-          { label: "Projection", onClick: () => open("projection") },
+          { label: "Stress test", onClick: () => openTool("stress") },
+          { label: "Projection", onClick: () => openTool("projection") },
           { label: "Asset categories", onClick: () => open("categories") },
           { label: "Manual assets", onClick: () => open("manualAssets") },
           ...extraActions,
@@ -494,8 +499,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           { label: "Alerts", onClick: () => open("alerts") },
           ...strategyAction,
           { label: "Reports", onClick: () => open("reports") },
-          { label: "Stress test", onClick: () => open("stress") },
-          { label: "Projection", onClick: () => open("projection") },
+          { label: "Stress test", onClick: () => openTool("stress") },
+          { label: "Projection", onClick: () => openTool("projection") },
           // The only portfolio stands for the investments: the way to a second one is here, and to
           // the categories of everything held.
           ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new") }] : []),
