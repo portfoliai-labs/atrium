@@ -27,7 +27,7 @@ import { Panel, PreviewBanner } from "../preview/PreviewKit";
 // "explore", the strategies catalog (StrategiesExplore), to look at before making one's own.
 export type PlanPage = "profile" | "goals" | "retirement" | "strategy" | "builder" | "backtest" | "explore";
 // A backtest's pages: its own, and its generated transactions.
-export type BacktestPage = "overview" | "transactions" | "stress";
+export type BacktestPage = "overview" | "transactions" | "stress" | "projection";
 
 // Explore adds the open strategy's publication.
 type PlanView = { page: PlanPage; uuid?: string; sub?: BacktestPage; publicationId?: string };
@@ -76,7 +76,7 @@ export function PlanSection({ onNavigate }: { onNavigate: (section: string) => v
     const page = view?.page;
     if (!page || (!isDemo && PREVIEW_PAGES.includes(page))) return { page: fallback };
     if (page === "backtest") {
-      return view.uuid ? { page, uuid: view.uuid, sub: view.sub === "transactions" || view.sub === "stress" ? view.sub : "overview" } : { page: "strategy" };
+      return view.uuid ? { page, uuid: view.uuid, sub: view.sub === "transactions" || view.sub === "stress" || view.sub === "projection" ? view.sub : "overview" } : { page: "strategy" };
     }
     if (page === "explore" && typeof view.publicationId === "string") return { page, publicationId: view.publicationId };
     return { page };
@@ -136,7 +136,7 @@ export function PlanSection({ onNavigate }: { onNavigate: (section: string) => v
         isInvestments={false}
         onOpen={(uuid, next) =>
           uuid === backtest.uuid
-            ? openBacktest(uuid, next === "transactions" || next === "stress" ? next : "overview")
+            ? openBacktest(uuid, next === "transactions" || next === "stress" || next === "projection" ? next : "overview")
             : openPortfolioPage(onNavigate, uuid, next)}
         onBacktestGone={() => go("strategy")}
         onNavigate={onNavigate}

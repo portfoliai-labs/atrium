@@ -49,12 +49,14 @@ import { RealEstateNode, type RealEstatePage } from "./realEstate/RealEstateNode
 import { RealEstateTransactionDialog } from "./realEstate/RealEstateTransactionForm";
 import { TaxesPage } from "./taxes/TaxesPage";
 import { StressTestPage } from "./stress/StressTestPage";
+import { ProjectionPage } from "./projection/ProjectionPage";
 import { requestSettingsTab } from "./SettingsSection";
 
 // A portfolio's pages: its own (overview), and those its header leads to.
 // "taxes": the investments' (All portfolios', or the only portfolio's), the owner's taxes on them all.
 // "stress": how a past crisis, or shocks picked, would hit it as it is today (a backtest's too).
-export type PortfolioPage = "overview" | "transactions" | "alerts" | "reports" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "stress";
+// "projection": a Monte Carlo of where it could go as it is: a goal, withdrawals, the safe withdrawal.
+export type PortfolioPage = "overview" | "transactions" | "alerts" | "reports" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "stress" | "projection";
 
 export type WealthView =
   // Everything the user owns: investments and wallets. Where there are no wallets to have (a
@@ -72,7 +74,7 @@ export type WealthView =
 
 const NO_SCOPE: Record<string, string> = {};
 const NO_TRAIL: Crumb[] = [];
-const PORTFOLIO_PAGES: PortfolioPage[] = ["overview", "transactions", "alerts", "reports", "compare", "portfolios", "categories", "strategy", "taxes", "stress"];
+const PORTFOLIO_PAGES: PortfolioPage[] = ["overview", "transactions", "alerts", "reports", "compare", "portfolios", "categories", "strategy", "taxes", "stress", "projection"];
 const PAGE_LABELS: Record<Exclude<PortfolioPage, "overview">, string> = {
   transactions: "Transactions",
   alerts: "Alerts",
@@ -83,6 +85,7 @@ const PAGE_LABELS: Record<Exclude<PortfolioPage, "overview">, string> = {
   strategy: "Strategy",
   taxes: "Taxes",
   stress: "Stress test",
+  projection: "Projection",
 };
 
 // The fields every view of one Wealth carries, beside its own: a client's (`{ client }`).
@@ -466,6 +469,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           : [{ label: "Publish to Explore", onClick: () => setDialog("publish"), ...(publications === undefined ? { disabled: true } : {}) }]
           : []),
         { label: "Stress test", onClick: () => open("stress") },
+        { label: "Projection", onClick: () => open("projection") },
         { label: "Delete backtest", danger: true, onClick: () => setDialog("delete"), ...demo },
       ]
     : portfolio.isAggregate
@@ -476,6 +480,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           ...strategyAction,
           { label: "Taxes", onClick: () => open("taxes") },
           { label: "Stress test", onClick: () => open("stress") },
+          { label: "Projection", onClick: () => open("projection") },
           { label: "Asset categories", onClick: () => open("categories") },
           ...extraActions,
         ]
@@ -486,6 +491,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           ...strategyAction,
           { label: "Reports", onClick: () => open("reports") },
           { label: "Stress test", onClick: () => open("stress") },
+          { label: "Projection", onClick: () => open("projection") },
           // The only portfolio stands for the investments: the way to a second one is here, and to
           // the categories of everything held.
           ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new") }] : []),
@@ -735,6 +741,9 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   }
   if (page === "stress") {
     return <StressTestPage key={portfolio.uuid} portfolioUuid={portfolio.uuid} trail={pageTrail} eyebrow={`${client ? `${client.name} · ` : ""}${portfolio.name}`} />;
+  }
+  if (page === "projection") {
+    return <ProjectionPage key={portfolio.uuid} portfolioUuid={portfolio.uuid} trail={pageTrail} eyebrow={`${client ? `${client.name} · ` : ""}${portfolio.name}`} />;
   }
   // The user's, whichever portfolio it's opened from: a correction holds in all of them.
   if (page === "categories") {
