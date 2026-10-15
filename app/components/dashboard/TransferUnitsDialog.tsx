@@ -14,7 +14,8 @@ const FIELD_PROBLEMS: Record<string, string> = {
   quantity: "That's more than the portfolio held on that day.",
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Today in the user's own time zone, as YYYY-MM-DD.
+const today = () => new Date().toLocaleDateString("en-CA");
 
 /**
  * TRANSFER UNITS — moves units of a security to another of the owner's standard portfolios (POST

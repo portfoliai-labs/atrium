@@ -50,13 +50,15 @@ import { RealEstateTransactionDialog } from "./realEstate/RealEstateTransactionF
 import { TaxesPage } from "./taxes/TaxesPage";
 import { StressTestPage } from "./stress/StressTestPage";
 import { ProjectionPage } from "./projection/ProjectionPage";
+import { ManualAssetsEditor } from "./ManualAssetsEditor";
 import { requestSettingsTab } from "./SettingsSection";
 
 // A portfolio's pages: its own (overview), and those its header leads to.
 // "taxes": the investments' (All portfolios', or the only portfolio's), the owner's taxes on them all.
 // "stress": how a past crisis, or shocks picked, would hit it as it is today (a backtest's too).
 // "projection": a Monte Carlo of where it could go as it is: a goal, withdrawals, the safe withdrawal.
-export type PortfolioPage = "overview" | "transactions" | "alerts" | "reports" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "stress" | "projection";
+// "manualAssets": the user's investments with no market price, valued by hand (the investments').
+export type PortfolioPage = "overview" | "transactions" | "alerts" | "reports" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "stress" | "projection" | "manualAssets";
 
 export type WealthView =
   // Everything the user owns: investments and wallets. Where there are no wallets to have (a
@@ -74,7 +76,7 @@ export type WealthView =
 
 const NO_SCOPE: Record<string, string> = {};
 const NO_TRAIL: Crumb[] = [];
-const PORTFOLIO_PAGES: PortfolioPage[] = ["overview", "transactions", "alerts", "reports", "compare", "portfolios", "categories", "strategy", "taxes", "stress", "projection"];
+const PORTFOLIO_PAGES: PortfolioPage[] = ["overview", "transactions", "alerts", "reports", "compare", "portfolios", "categories", "strategy", "taxes", "stress", "projection", "manualAssets"];
 const PAGE_LABELS: Record<Exclude<PortfolioPage, "overview">, string> = {
   transactions: "Transactions",
   alerts: "Alerts",
@@ -86,6 +88,7 @@ const PAGE_LABELS: Record<Exclude<PortfolioPage, "overview">, string> = {
   taxes: "Taxes",
   stress: "Stress test",
   projection: "Projection",
+  manualAssets: "Manual assets",
 };
 
 // The fields every view of one Wealth carries, beside its own: a client's (`{ client }`).
@@ -482,6 +485,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           { label: "Stress test", onClick: () => open("stress") },
           { label: "Projection", onClick: () => open("projection") },
           { label: "Asset categories", onClick: () => open("categories") },
+          { label: "Manual assets", onClick: () => open("manualAssets") },
           ...extraActions,
         ]
       : [
@@ -498,6 +502,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           ...(isInvestments ? [
             { label: "Taxes", onClick: () => open("taxes") },
             { label: "Asset categories", onClick: () => open("categories") },
+            { label: "Manual assets", onClick: () => open("manualAssets") },
           ] : []),
           ...extraActions,
           ...(canManage ? [
@@ -756,6 +761,21 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
             : "The category each of your securities counts in, across all your portfolios: alerts on a category, and adopting a strategy by category, weigh a portfolio by it. Each one comes with a suggestion; a category you pick replaces it everywhere, until you restore it."}
         </p>
         <AssetCategoriesEditor clientUuid={client?.uuid} />
+      </div>
+    );
+  }
+
+  // The user's, whichever portfolio it's opened from.
+  if (page === "manualAssets") {
+    return (
+      <div className="space-y-6 pb-12">
+        <Breadcrumb trail={pageTrail} current={PAGE_LABELS.manualAssets} />
+        <p className="text-[13px] text-slate-500 leading-relaxed max-w-3xl">
+          {client
+            ? `${client.name}'s investments with no market price — unlisted shares, private equity, a loan, physical gold — valued by hand. Each one is picked in a transaction like a security, and counts in the portfolios that hold it by its valuations.`
+            : "Your investments with no market price — unlisted shares, private equity, a loan, physical gold — valued by hand. Each one is picked in a transaction like a security, and counts in the portfolios that hold it by its valuations."}
+        </p>
+        <ManualAssetsEditor clientUuid={client?.uuid} />
       </div>
     );
   }
