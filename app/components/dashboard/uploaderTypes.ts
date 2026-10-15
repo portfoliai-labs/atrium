@@ -20,4 +20,6 @@ export interface UploadedFileState {
   hasOrdersWithoutTime: boolean;
   validationErrors: TransactionValidationResult;
   confirmed: boolean;
+  // The portfolio this file's rows will be saved into.
+  portfolioUuid: string;
 }

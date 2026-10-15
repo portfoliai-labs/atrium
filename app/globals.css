@@ -31,3 +31,34 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* The Composition card's carousel: its active dot filling up until the next breakdown. Declared
+   in @theme, as Tailwind only emits the keyframes of an animate-* it knows. */
+@theme {
+  --animate-composition-autoplay: composition-autoplay 5s linear forwards;
+  @keyframes composition-autoplay {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+}
+
+/* The Journal's editor (components/dashboard/journal/BodyEditor): its document as the article reads
+   (ArticleBody), the placeholder of an empty one, and a block acta refused, marked a moment. */
+.journal-editor { font-size: 15px; line-height: 1.8; color: #334155; }
+.journal-editor > * + * { margin-top: 1.25rem; }
+.journal-editor h2 { font-family: var(--font-playfair); font-weight: 900; font-size: 1.25rem; color: #0f172a; padding-top: 0.75rem; }
+.journal-editor h3 { font-family: var(--font-playfair); font-weight: 900; font-size: 1.125rem; color: #0f172a; padding-top: 0.5rem; }
+.journal-editor strong { font-weight: 700; color: #0f172a; }
+.journal-editor a { color: #9a7424; text-decoration: underline; text-underline-offset: 2px; }
+.journal-editor ul { list-style: disc; padding-left: 1.25rem; }
+.journal-editor ol { list-style: decimal; padding-left: 1.25rem; }
+.journal-editor li + li { margin-top: 0.5rem; }
+.journal-editor li::marker { color: #C49A3C; }
+.journal-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #94a3b8;
+  pointer-events: none;
+}
+.journal-editor .journal-flagged { outline: 2px solid #f43f5e; outline-offset: 4px; border-radius: 6px; transition: outline-color 0.3s; }

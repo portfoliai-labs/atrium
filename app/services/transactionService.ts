@@ -17,62 +17,62 @@ export interface TransactionFilters {
   dateTo?: string | null; // ISO date-time — only transactions on or before this date
 }
 
+const filterParams = (params: URLSearchParams, filters?: TransactionFilters) => {
+  if (filters?.ticker) params.set("ticker", filters.ticker);
+  if (filters?.isin) params.set("isin", filters.isin);
+  if (filters?.broker) params.set("broker", filters.broker);
+  if (filters?.operation) params.set("operation", filters.operation);
+  if (filters?.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters?.dateTo) params.set("date_to", filters.dateTo);
+};
+
 export const transactionService = {
-  // GET /v1/transactions/ — advisors pass for_user_uuid to fetch a client's transactions
+  // GET /v1/portfolios/{p}/transactions
   async getUserTransactions(
-    forUserUuid?: string | null,
+    portfolioUuid: string,
     limit = 50,
     offset = 0,
     filters?: TransactionFilters
   ): Promise<TransactionListResponse> {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-    if (forUserUuid) params.set("for_user_uuid", forUserUuid);
-    if (filters?.ticker) params.set("ticker", filters.ticker);
-    if (filters?.isin) params.set("isin", filters.isin);
-    if (filters?.broker) params.set("broker", filters.broker);
-    if (filters?.operation) params.set("operation", filters.operation);
-    if (filters?.dateFrom) params.set("date_from", filters.dateFrom);
-    if (filters?.dateTo) params.set("date_to", filters.dateTo);
-    return apiFetch<TransactionListResponse>(`/v1/transactions/?${params.toString()}`);
+    filterParams(params, filters);
+    return apiFetch<TransactionListResponse>(`/v1/portfolios/${portfolioUuid}/transactions?${params.toString()}`);
   },
 
-  // POST /v1/transactions/ — persists one or more new transactions
-  async saveTransactions(transactions: TransactionInput[], forUserUuid?: string | null): Promise<TransactionResponse[]> {
-    const query = forUserUuid ? `?for_user_uuid=${encodeURIComponent(forUserUuid)}` : '';
-    return apiFetch<TransactionResponse[]>(`/v1/transactions/${query}`, {
+  // POST /v1/portfolios/{p}/transactions — persists one or more new transactions
+  async saveTransactions(portfolioUuid: string, transactions: TransactionInput[]): Promise<TransactionResponse[]> {
+    return apiFetch<TransactionResponse[]>(`/v1/portfolios/${portfolioUuid}/transactions`, {
       method: 'POST',
       body: JSON.stringify(transactions),
     });
   },
 
-  // PATCH /v1/transactions/{transaction_uuid}
-  async updateTransaction(transactionUuid: string, payload: TransactionUpdatePayload): Promise<TransactionResponse> {
-    return apiFetch<TransactionResponse>(`/v1/transactions/${transactionUuid}`, {
+  // PATCH /v1/portfolios/{p}/transactions/{transaction_uuid}
+  async updateTransaction(
+    portfolioUuid: string, transactionUuid: string, payload: TransactionUpdatePayload,
+  ): Promise<TransactionResponse> {
+    return apiFetch<TransactionResponse>(`/v1/portfolios/${portfolioUuid}/transactions/${transactionUuid}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
   },
 
-  // DELETE /v1/transactions/{transaction_uuid}
-  async deleteTransaction(transactionUuid: string): Promise<void> {
-    return apiFetch<void>(`/v1/transactions/${transactionUuid}`, {
+  // DELETE /v1/portfolios/{p}/transactions — bulk delete by uuid list (at least one), replacing
+  // the old delete-by-single-path endpoint.
+  async deleteTransactions(portfolioUuid: string, transactionUuids: string[]): Promise<void> {
+    return apiFetch<void>(`/v1/portfolios/${portfolioUuid}/transactions`, {
       method: 'DELETE',
+      body: JSON.stringify(transactionUuids),
     });
   },
 
-  // DELETE /v1/transactions/all — deletes every transaction matching the given filters;
-  // with no filters, deletes every saved transaction for the user.
-  async deleteAllTransactions(forUserUuid?: string | null, filters?: TransactionFilters): Promise<void> {
+  // DELETE /v1/portfolios/{p}/transactions/all — deletes every transaction matching the given
+  // filters; with no filters, deletes every transaction in the portfolio.
+  async deleteAllTransactions(portfolioUuid: string, filters?: TransactionFilters): Promise<void> {
     const params = new URLSearchParams();
-    if (forUserUuid) params.set("for_user_uuid", forUserUuid);
-    if (filters?.ticker) params.set("ticker", filters.ticker);
-    if (filters?.isin) params.set("isin", filters.isin);
-    if (filters?.broker) params.set("broker", filters.broker);
-    if (filters?.operation) params.set("operation", filters.operation);
-    if (filters?.dateFrom) params.set("date_from", filters.dateFrom);
-    if (filters?.dateTo) params.set("date_to", filters.dateTo);
+    filterParams(params, filters);
     const query = params.toString();
-    return apiFetch<void>(`/v1/transactions/all${query ? `?${query}` : ''}`, {
+    return apiFetch<void>(`/v1/portfolios/${portfolioUuid}/transactions/all${query ? `?${query}` : ''}`, {
       method: 'DELETE',
     });
   },

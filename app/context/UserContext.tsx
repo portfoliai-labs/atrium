@@ -12,7 +12,9 @@ import React, {
 import { useRouter, usePathname } from 'next/navigation';
 import { userService } from '../services/userService';
 import { ApiError } from '../services/apiClient';
+import { supabase } from '../lib/supabaseClient';
 import type { UserProfile } from '../models/User';
+import { isDemoUser, setDemoReadOnly } from '../lib/demo';
 
 /**
  * Context Type Definition
@@ -20,6 +22,8 @@ import type { UserProfile } from '../models/User';
 interface UserContextType {
   user: UserProfile | null;
   loading: boolean;
+  // A demo account (see lib/demo): read-only, with the preview features.
+  isDemo: boolean;
   // True when the backend refused GET /users/profile specifically because
   // the account exists but hasn't accepted the currently-required legal
   // documents (403). Distinct from `user === null`, which also covers a
@@ -53,8 +57,12 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("auth_token");
     localStorage.removeItem("user_profile");
     setUser(null);
+    setDemoReadOnly(false);
     setLoading(false);
-    
+    // Ends the Supabase session (revokes the refresh token) — fire-and-forget so
+    // logout isn't blocked on it.
+    supabase.auth.signOut().catch((error) => console.error("Supabase sign-out failed:", error));
+
     // Redirect to login with a reason parameter for UX
     router.replace('/homepage');
   }, [router]);
@@ -144,9 +152,14 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   /**
    * Memoize context value to prevent unnecessary re-renders of consuming components
    */
+  // Kept in step with whoever is signed in, before any request of theirs can go out: set during
+  // render rather than in an effect, since children's effects run first and may already write.
+  setDemoReadOnly(isDemoUser(user));
+
   const contextValue: UserContextType = useMemo(() => ({
     user,
     loading,
+    isDemo: isDemoUser(user),
     needsLegalAcceptance,
     refreshUser: fetchProfile,
     logout

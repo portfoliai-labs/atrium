@@ -3,6 +3,11 @@
 
 import React from "react";
 import { NotificationsProvider } from "../../context/NotificationsContext";
+import { PortfolioProvider } from "../../context/PortfolioContext";
+import { ClientsProvider } from "../../context/ClientsContext";
+import { WalletsProvider } from "../../context/WalletsContext";
+import { RealEstateProvider } from "../../context/RealEstateContext";
+import { JournalProvider } from "../../context/JournalContext";
 
 /**
  * DashboardLayout component
@@ -17,10 +22,20 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
-    <NotificationsProvider>
-      <div className="dashboard-container">
-        {children}
-      </div>
-    </NotificationsProvider>
+    <PortfolioProvider>
+      <ClientsProvider>
+        <WalletsProvider>
+          <RealEstateProvider>
+            <JournalProvider>
+              <NotificationsProvider>
+                <div className="dashboard-container">
+                  {children}
+                </div>
+              </NotificationsProvider>
+            </JournalProvider>
+          </RealEstateProvider>
+        </WalletsProvider>
+      </ClientsProvider>
+    </PortfolioProvider>
   );
 }

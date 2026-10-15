@@ -9,9 +9,11 @@ interface PlanData {
   title: string;
   price: string | number;
   period?: string;
+  altBilling?: string;
   features: string[];
   popular?: boolean;
   available?: boolean;
+  waitlist?: boolean;
   ctaText?: string;
 }
 
@@ -19,13 +21,14 @@ interface PlanData {
 const PlanCard = ({
   plan,
   index,
+  onCta,
 }: {
   plan: PlanData;
   index: number;
+  onCta: () => void;
 }) => {
   const isLast = index === 2;
   const featured = plan.popular ?? false;
-  const comingSoon = !(plan.available ?? true);
 
   return (
     <motion.div
@@ -46,21 +49,6 @@ const PlanCard = ({
           style={{ background: '#C49A3C', color: '#1c1917' }}
         >
           Most Popular
-        </div>
-      )}
-
-      {/* Coming soon overlay */}
-      {comingSoon && (
-        <div
-          className="absolute inset-0 flex items-center justify-center rounded-[inherit] z-10"
-          style={{ background: 'rgba(247,245,239,0.6)', backdropFilter: 'blur(2px)' }}
-        >
-          <span
-            className="text-[11px] font-semibold tracking-[0.14em] uppercase border px-4 py-2 rounded-full"
-            style={{ color: '#8A6A28', borderColor: 'rgba(196,154,60,0.4)', background: '#FAF8F2' }}
-          >
-            Coming Soon
-          </span>
         </div>
       )}
 
@@ -85,11 +73,20 @@ const PlanCard = ({
 
       {/* Period */}
       <div
-        className="text-[12px] mb-6"
+        className="text-[12px] mb-1"
         style={{ color: featured ? 'rgba(255,255,255,0.25)' : '#a8a29e' }}
       >
         {plan.period ?? 'per month'}
       </div>
+      {plan.altBilling && (
+        <div
+          className="text-[11px] mb-6"
+          style={{ color: featured ? 'rgba(255,255,255,0.2)' : '#c4bdb5' }}
+        >
+          {plan.altBilling}
+        </div>
+      )}
+      {!plan.altBilling && <div className="mb-6" />}
 
       {/* Divider */}
       <div
@@ -103,7 +100,7 @@ const PlanCard = ({
           <li key={f} className="flex items-start gap-2.5">
             <Check
               className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
-              style={{ color: featured ? '#C49A3C' : '#C49A3C', opacity: comingSoon ? 0.5 : 1 }}
+              style={{ color: '#C49A3C' }}
               strokeWidth={2.5}
             />
             <span
@@ -118,7 +115,7 @@ const PlanCard = ({
 
       {/* CTA */}
       <button
-        disabled={comingSoon}
+        onClick={onCta}
         className="w-full py-3 text-[12px] font-semibold tracking-[0.06em] uppercase rounded-[3px] transition-all duration-200"
         style={
           featured
@@ -126,7 +123,6 @@ const PlanCard = ({
             : { background: 'transparent', color: '#1c1917', border: '1px solid #e7e5e0' }
         }
         onMouseEnter={(e) => {
-          if (comingSoon) return;
           const el = e.currentTarget;
           if (featured) {
             el.style.background = '#E8C97A';
@@ -137,7 +133,6 @@ const PlanCard = ({
           }
         }}
         onMouseLeave={(e) => {
-          if (comingSoon) return;
           const el = e.currentTarget;
           if (featured) {
             el.style.background = '#C49A3C';
@@ -149,14 +144,19 @@ const PlanCard = ({
           }
         }}
       >
-        {comingSoon ? 'Coming Soon' : (plan.ctaText ?? 'Get Started')}
+        {plan.ctaText ?? 'Get Started'}
       </button>
+      {plan.waitlist && (
+        <p className="text-[10px] mt-2.5 text-center" style={{ color: featured ? 'rgba(255,255,255,0.25)' : '#c4bdb5' }}>
+          Sign up free — we&apos;ll email you the moment it&apos;s live.
+        </p>
+      )}
     </motion.div>
   );
 };
 
 // ─── SECTION ───────────────────────────────────────────────────────────────────
-const SubscriptionSection = () => {
+const SubscriptionSection = ({ onCta }: { onCta: () => void }) => {
   return (
     <section
       id="pricing"
@@ -187,7 +187,7 @@ const SubscriptionSection = () => {
             Simple,<br />transparent pricing.
           </motion.h2>
           <p className="mt-3 text-[14px] max-w-sm" style={{ color: '#a8a29e' }}>
-            Choose the plan that best fits your analysis needs.
+            Billed annually — monthly billing available at a premium.
           </p>
         </div>
 
@@ -197,7 +197,7 @@ const SubscriptionSection = () => {
           style={{ borderColor: '#e7e5e0' }}
         >
           {(SUBSCRIPTIONS as PlanData[]).map((plan, index) => (
-            <PlanCard key={index} plan={plan} index={index} />
+            <PlanCard key={index} plan={plan} index={index} onCta={onCta} />
           ))}
         </div>
 

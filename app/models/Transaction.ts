@@ -20,9 +20,11 @@ interface TransactionInput {
   broker?: string | null;
 }
 
-// Matches TransactionResponse DTO (GET/POST /v1/transactions/, PATCH /v1/transactions/{uuid})
+// Matches TransactionResponse DTO (GET/POST /v1/portfolios/{p}/transactions, PATCH .../transactions/{t})
 interface TransactionResponse {
   transaction_uuid: string;
+  // The portfolio the row belongs to — differs from the listed one only on the aggregate.
+  portfolio_uuid: string;
   asset_id: string;
   isin: string | null;
   ticker: string | null;
@@ -39,7 +41,7 @@ interface TransactionResponse {
   broker: string | null;
 }
 
-// Matches TransactionListResponse DTO (GET /v1/transactions/)
+// Matches TransactionListResponse DTO (GET /v1/portfolios/{p}/transactions)
 interface TransactionListResponse {
   items: TransactionResponse[];
   total: number;

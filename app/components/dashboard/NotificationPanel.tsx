@@ -10,6 +10,7 @@ interface NotificationPanelProps {
   isLoading: boolean;
   onClose: () => void;
   onDismissAll: () => void;
+  onOpenPage?: (section: string, view: unknown) => void;
 }
 
 // Desktop-only dropdown (see DashboardHeader: hidden below md, where the bell
@@ -20,6 +21,7 @@ export function NotificationPanel({
   isLoading,
   onClose,
   onDismissAll,
+  onOpenPage,
 }: NotificationPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -72,7 +74,7 @@ export function NotificationPanel({
 
         {/* Body */}
         <div className="max-h-[22rem] overflow-y-auto">
-          <NotificationList notifications={notifications} isLoading={isLoading} />
+          <NotificationList notifications={notifications} isLoading={isLoading} onOpenPage={onOpenPage} />
         </div>
       </div>
     </div>

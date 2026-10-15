@@ -114,19 +114,8 @@ export function AdvisorProfileSection() {
   const inputClass = "w-full p-3.5 bg-white border border-[rgba(196,154,60,0.25)] rounded-xl font-medium text-[#1c1917] outline-none focus:border-[#C49A3C] focus:ring-4 focus:ring-[#C49A3C]/10 transition-all";
 
   return (
-    <div className="space-y-6 md:space-y-8 pb-12 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2
-            className="text-2xl md:text-3xl font-bold text-[#1c1917] tracking-tight"
-            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-          >
-            Profile
-          </h2>
-          <p className="text-sm md:text-base text-[#78716c] font-medium mt-1">
-            Manage your advisor profile and client-facing branding
-          </p>
-        </div>
+    <div className="space-y-6 pb-12 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row md:items-center justify-end gap-4">
         <button
           onClick={handleSave}
           disabled={saving}

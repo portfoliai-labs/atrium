@@ -1,18 +1,17 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Crown, Infinity as InfinityIcon, FileText, Loader2, AlertCircle, ArrowRight } from "lucide-react";
-import type { SubscriptionResponse, UserMetrics } from "../../models/User";
+import { Crown, Loader2, ArrowRight } from "lucide-react";
+import type { SubscriptionResponse } from "../../models/User";
 
 interface SubscriptionPopoverProps {
   subscription: SubscriptionResponse | null;
-  metrics: UserMetrics | null;
   isLoading: boolean;
   onClose: () => void;
   onManage?: () => void;
 }
 
-export function SubscriptionPopover({ subscription, metrics, isLoading, onClose, onManage }: SubscriptionPopoverProps) {
+export function SubscriptionPopover({ subscription, isLoading, onClose, onManage }: SubscriptionPopoverProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -24,11 +23,6 @@ export function SubscriptionPopover({ subscription, metrics, isLoading, onClose,
     document.addEventListener("mousedown", handleMouseDown);
     return () => document.removeEventListener("mousedown", handleMouseDown);
   }, [onClose]);
-
-  const remaining = metrics?.reports_remaining ?? null;
-  const used = metrics?.report_generated_this_month ?? 0;
-  const unlimited = subscription?.has_unlimited_reports ?? false;
-  const exhausted = !unlimited && remaining !== null && remaining <= 0;
 
   return (
     <div
@@ -60,31 +54,6 @@ export function SubscriptionPopover({ subscription, metrics, isLoading, onClose,
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#a8a29e] mb-1">Plan</p>
                 <p className="text-sm font-bold text-[#1c1917]">{subscription.plan_name}</p>
-              </div>
-              <div className="flex items-center gap-3 pt-3 border-t border-[rgba(196,154,60,0.15)]">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  exhausted ? "bg-rose-50" : "bg-[#C49A3C]/10"
-                }`}>
-                  {unlimited ? (
-                    <InfinityIcon className="w-4.5 h-4.5 text-[#C49A3C]" />
-                  ) : exhausted ? (
-                    <AlertCircle className="w-4.5 h-4.5 text-rose-500" />
-                  ) : (
-                    <FileText className="w-4.5 h-4.5 text-[#C49A3C]" />
-                  )}
-                </div>
-                <div>
-                  <p className={`text-sm font-bold ${exhausted ? "text-rose-600" : "text-[#1c1917]"}`}>
-                    {unlimited ? "Unlimited reports" : `${used} of ${subscription.monthly_reports_limit ?? 0} reports generated`}
-                  </p>
-                  <p className={`text-xs ${exhausted ? "text-rose-500 font-semibold" : "text-[#78716c]"}`}>
-                    {unlimited
-                      ? "No monthly limit"
-                      : exhausted
-                      ? "Monthly limit reached"
-                      : `${remaining} remaining this month`}
-                  </p>
-                </div>
               </div>
               {onManage && (
                 <button

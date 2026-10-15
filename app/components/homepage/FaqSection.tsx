@@ -11,20 +11,36 @@ interface FaqData {
 
 const faqData: FaqData[] = [
   {
+    question: "How often does my data update?",
+    answer: "Prices and portfolio metrics refresh once a day, after markets close. It's a deliberate choice: PortfoliAI is built for monitoring your positions over time, not for intraday trading decisions.",
+  },
+  {
+    question: "Do I have to re-upload all my transactions every month?",
+    answer: "No. You upload your full history once. After that, you only add new transactions as they happen — buys, sells, deposits — and the dashboard and reports update from there.",
+  },
+  {
+    question: "What does the Insights section show me?",
+    answer: "Everything about your portfolio in one place: performance and ROI, cash flow and dividends, risk and volatility, sector and region exposure, benchmark comparison, and a full risk model with efficient frontier — updated continuously, not generated on request.",
+  },
+  {
+    question: "How do portfolio alerts work?",
+    answer: "Set thresholds on value, drawdown, or allocation drift for your portfolio, and PortfoliAI notifies you the moment one is crossed — no need to check the dashboard every day.",
+  },
+  {
+    question: "How do you calculate implicit costs?",
+    answer: "For every trade, we estimate the bid-ask spread you paid from that session's price range on the exchange. It's an estimate, not an exact figure from your broker, but it's the only way to see a cost that never appears on a statement.",
+  },
+  {
     question: "How does the AI analysis work?",
-    answer: "Our engine uses advanced LLMs to parse your CSV and Excel broker statements, identifying every transaction, commission, and implicit spread, then builds the full report from that data.",
+    answer: "Our engine parses your CSV and Excel broker statements, identifying every transaction, commission, and implicit spread, then powers your dashboard, Insights, and alerts from that data.",
   },
   {
     question: "Is my financial data secure?",
     answer: "We use industry-standard measures — encryption in transit, access controls, and short-lived signed URLs for document downloads — to protect your data. Your data is retained only for as long as your account is active, and you can request deletion at any time from your account settings.",
   },
   {
-    question: "Can I brand the reports with my firm's logo?",
-    answer: "Yes. Pro and Business plans include white-label PDF reports with your firm's logo, colours, and contact details on every page — ready to send directly to clients.",
-  },
-  {
-    question: "How does the API integration work?",
-    answer: "Send a broker export to our REST endpoint and receive a fully rendered PDF report in return. Full documentation and a sandbox environment are provided on sign-up.",
+    question: "How does PortfoliAI work for advisors?",
+    answer: "You manage every client's portfolio from one dashboard: import their transactions, track AUM across your whole book, and get AI-powered insights and alerts for each client individually.",
   },
   {
     question: "Can I cancel my subscription at any time?",

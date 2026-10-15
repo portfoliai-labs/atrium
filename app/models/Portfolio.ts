@@ -1,86 +1,51 @@
 // models/Portfolio.ts
-// Matches TransactionsSummaryResponse / PortfolioOverviewResponse DTOs (GET /v1/portfolio/)
+// Matches TransactionsSummaryResponse / PortfolioOverviewResponse DTOs (GET /v1/portfolios/{p}/overview)
 
-// A single asset currently held, aggregated across all of the user's processed transactions.
-// Every field here is derived purely from transaction input data (quantity, price paid, fees,
-// broker, currency, asset class) — never from current market prices/values.
-interface Holding {
-  ticker: string | null;
-  isin: string | null;
+// Matches PortfolioResponse (GET/POST/PATCH /v1/portfolios, GET /v1/portfolios/{p},
+// GET/POST /v1/advisor/clients/{client_uuid}/portfolios) — a user can own several of these
+// (e.g. "Main portfolio", "Pensione", "Trading"); every dashboard/transactions/alerts/reports
+// endpoint is scoped to one via its uuid in the path. Every user (including advisor-created
+// clients, advisors themselves, and demo accounts) has exactly one `isDefault` portfolio,
+// created at registration and never deletable (DELETE on it is a 409). While a user owns 2+
+// portfolios they also get an automatic `isAggregate` one ("All portfolios"): its figures are
+// recomputed from every portfolio's transactions combined, it's readable everywhere (incl.
+// alert rules) but otherwise read-only — transaction writes, import commit, reports, rename
+// and delete all 409. GET /v1/portfolios returns the aggregate first (if any), then the
+// default, then oldest first; an advisor lists a client's the same way via
+// GET /v1/advisor/clients/{client_uuid}/portfolios, then reaches each through the same
+// /v1/portfolios/{p}/... paths the client would.
+//
+// `isVirtual` marks a portfolio the backend puts together rather than one the user writes: the
+// aggregate is one, and so is a strategy's backtest (POST /v1/portfolios/strategies, see
+// models/Strategy). Neither takes transactions, imports or reports (409). A backtest can be
+// renamed and deleted like a standard portfolio, and it isn't one of the aggregate's members:
+// it's simulated money, never counted in the user's wealth.
+interface Portfolio {
+  uuid: string;
   name: string;
-  assetClass: string;
-  // String, not number — arbitrary decimal precision (e.g. crypto quantities)
-  quantity: string;
-  investedValue: number;
-  currency: string;
-  fees: number;
-  broker: string | null;
+  isDefault: boolean;
+  isVirtual: boolean;
+  isAggregate: boolean;
+  createdAt: string;
 }
 
-interface BrokerTotal {
-  broker: string;
-  totalInvested: number;
-}
+/** A strategy's backtest: virtual, and not the aggregate. */
+const isBacktest = (p: Pick<Portfolio, "isVirtual" | "isAggregate">) => p.isVirtual && !p.isAggregate;
 
-interface AssetClassTotal {
-  assetClass: string;
-  totalInvested: number;
-}
-
-interface BrokerFeesTotal {
-  broker: string;
-  totalFees: number;
-}
-
-// All monetary figures in here share one currency. A ticker's underlying currency isn't
-// something the app can convert (no live FX rate), so every aggregate — total invested,
-// fees, broker/asset-class breakdowns, realized P&L — is scoped to a single currency rather
-// than summed across them. One of these exists per currency actually present in the portfolio.
-interface CurrencyBreakdown {
-  currency: string;
-  totalInvested: number;
-  totalFeesPaid: number;
-  holdingsCount: number;
-  purchasesByBroker: BrokerTotal[];
-  purchasesByAssetClass: AssetClassTotal[];
-  feesByBroker: BrokerFeesTotal[];
-  totalRealizedPl: number;
-  sellCount: number;
-  winRate: number;
-}
-
-// Every closed round-trip for one asset, aggregated together (not one row per individual
-// sell) — cost/proceeds/P&L summed across every sell of this asset, profit/loss derived
-// entirely from the buy/sell prices recorded in the transactions, never from a current quote.
-interface AssetRealizedTrade {
-  assetId: string;
-  ticker: string | null;
-  name: string;
-  assetClass: string;
-  currency: string;
-  // String, not number — arbitrary decimal precision (e.g. crypto quantities)
-  quantitySold: string;
-  totalCost: number;
-  totalProceeds: number;
-  realizedPl: number;
-  sellCount: number;
-  winRate: number;
-}
-
-// Matches TransactionsSummaryResponse
-interface PortfolioSummary {
-  // Every holding across every currency — safe to list or filter, never summed as one figure.
-  holdings: Holding[];
-  // One entry per currency present in the portfolio.
-  byCurrency: CurrencyBreakdown[];
-  // Every asset with at least one closed round-trip, across every currency — filter by
-  // currency before pairing with a CurrencyBreakdown, same rule as `holdings`.
-  realizedTradesByAsset: AssetRealizedTrade[];
-}
+/**
+ * The portfolio that stands for all the investments: "All portfolios" while there are two or
+ * more, otherwise the only real one (the default).
+ */
+const investmentsOf = (portfolios: Portfolio[]): Portfolio | undefined =>
+  portfolios.find((p) => p.isAggregate) ?? portfolios.find((p) => p.isDefault) ?? portfolios.find((p) => !p.isVirtual);
 
 // A single day's snapshot of the portfolio's live state in one currency — unlike the rest of
 // this file, these figures DO come from current market prices (totalMarketValue, totalUnrealizedPnl),
 // not just recorded transactions. One entry per currency per day.
+//
+// Also the exact shape GET /v1/portfolio/ itself returns (the latest one, or null when there's
+// no snapshot yet) — that endpoint used to wrap it in a PortfolioOverviewResponse alongside the
+// transaction-derived summary and a snapshot history list, both dropped as unused.
 interface PortfolioSnapshot {
   snapshotAt: string;
   currency: string;
@@ -91,15 +56,54 @@ interface PortfolioSnapshot {
   totalDividendIncome: number;
 }
 
-// Matches PortfolioOverviewResponse (GET /v1/portfolio/)
-interface PortfolioOverview {
-  summary: PortfolioSummary;
-  // Newest-first or oldest-first isn't guaranteed by the backend — sort before relying on order.
-  // Defaults to the last 90 days unless date_from/date_to were passed to the request.
-  snapshots: PortfolioSnapshot[];
+// Matches DailyValueChangeResponse (one entry of TodayDashboardResponse.chart, and of the
+// Insights page's thisMonth.chart) — a day-over-day delta rather than an absolute value.
+// Absolute-value context lives in the response's own top-level scalars (currentValue,
+// monthStartValue, etc.), not duplicated here.
+interface DailyValueChange {
+  snapshotAt: string;
+  value: number;
+  previousValue: number;
+  deltaValue: number;
+  deltaValuePct: number;
+  // The day's change net of flows (buys/sells, costs, dividends) — a purchase isn't a gain here.
+  marketEffect: number;
+  marketEffectPct: number;
 }
 
-export type {
-  Holding, PortfolioSummary, PortfolioSnapshot, PortfolioOverview,
-  CurrencyBreakdown, BrokerTotal, AssetClassTotal, BrokerFeesTotal, AssetRealizedTrade,
-};
+// Matches TodayDashboardResponse (GET /v1/portfolio/today) — today vs. yesterday, and
+// today vs. the end of the previous month (month-to-date), always in the user's
+// reference currency. `chart` is the month-to-date day-over-day deltas (one per day,
+// oldest→newest not guaranteed — sort before use); their deltaValue sums to deltaMtdValue.
+// The month-to-date figures equal /monthly's last (in-progress) entry. The endpoint returns
+// null (not a zeroed-out object) when there's no snapshot history yet to compute this from.
+interface TodayDashboard {
+  currentValue: number;
+  previousDayValue: number;
+  deltaDayValue: number;
+  deltaDayValuePct: number;
+  // deltaDayValue net of flows — "how much the market moved" today.
+  dayMarketEffect: number;
+  dayMarketEffectPct: number;
+  // Value at the end of the previous month, not on the 1st. 0 for a portfolio created this
+  // month, in which case deltaMtdValuePct / mtdMarketEffectPct have no baseline.
+  monthStartValue: number;
+  deltaMtdValue: number;
+  deltaMtdValuePct: number;
+  mtdNetCapitalContributed: number;
+  mtdMarketEffect: number;
+  mtdMarketEffectPct: number;
+  currency: string;
+  chart: DailyValueChange[];
+  // True while a transaction edit has landed but the rebuild it triggered hasn't yet: today's
+  // value/transactions are already the new portfolio while the past days here are still being
+  // rebuilt, so chart/deltas can mix two different portfolios. Don't render them while true —
+  // show an "updating" state and refetch every 15s; if it's still true after ~5 minutes, stop
+  // polling and show the (possibly still-mixed) data with a "taking longer than usual" hint.
+  // Unlike PortfolioSnapshot (from GET /v1/portfolio/, no isStale — never mixes history with
+  // fresh data), this endpoint does, hence the flag.
+  isStale: boolean;
+}
+
+export type { Portfolio, PortfolioSnapshot, DailyValueChange, TodayDashboard };
+export { isBacktest, investmentsOf };

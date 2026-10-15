@@ -1,5 +1,8 @@
 export function formatCurrency(value: number, currency: string = "EUR", decimals: number = 2): string {
-  return `${value.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} ${currency}`.trim();
+  // useGrouping "always": some locales (Italian, Spanish…) leave four-digit numbers ungrouped by
+  // default, which put "7723 EUR" beside "19.975 EUR" in the same list.
+  const options = { minimumFractionDigits: decimals, maximumFractionDigits: decimals, useGrouping: "always" } as Intl.NumberFormatOptions;
+  return `${value.toLocaleString(undefined, options)} ${currency}`.trim();
 }
 
 // Quantities come from the backend as arbitrary-precision decimal strings (e.g. "0.001710320000000000"),
@@ -12,13 +15,8 @@ export function formatQuantity(value: string | number): string {
   return s.replace(/0+$/, "").replace(/\.$/, "");
 }
 
-// Default name for a newly generated report: the client's name for an advisor
-// generating on a client's behalf, or just the date/time for a self-generated report.
-// Time is included so multiple reports on the same day/for the same client stay distinguishable.
-export function buildReportName(clientName?: string | null): string {
-  const now = new Date();
-  const datePart = now.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-  const timePart = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  const prefix = clientName?.trim() || "Report";
-  return `${prefix} - ${datePart}, ${timePart}`;
+// Short figure for chart axes, e.g. 1,250 → "1.3K", 2,400,000 → "2.4M". No currency code: the
+// chart's header already names it, and a code on every tick makes the labels wide enough to wrap.
+export function formatCompact(value: number): string {
+  return value.toLocaleString(undefined, { notation: "compact", maximumFractionDigits: 1 });
 }

@@ -3,7 +3,6 @@ import type {
   UserProfile,
   ProfileCreatePayload,
   ProfileUpdatePayload,
-  UserMetrics,
   SubscriptionResponse,
   NotificationPreferences,
   NotificationPreferencesUpdatePayload,
@@ -12,46 +11,42 @@ import { apiFetch } from "./apiClient";
 
 export const userService = {
   async getUserProfile(): Promise<UserProfile> {
-    return apiFetch<UserProfile>('/users/profile');
+    return apiFetch<UserProfile>('/v1/users/profile');
   },
 
-  // POST /users/register — creates the user with basic info + role only
+  // POST /v1/users/register — creates the user with basic info + role only
   async createUserProfile(payload: ProfileCreatePayload): Promise<UserProfile> {
-    return apiFetch<UserProfile>('/users/register', {
+    return apiFetch<UserProfile>('/v1/users/register', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   },
 
-  // PATCH /users/profile — sets investor financial data after profile creation
+  // PATCH /v1/users/profile — sets investor financial data after profile creation
   async updateUserProfile(payload: ProfileUpdatePayload): Promise<void> {
-    return apiFetch<void>('/users/profile', {
+    return apiFetch<void>('/v1/users/profile', {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
-  },
-
-  async getUserMetrics(): Promise<UserMetrics> {
-    return apiFetch<UserMetrics>('/users/metrics');
   },
 
   async getSubscription(): Promise<SubscriptionResponse> {
-    return apiFetch<SubscriptionResponse>('/users/subscription');
+    return apiFetch<SubscriptionResponse>('/v1/users/subscription');
   },
 
   async getNotificationPreferences(): Promise<NotificationPreferences> {
-    return apiFetch<NotificationPreferences>('/users/notification-preferences');
+    return apiFetch<NotificationPreferences>('/v1/users/notification-preferences');
   },
 
   async updateNotificationPreferences(payload: NotificationPreferencesUpdatePayload): Promise<NotificationPreferences> {
-    return apiFetch<NotificationPreferences>('/users/notification-preferences', {
+    return apiFetch<NotificationPreferences>('/v1/users/notification-preferences', {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
   },
 
-  // DELETE /users/account — permanently deletes the account and all associated data
+  // DELETE /v1/users/account — permanently deletes the account and all associated data
   async deleteAccount(): Promise<void> {
-    return apiFetch<void>('/users/account', { method: 'DELETE' });
+    return apiFetch<void>('/v1/users/account', { method: 'DELETE' });
   },
 };

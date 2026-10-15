@@ -3,414 +3,629 @@
 
 import { useState, useEffect, useMemo } from "react";
 import {
-  Layers,
-  Wallet,
   TrendingUp,
   TrendingDown,
-  CircleDollarSign,
-  Receipt,
-  Search,
-  ChevronDown,
-  Info,
+  AlertCircle,
+  Loader2,
+  ArrowRight,
 } from "lucide-react";
 import { portfolioService } from "../../services/portfolioService";
-import { userService } from "../../services/userService";
-import type { PortfolioSummary, PortfolioSnapshot, CurrencyBreakdown, Holding, AssetRealizedTrade } from "../../models/Portfolio";
-import { formatCurrency, formatQuantity } from "../../lib/format";
+import type { Portfolio, PortfolioSnapshot, TodayDashboard } from "../../models/Portfolio";
+import { formatCurrency } from "../../lib/format";
+import { NoDataEmptyState } from "./NoDataEmptyState";
+import { usePortfolio } from "../../context/PortfolioContext";
+import { AlertGaugeCard } from "./AlertGauge";
+import { openPortfolioPage, openRealEstatePage, openWalletPage } from "../../lib/dashboardNav";
+import { DailyArticleModule } from "./NewsSection";
+import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
+import { alertState, type AlertState, type AlertTone } from "../../lib/alerts";
+import { useWalletsOverview, type WalletsOverview } from "../../hooks/useWalletsOverview";
+import { useWallets } from "../../context/WalletsContext";
+import { useRealEstateNetWorth, type RealEstateNetWorth } from "../../hooks/useRealEstateNetWorth";
+import { useRealEstate } from "../../context/RealEstateContext";
+import { PreviewBadge } from "../preview/PreviewKit";
 
-export default function DashboardOverview() {
-  const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
-  const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
-  const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+// One portfolio's GET /v1/portfolios/{p}/overview: null snapshot = no data yet (no transactions,
+// or the aggregate's first build hasn't landed), `failed` = the request itself errored.
+type SnapshotState =
+  | { status: "loading" }
+  | { status: "failed" }
+  | { status: "ready"; snapshot: PortfolioSnapshot | null };
 
+/**
+ * DASHBOARD — the whole wealth at a glance, not tied to the selected portfolio: the net worth
+ * on top (every portfolio's market value, from the aggregate "All portfolios" or the only
+ * portfolio, plus the wallets' balance and the real estate's equity; a demo account's wallets and
+ * properties are sample data, see lib/mock), with the portfolios, the wallets and the properties
+ * under it, as totals and one by one; then every
+ * portfolio's alerts and the article of the day. Headline figures only: the rest lives under
+ * Manage, which the summaries open. The overview endpoint never mixes history
+ * with fresh data (no isStale).
+ */
+export default function DashboardOverview({ onNavigate }: { onNavigate?: (section: string) => void } = {}) {
+  const { portfolios, current, selectPortfolio } = usePortfolio();
+  // The wallets, once there's at least one (not archived).
+  const overview = useWalletsOverview();
+  const wallets = overview && overview.wallets.length > 0 ? overview : null;
+  // The real estate, likewise once there's a property (not archived, not sold).
+  const realEstateNetWorth = useRealEstateNetWorth();
+  const realEstate = realEstateNetWorth && realEstateNetWorth.properties.length > 0 ? realEstateNetWorth : null;
+  const [snapshots, setSnapshots] = useState<Record<string, SnapshotState>>({});
+
+  // Refetch only when the set of portfolios changes, not on every new array from the context
+  // (a rename replaces the array but not the uuids). A portfolio with no entry yet reads as
+  // loading; on a refetch the previous figures stay up until the new ones land.
+  // The aggregate's (the headline) and each real portfolio's, never a backtest's.
+  const uuidsKey = portfolios.filter((p) => p.isAggregate || !p.isVirtual).map((p) => p.uuid).join(",");
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    const uuids = uuidsKey ? uuidsKey.split(",") : [];
+    let cancelled = false;
+    uuids.forEach(async (uuid) => {
+      let next: SnapshotState;
       try {
-        setLoading(true);
-        const [data, profile] = await Promise.all([
-          portfolioService.getPortfolioOverview(),
-          userService.getUserProfile(),
-        ]);
-        setPortfolio(data.summary);
-        setSnapshots(data.snapshots);
-        // Default to the user's preferred currency when they hold positions in it,
-        // otherwise fall back to whichever currency comes first in the data.
-        const preferred = data.summary.byCurrency.find(cb => cb.currency === profile.currency);
-        setSelectedCurrency(preferred?.currency ?? data.summary.byCurrency[0]?.currency ?? null);
-      } catch (error) {
-        console.error("Failed to fetch dashboard data:", error);
-      } finally {
-        setLoading(false);
+        next = { status: "ready", snapshot: await portfolioService.getPortfolioOverview(uuid) };
+      } catch (err) {
+        console.error(`Failed to fetch overview for portfolio ${uuid}:`, err);
+        next = { status: "failed" };
       }
-    };
-    fetchDashboardData();
-  }, []);
+      if (!cancelled) setSnapshots((prev) => ({ ...prev, [uuid]: next }));
+    });
+    return () => { cancelled = true; };
+  }, [uuidsKey]);
 
-  if (loading) {
+  // Every portfolio together: the aggregate when there is one, otherwise the only real portfolio.
+  // A strategy's backtest is simulated money: never the net worth, and not in the aggregate.
+  const aggregate = portfolios.find((p) => p.isAggregate);
+  const headline = aggregate ?? portfolios.find((p) => !p.isVirtual);
+  // The real portfolios, each shown on its own under the total.
+  const members = useMemo(() => portfolios.filter((p) => !p.isVirtual), [portfolios]);
+
+  // "Manage alerts" (and the empty state's button) open the Alerts page of the selected portfolio
+  // (a real one or All portfolios: the default while a backtest is selected).
+  const openAlertSettings = () => {
+    const target = current && !(current.isVirtual && !current.isAggregate) ? current : portfolios.find((p) => p.isDefault);
+    if (onNavigate && target) openPortfolioPage(onNavigate, target.uuid, "alerts");
+  };
+
+  // A portfolio opens on its page in Wealth, or on its Transactions to add some.
+  const openPortfolio = (uuid: string, section: string) => {
+    selectPortfolio(uuid);
+    if (!onNavigate) return;
+    if (section === "performance") openPortfolioPage(onNavigate, uuid);
+    else if (section === "upload") openPortfolioPage(onNavigate, uuid, "transactions");
+    else onNavigate(section);
+  };
+  // The investments: All portfolios, or the only portfolio.
+  const investments = portfolios.find((p) => p.isAggregate) ?? portfolios.find((p) => p.isDefault);
+
+  if (!headline) return null;
+  const headlineState = snapshots[headline.uuid] ?? { status: "loading" };
+  // A lone portfolio with no data gets the full-page "no data" window and nothing else: an
+  // alert with no portfolio to watch has nothing to measure.
+  const noDataAtAll = headlineState.status === "ready" && headlineState.snapshot === null && !aggregate;
+
+  if (headlineState.status === "loading") {
     return (
       <div className="flex h-96 items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <Loader2 className="animate-spin h-8 w-8 text-[#C49A3C]" />
       </div>
     );
   }
 
-  const holdings = portfolio?.holdings ?? [];
-  const byCurrency = portfolio?.byCurrency ?? [];
-  const realizedTradesByAsset = portfolio?.realizedTradesByAsset ?? [];
-
-  // The top holding within each currency — a cross-currency "top holding" would need an
-  // FX rate to compare, so this is computed per currency instead of once globally.
-  const topHoldingByCurrency = new Map<string, Holding | undefined>(
-    byCurrency.map(cb => {
-      const inCurrency = [...holdings]
-        .filter(h => h.currency === cb.currency)
-        .sort((a, b) => b.investedValue - a.investedValue);
-      return [cb.currency, inCurrency[0]];
-    })
-  );
-
-  // Realized trades are returned flat across every currency (like `holdings`), grouped
-  // here per currency so each CurrencySection only ever sees its own.
-  const realizedTradesByCurrency = new Map<string, AssetRealizedTrade[]>(
-    byCurrency.map(cb => [cb.currency, realizedTradesByAsset.filter(t => t.currency === cb.currency)])
-  );
-
-  // Same flat-then-group pattern, so CurrencySection can derive its own fees-by-asset-class
-  // breakdown (not returned pre-aggregated by the backend) from each holding's own fees.
-  const holdingsByCurrency = new Map<string, Holding[]>(
-    byCurrency.map(cb => [cb.currency, holdings.filter(h => h.currency === cb.currency)])
-  );
-
-  const activeCurrencyData = byCurrency.find(cb => cb.currency === selectedCurrency) ?? byCurrency[0];
-
-  // Snapshots grouped by currency and sorted oldest→newest — the backend doesn't guarantee
-  // ordering, and both the latest-value stats and the history charts need it ascending.
-  const snapshotsByCurrency = new Map<string, PortfolioSnapshot[]>();
-  for (const s of snapshots) {
-    const arr = snapshotsByCurrency.get(s.currency);
-    if (arr) arr.push(s); else snapshotsByCurrency.set(s.currency, [s]);
-  }
-  for (const arr of snapshotsByCurrency.values()) {
-    arr.sort((a, b) => new Date(a.snapshotAt).getTime() - new Date(b.snapshotAt).getTime());
-  }
-
   return (
-    <div className="px-0 py-6 space-y-8">
+    <div className="space-y-6 pb-12">
 
-      {/* MASTHEAD */}
-      <div className="flex flex-wrap items-end justify-between gap-6">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.15em] text-[#C49A3C] mb-1.5">Portfolio</p>
-          <h1
-            className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight"
-            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-          >
-            Dashboard Overview
-          </h1>
-          <p className="text-slate-500 font-medium mt-1">Track your portfolio performance.</p>
-        </div>
-        <div className="flex flex-col items-end gap-3">
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-full border border-slate-200 bg-white text-xs text-slate-500 font-medium">
-            <Info className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-            Positions below come from your recorded transactions — live value updates once a day
-          </div>
-        </div>
-      </div>
-
-      {/* PER-CURRENCY BREAKDOWN — see CurrencySection for why these are never merged */}
-      {activeCurrencyData && (
-        <div className="space-y-4">
-          {byCurrency.length > 1 && (
-            <div className="inline-flex gap-1 p-1 bg-slate-100 rounded-full w-fit">
-              {byCurrency.map((cb) => {
-                const active = cb.currency === activeCurrencyData.currency;
-                return (
-                  <button
-                    key={cb.currency}
-                    onClick={() => setSelectedCurrency(cb.currency)}
-                    className={`px-5 py-2 rounded-full text-xs font-black uppercase tracking-wider transition-colors ${
-                      active ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"
-                    }`}
-                  >
-                    {cb.currency}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {byCurrency.length > 1 && (
-            <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
-              Figures below are shown in {activeCurrencyData.currency} only, never combined with other currencies — converting between them would need a live FX rate.
-            </p>
-          )}
-          <CurrencySection
-            data={activeCurrencyData}
-            topHolding={topHoldingByCurrency.get(activeCurrencyData.currency)}
-            snapshots={snapshotsByCurrency.get(activeCurrencyData.currency) ?? []}
-            realizedTrades={realizedTradesByCurrency.get(activeCurrencyData.currency) ?? []}
-            holdings={holdingsByCurrency.get(activeCurrencyData.currency) ?? []}
-          />
-        </div>
+      {/* NET WORTH — a lone portfolio with no data yet gets the full-page "no data" window
+          instead (unless there are wallets or properties to add up), since there's nothing else on the page. */}
+      {headlineState.status === "failed" ? (
+        <ErrorBanner message="Failed to load portfolio data" />
+      ) : noDataAtAll && !wallets && !realEstate ? (
+        <NoDataEmptyState
+          title="No portfolio data yet"
+          message="Add or upload your transactions and this is where you'll see what your portfolio is worth today."
+          onNavigate={onNavigate ? (section) => openPortfolio(headline.uuid, section) : undefined}
+        />
+      ) : (
+        <NetWorthModule
+          portfolio={headline}
+          snapshot={headlineState.snapshot}
+          members={members}
+          snapshots={snapshots}
+          wallets={wallets}
+          realEstate={realEstate}
+          onOpenPortfolios={onNavigate && investments ? () => openPortfolioPage(onNavigate, investments.uuid) : undefined}
+          onOpenPortfolio={onNavigate ? (uuid) => openPortfolio(uuid, "performance") : undefined}
+          onOpenWallets={onNavigate ? () => openWalletPage(onNavigate, "all") : undefined}
+          onOpenWallet={onNavigate ? (id) => openWalletPage(onNavigate, id) : undefined}
+          onOpenRealEstate={onNavigate ? () => openRealEstatePage(onNavigate) : undefined}
+          onOpenProperty={onNavigate ? (id) => openRealEstatePage(onNavigate, id) : undefined}
+        />
       )}
 
-      {/* ALL HOLDINGS — detail table, every currency together, since nothing here is summed */}
-      <div>
-        <SectionHeader
-          eyebrow="Portfolio"
-          title="All Holdings"
-          subtitle="Every position across all currencies — search or filter to narrow the list"
+      {/* ALERTS — every portfolio's, aggregate included, as one list sorted by urgency. */}
+      {!noDataAtAll && (
+        <AlertsModule
+          portfolios={portfolios}
+          onManage={onNavigate ? openAlertSettings : undefined}
         />
-        <div className="mt-6">
-          <HoldingsExplorer holdings={holdings} />
-        </div>
-      </div>
+      )}
 
-    </div>
-  );
-}
-
-/**
- * CURRENCY SECTION — every monetary aggregate (invested, fees, broker/asset-class
- * breakdowns, realized P&L) lives inside one of these, scoped to a single currency.
- * A ticker's currency isn't something this app converts, so summing across sections
- * would silently add e.g. USD and EUR as if they were the same unit — small multiples
- * (one full section per currency) avoid that instead of one misleading combined total.
- */
-function CurrencySection({
-  data, topHolding, snapshots, realizedTrades, holdings,
-}: {
-  data: CurrencyBreakdown; topHolding?: Holding; snapshots: PortfolioSnapshot[]; realizedTrades: AssetRealizedTrade[]; holdings: Holding[];
-}) {
-  const { currency } = data;
-  // feesByAssetClass (derived below) is grouped by class, so a class with $0 in fees
-  // could still get a row — an empty-array check wouldn't catch that. totalFeesPaid
-  // reflects the actual amount.
-  const hasFees = data.totalFeesPaid > 0;
-  const maxAbsPL = Math.max(0, ...realizedTrades.map(t => Math.abs(t.realizedPl)));
-
-  // Not returned pre-aggregated by the backend (unlike purchasesByBroker/AssetClass) —
-  // derived here from each holding's own `fees`, grouped by assetClass.
-  const feesByAssetClassMap = new Map<string, number>();
-  for (const h of holdings) {
-    feesByAssetClassMap.set(h.assetClass, (feesByAssetClassMap.get(h.assetClass) ?? 0) + h.fees);
-  }
-  const feesByAssetClass = [...feesByAssetClassMap.entries()].map(([assetClass, totalFees]) => ({ assetClass, totalFees }));
-
-  return (
-    <div className="space-y-6">
-
-      {/* MODULE 0 — LIVE VALUE, from daily market snapshots rather than recorded transactions */}
-      <LiveValueModule currency={currency} snapshots={snapshots} />
-
-      {/* MODULE 1 — AT A GLANCE */}
-      <Module>
-        <ModuleHead
-          eyebrow={`${currency} · Positions`}
-          title="At a glance"
-          desc="The four numbers that matter most for your positions in this currency."
-        />
-        <div className="grid grid-cols-1 md:grid-cols-[1.3fr_1fr_1fr_1fr] divide-y divide-slate-100 md:divide-y-0 md:divide-x">
-          <Stat
-            hero
-            title="Total Invested"
-            value={formatCurrency(data.totalInvested, currency, 0)}
-            icon={<Wallet className="h-4.5 w-4.5 text-[#C49A3C]" />}
-            description={`Across ${data.holdingsCount} ${data.holdingsCount === 1 ? "holding" : "holdings"}`}
-            color="gold"
-          />
-          <Stat
-            title="Holdings"
-            value={data.holdingsCount.toString()}
-            icon={<Layers className="h-4 w-4 text-blue-600" />}
-            description={`Distinct assets in ${currency}`}
-            color="blue"
-          />
-          <Stat
-            title="Most Invested In"
-            value={topHolding?.ticker ?? "—"}
-            icon={<TrendingUp className="h-4 w-4 text-emerald-600" />}
-            description={topHolding ? `${formatCurrency(topHolding.investedValue, currency)} invested` : "No holdings yet"}
-            color="emerald"
-          />
-          <Stat
-            title="Total Fees Paid"
-            value={formatCurrency(data.totalFeesPaid, currency, 2)}
-            icon={<Receipt className="h-4 w-4 text-violet-600" />}
-            description={`Across all ${currency} transactions`}
-            color="violet"
-          />
-        </div>
-      </Module>
-
-      {/* MODULE 2 — ALLOCATION */}
-      <Module>
-        <ModuleHead
-          eyebrow="Allocation"
-          title="Where the money went"
-          desc={`Broker, asset class and cost — all scaled to the same ${formatCurrency(data.totalInvested, currency, 0)}`}
-        />
-        <div className={`grid grid-cols-1 divide-y divide-slate-100 md:divide-y-0 md:divide-x ${hasFees ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
-          <AllocPanel title="Purchases by broker" subtitle="Where your orders were placed">
-            <BarListBody
-              items={data.purchasesByBroker.map(b => ({ label: b.broker, value: b.totalInvested }))}
-              currency={currency}
-            />
-          </AllocPanel>
-          <AllocPanel title="Purchases by asset class" subtitle="Stocks, ETFs, bonds, and the rest">
-            <BarListBody
-              items={data.purchasesByAssetClass.map(a => ({ label: a.assetClass, value: a.totalInvested }))}
-              currency={currency}
-            />
-          </AllocPanel>
-          {hasFees && (
-            <AllocPanel title="Fees by asset class" subtitle="Where your trading costs came from">
-              <BarListBody
-                items={feesByAssetClass.map(f => ({ label: f.assetClass, value: f.totalFees }))}
-                currency={currency}
-              />
-            </AllocPanel>
-          )}
-        </div>
-      </Module>
-
-      {/* MODULE 3 — REALIZED PERFORMANCE */}
-      <Module>
-        <ModuleHead
-          eyebrow="Closed positions"
-          title="Realized gains & losses"
-          desc="Based on your recorded buy and sell prices, aggregated per asset."
-          right={
-            <Scoreboard
-              items={[
-                {
-                  label: "Total P&L",
-                  value: `${data.totalRealizedPl >= 0 ? "+" : ""}${formatCurrency(data.totalRealizedPl, currency, 2)}`,
-                  tone: data.totalRealizedPl >= 0 ? "good" : "bad",
-                },
-                { label: "Sell Transactions", value: data.sellCount.toString() },
-                { label: "Win Rate", value: data.sellCount > 0 ? `${data.winRate.toFixed(0)}%` : "—" },
-              ]}
-            />
-          }
-        />
-        <div className="p-6 md:p-7">
-          {realizedTrades.length === 0 ? (
-            <p className="text-sm text-slate-400 py-6">No completed sells in {currency} yet.</p>
-          ) : (
-            <div className="space-y-5">
-              {realizedTrades.map((t) => {
-                const isGain = t.realizedPl >= 0;
-                const halfWidthPct = maxAbsPL > 0 ? (Math.abs(t.realizedPl) / maxAbsPL) * 50 : 0;
-                const label = t.ticker ? `${t.name} (${t.ticker})` : t.name;
-                return (
-                  <div key={t.assetId}>
-                    <div className="flex items-baseline justify-between gap-4 mb-1.5">
-                      <span className="text-sm font-bold text-slate-900 truncate">{label}</span>
-                      <span className={`text-sm font-bold shrink-0 ${isGain ? "text-emerald-600" : "text-rose-600"}`}>
-                        {isGain ? "+" : ""}{formatCurrency(t.realizedPl, t.currency, 2)}
-                      </span>
-                    </div>
-                    <div className="relative h-2.5 rounded-full bg-slate-100 overflow-hidden">
-                      <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-300" />
-                      {isGain ? (
-                        <div
-                          className="absolute left-1/2 top-0 h-full rounded-r-full bg-emerald-500"
-                          style={{ width: `${halfWidthPct}%` }}
-                        />
-                      ) : (
-                        <div
-                          className="absolute right-1/2 top-0 h-full rounded-l-full bg-rose-500"
-                          style={{ width: `${halfWidthPct}%` }}
-                        />
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between mt-1">
-                      <span className="text-[11px] text-slate-400">
-                        {formatQuantity(t.quantitySold)} units · {t.sellCount} {t.sellCount === 1 ? "sale" : "sales"}
-                        {t.sellCount > 1 && ` · ${t.winRate.toFixed(0)}% win rate`}
-                      </span>
-                      <span className="text-[11px] text-slate-400">{formatCurrency(t.totalCost, t.currency)} → {formatCurrency(t.totalProceeds, t.currency)}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </Module>
-
+      {/* ARTICLE OF THE DAY — the same pick for everyone; renders nothing on a day without one. */}
+      <DailyArticleModule />
     </div>
   );
 }
 
 const chartDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const formatPct = (pct: number) => `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+// Unrealized P&L relative to what's invested; null when nothing is (a fully sold-out
+// portfolio), where a percentage would be meaningless.
+const unrealizedPct = (s: PortfolioSnapshot) =>
+  s.totalInvestedCapital > 0 ? (s.totalUnrealizedPnl / s.totalInvestedCapital) * 100 : null;
+const signedCurrency = (value: number, currency: string) => `${value >= 0 ? "+" : ""}${formatCurrency(value, currency, 0)}`;
 
-/**
- * LIVE VALUE MODULE — the portfolio's current worth, from daily market-price snapshots
- * (totalMarketValue, totalUnrealizedPnl, totalDividendIncome) rather than recorded
- * transactions. Kept as its own module, clearly labeled "Live", since every other figure
- * in this section is transaction-derived cost basis and the two shouldn't be conflated.
- */
-function LiveValueModule({ currency, snapshots }: { currency: string; snapshots: PortfolioSnapshot[] }) {
-  if (snapshots.length === 0) return null;
-
-  const latest = snapshots[snapshots.length - 1];
-  const pnlIsGain = latest.totalUnrealizedPnl >= 0;
-
+function ErrorBanner({ message }: { message: string }) {
   return (
-    <Module>
-      <ModuleHead
-        eyebrow={`${currency} · Live`}
-        title="Current value"
-        desc={`As of ${chartDateLabel(latest.snapshotAt)} — from daily market prices, not just what you paid.`}
-      />
-      <div className="grid grid-cols-1 md:grid-cols-3 divide-y divide-slate-100 md:divide-y-0 md:divide-x">
-        <Stat
-          title="Market Value"
-          value={formatCurrency(latest.totalMarketValue, currency, 0)}
-          icon={<Wallet className="h-4 w-4 text-[#C49A3C]" />}
-          description="What your positions are worth today"
-          color="gold"
-        />
-        <Stat
-          title="Unrealized P&L"
-          value={`${pnlIsGain ? "+" : ""}${formatCurrency(latest.totalUnrealizedPnl, currency, 0)}`}
-          icon={pnlIsGain ? <TrendingUp className="h-4 w-4 text-emerald-600" /> : <TrendingDown className="h-4 w-4 text-rose-600" />}
-          description={`vs ${formatCurrency(latest.totalInvestedCapital, currency, 0)} invested`}
-          color={pnlIsGain ? "emerald" : "red"}
-        />
-        <Stat
-          title="Dividend Income"
-          value={formatCurrency(latest.totalDividendIncome, currency, 0)}
-          icon={<CircleDollarSign className="h-4 w-4 text-blue-600" />}
-          description="Received to date"
-          color="blue"
-        />
-      </div>
-
-    </Module>
-  );
-}
-
-/**
- * SECTION HEADER — a prominent "chapter" break between major groups of cards:
- * small colored eyebrow, a large bold title, an optional subtitle, and a divider rule.
- */
-function SectionHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle?: string }) {
-  return (
-    <div className="pt-2 pb-3 border-b border-slate-200">
-      <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[#C49A3C] mb-1.5">{eyebrow}</p>
-      <h2 className="text-xl md:text-2xl font-black text-slate-900">{title}</h2>
-      {subtitle && <p className="text-sm text-slate-500 mt-1">{subtitle}</p>}
+    <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3 text-rose-700">
+      <AlertCircle className="h-5 w-5 shrink-0" />
+      <p className="text-sm font-bold">{message}</p>
     </div>
   );
 }
 
 /**
- * MODULE — the card shell every group of related content lives in. Restructured from the
- * old one-card-per-metric layout: related stats/charts now share a single Module, separated
- * by internal dividers, instead of each getting its own bordered/shadowed box.
+ * NET WORTH MODULE — everything the user owns, in their reference currency: every portfolio at
+ * today's market prices plus the wallets' balance and the real estate's equity. On top the total, with
+ * how the market moved the portfolios today and this month, and one bar split into every portfolio,
+ * wallet and property, each in a shade of its group's colour (gold for investments, teal for wallets,
+ * orange for real estate) so the bar reads both ways: what each is, and how much of the whole each
+ * group is. Under it, one column per group: its total, a line about it (the portfolios' unrealized
+ * P&L, the wallets' money in and out this month, the properties' value, debt and loan-to-value),
+ * then a row for each portfolio, wallet or property — its share of the net worth, its value and how
+ * it's doing — in the same shade as its piece of the bar. A column's head opens its page in Wealth
+ * (All portfolios, Wallets, Real estate), a row that portfolio's, wallet's or property's page.
+ *
+ * The portfolios' total is the aggregate's (recomputed from every portfolio's transactions
+ * combined) or the only portfolio's; each row is that portfolio's own overview. A strategy's
+ * backtest is simulated money: never here. The wallets come added up in the user's reference
+ * currency (see useWalletsOverview); if that isn't the portfolios' they're shown but not added in,
+ * and a wallet in another currency than that has no piece of its own in the bar. A wallet in debt
+ * (a credit card) takes no room in the bar.
+ *
+ * The real estate counts by its equity only (an instalment then counts once: cash out of a wallet,
+ * debt down); its gross value and debt are in its column's line. Same currency rule as the wallets;
+ * a property's piece of the bar is its equity in the reference currency when there's a rate. Equity
+ * below zero (more debt than value) takes no room in the bar, as a wallet in debt.
+ */
+function NetWorthModule({
+  portfolio, snapshot, members, snapshots, wallets, realEstate,
+  onOpenPortfolios, onOpenPortfolio, onOpenWallets, onOpenWallet, onOpenRealEstate, onOpenProperty,
+}: {
+  portfolio: Portfolio;
+  // null: nothing computed yet (the aggregate's first build, or a portfolio with no data).
+  snapshot: PortfolioSnapshot | null;
+  // The real portfolios, each with its own overview.
+  members: Portfolio[];
+  snapshots: Record<string, SnapshotState>;
+  wallets: WalletsOverview | null;
+  realEstate: RealEstateNetWorth | null;
+  onOpenPortfolios?: () => void;
+  onOpenPortfolio?: (uuid: string) => void;
+  onOpenWallets?: () => void;
+  onOpenWallet?: (id: string) => void;
+  onOpenRealEstate?: () => void;
+  onOpenProperty?: (id: string) => void;
+}) {
+  const moves = useRecentMoves(portfolio.uuid);
+  const { sample } = useWallets();
+  const { sample: realEstateSample } = useRealEstate();
+  const currency = snapshot?.currency ?? wallets?.currency ?? realEstate?.overview?.currency ?? "EUR";
+  const investments = snapshot?.totalMarketValue ?? 0;
+  const walletsCounted = wallets && wallets.currency === currency ? wallets.balance ?? 0 : 0;
+  const reOverview = realEstate?.overview ?? null;
+  const realEstateCounted = reOverview && reOverview.currency === currency ? reOverview.equity : 0;
+  const total = investments + walletsCounted + realEstateCounted;
+  const shareOf = (value: number) => (total > 0 ? Math.max(0, (value / total) * 100) : 0);
+  const pnlPct = snapshot ? unrealizedPct(snapshot) : null;
+
+  const portfolioRows = members.map((p, i) => {
+    const state = snapshots[p.uuid] ?? { status: "loading" as const };
+    return { portfolio: p, state, own: state.status === "ready" ? state.snapshot : null, shade: shadeOf(GOLD_SHADES, i) };
+  });
+  const walletRows = (wallets?.wallets ?? []).map((w, i) => ({ wallet: w, shade: shadeOf(TEAL_SHADES, i) }));
+  // A property's equity in the net worth's currency: its own, or the reference's; null in another.
+  const propertyRows = (realEstate?.properties ?? []).map((p, i) => ({
+    property: p,
+    shade: shadeOf(ORANGE_SHADES, i),
+    counted: realEstateCounted === 0 ? null : p.currency === currency ? p.equity : p.reference?.currency === currency ? p.reference.equity : null,
+  }));
+
+  // The bar, piece by piece: each portfolio's own value while they're all in, else the group as
+  // one piece; then each wallet with money in it.
+  const allIn = portfolioRows.length > 0 && portfolioRows.every((r) => r.state.status === "ready");
+  const segments = [
+    ...(allIn
+      ? portfolioRows.filter((r) => r.own && r.own.currency === currency).map((r) => ({ key: r.portfolio.uuid, label: r.portfolio.name, value: r.own!.totalMarketValue, color: r.shade }))
+      : [{ key: "investments", label: "Investments", value: investments, color: GOLD }]),
+    ...(walletsCounted !== 0
+      ? walletRows.filter((r) => r.wallet.currency === currency).map((r) => ({ key: r.wallet.id, label: r.wallet.name, value: r.wallet.balance, color: r.shade }))
+      : []),
+    ...propertyRows.filter((r) => r.counted !== null).map((r) => ({ key: r.property.id, label: r.property.name, value: r.counted!, color: r.shade })),
+  ].filter((s) => s.value > 0);
+  // The groups counted in the total, for the bar's legend: shown once there are two.
+  const groups = [
+    { key: "investments", label: "Investments", value: investments, color: GOLD },
+    ...(walletsCounted !== 0 ? [{ key: "wallets", label: "Wallets", value: walletsCounted, color: TEAL }] : []),
+    ...(realEstateCounted !== 0 ? [{ key: "realEstate", label: "Real estate", value: realEstateCounted, color: ORANGE }] : []),
+  ];
+  const columns = 1 + (wallets ? 1 : 0) + (realEstate ? 1 : 0);
+  const added = [wallets && "your wallets' balance", realEstate && "your real estate's equity"].filter(Boolean).join(" and ");
+
+  return (
+    <Module>
+      <div className="p-6 md:p-7 space-y-5">
+        <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">Net worth · {currency}</p>
+            <p className="text-4xl md:text-5xl font-black text-slate-900 tabular-nums mt-1.5" style={serif}>
+              {formatCurrency(total, currency, 0)}
+            </p>
+            <p className="text-[13px] text-slate-500 mt-1.5">
+              {snapshot ? `As of ${chartDateLabel(snapshot.snapshotAt)}, from daily market prices` : "Your portfolios at today's market prices"}
+              {added && `, plus ${added}`}.
+            </p>
+          </div>
+          {snapshot && moves && (
+            <dl className="flex gap-6">
+              <Move label="Today" amount={moves.dayMarketEffect} pct={moves.previousDayValue !== 0 ? moves.dayMarketEffectPct : null} currency={moves.currency} />
+              <Move label="This month" amount={moves.mtdMarketEffect} pct={moves.monthStartValue !== 0 ? moves.mtdMarketEffectPct : null} currency={moves.currency} />
+            </dl>
+          )}
+        </div>
+
+        {segments.length > 0 && (
+          <div className="space-y-2.5">
+            <div className="flex h-3 gap-0.5 rounded-full overflow-hidden">
+              {segments.map((s) => (
+                <div key={s.key} title={`${s.label} · ${shareOf(s.value).toFixed(0)}%`} className="h-full first:rounded-l-full last:rounded-r-full" style={{ width: `${shareOf(s.value)}%`, background: s.color }} />
+              ))}
+            </div>
+            {groups.length > 1 && (
+              <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs font-bold text-slate-600">
+                {groups.map((g) => (
+                  <span key={g.key} className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ background: g.color }} />{g.label} {shareOf(g.value).toFixed(0)}%</span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className={`grid grid-cols-1 ${columns === 3 ? "lg:grid-cols-3 lg:divide-x" : columns === 2 ? "lg:grid-cols-2 lg:divide-x" : ""} divide-y lg:divide-y-0 divide-slate-100 border-t border-slate-100`}>
+        <GroupColumn
+          title="Investments"
+          color={GOLD}
+          value={snapshot ? formatCurrency(snapshot.totalMarketValue, snapshot.currency, 0) : null}
+          pending={portfolio.isAggregate
+            ? "The combined figures across your portfolios are being prepared. Check back in a few minutes."
+            : "No transactions yet: add some to see what your portfolio is worth."}
+          summary={snapshot && <><Delta amount={snapshot.totalUnrealizedPnl} pct={pnlPct} currency={snapshot.currency} /> unrealized</>}
+          onOpen={onOpenPortfolios}
+        >
+          {portfolioRows.map(({ portfolio: p, state, own, shade }) => (
+            <GroupRow
+              key={p.uuid}
+              color={shade}
+              name={p.name}
+              share={own && own.currency === currency ? shareOf(own.totalMarketValue) : null}
+              value={own ? formatCurrency(own.totalMarketValue, own.currency, 0) : state.status === "loading" ? "…" : "—"}
+              delta={own ? <Delta amount={null} pct={unrealizedPct(own)} currency={own.currency} /> : null}
+              onOpen={onOpenPortfolio ? () => onOpenPortfolio(p.uuid) : undefined}
+            />
+          ))}
+        </GroupColumn>
+        {wallets && (
+          <GroupColumn
+            title="Wallets"
+            color={TEAL}
+            badge={sample ? <PreviewBadge label="Sample data" /> : undefined}
+            value={wallets.balance === null ? "—" : formatCurrency(wallets.balance, wallets.currency, 0)}
+            summary={
+              <>
+                <span className="text-emerald-600">+{formatCurrency(wallets.income, wallets.currency, 0)}</span> in
+                <span className="text-slate-300"> · </span>
+                <span className="text-rose-600">−{formatCurrency(wallets.expenses, wallets.currency, 0)}</span> out this month
+              </>
+            }
+            onOpen={onOpenWallets}
+          >
+            {walletRows.map(({ wallet: w, shade }) => (
+              <GroupRow
+                key={w.id}
+                color={shade}
+                name={w.name}
+                share={walletsCounted !== 0 && w.currency === currency ? shareOf(w.balance) : null}
+                value={formatCurrency(w.balance, w.currency, 0)}
+                negative={w.balance < 0}
+                delta={<Delta amount={w.net} pct={null} currency={w.currency} />}
+                onOpen={onOpenWallet ? () => onOpenWallet(w.id) : undefined}
+              />
+            ))}
+          </GroupColumn>
+        )}
+        {realEstate && (
+          <GroupColumn
+            title="Real estate"
+            color={ORANGE}
+            badge={realEstateSample ? <PreviewBadge label="Sample data" /> : undefined}
+            value={reOverview ? formatCurrency(reOverview.equity, reOverview.currency, 0) : "—"}
+            summary={reOverview ? (
+              <>
+                Equity{realEstateCounted === 0 && reOverview.equity !== 0 && ", not added in"}
+                <span className="text-slate-300"> · </span>
+                {formatCurrency(reOverview.value, reOverview.currency, 0)} value, {formatCurrency(reOverview.residualDebt, reOverview.currency, 0)} debt
+                {reOverview.loanToValuePct !== null && <>, LTV {reOverview.loanToValuePct.toFixed(0)}%</>}
+                {realEstate.monthChange !== null && <><span className="text-slate-300"> · </span><Delta amount={realEstate.monthChange} pct={null} currency={reOverview.currency} /> this month</>}
+              </>
+            ) : "Can't be added up right now: an exchange rate is missing"}
+            onOpen={onOpenRealEstate}
+          >
+            {propertyRows.map(({ property: p, shade, counted }) => (
+              <GroupRow
+                key={p.id}
+                color={shade}
+                name={p.name}
+                share={counted === null ? null : shareOf(counted)}
+                value={formatCurrency(p.equity, p.currency, 0)}
+                negative={p.equity < 0}
+                delta={p.loanToValuePct === null ? null : <span className="font-bold text-slate-400 tabular-nums">LTV {p.loanToValuePct.toFixed(0)}%</span>}
+                onOpen={onOpenProperty ? () => onOpenProperty(p.id) : undefined}
+              />
+            ))}
+          </GroupColumn>
+        )}
+      </div>
+    </Module>
+  );
+}
+
+// Each group's colour, and the shades its members take in order: light to dark, so neighbours
+// in the bar stay apart.
+const GOLD = "#C49A3C";
+const TEAL = "#0f766e";
+const GOLD_SHADES = ["#8A6A28", "#C49A3C", "#E0BE72", "#A8813A", "#EDD5A2", "#6B5220"];
+const TEAL_SHADES = ["#0b5750", "#0f766e", "#2ea99b", "#79cbbf", "#134e4a"];
+// Wealth's real estate colour.
+const ORANGE = "#eb6834";
+const ORANGE_SHADES = ["#b9471b", "#eb6834", "#f4a27d", "#d4561f", "#f8c7ae", "#8f3614"];
+const shadeOf = (shades: string[], i: number) => shades[i % shades.length];
+const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
+
+/** One of the headline's market moves: "Today · +1,240 EUR · +0.84%". */
+function Move({ label, amount, pct, currency }: { label: string; amount: number; pct: number | null; currency: string }) {
+  const gain = amount >= 0;
+  const Icon = gain ? TrendingUp : TrendingDown;
+  return (
+    <div>
+      <dt className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</dt>
+      <dd className={`flex items-center gap-1.5 text-[15px] font-black tabular-nums mt-1 ${gain ? "text-emerald-600" : "text-rose-600"}`}>
+        <Icon className="h-4 w-4 shrink-0" />
+        {signedCurrency(amount, currency)}
+        {pct !== null && <span className="text-xs font-bold opacity-80">{formatPct(pct)}</span>}
+      </dd>
+    </div>
+  );
+}
+
+/** A signed change in its gain/loss colour: an amount, a percentage, or both. */
+function Delta({ amount, pct, currency }: { amount: number | null; pct: number | null; currency: string }) {
+  const sign = amount ?? pct ?? 0;
+  return (
+    <span className={`font-bold tabular-nums ${sign >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+      {amount !== null && signedCurrency(amount, currency)}
+      {amount !== null && pct !== null && " · "}
+      {pct !== null && formatPct(pct)}
+    </span>
+  );
+}
+
+/**
+ * GROUP COLUMN — one kind of asset under the net worth: its head (name, total, a line about it,
+ * opening its page in Wealth), then its rows. `value` null: nothing to show yet, `pending` says why.
+ */
+function GroupColumn({
+  title, color, badge, value, pending, summary, onOpen, children,
+}: {
+  title: string;
+  color: string;
+  badge?: React.ReactNode;
+  value: string | null;
+  pending?: string;
+  summary?: React.ReactNode;
+  onOpen?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col">
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={!onOpen}
+        className="group text-left px-6 md:px-7 pt-5 pb-4 enabled:hover:bg-slate-50/70 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C49A3C]/40"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+            <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+            {title}
+            {badge}
+          </p>
+          {onOpen && <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-[#C49A3C] transition-colors" />}
+        </div>
+        {value === null ? (
+          <p className="text-sm text-slate-500 mt-2">{pending}</p>
+        ) : (
+          <>
+            <p className="font-black text-slate-900 text-2xl tabular-nums mt-1.5" style={serif}>{value}</p>
+            {summary && <p className="text-xs font-semibold text-slate-400 mt-1">{summary}</p>}
+          </>
+        )}
+      </button>
+      <ul className="@container px-3 md:px-4 pb-3 border-t border-slate-100 pt-1.5">{children}</ul>
+    </div>
+  );
+}
+
+/**
+ * One portfolio, wallet or property in its column: name, share of the net worth, value, how it's
+ * doing. In a narrow column (three groups side by side) the name keeps the room: how it's doing
+ * goes under the value, and the share (in the bar's tooltip too) is left out.
+ */
+function GroupRow({
+  color, name, share, value, negative = false, delta, onOpen,
+}: {
+  color: string;
+  name: string;
+  // Its share of the whole net worth, in percent; null when it isn't counted in it.
+  share: number | null;
+  value: string;
+  negative?: boolean;
+  delta: React.ReactNode;
+  onOpen?: () => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={!onOpen}
+        className="w-full grid grid-cols-[minmax(0,1fr)_auto] @md:grid-cols-[minmax(0,1fr)_2.75rem_6.5rem_5.5rem] items-center gap-x-2 gap-y-0.5 rounded-xl px-3 py-2.5 text-left enabled:hover:bg-slate-50 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40"
+      >
+        <span className="flex items-center gap-2.5 min-w-0">
+          <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: color }} />
+          <span className="text-[13px] font-bold text-slate-800 truncate">{name}</span>
+        </span>
+        <span className="hidden @md:block text-[11px] font-bold text-slate-400 tabular-nums text-right">{share === null ? "" : `${share.toFixed(0)}%`}</span>
+        <span className={`text-[13px] font-black tabular-nums text-right ${negative ? "text-rose-600" : "text-slate-900"}`}>{value}</span>
+        <span className="col-start-2 @md:col-start-auto text-[11px] text-right truncate">{delta}</span>
+      </button>
+    </li>
+  );
+}
+
+/**
+ * Today's and this month's market moves for the headline (GET /v1/portfolios/{p}/today, net of
+ * money added or withdrawn), shown under its market value; the day-by-day detail is in its
+ * Insights ("This month"). Null while there's nothing yet, or while the document is stale (it
+ * can mix two versions of the portfolio then).
+ */
+function useRecentMoves(portfolioUuid: string) {
+  const [today, setToday] = useState<TodayDashboard | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    portfolioService.getTodayDashboard(portfolioUuid)
+      .then((data) => { if (!cancelled) setToday(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [portfolioUuid]);
+  return today && !today.isStale ? today : null;
+}
+
+// Most urgent first: a triggered alert leads, a switched-off one comes last. Rules of the same
+// state keep the backend's order (portfolio by portfolio, oldest first).
+const ALERT_ORDER: Record<AlertState["kind"], number> = {
+  triggered: 0, reached: 1, approaching: 2, ok: 3, pending: 4, unavailable: 5, off: 6,
+};
+
+// A user can have up to 20 alerts per portfolio, far too many dials to show at once. The most
+// urgent get a dial each; the rest sit behind "Show all".
+const ALERTS_SHOWN_COLLAPSED = 6;
+
+// How the states roll up into the one-line summary above the dials.
+const SUMMARY_GROUPS: { tone: AlertTone; label: string; dot: string }[] = [
+  { tone: "danger", label: "triggered", dot: "bg-red-500" },
+  { tone: "warn", label: "approaching", dot: "bg-amber-500" },
+  { tone: "ok", label: "within range", dot: "bg-emerald-500" },
+  { tone: "muted", label: "not active", dot: "bg-slate-400" },
+];
+
+/**
+ * ALERTS MODULE — the rules on all of the user's portfolios as dials, refreshed every minute
+ * (the backend re-checks every rule about every 5 minutes, so a reading changes while the page
+ * is open). With more than one portfolio each dial is labelled with the portfolio it watches.
+ * A one-line summary counts them by state; only the ALERTS_SHOWN_COLLAPSED most urgent get a
+ * dial until the user asks for all of them. With no rules it isn't shown at all.
+ */
+function AlertsModule({ portfolios, onManage }: { portfolios: Portfolio[]; onManage?: () => void }) {
+  const uuids = useMemo(() => portfolios.map((p) => p.uuid), [portfolios]);
+  const { rules, loading, error } = usePortfoliosAlertRules(uuids, 60_000);
+  const [showAll, setShowAll] = useState(false);
+
+  const nameOf = (uuid: string) => portfolios.find((p) => p.uuid === uuid)?.name ?? "";
+  const sorted = rules === null
+    ? []
+    : [...rules].sort((a, b) => ALERT_ORDER[alertState(a).kind] - ALERT_ORDER[alertState(b).kind]);
+  const visible = showAll ? sorted : sorted.slice(0, ALERTS_SHOWN_COLLAPSED);
+  const counts = SUMMARY_GROUPS
+    .map((g) => ({ ...g, count: sorted.filter((r) => alertState(r).tone === g.tone).length }))
+    .filter((g) => g.count > 0);
+
+  // Only there when there's something to show: no alerts (or none loaded yet, or a failed
+  // request) means no module at all. They're set up on each portfolio's page (Portfolios).
+  if (loading || error || sorted.length === 0) return null;
+
+  return (
+    <Module>
+      <ModuleHead
+        eyebrow="Alerts"
+        title="Your alerts"
+        desc="How close each alert is to its limit. Checked about every 5 minutes."
+        right={onManage && (
+          <button
+            onClick={onManage}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 border border-slate-200 hover:border-[#C49A3C] hover:text-[#C49A3C] transition-colors"
+          >
+            Manage alerts
+          </button>
+        )}
+      />
+      <div className="p-6 md:p-7 space-y-5">
+        <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs font-bold text-slate-600">
+          {counts.map((g) => (
+            <li key={g.tone} className="flex items-center gap-1.5">
+              <span className={`h-2 w-2 rounded-full ${g.dot}`} />
+              {g.count} {g.label}
+            </li>
+          ))}
+        </ul>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {visible.map((rule) => (
+            <div key={`${rule.portfolioUuid}:${rule.ruleId}`} className="flex flex-col gap-1.5">
+              {portfolios.length > 1 && (
+                <p className="px-1 text-[10px] font-black uppercase tracking-widest text-slate-400 truncate">
+                  {nameOf(rule.portfolioUuid)}
+                </p>
+              )}
+              <AlertGaugeCard rule={rule} />
+            </div>
+          ))}
+        </div>
+        {sorted.length > ALERTS_SHOWN_COLLAPSED && (
+          <div className="flex justify-center">
+            <button
+              onClick={() => setShowAll((v) => !v)}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 border border-slate-200 hover:border-[#C49A3C] hover:text-[#C49A3C] transition-colors"
+            >
+              {showAll ? "Show fewer" : `Show all ${sorted.length}`}
+            </button>
+          </div>
+        )}
+      </div>
+    </Module>
+  );
+}
+
+/**
+ * MODULE — the card shell every group of related content lives in.
  */
 function Module({ children }: { children: React.ReactNode }) {
   return (
@@ -427,7 +642,7 @@ function ModuleHead({
 }) {
   return (
     <div className="p-6 md:p-7 pb-5 border-b border-slate-100 flex flex-wrap items-start justify-between gap-6">
-      <div className="min-w-0">
+      <div className="flex-1 min-w-0">
         <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C] mb-1.5">{eyebrow}</p>
         <h2
           className="text-lg md:text-xl font-black text-slate-900"
@@ -435,229 +650,9 @@ function ModuleHead({
         >
           {title}
         </h2>
-        {desc && <p className="text-[13px] text-slate-500 mt-1 max-w-md leading-relaxed">{desc}</p>}
+        {desc && <p className="text-[13px] text-slate-500 mt-1 leading-relaxed">{desc}</p>}
       </div>
       {right}
-    </div>
-  );
-}
-
-/**
- * SCOREBOARD — inline stat badges in a module head, used where the old design gave a metric
- * its own full StatCard (e.g. P&L / win rate). Numbers stay neutral ink unless the value itself
- * carries a sign (gain/loss), matching how the rest of the app already colors P&L text.
- */
-function Scoreboard({ items }: { items: { label: string; value: string; tone?: "good" | "bad" }[] }) {
-  return (
-    <div className="flex gap-6 flex-wrap shrink-0">
-      {items.map((it) => (
-        <div key={it.label} className="text-right">
-          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">{it.label}</p>
-          <p
-            className={`text-xl font-black tabular-nums ${it.tone === "good" ? "text-emerald-600" : it.tone === "bad" ? "text-rose-600" : "text-slate-900"}`}
-            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-          >
-            {it.value}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/**
- * STAT — one segment of a Module's stat strip. `hero` marks the single most important figure
- * in the strip (larger type), giving real hierarchy instead of four equally-weighted boxes.
- */
-interface StatProps {
-  title: string;
-  value: string;
-  icon: React.ReactNode;
-  description: string;
-  color: "blue" | "emerald" | "violet" | "red" | "gold";
-  hero?: boolean;
-}
-
-function Stat({ title, value, icon, description, color, hero }: StatProps) {
-  const colorMap = {
-    blue: "bg-blue-50 text-blue-600 border-blue-100",
-    emerald: "bg-emerald-50 text-emerald-600 border-emerald-100",
-    violet: "bg-violet-50 text-violet-600 border-violet-100",
-    red: "bg-red-50 text-red-600 border-red-100",
-    gold: "bg-[#C49A3C]/10 text-[#C49A3C] border-[#C49A3C]/20",
-  };
-
-  return (
-    <div className="p-6 md:p-7 flex flex-col gap-2.5">
-      <div className={`w-9 h-9 rounded-xl border flex items-center justify-center ${colorMap[color]}`}>
-        {icon}
-      </div>
-      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{title}</p>
-      <p
-        className={`font-black text-slate-900 ${hero ? "text-[28px] md:text-[32px]" : "text-xl md:text-2xl"}`}
-        style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-      >
-        {value}
-      </p>
-      <p className="text-[13px] font-medium text-slate-500 leading-relaxed">{description}</p>
-    </div>
-  );
-}
-
-/**
- * ALLOC PANEL — one third of the "Where the money went" Module (was its own bordered card).
- */
-function AllocPanel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return (
-    <div className="p-6 md:p-7">
-      <h3 className="text-sm font-black text-slate-900">{title}</h3>
-      <p className="text-xs text-slate-500 mt-1 mb-5">{subtitle}</p>
-      {children}
-    </div>
-  );
-}
-
-/**
- * BAR LIST BODY — magnitude comparison across a handful of named categories that all share
- * one currency (broker, asset class). Never fed cross-currency values: bar length directly
- * encodes size, so mixing units would visually imply a comparison that isn't real. Lives inside
- * an AllocPanel now rather than owning its own card.
- */
-function BarListBody({ items, currency }: { items: { label: string; value: number }[]; currency: string }) {
-  const max = Math.max(0, ...items.map(i => i.value));
-
-  if (items.length === 0) {
-    return <p className="text-sm text-slate-400 py-6">No data yet.</p>;
-  }
-
-  return (
-    <div className="space-y-4">
-      {items.map((item) => {
-        const widthPct = max > 0 ? (item.value / max) * 100 : 0;
-        return (
-          <div key={item.label}>
-            <div className="flex items-baseline justify-between gap-4 mb-1">
-              <span className="text-xs font-bold text-slate-900">{item.label}</span>
-              <span className="text-xs font-bold text-slate-900 shrink-0">{formatCurrency(item.value, currency, 0)}</span>
-            </div>
-            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div className="h-full rounded-r-full bg-[#C49A3C]" style={{ width: `${widthPct}%` }} />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/**
- * HOLDINGS EXPLORER — the one place all currencies appear together. Deliberately a plain
- * filterable table rather than a bar chart: bar length would encode invested value, and a
- * USD bar next to a EUR bar of the same length would visually claim they're equal, which
- * isn't true without a live FX rate. A table just lists the numbers with their own currency.
- */
-function HoldingsExplorer({ holdings }: { holdings: Holding[] }) {
-  const [search, setSearch] = useState("");
-  const [assetClass, setAssetClass] = useState("all");
-  const [currency, setCurrency] = useState("all");
-
-  const assetClasses = useMemo(() => [...new Set(holdings.map(h => h.assetClass))].sort(), [holdings]);
-  const currencies = useMemo(() => [...new Set(holdings.map(h => h.currency))].sort(), [holdings]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return holdings
-      .filter(h => assetClass === "all" || h.assetClass === assetClass)
-      .filter(h => currency === "all" || h.currency === currency)
-      .filter(h => !q || h.ticker?.toLowerCase().includes(q) || h.name.toLowerCase().includes(q))
-      // Grouped by currency first so ordering never implies a cross-currency size comparison.
-      .sort((a, b) => a.currency.localeCompare(b.currency) || b.investedValue - a.investedValue);
-  }, [holdings, search, assetClass, currency]);
-
-  return (
-    <div className="bg-white rounded-4xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-5 md:p-6 border-b border-slate-200">
-        <div className="relative flex-1 min-w-0">
-          <Search className="h-4 w-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by ticker or name…"
-            className="w-full h-10 pl-10 pr-3.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:ring-4 focus:ring-slate-100 focus:border-slate-300 transition-all"
-          />
-        </div>
-        <FilterSelect label="Asset class" value={assetClass} onChange={setAssetClass} options={assetClasses} />
-        <FilterSelect label="Currency" value={currency} onChange={setCurrency} options={currencies} />
-      </div>
-
-      {filtered.length === 0 ? (
-        <div className="py-14 flex flex-col items-center justify-center text-center px-6">
-          <div className="p-4 bg-slate-50 rounded-2xl mb-3">
-            <Wallet className="h-6 w-6 text-slate-300" />
-          </div>
-          <p className="text-slate-600 font-semibold">{holdings.length === 0 ? "No holdings yet" : "No holdings match your filters"}</p>
-          <p className="text-slate-400 text-sm mt-1">
-            {holdings.length === 0 ? "Upload or add transactions to see your holdings here." : "Try a different search or filter."}
-          </p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-150">
-            <thead>
-              <tr className="border-b border-slate-200">
-                <th className="px-5 md:px-6 py-3 text-[10px] font-black uppercase tracking-wider text-slate-400">Asset</th>
-                <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-400">Class</th>
-                <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-400 text-right">Quantity</th>
-                <th className="px-3 py-3 text-[10px] font-black uppercase tracking-wider text-slate-400 text-right">Invested</th>
-                <th className="px-3 md:px-6 py-3 text-[10px] font-black uppercase tracking-wider text-slate-400">Broker</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((h, i) => (
-                <tr key={`${h.currency}::${h.ticker ?? h.isin ?? i}::${h.broker ?? ""}`} className="hover:bg-slate-50/60 transition-colors">
-                  <td className="px-5 md:px-6 py-3.5">
-                    <div className="flex items-baseline gap-2 min-w-0">
-                      <span className="text-sm font-bold text-slate-900 shrink-0">{h.ticker ?? h.isin ?? "—"}</span>
-                      <span className="text-xs text-slate-400 truncate">{h.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full bg-slate-100 text-slate-600">
-                      {h.assetClass}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3.5 text-sm font-semibold text-slate-600 text-right tabular-nums">{formatQuantity(h.quantity)}</td>
-                  <td className="px-3 py-3.5 text-sm font-bold text-slate-900 text-right tabular-nums">
-                    {formatCurrency(h.investedValue, h.currency, 2)}
-                  </td>
-                  <td className="px-3 md:px-6 py-3.5 text-sm font-medium text-slate-500">{h.broker ?? "Unknown"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FilterSelect({
-  label, value, onChange, options,
-}: {
-  label: string; value: string; onChange: (v: string) => void; options: string[];
-}) {
-  return (
-    <div className="relative shrink-0">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-10 pl-3.5 pr-9 rounded-xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-900 outline-none focus:ring-4 focus:ring-slate-100 focus:border-slate-300 transition-all appearance-none cursor-pointer"
-      >
-        <option value="all">All {label.toLowerCase()}</option>
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
-      <ChevronDown className="h-4 w-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
     </div>
   );
 }

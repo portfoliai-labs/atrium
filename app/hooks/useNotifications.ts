@@ -5,6 +5,7 @@ import {
   notificationService,
   type NotificationResponse,
 } from "../services/notificationService";
+import { useUser } from "../context/UserContext";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -15,6 +16,10 @@ export function useNotifications() {
   const [hasUnread, setHasUnread] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const esRef = useRef<EventSource | null>(null);
+  // The live stream waits until we know who's signed in, and a demo account (see lib/demo) never
+  // opens it: nothing it can do raises a notification, and the backend refuses its ticket.
+  const { user, isDemo } = useUser();
+  const canStream = user !== null && !isDemo;
 
   // ── Load full history from REST ────────────────────────────────────────────
   const loadNotifications = useCallback(async () => {
@@ -63,6 +68,7 @@ export function useNotifications() {
 
   // ── SSE — keeps hasUnread in sync in real-time ────────────────────────────
   useEffect(() => {
+    if (!canStream) return;
     let cancelled = false;
 
     async function connect() {
@@ -70,7 +76,7 @@ export function useNotifications() {
         const ticket = await notificationService.getTicket();
         if (cancelled) return;
 
-        const url = `${API_BASE_URL}/notifications/stream?ticket=${encodeURIComponent(ticket)}`;
+        const url = `${API_BASE_URL}/v1/notifications/stream?ticket=${encodeURIComponent(ticket)}`;
         console.info("[useNotifications] Connecting to SSE with ticket");
 
         const es = new EventSource(url);
@@ -112,7 +118,7 @@ export function useNotifications() {
       esRef.current?.close();
       window.removeEventListener("auth-unauthorized", handleUnauthorized);
     };
-  }, []);
+  }, [canStream]);
 
   // ── Init: check for unread count on mount ────────────────────────────────
   useEffect(() => {

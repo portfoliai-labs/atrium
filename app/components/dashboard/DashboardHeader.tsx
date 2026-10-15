@@ -9,11 +9,12 @@ import { NotificationPanel } from "./NotificationPanel";
 import { SubscriptionPopover } from "./SubscriptionPopover";
 import { userService } from "../../services/userService";
 import { BetaBadge } from "../common/BetaBadge";
-import type { SubscriptionTier, SubscriptionResponse, UserMetrics } from "../../models/User";
+import type { SubscriptionTier, SubscriptionResponse } from "../../models/User";
 
 const TIER_LABEL: Record<SubscriptionTier, string> = {
   FREE: 'Free Plan',
   TESTER: 'Tester',
+  DEMO: 'Demo',
 };
 
 interface DashboardHeaderProps {
@@ -22,9 +23,11 @@ interface DashboardHeaderProps {
   isMenuOpen?: boolean;
   subscriptionTier?: SubscriptionTier | null;
   onNavigate?: (section: string) => void;
+  // A section on one of its pages (a notification's link), as the Sidebar's rows open them.
+  onOpenPage?: (section: string, view: unknown) => void;
 }
 
-export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscriptionTier, onNavigate }: DashboardHeaderProps) {
+export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscriptionTier, onNavigate, onOpenPage }: DashboardHeaderProps) {
   const {
     notifications,
     hasUnread,
@@ -37,7 +40,6 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
 
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
-  const [subscriptionMetrics, setSubscriptionMetrics] = useState<UserMetrics | null>(null);
   const [isSubscriptionLoading, setIsSubscriptionLoading] = useState(false);
 
   const { user } = useUser();
@@ -59,11 +61,8 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
     setIsSubscriptionOpen(opening);
     if (opening) {
       setIsSubscriptionLoading(true);
-      Promise.all([userService.getSubscription(), userService.getUserMetrics()])
-        .then(([sub, metrics]) => {
-          setSubscription(sub);
-          setSubscriptionMetrics(metrics);
-        })
+      userService.getSubscription()
+        .then(setSubscription)
         .catch((error) => console.error("Failed to fetch subscription:", error))
         .finally(() => setIsSubscriptionLoading(false));
     }
@@ -137,6 +136,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
               isLoading={isLoading}
               onClose={() => setIsPanelOpen(false)}
               onDismissAll={() => { dismissAll(); setIsPanelOpen(false); }}
+              onOpenPage={onOpenPage ? (section, view) => { setIsPanelOpen(false); onOpenPage(section, view); } : undefined}
             />
           )}
         </div>
@@ -179,7 +179,6 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
           {isSubscriptionOpen && (
             <SubscriptionPopover
               subscription={subscription}
-              metrics={subscriptionMetrics}
               isLoading={isSubscriptionLoading}
               onClose={() => setIsSubscriptionOpen(false)}
               onManage={onNavigate ? () => {

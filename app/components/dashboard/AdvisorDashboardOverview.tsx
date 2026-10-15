@@ -1,305 +1,254 @@
+// components/dashboard/AdvisorDashboardOverview.tsx
 "use client";
 
-import { useState, useEffect } from "react";
-import {
-  Users, TrendingUp, Sparkles,
-  CheckCircle2, Clock, AlertCircle, ArrowRight,
-  Loader2, Crown,
-} from "lucide-react";
+import { ArrowRight, BellRing, ChevronRight, History, Loader2, Users } from "lucide-react";
 import { useUser } from "../../context/UserContext";
-import { advisorService } from "../../services/advisorService";
-import { userService } from "../../services/userService";
-import type { Client, AdvisorProfile } from "../../models/Advisor";
-import type { UserMetrics } from "../../models/User";
+import { usePortfolio } from "../../context/PortfolioContext";
+import { clientDisplayName, useClients } from "../../context/ClientsContext";
+import { useClientAlertRules } from "../../hooks/useAlertRules";
+import { useClientsFigures, totalsByCurrency } from "../../hooks/useClientsFigures";
+import { alertFigures, alertState, alertUrgency, describeAlert, type AlertTone } from "../../lib/alerts";
+import { CLIENTS_SECTION, openBacktestPage, openClientPage, openPlanPage } from "../../lib/dashboardNav";
+import { formatCurrency } from "../../lib/format";
+import { isBacktest } from "../../models/Portfolio";
+import { PageHeader } from "./PageHeader";
+import { Module, ModuleHead } from "./PerformanceSection";
+import { ClientAvatar } from "./ClientsSection";
+import { TONE_STYLES } from "./AlertGauge";
 
-function formatCurrency(value: number, currency = "EUR") {
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(1).replace(".0", "")}M ${currency}`;
-  }
-  if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(0)}k ${currency}`;
-  }
-  return new Intl.NumberFormat("it-IT", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
+// How many of each list the dashboard shows before pointing to the rest.
+const ALERTS_SHOWN = 6;
+const CLIENTS_SHOWN = 5;
+const STRATEGIES_SHOWN = 4;
 
-interface StatCardProps {
-  label: string;
-  value: React.ReactNode;
-  sub?: string;
-  icon: React.ReactNode;
-  iconBg: string;
-  accent?: boolean;
-}
+const BAR_COLOR: Record<AlertTone, string> = {
+  ok: "bg-emerald-500",
+  warn: "bg-amber-500",
+  danger: "bg-red-500",
+  muted: "bg-slate-300",
+};
 
-function StatCard({ label, value, sub, icon, iconBg, accent }: StatCardProps) {
+const signedPct = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)}%`;
+const dateLabel = (iso: string) => (iso ? new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" }) : "");
+
+function LinkButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
-    <div className={`bg-white rounded-[1.75rem] border p-6 flex flex-col gap-4 transition-shadow hover:shadow-sm ${
-      accent ? "border-[#C49A3C]/40" : "border-[rgba(196,154,60,0.2)]"
-    }`}>
-      <div className="flex items-center justify-between">
-        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${iconBg}`}>
-          {icon}
-        </div>
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#a8a29e]">{label}</span>
-      </div>
-      <div>
-        <div className="text-2xl font-bold text-[#1c1917]" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
-          {value}
-        </div>
-        {sub && <p className="text-xs text-[#78716c] mt-1">{sub}</p>}
-      </div>
+    <button type="button" onClick={onClick} className="flex items-center gap-1 text-xs font-bold text-[#C49A3C] hover:text-[#a8822f] transition-colors">
+      {children} <ArrowRight className="w-3.5 h-3.5" />
+    </button>
+  );
+}
+
+function EmptyRow({ icon, title, text, action }: { icon: React.ReactNode; title: string; text: string; action?: React.ReactNode }) {
+  return (
+    <div className="px-6 pb-6 flex flex-col sm:flex-row sm:items-center gap-4">
+      <span className="w-11 h-11 rounded-2xl bg-[#1c1917] text-[#C49A3C] flex items-center justify-center shrink-0">{icon}</span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-bold text-[#1c1917]">{title}</span>
+        <span className="block text-xs text-[#78716c] mt-0.5 leading-relaxed">{text}</span>
+      </span>
+      {action}
     </div>
   );
 }
 
-function RecentClientRow({ client }: { client: Client }) {
-  const name =
-    client.first_name || client.last_name
-      ? `${client.first_name ?? ""} ${client.last_name ?? ""}`.trim()
-      : client.email;
-  const initials =
-    ((client.first_name?.[0] ?? "") + (client.last_name?.[0] ?? "")).toUpperCase() ||
-    client.email[0].toUpperCase();
-
-  return (
-    <div className="flex items-center gap-3 py-3 border-b border-[rgba(196,154,60,0.1)] last:border-0">
-      <div className="w-9 h-9 rounded-xl bg-[#1c1917] flex items-center justify-center font-bold text-[#C49A3C] text-xs shrink-0">
-        {initials}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-[#1c1917] truncate">{name}</p>
-        <p className="text-xs text-[#78716c] truncate">{client.email}</p>
-      </div>
-      <div className="flex flex-col items-end gap-1">
-        {client.estimated_wealth != null && (
-          <span className="text-xs font-bold text-[#1c1917]">
-            {formatCurrency(client.estimated_wealth, client.currency ?? "EUR")}
-          </span>
-        )}
-        {client.risk_tolerance && (
-          <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg ${
-            client.risk_tolerance === "high"
-              ? "bg-rose-50 text-rose-500"
-              : client.risk_tolerance === "low"
-              ? "bg-emerald-50 text-emerald-600"
-              : "bg-amber-50 text-amber-600"
-          }`}>
-            {client.risk_tolerance}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export default function AdvisorDashboardOverview({
-  onNavigate,
-}: {
-  onNavigate?: (section: string) => void;
-}) {
+/**
+ * ADVISOR DASHBOARD — the advisor's day at a glance: what their clients' investments add up to,
+ * the alerts on them that need a look (triggered first, then the closest to their threshold, each
+ * opening that portfolio's Alerts page in the client's Wealth), their clients by what they hold,
+ * and their own strategies (Plan's Strategy). The alerts refresh every minute: the backend checks
+ * the rules about every 5 minutes.
+ */
+export default function AdvisorDashboardOverview({ onNavigate }: { onNavigate: (section: string) => void }) {
   const { user } = useUser();
-  const [clients, setClients] = useState<Client[]>([]);
-  const [advisorProfile, setAdvisorProfile] = useState<AdvisorProfile | null>(null);
-  const [metrics, setMetrics] = useState<UserMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [cls, profile, m] = await Promise.all([
-          advisorService.getClients(),
-          advisorService.getAdvisorProfile(),
-          userService.getUserMetrics(),
-        ]);
-        setClients(cls);
-        setAdvisorProfile(profile);
-        setMetrics(m);
-      } catch (err) {
-        console.error("Failed to load advisor dashboard:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
-
-  const firstName = user?.first_name ?? user?.email?.split("@")[0] ?? "Advisor";
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-
-  // AUM: prefer advisor-set value; fallback to sum of client wealth
-  const totalAum =
-    advisorProfile?.aum != null
-      ? advisorProfile.aum
-      : clients.reduce((sum, c) => sum + (c.estimated_wealth ?? 0), 0);
-
-  const recentClients = [...clients]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 4);
+  const { clients, loading } = useClients();
+  const { portfolios } = usePortfolio();
+  const { rules, loading: rulesLoading, error: rulesError } = useClientAlertRules(60_000);
+  const figures = useClientsFigures(clients);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 className="w-7 h-7 animate-spin text-[#C49A3C]" />
-      </div>
-    );
+    return <div className="flex items-center justify-center py-32"><Loader2 className="w-7 h-7 animate-spin text-[#C49A3C]" /></div>;
   }
 
+  const byUuid = new Map(clients.map((c) => [c.uuid, c]));
+  const sortedRules = [...(rules ?? [])].filter((r) => byUuid.has(r.clientUuid)).sort((a, b) => alertUrgency(b) - alertUrgency(a));
+  const triggered = sortedRules.filter((r) => alertState(r).tone === "danger").length;
+  const totals = figures ? totalsByCurrency(figures) : null;
+  const aum = totals === null ? null : totals.length === 0 ? "—" : totals.map((t) => formatCurrency(t.value, t.currency, 0)).join(" + ");
+  const topClients = [...clients]
+    .sort((a, b) => (figures?.get(b.uuid)?.marketValue ?? -1) - (figures?.get(a.uuid)?.marketValue ?? -1))
+    .slice(0, CLIENTS_SHOWN);
+  const strategies = portfolios.filter(isBacktest).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const greeting = user?.first_name ? `Hello, ${user.first_name}` : "Dashboard";
+
   return (
-    <div className="space-y-8 pb-12">
-      {/* Header */}
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#C49A3C] mb-1">
-          {new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })}
-        </p>
-        <h1
-          className="text-3xl font-bold text-[#1c1917]"
-          style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-        >
-          {greeting}, {firstName}
-        </h1>
-        <p className="text-sm text-[#78716c] mt-1">Here&apos;s a summary of your activity.</p>
-      </div>
+    <div className="space-y-[22px] pb-12">
+      <PageHeader
+        eyebrow="Advisor"
+        title={greeting}
+        value={clients.length > 0 ? aum : undefined}
+        note={clients.length > 0 ? `Your ${clients.length} ${clients.length === 1 ? "client's" : "clients'"} investments together` : "Add your first client to get started"}
+        actions={[
+          { label: "Clients", primary: true, plus: false, onClick: () => onNavigate(CLIENTS_SECTION) },
+          { label: "New strategy", onClick: () => openPlanPage(onNavigate, "strategy") },
+        ]}
+        figures={[
+          { label: "Clients", value: String(clients.length) },
+          { label: "Your alerts", value: rules === null ? "—" : String(sortedRules.length), sub: "On their portfolios" },
+          { label: "Triggered", value: rules === null ? "—" : String(triggered), tone: triggered > 0 ? "loss" : undefined },
+          { label: "Strategies", value: String(strategies.length), sub: "Your backtests" },
+        ]}
+      />
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        <StatCard
-          label="Clients managed"
-          value={clients.length}
-          sub={clients.length === 1 ? "registered client" : "registered clients"}
-          icon={<Users className="w-5 h-5 text-[#C49A3C]" />}
-          iconBg="bg-[#C49A3C]/10"
+      <Module>
+        <ModuleHead
+          title="Alerts to look at"
+          icon={<BellRing className="w-3.5 h-3.5 text-[#78716c]" />}
+          right={triggered > 0 ? (
+            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${TONE_STYLES.danger.chip}`}>{triggered} triggered</span>
+          ) : undefined}
         />
-        <StatCard
-          label="Assets under management"
-          value={totalAum > 0 ? formatCurrency(totalAum) : "—"}
-          sub={advisorProfile?.aum != null ? "declared value" : "sum of client assets"}
-          icon={<TrendingUp className="w-5 h-5 text-emerald-600" />}
-          iconBg="bg-emerald-50"
-        />
-        <StatCard
-          label="Active plan"
-          value={
-            <span className="flex items-center gap-2">
-              Free
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-[#F7F5EF] text-[#78716c] uppercase tracking-wider">
-                Basic plan
-              </span>
-            </span>
-          }
-          sub="Upgrade for unlimited reports"
-          icon={<Crown className="w-5 h-5 text-[#C49A3C]" />}
-          iconBg="bg-[#C49A3C]/10"
-          accent
-        />
-      </div>
-
-      {/* Bottom row */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Recent clients */}
-        <div className="xl:col-span-2 bg-white rounded-[1.75rem] border border-[rgba(196,154,60,0.2)] p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2
-              className="text-base font-bold text-[#1c1917]"
-              style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-            >
-              Recent clients
-            </h2>
-            {onNavigate && (
-              <button
-                onClick={() => onNavigate("clients")}
-                className="flex items-center gap-1 text-xs font-bold text-[#C49A3C] hover:text-[#d4aa4c] transition-colors"
-              >
-                View all <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-          {recentClients.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-[#1c1917] flex items-center justify-center mb-3">
-                <Users className="w-5 h-5 text-[#C49A3C]" />
-              </div>
-              <p className="text-sm font-bold text-[#1c1917] mb-1">No clients yet</p>
-              <p className="text-xs text-[#78716c] mb-4">Add your first client to get started.</p>
-              {onNavigate && (
-                <button
-                  onClick={() => onNavigate("clients")}
-                  className="px-4 py-2 bg-[#1c1917] text-white rounded-xl text-xs font-bold hover:bg-[#C49A3C] transition-colors"
-                >
-                  Add Client
-                </button>
-              )}
-            </div>
-          ) : (
-            <div>
-              {recentClients.map((c) => (
-                <RecentClientRow key={c.uuid} client={c} />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Activity summary + quick actions */}
-        <div className="flex flex-col gap-4">
-          {/* Report status */}
-          <div className="bg-white rounded-[1.75rem] border border-[rgba(196,154,60,0.2)] p-6 flex-1">
-            <h2
-              className="text-base font-bold text-[#1c1917] mb-4"
-              style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-            >
-              Report status
-            </h2>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm text-[#78716c]">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  Completed
-                </div>
-                <span className="text-sm font-bold text-[#1c1917]">{metrics?.report_generated ?? 0}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm text-[#78716c]">
-                  <Clock className="w-4 h-4 text-amber-500" />
-                  In progress
-                </div>
-                <span className="text-sm font-bold text-[#1c1917]">{metrics?.report_in_progress ?? 0}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm text-[#78716c]">
-                  <AlertCircle className="w-4 h-4 text-rose-400" />
-                  Errors
-                </div>
-                <span className="text-sm font-bold text-[#1c1917]">{metrics?.report_in_error ?? 0}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Upgrade CTA */}
-          <div className="bg-[#1c1917] rounded-[1.75rem] p-6 relative overflow-hidden">
-            <div className="absolute -top-8 -right-8 w-24 h-24 bg-[#C49A3C]/15 blur-2xl rounded-full" />
-            <div className="relative z-10">
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="w-3.5 h-3.5 text-[#C49A3C]" />
-                <p className="text-[9px] font-black uppercase tracking-widest text-[#C49A3C]">Pro Version</p>
-              </div>
-              <p className="text-sm font-medium text-[#a8a29e] leading-tight mb-4">
-                Unlimited reports and advanced AI models for your clients.
+        {rulesLoading ? (
+          <div className="flex justify-center pb-8"><Loader2 className="w-6 h-6 animate-spin text-[#C49A3C]" /></div>
+        ) : rulesError ? (
+          <p className="px-6 pb-6 text-sm text-[#78716c]">Unable to load your clients&apos; alerts.</p>
+        ) : sortedRules.length === 0 ? (
+          <EmptyRow
+            icon={<BellRing className="w-5 h-5" />}
+            title="No alerts on your clients yet"
+            text="Open a client's portfolio, then Alerts: be told when it moves by a set amount, or when a holding or an asset class leaves a range you choose."
+            action={clients.length > 0 ? <LinkButton onClick={() => onNavigate(CLIENTS_SECTION)}>Open a client</LinkButton> : undefined}
+          />
+        ) : (
+          <>
+            <ul className="divide-y divide-[#EEE9DD] border-t border-[#EEE9DD]">
+              {sortedRules.slice(0, ALERTS_SHOWN).map((rule) => {
+                const client = byUuid.get(rule.clientUuid)!;
+                const name = clientDisplayName(client);
+                const state = alertState(rule);
+                const figs = alertFigures(rule);
+                const { title } = describeAlert(rule, name);
+                return (
+                  <li key={rule.ruleId}>
+                    <button
+                      type="button"
+                      onClick={() => openClientPage(onNavigate, client.uuid, { kind: "portfolio", uuid: rule.portfolioUuid, page: "alerts" })}
+                      className="w-full flex items-center gap-3 px-6 py-3 text-left hover:bg-[#FBFAF6] transition-colors"
+                    >
+                      <ClientAvatar client={client} size="sm" />
+                      <span className="flex-1 min-w-0">
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="text-sm font-bold text-[#1c1917] truncate">{name}</span>
+                          <span className="text-xs text-[#a8a29e] truncate">{rule.portfolioName}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${TONE_STYLES[state.tone].chip}`}>{state.label}</span>
+                        </span>
+                        <span className="block text-xs text-[#78716c] truncate">{title}</span>
+                        {state.progressPct !== null && (
+                          <span className="mt-1.5 flex items-center gap-2">
+                            <span className="h-1.5 flex-1 max-w-56 rounded-full bg-slate-100 overflow-hidden">
+                              <span className={`block h-full rounded-full ${BAR_COLOR[state.tone]}`} style={{ width: `${Math.max(2, Math.min(100, state.progressPct))}%` }} />
+                            </span>
+                            {figs && <span className="text-[11px] font-bold text-[#78716c] whitespace-nowrap tabular-nums">{figs.current} / {figs.limit}</span>}
+                          </span>
+                        )}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-[#a8a29e] shrink-0" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            {sortedRules.length > ALERTS_SHOWN && (
+              <p className="px-6 py-3 border-t border-[#EEE9DD] text-xs text-[#78716c]">
+                {sortedRules.length - ALERTS_SHOWN} more, on each client&apos;s portfolios.
               </p>
-              {onNavigate && (
-                <button
-                  onClick={() => onNavigate("settings")}
-                  className="w-full py-2.5 bg-[#C49A3C] text-[#131210] rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-[#d4aa4c] transition-colors"
-                >
-                  Discover Pro
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+            )}
+          </>
+        )}
+      </Module>
+
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-[22px]">
+        <Module className="xl:col-span-3">
+          <ModuleHead
+            title="Clients"
+            icon={<Users className="w-3.5 h-3.5 text-[#78716c]" />}
+            right={clients.length > 0 ? <LinkButton onClick={() => onNavigate(CLIENTS_SECTION)}>All clients</LinkButton> : undefined}
+          />
+          {clients.length === 0 ? (
+            <EmptyRow
+              icon={<Users className="w-5 h-5" />}
+              title="No clients yet"
+              text="Add a client by their email: a new one gets an account, someone already on PortfoliAI is linked to you."
+              action={<LinkButton onClick={() => onNavigate(CLIENTS_SECTION)}>Add a client</LinkButton>}
+            />
+          ) : (
+            <ul className="divide-y divide-[#EEE9DD] border-t border-[#EEE9DD]">
+              {topClients.map((c) => {
+                const f = figures?.get(c.uuid);
+                const ret = f?.totalReturnPct ?? null;
+                return (
+                  <li key={c.uuid}>
+                    <button
+                      type="button"
+                      onClick={() => openClientPage(onNavigate, c.uuid)}
+                      className="w-full flex items-center gap-3 px-6 py-3 text-left hover:bg-[#FBFAF6] transition-colors"
+                    >
+                      <ClientAvatar client={c} size="sm" />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-bold text-[#1c1917] truncate">{clientDisplayName(c)}</span>
+                        <span className="block text-xs text-[#78716c] truncate">{c.email}</span>
+                      </span>
+                      <span className="text-right shrink-0">
+                        <span className="block text-sm font-black tabular-nums text-[#1c1917]">
+                          {figures === undefined ? <span className="inline-block h-3 w-16 rounded bg-slate-100 animate-pulse" /> : f ? formatCurrency(f.marketValue, f.currency, 0) : "—"}
+                        </span>
+                        {ret != null && (
+                          <span className={`block text-[11px] font-bold tabular-nums ${ret >= 0 ? "text-[#047857]" : "text-[#e11d48]"}`}>{signedPct(ret)}</span>
+                        )}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-[#a8a29e] shrink-0" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Module>
+
+        <Module className="xl:col-span-2">
+          <ModuleHead
+            title="Your strategies"
+            icon={<History className="w-3.5 h-3.5 text-[#78716c]" />}
+            right={strategies.length > 0 ? <LinkButton onClick={() => openPlanPage(onNavigate, "strategy")}>Strategy</LinkButton> : undefined}
+          />
+          {strategies.length === 0 ? (
+            <EmptyRow
+              icon={<History className="w-5 h-5" />}
+              title="No strategies yet"
+              text="Backtest a strategy, adopt it on a client's portfolio and share it with them, or publish it to Explore."
+              action={<LinkButton onClick={() => openPlanPage(onNavigate, "strategy")}>New strategy</LinkButton>}
+            />
+          ) : (
+            <ul className="divide-y divide-[#EEE9DD] border-t border-[#EEE9DD]">
+              {strategies.slice(0, STRATEGIES_SHOWN).map((p) => (
+                <li key={p.uuid}>
+                  <button
+                    type="button"
+                    onClick={() => openBacktestPage(onNavigate, p.uuid)}
+                    className="w-full flex items-center gap-3 px-6 py-3 text-left hover:bg-[#FBFAF6] transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center shrink-0"><History className="w-4 h-4" /></span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-bold text-[#1c1917] truncate">{p.name}</span>
+                      <span className="block text-xs text-[#78716c]">Created {dateLabel(p.createdAt)}</span>
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-[#a8a29e] shrink-0" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Module>
       </div>
     </div>
   );

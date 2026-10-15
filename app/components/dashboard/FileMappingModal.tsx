@@ -5,6 +5,8 @@ import { AlertCircle, AlertTriangle, CalendarClock, FileText, X, Check } from "l
 import { ALL_FIELDS, REQUIRED_FIELDS, DATE_FORMAT_OPTIONS } from "../../lib/parser";
 import { StandardTransaction } from "../../models/Report";
 import { UploadedFileState } from "./uploaderTypes";
+import type { Portfolio } from "../../models/Portfolio";
+import { PortfolioSelect } from "./PortfolioSelect";
 
 interface FileMappingModalProps {
   file: UploadedFileState;
@@ -12,12 +14,19 @@ interface FileMappingModalProps {
   onDateFormatChange: (dateFormat: string) => void;
   onConfirm: () => void;
   onClose: () => void;
+  // With two or more portfolios, asks which one the file's rows go into: a must before they
+  // reach the preview (the file starts with none).
+  portfolios?: Portfolio[];
+  onPortfolioChange?: (portfolioUuid: string) => void;
 }
 
-export function FileMappingModal({ file, onMappingChange, onDateFormatChange, onConfirm, onClose }: FileMappingModalProps) {
+export function FileMappingModal({
+  file, onMappingChange, onDateFormatChange, onConfirm, onClose, portfolios, onPortfolioChange,
+}: FileMappingModalProps) {
   // Shown once auto-detection isn't confident, and kept visible after the user picks a format
   // explicitly (dateFormat stops being "auto") so they can still change their mind.
   const showDateFormatPicker = file.dateFormatAmbiguous || file.dateFormat !== "auto";
+  const needsPortfolio = !!portfolios && portfolios.length > 1 && !file.portfolioUuid;
   return createPortal(
     <div
       className="fixed inset-0 z-100 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
@@ -43,6 +52,12 @@ export function FileMappingModal({ file, onMappingChange, onDateFormatChange, on
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {portfolios && portfolios.length > 1 && onPortfolioChange && (
+          <div className="max-w-xs">
+            <PortfolioSelect portfolios={portfolios} value={file.portfolioUuid} onChange={onPortfolioChange} />
+          </div>
+        )}
 
         {file.missingFields.length > 0 && (
           <div className="flex items-start gap-3 bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3">
@@ -144,7 +159,9 @@ export function FileMappingModal({ file, onMappingChange, onDateFormatChange, on
           </button>
           <button
             onClick={onConfirm}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-blue-600 transition-colors shadow-md shadow-slate-200"
+            disabled={needsPortfolio}
+            title={needsPortfolio ? "Choose the portfolio to add these transactions to first" : undefined}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-blue-600 transition-colors shadow-md shadow-slate-200 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed"
           >
             <Check className="h-4 w-4" />
             Done — show in preview

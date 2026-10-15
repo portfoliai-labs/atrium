@@ -25,7 +25,13 @@ export interface TransactionRow {
   sourceLabel: string;
   origin: "existing" | "pending";
   errorFields: Set<string>;
+  // The portfolio the row belongs to (saved) or will be saved into (pending).
+  portfolioUuid?: string;
 }
+
+// The three operations a user can bulk-reassign selected rows to — "other" is deliberately
+// excluded, same as TransactionModal's own edit form: it's not a value a user picks by hand.
+export type BulkOperation = "buy" | "sell" | "dividend";
 
 interface TransactionsSectionProps {
   title: string;
@@ -39,6 +45,10 @@ interface TransactionsSectionProps {
   onToggleRow: (key: string) => void;
   onToggleAll: (keysOnPage: string[]) => void;
   onDeleteSelected: (keys: string[]) => void;
+  // Reassigns the operation (buy/sell/dividend) for every selected row at once — the manual
+  // equivalent of what the AI's value-mapping step does per distinct raw value, but usable
+  // any time afterwards on rows it got wrong, not just during import. Omit to hide the control.
+  onBulkEditOperation?: (keys: string[], operation: BulkOperation) => void;
   onRowClick: (key: string) => void;
   deletingKeys: Set<string>;
   emptyMessage: string;
@@ -48,6 +58,8 @@ interface TransactionsSectionProps {
   // (not just the current page) — omit to hide the action entirely (e.g. pending rows).
   onDeleteAll?: () => void;
   deletingAll?: boolean;
+  // No selection, no row click: for a list whose rows can't be edited from here.
+  readOnly?: boolean;
 }
 
 const OPERATION_STYLES: Record<string, { icon: typeof ArrowUpRight; classes: string }> = {
@@ -72,8 +84,8 @@ function rowIdentifier(tx: DisplayTransaction): string {
 
 export function TransactionsSection({
   title, rows, totalCount, page, pageSize, onPageChange, loading,
-  selectedKeys, onToggleRow, onToggleAll, onDeleteSelected, onRowClick, deletingKeys,
-  emptyMessage, headerAction, filterBar, onDeleteAll, deletingAll,
+  selectedKeys, onToggleRow, onToggleAll, onDeleteSelected, onBulkEditOperation, onRowClick, deletingKeys,
+  emptyMessage, headerAction, filterBar, onDeleteAll, deletingAll, readOnly = false,
 }: TransactionsSectionProps) {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const pageKeys = rows.map(r => r.key);
@@ -103,7 +115,7 @@ export function TransactionsSection({
 
       {filterBar}
 
-      {rows.length > 0 && (
+      {rows.length > 0 && !readOnly && (
         <div className="flex items-center justify-between px-5 md:px-6 py-2.5 border-b border-slate-100 bg-slate-50/50 gap-4 flex-wrap">
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
@@ -115,13 +127,31 @@ export function TransactionsSection({
             <span className="text-xs font-semibold text-slate-500">Select all on this page</span>
           </label>
           {selectedOnPage.length > 0 && (
-            <button
-              onClick={() => onDeleteSelected(selectedOnPage)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-bold transition-colors"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Delete selected ({selectedOnPage.length})
-            </button>
+            <div className="flex items-center gap-2">
+              {onBulkEditOperation && (
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const operation = e.target.value as BulkOperation;
+                    if (operation) onBulkEditOperation(selectedOnPage, operation);
+                    e.target.value = "";
+                  }}
+                  className="text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-xl px-3 py-2 outline-none cursor-pointer transition-all focus:ring-4 focus:ring-slate-50"
+                >
+                  <option value="" disabled>Set operation ({selectedOnPage.length})…</option>
+                  <option value="buy">Buy</option>
+                  <option value="sell">Sell</option>
+                  <option value="dividend">Dividend</option>
+                </select>
+              )}
+              <button
+                onClick={() => onDeleteSelected(selectedOnPage)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-bold transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete selected ({selectedOnPage.length})
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -153,14 +183,14 @@ export function TransactionsSection({
               tx.isin && `ISIN ${tx.isin}`,
               tx.broker,
               tx.fees > 0 && `fees ${formatMoney(tx.fees, tx.currency)}`,
-              !isExisting && row.sourceLabel,
+              row.sourceLabel,
             ].filter(Boolean).join(" · ");
 
             return (
               <div
                 key={row.key}
-                onClick={() => !isDeleting && onRowClick(row.key)}
-                className={`flex items-center gap-3 px-5 md:px-6 py-3.5 transition-colors cursor-pointer ${
+                onClick={() => !isDeleting && !readOnly && onRowClick(row.key)}
+                className={`flex items-center gap-3 px-5 md:px-6 py-3.5 transition-colors ${readOnly ? "" : "cursor-pointer"} ${
                   isDeleting
                     ? "opacity-40 pointer-events-none"
                     : selectedKeys.has(row.key)
@@ -170,13 +200,15 @@ export function TransactionsSection({
                     : "hover:bg-slate-50/60"
                 }`}
               >
-                <input
-                  type="checkbox"
-                  className="accent-blue-600 w-4 h-4 cursor-pointer shrink-0"
-                  checked={selectedKeys.has(row.key)}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={() => onToggleRow(row.key)}
-                />
+                {!readOnly && (
+                  <input
+                    type="checkbox"
+                    className="accent-blue-600 w-4 h-4 cursor-pointer shrink-0"
+                    checked={selectedKeys.has(row.key)}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => onToggleRow(row.key)}
+                  />
+                )}
 
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${opStyle.classes}`}>
                   <OpIcon className="h-4 w-4" />

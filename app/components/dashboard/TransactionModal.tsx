@@ -5,6 +5,11 @@ import { createPortal } from "react-dom";
 import { X, AlertCircle, PlusCircle, Pencil, Trash2, TrendingUp, TrendingDown, Coins, type LucideIcon } from "lucide-react";
 import { StandardTransaction } from "../../models/Report";
 import { validateTransactions } from "../../lib/parser";
+import type { Portfolio } from "../../models/Portfolio";
+import { PortfolioSelect } from "./PortfolioSelect";
+import { AssetPicker } from "./AssetPicker";
+import type { AssetSearchResult } from "../../models/AssetSearch";
+import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 
 interface TransactionModalProps {
   mode: "add" | "edit";
@@ -12,6 +17,13 @@ interface TransactionModalProps {
   onClose: () => void;
   onSave: (transaction: StandardTransaction) => void;
   onDelete?: () => void;
+  // Where the transaction will be saved: with two or more portfolios the form asks, and the
+  // pick comes back as the saved transaction's portfolioUuid. Omit for a saved transaction,
+  // which stays in the portfolio it's in.
+  portfolios?: Portfolio[];
+  defaultPortfolioUuid?: string;
+  // The form can be filled in but not saved (a demo account, see lib/demo).
+  readOnly?: boolean;
 }
 
 // Colors mirror the operation badges in TransactionsSection.tsx (OPERATION_STYLES)
@@ -143,10 +155,16 @@ function PillButton({
   );
 }
 
-export function TransactionModal({ mode, initial, onClose, onSave, onDelete }: TransactionModalProps) {
+export function TransactionModal({ mode, initial, onClose, onSave, onDelete, portfolios, defaultPortfolioUuid, readOnly = false }: TransactionModalProps) {
   const [form, setForm] = useState<FormState>(() => toFormState(initial));
+  const [portfolioUuid, setPortfolioUuid] = useState(initial?.portfolioUuid ?? defaultPortfolioUuid ?? portfolios?.[0]?.uuid);
   const [errors, setErrors] = useState<string[]>([]);
   const isEdit = mode === "edit";
+  // A new transaction's security is picked from the search, which fills in ticker, ISIN and
+  // currency; typing them by hand stays possible for one the search doesn't find. A saved
+  // transaction opens on the fields it already has.
+  const [manualAsset, setManualAsset] = useState(isEdit);
+  const [pickedAsset, setPickedAsset] = useState<AssetSearchResult | null>(null);
 
   const set = <K extends keyof FormState>(key: K) => (value: string) =>
     setForm(prev => ({ ...prev, [key]: value }));
@@ -163,6 +181,27 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete }: T
       ...(dividendType === "cash" ? { quantity: "", price: "" } : {}),
     }));
 
+  const pickAsset = (asset: AssetSearchResult | null) => {
+    setPickedAsset(asset);
+    setForm(prev => ({
+      ...prev,
+      ticker: asset?.ticker ?? "",
+      isin: asset?.isin ?? "",
+      currency: asset?.currency ?? prev.currency,
+    }));
+  };
+
+  const switchToManual = () => {
+    // The picked security, if any, carries over into the fields.
+    setPickedAsset(null);
+    setManualAsset(true);
+  };
+
+  const switchToSearch = () => {
+    pickAsset(null);
+    setManualAsset(false);
+  };
+
   const showQuantityPrice = !isDividend || isStockDividend;
   const requiresQuantityPrice = form.operation === "buy" || form.operation === "sell" || isStockDividend;
   // A cash dividend has no quantity/price to derive a value from, so it's the
@@ -173,7 +212,7 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete }: T
     const foundErrors: string[] = [];
 
     if (!form.ticker.trim())
-      foundErrors.push("Ticker is required.");
+      foundErrors.push(manualAsset ? "Ticker is required." : "Pick a security.");
 
     // Blank means "not applicable" (e.g. a cash dividend) rather than 0 — only
     // parse when the user actually typed something.
@@ -201,6 +240,7 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete }: T
       broker: form.broker.trim() || "Manual",
       ticker,
       ...(isin ? { isin } : {}),
+      ...(portfolios && portfolioUuid ? { portfolioUuid } : {}),
     };
 
     const { errors: validationErrors } = validateTransactions([transaction]);
@@ -247,6 +287,16 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete }: T
           </button>
         </div>
 
+        {readOnly && (
+          <p className="rounded-2xl bg-[#1c1917] px-4 py-3 text-xs font-semibold text-stone-300">
+            <span className="font-black text-white">Demo account — read only.</span> Try the form out; it can&apos;t be saved.
+          </p>
+        )}
+
+        {portfolios && portfolios.length > 1 && portfolioUuid && (
+          <PortfolioSelect portfolios={portfolios} value={portfolioUuid} onChange={setPortfolioUuid} label={isEdit ? "Portfolio" : "Add to portfolio"} />
+        )}
+
         <div className="flex flex-wrap gap-3">
           {OPERATION_OPTIONS.map((op) => (
             <OperationButton
@@ -291,11 +341,27 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete }: T
           </div>
         )}
 
+        <div className="space-y-1.5">
+          {manualAsset ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <InputField label="Ticker" value={form.ticker} onChange={set("ticker")} placeholder="AAPL" required />
+              <InputField label="ISIN" value={form.isin} onChange={set("isin")} placeholder="US0378331005" />
+            </div>
+          ) : (
+            <AssetPicker value={pickedAsset} onChange={pickAsset} required />
+          )}
+          <button
+            type="button"
+            onClick={manualAsset ? switchToSearch : switchToManual}
+            className="text-[11px] font-bold text-slate-400 hover:text-blue-600 transition-colors"
+          >
+            {manualAsset ? "Search for the security instead" : "Can't find it? Enter the ticker manually"}
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <InputField label="Date" type="date" value={form.date} onChange={set("date")} required />
           <InputField label="Time" type="time" value={form.time} onChange={set("time")} placeholder="Optional" />
-          <InputField label="Ticker" value={form.ticker} onChange={set("ticker")} placeholder="AAPL" required />
-          <InputField label="ISIN" value={form.isin} onChange={set("isin")} placeholder="US0378331005" />
           {showAmountField && (
             <InputField label="Amount" type="number" value={form.amount} onChange={set("amount")} placeholder="1500.00" required />
           )}
@@ -311,7 +377,7 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete }: T
         </div>
 
         <div className="flex items-center justify-between gap-3 pt-2">
-          {isEdit && onDelete ? (
+          {isEdit && onDelete && !readOnly ? (
             <button
               onClick={onDelete}
               className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-rose-600 hover:bg-rose-50 transition-colors"
@@ -329,7 +395,9 @@ export function TransactionModal({ mode, initial, onClose, onSave, onDelete }: T
             </button>
             <button
               onClick={handleSubmit}
-              className="px-6 py-3 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-blue-600 transition-colors shadow-md shadow-slate-200"
+              disabled={readOnly}
+              title={readOnly ? DEMO_DISABLED_TITLE : undefined}
+              className="px-6 py-3 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-blue-600 transition-colors shadow-md shadow-slate-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-900"
             >
               {isEdit ? "Save changes" : "Add transaction"}
             </button>

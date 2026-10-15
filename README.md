@@ -6,6 +6,22 @@ ianus, the platform's public API. Its place among the services is in forum's
 [service map](https://github.com/portfoliai-labs/forum/blob/main/docs/service-map.md); the mobile
 app is tabella.
 
+## Environment variables
+
+| Variable | What it's for |
+| --- | --- |
+| `NEXT_PUBLIC_API_URL` | Backend base URL |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase auth |
+| `NEXT_PUBLIC_SITE_URL` | Public site URL (metadata); defaults to https://portfoliai.online |
+
+### Demo accounts
+
+An account on the `DEMO` subscription tier (`subscription_tier` on its profile) is a demo
+account. On the regular dashboard it also sees the roadmap's preview features (Wallets, Real
+estate, Explore, Strategy — sample data, not tied to real data), and it is read-only: the
+frontend refuses its writes (`app/lib/demo.ts`) and disables the controls that would send them.
+The backend must refuse a demo account's writes as well; the frontend alone can be bypassed.
+
 ## Getting Started
 
 First, run the development server:
