@@ -6,6 +6,7 @@ import { portfoliosService } from "../services/portfoliosService";
 import { useUser } from "./UserContext";
 import { isBacktest, type Portfolio } from "../models/Portfolio";
 import type { StrategyPortfolioPayload } from "../models/Strategy";
+import type { TaxationMode } from "../models/Tax";
 
 const LAST_SELECTED_KEY = "last_selected_portfolio_uuid";
 
@@ -31,6 +32,8 @@ interface PortfolioContextType {
   // A strategy's backtest (see models/Strategy): joins the list, selected, like a new portfolio.
   createStrategyPortfolio: (payload: StrategyPortfolioPayload) => Promise<Portfolio>;
   renamePortfolio: (uuid: string, name: string) => Promise<Portfolio>;
+  // Who pays a real portfolio's taxes (see models/Tax): its advisor sets a client's too.
+  setTaxationMode: (uuid: string, mode: TaxationMode) => Promise<Portfolio>;
   // Throws (with the backend's own message) on the default portfolio's 409 — callers show it.
   // Resolves with the portfolios left, refetched: the aggregate may have gone with it.
   deletePortfolio: (uuid: string) => Promise<Portfolio[]>;
@@ -118,6 +121,12 @@ export function PortfolioProvider({ children, client = null }: { children: React
     return updated;
   }, []);
 
+  const setTaxationMode = useCallback(async (uuid: string, mode: TaxationMode) => {
+    const updated = await portfoliosService.setTaxationMode(uuid, mode);
+    setPortfolios((prev) => prev.map((p) => (p.uuid === uuid ? updated : p)));
+    return updated;
+  }, []);
+
   // If the deleted one (or the aggregate, gone once only one portfolio is left) was selected,
   // fetchPortfolios falls back to the default on its own.
   const deletePortfolio = useCallback(async (uuid: string) => {
@@ -133,9 +142,9 @@ export function PortfolioProvider({ children, client = null }: { children: React
   const ownPortfolios = client ? outer?.ownPortfolios ?? [] : portfolios;
   const contextValue: PortfolioContextType = useMemo(() => ({
     portfolios, current, loading, selectPortfolio,
-    refreshPortfolios: fetchPortfolios, createPortfolio, createStrategyPortfolio, renamePortfolio, deletePortfolio,
+    refreshPortfolios: fetchPortfolios, createPortfolio, createStrategyPortfolio, renamePortfolio, setTaxationMode, deletePortfolio,
     client, ownPortfolios, canManage: client === null,
-  }), [portfolios, current, loading, selectPortfolio, fetchPortfolios, createPortfolio, createStrategyPortfolio, renamePortfolio, deletePortfolio, client, ownPortfolios]);
+  }), [portfolios, current, loading, selectPortfolio, fetchPortfolios, createPortfolio, createStrategyPortfolio, renamePortfolio, setTaxationMode, deletePortfolio, client, ownPortfolios]);
 
   return <PortfolioContext.Provider value={contextValue}>{children}</PortfolioContext.Provider>;
 }

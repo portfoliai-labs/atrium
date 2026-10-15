@@ -4,6 +4,7 @@
 import type { Portfolio } from "../models/Portfolio";
 import type { PortfolioComparisonEntry } from "../models/PortfolioData";
 import type { StrategyPortfolioPayload, StrategyResponse } from "../models/Strategy";
+import type { TaxationMode } from "../models/Tax";
 import { apiFetch } from "./apiClient";
 
 export const portfoliosService = {
@@ -62,6 +63,15 @@ export const portfoliosService = {
     return apiFetch<Portfolio>(`/v1/portfolios/${portfolioUuid}`, {
       method: "PATCH",
       body: JSON.stringify({ name }),
+    });
+  },
+
+  // PUT /v1/portfolios/{p}/taxation-mode {taxationMode} — who pays its taxes, over its whole
+  // history (see models/Tax). 409 for a virtual portfolio. An advisor sets a client's too.
+  async setTaxationMode(portfolioUuid: string, taxationMode: TaxationMode): Promise<Portfolio> {
+    return apiFetch<Portfolio>(`/v1/portfolios/${portfolioUuid}/taxation-mode`, {
+      method: "PUT",
+      body: JSON.stringify({ taxationMode }),
     });
   },
 

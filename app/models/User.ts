@@ -30,6 +30,9 @@ interface UserProfile {
   risk_tolerance: string | null;
   financial_knowledge_level: FinancialKnowledgeLevel | null;
   currency: string | null;
+  // ISO 3166-1 alpha-2, upper case ("IT"); null until the user gives it. Its regime computes their
+  // taxes (see models/Tax).
+  tax_residence?: string | null;
   subscription_tier: SubscriptionTier | null;
 }
 
@@ -54,6 +57,8 @@ interface ProfileUpdatePayload {
   financial_knowledge_level?: FinancialKnowledgeLevel | null;
   currency?: string | null;
   language?: string | null;
+  // Two letters, any case (the backend upper-cases them); 422 otherwise. Left out: unchanged.
+  tax_residence?: string | null;
 }
 
 // Matches SubscriptionResponse DTO (GET /users/subscription, POST /users/subscription) —
