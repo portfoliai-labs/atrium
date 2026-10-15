@@ -11,7 +11,7 @@ import {
   CRISIS_LABELS, FILTER_HORIZONS, HORIZON_LABELS, SORT_LABELS, isFigureSort,
   type CatalogPage, type CatalogSort, type FilterHorizon, type HorizonFigures, type PublishedStrategy,
 } from "../../models/PublishedStrategy";
-import { exchangeLabel } from "../../models/AssetSearch";
+import { exchangeLabel } from "../../models/Listing";
 import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { describeRebalancing } from "./BacktestMarks";

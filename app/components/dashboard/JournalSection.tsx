@@ -22,7 +22,8 @@ export interface JournalFilters {
   category?: ArticleCategory;
   q?: string;
   author?: { uuid: string; name: string };
-  instrument?: { ticker: string; isin: string | null };
+  // By census' instrument; one saved before listings by its ticker and ISIN.
+  instrument?: { ticker: string; isin: string | null; instrumentId?: string | null };
 }
 
 /**

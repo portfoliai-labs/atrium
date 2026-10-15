@@ -6,12 +6,12 @@ import { ArrowDownToLine, ChevronDown, Coins, History, Loader2, Minus, PiggyBank
 import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { Toggle } from "./Toggle";
-import { AssetPicker, assetListingLine } from "./AssetPicker";
+import { AssetPicker } from "./AssetPicker";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import { ApiError } from "../../services/apiClient";
-import type { AssetSearchResult } from "../../models/AssetSearch";
+import { listingLine, type Listing } from "../../models/Listing";
 import {
   MAX_STRATEGY_TARGETS, STRATEGY_CATEGORIES, STRATEGY_CATEGORY_LABELS, STRATEGY_PROXIES,
   type CashFlowAmountType, type RebalanceMode, type StrategyCategory, type StrategyFrequency, type StrategyParams,
@@ -36,7 +36,7 @@ type Weights = Record<StrategyCategory, number>;
 
 // A security in the mix, bought as it is, and how much of it.
 interface SecurityPick {
-  asset: AssetSearchResult;
+  asset: Listing;
   weight: number;
 }
 
@@ -62,7 +62,7 @@ interface StrategyForm extends Omit<StrategyParams, "targets"> {
   securities: SecurityPick[];
 }
 
-const securityKey = (asset: Pick<AssetSearchResult, "ticker">) => `asset:${asset.ticker}`;
+const securityKey = (asset: Pick<Listing, "listingId">) => `asset:${asset.listingId}`;
 
 /** The targets the form sends, each with the key of the row it comes from. */
 function targetsOf(f: StrategyForm): { key: string; target: StrategyTarget }[] {
@@ -73,7 +73,7 @@ function targetsOf(f: StrategyForm): { key: string; target: StrategyTarget }[] {
     })),
     ...f.securities.filter((s) => s.weight > 0).map((s) => ({
       key: securityKey(s.asset),
-      target: { kind: "asset", asset: { ticker: s.asset.ticker, isin: s.asset.isin }, weightPct: s.weight } as StrategyTarget,
+      target: { kind: "asset", asset: { listingId: s.asset.listingId }, weightPct: s.weight } as StrategyTarget,
     })),
   ];
 }
@@ -168,7 +168,7 @@ export function StrategyBuilder({ trail, onCreated }: { trail: Crumb[]; onCreate
   const autoName = mixName;
   const name = form.name.trim() || autoName;
 
-  const addSecurity = (asset: AssetSearchResult | null) => {
+  const addSecurity = (asset: Listing | null) => {
     // A new security takes what's left of the 100%.
     if (asset) setSecurities([...form.securities, { asset, weight: Math.max(0, 100 - sum) }]);
   };
@@ -218,7 +218,7 @@ export function StrategyBuilder({ trail, onCreated }: { trail: Crumb[]; onCreate
       const refused = Number.isInteger(index) ? sent[index] : undefined;
       if (refused?.target.kind === "asset") {
         setInvalidKey(refused.key);
-        setError(`${refused.target.asset.ticker} can't be priced for a backtest: remove it or pick another listing.`);
+        setError(`${form.securities.find((s) => securityKey(s.asset) === refused.key)?.asset.ticker ?? "A security"} can't be priced for a backtest: remove it or pick another listing.`);
       } else {
         setError(err instanceof Error ? err.message : "Unable to run this backtest.");
       }
@@ -335,7 +335,7 @@ export function StrategyBuilder({ trail, onCreated }: { trail: Crumb[]; onCreate
                               <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: SECURITY_COLORS[i % SECURITY_COLORS.length] }} />
                               <span className="min-w-0 flex-1">
                                 <span className="block text-[13px] font-black text-slate-900 truncate">{p.asset.name}</span>
-                                <span className="block text-[11px] font-semibold text-slate-500 truncate">{assetListingLine(p.asset)}</span>
+                                <span className="block text-[11px] font-semibold text-slate-500 truncate">{listingLine(p.asset)}</span>
                               </span>
                             </span>
                             <WeightBar pct={p.weight} color={SECURITY_COLORS[i % SECURITY_COLORS.length]} />
@@ -365,8 +365,8 @@ export function StrategyBuilder({ trail, onCreated }: { trail: Crumb[]; onCreate
                     value={null}
                     onChange={addSecurity}
                     label="Add a security"
-                    excludeTickers={form.securities.map((s) => s.asset.ticker)}
-                    excludeIsins={form.securities.flatMap((s) => (s.asset.isin ? [s.asset.isin] : []))}
+                    excludeListingIds={form.securities.map((s) => s.asset.listingId)}
+                    excludeInstrumentIds={form.securities.map((s) => s.asset.instrumentId)}
                   />
                 ) : (
                   <p className="text-xs text-slate-500">

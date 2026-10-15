@@ -2,6 +2,7 @@ import { RawRow } from "./fileParsing";
 import { ColumnFieldMapping, ColumnMappingDTO, TransactionTarget } from "../../models/Import";
 import { parseDateValue } from "../parser/dateFormat";
 import { strftimeToDatefns } from "./fieldDefaults";
+import { OPERATIONS, QUANTITY_REQUIRED, isCashOperation } from "../operations";
 
 // Frontend-local transform used only to render Block C (preview) and Block D (anomalies) live
 // as the user edits the mapping. The authoritative transform that actually gets saved runs on
@@ -80,7 +81,8 @@ function isDateOutOfRange(iso: string): boolean {
   return new Date(iso).getTime() > Date.now();
 }
 
-const TARGETS: TransactionTarget[] = ["buy", "sell", "dividend"];
+// What a constant type can be: every operation but a conversion, which isn't imported yet.
+const TARGETS = OPERATIONS.filter((o): o is TransactionTarget => o !== "fx_conversion");
 
 // Absolute floor for the amount-vs-quantity*price check, in the transaction's own currency —
 // covers double rounding (price rounded in the file, amount rounded to cents) on small trades.
@@ -115,9 +117,10 @@ export function buildPreviewRow(
   // otherwise import silently as an untraceable "ghost" position, so it's flagged here even
   // though the columns themselves are mapped (this catches broker exports with sporadic blank
   // cells, not just an unmapped column, which is caught separately in ColumnMappingBlock).
+  // A cash movement names none.
   const ticker = fieldValue(row, fields.ticker)?.trim();
   const isin = fieldValue(row, fields.isin)?.trim();
-  if (!ticker && !isin) anomalies.push("missing-instrument");
+  if (!ticker && !isin && !(type && isCashOperation(type))) anomalies.push("missing-instrument");
 
   const amountRaw = fieldValue(row, fields.amount);
   const amount = parseLocaleNumber(amountRaw, fields.amount);
@@ -127,7 +130,7 @@ export function buildPreviewRow(
   const price = parseLocaleNumber(fieldValue(row, fields.price), fields.price);
   const fees = parseLocaleNumber(fieldValue(row, fields.fees), fields.fees);
 
-  if (type === "buy" || type === "sell") {
+  if (type && QUANTITY_REQUIRED.includes(type)) {
     if ((quantity ?? 0) < 0 || (price ?? 0) < 0) anomalies.push("unexpected-negative");
   }
 

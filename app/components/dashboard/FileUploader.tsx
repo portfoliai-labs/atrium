@@ -19,9 +19,13 @@ import {
   RawRow,
 } from "../../lib/parser";
 import { StandardTransaction } from "../../models/Report";
-import type { TransactionInput, TransactionResponse } from "../../models/Transaction";
+import { isManualAssetId, type TransactionInput, type TransactionOperation, type TransactionResponse } from "../../models/Transaction";
+import { ACCRUED_INTEREST_OPERATIONS, WITHHOLDING_OPERATIONS, isCashOperation } from "../../lib/operations";
 import { TransactionModal } from "./TransactionModal";
+import { ListingResolutionModal, type UnlistedInstrument } from "./ListingResolutionModal";
+import type { Listing } from "../../models/Listing";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { TransferUnitsDialog } from "./TransferUnitsDialog";
 import { FileMappingModal } from "./FileMappingModal";
 import { ImportWizard } from "./import/ImportWizard";
 import { UploadedFileState } from "./uploaderTypes";
@@ -36,9 +40,11 @@ const PENDING_PAGE_SIZE = 10;
 
 function pendingToDisplay(tx: StandardTransaction): DisplayTransaction {
   return {
+    listingId: tx.listingId ?? null,
     ticker: tx.ticker ?? null,
-    // Not-yet-saved rows haven't been through backend asset resolution, so no name yet.
-    name: null,
+    // A file's rows haven't been through backend asset resolution, so no name yet; a listing
+    // picked from the search has census'.
+    name: tx.name ?? null,
     isin: tx.isin ?? null,
     date: tx.date,
     operation: tx.operation,
@@ -48,11 +54,18 @@ function pendingToDisplay(tx: StandardTransaction): DisplayTransaction {
     currency: tx.currency,
     fees: tx.fees,
     broker: tx.broker,
+    assetId: tx.assetId ?? null,
+    withholdingTax: tx.withholdingTax ?? null,
+    accruedInterest: tx.accruedInterest ?? null,
+    counterAmount: tx.counterAmount ?? null,
+    counterCurrency: tx.counterCurrency ?? null,
+    rewardKind: tx.rewardKind ?? null,
   };
 }
 
 function existingToDisplay(tx: TransactionResponse): DisplayTransaction {
   return {
+    listingId: tx.listing_id,
     ticker: tx.ticker,
     name: tx.name,
     isin: tx.isin,
@@ -65,6 +78,12 @@ function existingToDisplay(tx: TransactionResponse): DisplayTransaction {
     currency: tx.currency,
     fees: tx.fees,
     broker: tx.broker,
+    assetId: isManualAssetId(tx.asset_id) ? tx.asset_id : null,
+    withholdingTax: tx.withholding_tax,
+    accruedInterest: tx.accrued_interest,
+    counterAmount: tx.counter_amount,
+    counterCurrency: tx.counter_currency,
+    rewardKind: tx.reward_kind,
   };
 }
 
@@ -86,27 +105,46 @@ function existingResponseToStandard(tx: TransactionResponse): StandardTransactio
     // back to it so the edit form always has a ticker to show/resubmit.
     ticker: tx.ticker ?? tx.isin ?? "",
     ...(tx.isin ? { isin: tx.isin } : {}),
+    ...(tx.listing_id ? { listingId: tx.listing_id } : {}),
+    ...(tx.name ? { name: tx.name } : {}),
+    ...(isManualAssetId(tx.asset_id) ? { assetId: tx.asset_id } : {}),
+    withholdingTax: tx.withholding_tax,
+    accruedInterest: tx.accrued_interest,
+    counterAmount: tx.counter_amount,
+    counterCurrency: tx.counter_currency,
+    rewardKind: tx.reward_kind,
   };
 }
 
-// The backend has no ticker-from-ISIN resolver exposed yet, so ISIN-only rows
-// fall back to using the ISIN as both asset_id and ticker.
+// A transaction on census' listing is sent by its listing_id alone: sending its ticker too would
+// move it off the listing. A manual asset's goes by its asset_id alone. Without either (a file's
+// rows, transactions recorded before listings) it goes by ticker; ISIN-only rows fall back to
+// using the ISIN as both asset_id and ticker. A cash movement names no security, quantity or
+// price. Each of the other fields goes only with the operations that take it (lib/operations).
 function toTransactionInput(tx: DisplayTransaction): TransactionInput {
+  const op = tx.operation as TransactionOperation;
+  const amount = Number.isNaN(tx.amount) ? undefined : tx.amount;
+  const base = { date: tx.date, operation: op, amount, fees: tx.fees, currency: tx.currency, broker: tx.broker };
+  if (isCashOperation(op)) {
+    return op === "fx_conversion"
+      ? { ...base, counter_amount: tx.counterAmount ?? null, counter_currency: tx.counterCurrency ?? null }
+      : base;
+  }
   const ticker = tx.ticker ?? tx.isin ?? "";
   return {
-    asset_id: ticker,
-    isin: tx.isin,
-    ticker,
-    date: tx.date,
-    operation: tx.operation as TransactionInput["operation"],
-    amount: tx.amount,
+    ...(tx.listingId ? { listing_id: tx.listingId } : tx.assetId ? { asset_id: tx.assetId } : { asset_id: ticker, isin: tx.isin, ticker }),
+    ...base,
     quantity: tx.quantity,
     price: tx.price,
-    fees: tx.fees,
-    currency: tx.currency,
-    broker: tx.broker,
+    ...(WITHHOLDING_OPERATIONS.includes(op) ? { withholding_tax: tx.withholdingTax ?? null } : {}),
+    ...(ACCRUED_INTEREST_OPERATIONS.includes(op) ? { accrued_interest: tx.accruedInterest ?? null } : {}),
+    ...(op === "reward" ? { reward_kind: tx.rewardKind ?? null } : {}),
   };
 }
+
+// What a row without a listing names its security by, for the listing picked for it: its ISIN,
+// else its ticker.
+const instrumentKey = (tx: DisplayTransaction) => (tx.isin || tx.ticker || "").trim().toUpperCase();
 
 // Groups items by the portfolio they belong to, for writes that have to go portfolio by portfolio.
 function groupByPortfolio<T>(items: T[], portfolioOf: (item: T) => string): Map<string, T[]> {
@@ -319,7 +357,17 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
     return undefined;
   }, [editingKey, manualTransactions, files, existingItems]);
 
+  // The saved transaction behind the open edit modal, and the one whose units are being moved.
+  const editingSaved = editingKey?.startsWith("existing::")
+    ? existingItems.find(t => t.transaction_uuid === editingKey.slice("existing::".length))
+    : undefined;
+  const [transferFrom, setTransferFrom] = useState<TransactionResponse | null>(null);
+
   const canSubmit = pendingRows.length > 0 && confirmedFilesValid;
+  // The listing picked for each security a file's rows name (by instrumentKey), and the ones left
+  // to pick while the resolution is open: a transaction is saved on a listing.
+  const [listingsByInstrument, setListingsByInstrument] = useState<Record<string, Listing>>({});
+  const [unlisted, setUnlisted] = useState<UnlistedInstrument[] | null>(null);
 
   const processFileData = (
     rawData: RawRow[],
@@ -638,7 +686,18 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
   // Reassigns `operation` for every selected row in one go — the manual counterpart to the
   // AI's per-distinct-value mapping in the import wizard, but usable any time afterwards
   // (not just during import) on whichever rows it got wrong, regardless of how many there are.
-  const handleBulkEditOperation = async (keys: string[], operation: BulkOperation) => {
+  const handleBulkEditOperation = async (allKeys: string[], operation: BulkOperation) => {
+    // A row on a security only becomes another operation on one, a cash movement another cash
+    // one: the others are left as they are, and said so.
+    const kindOf = new Map([...pendingRows, ...existingRows].map(r => [r.key, isCashOperation(r.transaction.operation)]));
+    const toCash = isCashOperation(operation);
+    const keys = allKeys.filter(k => kindOf.get(k) === toCash);
+    const skipped = allKeys.length - keys.length;
+    if (skipped > 0) {
+      setStatus("error");
+      setErrorMessage(`${skipped} ${skipped === 1 ? "row was" : "rows were"} left as they were: ${toCash ? "a transaction on a security can't become a cash movement" : "a cash movement can't become a transaction on a security"}.`);
+      setShowToast(true);
+    }
     const manualIds = new Set<string>();
     const fileGroups = new Map<string, Set<number>>();
     const existingIds = new Set<string>();
@@ -694,16 +753,36 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
     }
   };
 
-  const handleConfirmUpload = async () => {
+  const handleConfirmUpload = async (listings: Record<string, Listing> = listingsByInstrument) => {
     if (!canSubmit) return;
+    // A file's rows name their security by ticker or ISIN: each one's listing is picked first.
+    const needed = new Map<string, UnlistedInstrument>();
+    for (const { transaction: tx } of pendingRows) {
+      const key = instrumentKey(tx);
+      // A cash movement names no security; a manual asset isn't listed.
+      if (tx.listingId || tx.assetId || isCashOperation(tx.operation) || listings[key]) continue;
+      const known = needed.get(key) ?? { key, ticker: tx.ticker, isin: tx.isin, currencies: [], rows: 0 };
+      needed.set(key, {
+        ...known,
+        currencies: known.currencies.includes(tx.currency) ? known.currencies : [...known.currencies, tx.currency],
+        rows: known.rows + 1,
+      });
+    }
+    if (needed.size > 0) {
+      setUnlisted(Array.from(needed.values()));
+      return;
+    }
     try {
       setLoading(true);
       // One save per destination portfolio.
       await Promise.all(
         Array.from(groupByPortfolio(pendingRows, r => r.portfolioUuid ?? defaultTarget)).map(([uuid, rows]) =>
-          transactionService.saveTransactions(uuid, rows.map(r => toTransactionInput(r.transaction))),
+          transactionService.saveTransactions(uuid, rows.map(r => toTransactionInput({
+            ...r.transaction, listingId: r.transaction.listingId ?? listings[instrumentKey(r.transaction)]?.listingId,
+          }))),
         ),
       );
+      setListingsByInstrument({});
       if (existingPage === 1) {
         await refreshExisting(1);
       } else {
@@ -774,9 +853,43 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
           // A saved row stays in its portfolio; a new one can still be sent elsewhere.
           portfolios={editingKey.startsWith("existing::") ? undefined : pickable}
           defaultPortfolioUuid={defaultTarget}
+          lockKind={editingKey.startsWith("existing::")}
+          onTransfer={editingSaved && !isCashOperation(editingSaved.operation) && ownPortfolios.length > 1 && !isDemo
+            ? () => { setTransferFrom(editingSaved); setEditingKey(null); }
+            : undefined}
           onClose={() => setEditingKey(null)}
           onSave={(transaction) => { void handleUpdateTransaction(editingKey, transaction); setEditingKey(null); }}
           onDelete={() => { confirmAndDeleteKeys([editingKey]); setEditingKey(null); }}
+        />
+      )}
+
+      {/* MODAL: move a saved transaction's security's units to another portfolio */}
+      {transferFrom && (
+        <TransferUnitsDialog
+          fromPortfolioUuid={transferFrom.portfolio_uuid}
+          assetId={transferFrom.asset_id}
+          assetLabel={transferFrom.name ?? transferFrom.ticker ?? transferFrom.isin ?? "this security"}
+          portfolios={ownPortfolios}
+          onClose={() => setTransferFrom(null)}
+          onDone={() => {
+            setTransferFrom(null);
+            setStatus("saved");
+            setShowToast(true);
+            void refreshExisting(existingPage);
+          }}
+        />
+      )}
+
+      {unlisted && (
+        <ListingResolutionModal
+          instruments={unlisted}
+          onClose={() => setUnlisted(null)}
+          onResolved={(picked) => {
+            const listings = { ...listingsByInstrument, ...picked };
+            setListingsByInstrument(listings);
+            setUnlisted(null);
+            void handleConfirmUpload(listings);
+          }}
         />
       )}
 
@@ -932,7 +1045,7 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
           headerAction={
             <button
               disabled={!canSubmit || loading}
-              onClick={handleConfirmUpload}
+              onClick={() => { void handleConfirmUpload(); }}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm ${
                 canSubmit ? "bg-slate-900 text-white hover:bg-blue-600" : "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
               }`}

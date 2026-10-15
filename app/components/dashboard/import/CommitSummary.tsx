@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import { CommitImportResponse } from "../../../models/Import";
 
 const WARNING_LABELS: Record<string, string> = {
@@ -12,7 +12,9 @@ const WARNING_LABELS: Record<string, string> = {
 };
 
 export function CommitSummary({ summary }: { summary: CommitImportResponse }) {
-  const hasIssues = summary.issues.length > 0 || summary.integrity_warnings.length > 0 || summary.unresolved_instruments.length > 0;
+  const rewardsAtClose = summary.rewards_valued_at_close ?? [];
+  const hasIssues = summary.issues.length > 0 || summary.integrity_warnings.length > 0 || summary.unresolved_instruments.length > 0
+    || (summary.transfers_without_cost?.length ?? 0) > 0;
 
   return (
     <div className="space-y-5 py-2">
@@ -27,6 +29,16 @@ export function CommitSummary({ summary }: { summary: CommitImportResponse }) {
           </p>
         </div>
       </div>
+
+      {rewardsAtClose.length > 0 && (
+        <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+          <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+          <p className="text-xs text-blue-800 font-medium leading-relaxed">
+            {rewardsAtClose.length === 1 ? "A reward was" : `${rewardsAtClose.length} rewards were`} recorded at the asset&apos;s closing price on its day
+            (row{rewardsAtClose.length !== 1 ? "s" : ""} {rewardsAtClose.slice(0, 8).map((i) => i + 1).join(", ")}{rewardsAtClose.length > 8 ? "…" : ""}).
+          </p>
+        </div>
+      )}
 
       {summary.integrity_warnings.length > 0 && (
         <div className="space-y-2">

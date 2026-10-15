@@ -47,9 +47,18 @@ import { WalletFormDialog } from "./wallets/WalletDialogs";
 import { useRealEstate, useRealEstateOverview } from "../../context/RealEstateContext";
 import { RealEstateNode, type RealEstatePage } from "./realEstate/RealEstateNode";
 import { RealEstateTransactionDialog } from "./realEstate/RealEstateTransactionForm";
+import { TaxesPage } from "./taxes/TaxesPage";
+import { StressTestPage } from "./stress/StressTestPage";
+import { ProjectionPage } from "./projection/ProjectionPage";
+import { ManualAssetsEditor } from "./ManualAssetsEditor";
+import { requestSettingsTab } from "./SettingsSection";
 
 // A portfolio's pages: its own (overview), and those its header leads to.
-export type PortfolioPage = "overview" | "transactions" | "alerts" | "reports" | "compare" | "portfolios" | "categories" | "strategy";
+// "taxes": the investments' (All portfolios', or the only portfolio's), the owner's taxes on them all.
+// "stress": how a past crisis, or shocks picked, would hit it as it is today (a backtest's too).
+// "projection": a Monte Carlo of where it could go as it is: a goal, withdrawals, the safe withdrawal.
+// "manualAssets": the user's investments with no market price, valued by hand (the investments').
+export type PortfolioPage = "overview" | "transactions" | "alerts" | "reports" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "stress" | "projection" | "manualAssets";
 
 export type WealthView =
   // Everything the user owns: investments and wallets. Where there are no wallets to have (a
@@ -67,7 +76,7 @@ export type WealthView =
 
 const NO_SCOPE: Record<string, string> = {};
 const NO_TRAIL: Crumb[] = [];
-const PORTFOLIO_PAGES: PortfolioPage[] = ["overview", "transactions", "alerts", "reports", "compare", "portfolios", "categories", "strategy"];
+const PORTFOLIO_PAGES: PortfolioPage[] = ["overview", "transactions", "alerts", "reports", "compare", "portfolios", "categories", "strategy", "taxes", "stress", "projection", "manualAssets"];
 const PAGE_LABELS: Record<Exclude<PortfolioPage, "overview">, string> = {
   transactions: "Transactions",
   alerts: "Alerts",
@@ -76,6 +85,10 @@ const PAGE_LABELS: Record<Exclude<PortfolioPage, "overview">, string> = {
   portfolios: "Manage portfolios",
   categories: "Asset categories",
   strategy: "Strategy",
+  taxes: "Taxes",
+  stress: "Stress test",
+  projection: "Projection",
+  manualAssets: "Manual assets",
 };
 
 // The fields every view of one Wealth carries, beside its own: a client's (`{ client }`).
@@ -107,6 +120,8 @@ function viewFromHistory(hasRealEstate: boolean, hasRoot: boolean, portfolios: P
       // doesn't know which portfolio stands for them).
       if (v.uuid === "" && investments) return { kind: "portfolio", uuid: investments.uuid, page };
       if (!portfolios.some((p) => p.uuid === v.uuid)) return top;
+      // The taxes are all the investments'.
+      if (page === "taxes" && investments && v.uuid !== investments.uuid) return { kind: "portfolio", uuid: investments.uuid, page };
       return page === "strategy" && typeof v.simulation === "string"
         ? { kind: "portfolio", uuid: v.uuid!, page, simulation: v.simulation }
         : { kind: "portfolio", uuid: v.uuid!, page };
@@ -164,13 +179,15 @@ function viewFromHistory(hasRealEstate: boolean, hasRoot: boolean, portfolios: P
  * view carrying the client (`scope`), under the client's crumbs (`rootTrail`), on that client's
  * portfolios (a PortfolioProvider of theirs), with no previews.
  */
-export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO_SCOPE, rootTrail: outerTrail = NO_TRAIL, extraActions }: {
+export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO_SCOPE, rootTrail: outerTrail = NO_TRAIL, extraActions, onOpenTaxSettings }: {
   onNavigate: (section: string) => void;
   section?: string;
   scope?: WealthScope;
   rootTrail?: Crumb[];
   // Added to the investments' actions: a client's own (their settings).
   extraActions?: PageAction[];
+  // Where the Taxes page sets the tax residence: the user's Settings unless said (a client's settings).
+  onOpenTaxSettings?: () => void;
 }) {
   const { portfolios, selectPortfolio, client } = usePortfolio();
   const { isDemo: demoAccount } = useUser();
@@ -255,6 +272,10 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
       simulation={simulation}
       onOpenSimulation={(uuid) => go({ kind: "portfolio", uuid: portfolio.uuid, page: "strategy", simulation: uuid })}
       onOpenRealEstate={hasRealEstate ? () => go({ kind: "realEstate", page: "home" }) : undefined}
+      onOpenTaxSettings={onOpenTaxSettings ?? (() => {
+        requestSettingsTab("preferences");
+        onNavigate("settings");
+      })}
       onNavigate={onNavigate}
     />
   );
@@ -376,7 +397,7 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  * client's (PortfolioContext's `client`) can't rename or delete it; its alerts are the advisor's,
  * its asset categories the client's, and its Strategy page says whether the client sees it.
  */
-export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, onOpenSimulation, onOpenRealEstate, onBacktestGone, onNavigate }: {
+export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, onOpenSimulation, onOpenRealEstate, onOpenTaxSettings, onBacktestGone, onNavigate }: {
   portfolio: Portfolio;
   page: PortfolioPage;
   trail: Crumb[];
@@ -391,6 +412,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   onOpenSimulation?: (uuid: string) => void;
   // The investor's real estate, where it's theirs to see: Compare then offers it as a column.
   onOpenRealEstate?: () => void;
+  // The investments' Taxes page: where the tax residence is set.
+  onOpenTaxSettings?: () => void;
   // A backtest's page (Plan's): where to go once it's deleted. Strategy by default.
   onBacktestGone?: () => void;
   onNavigate: (section: string) => void;
@@ -448,6 +471,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
             ]
           : [{ label: "Publish to Explore", onClick: () => setDialog("publish"), ...(publications === undefined ? { disabled: true } : {}) }]
           : []),
+        { label: "Stress test", onClick: () => open("stress") },
+        { label: "Projection", onClick: () => open("projection") },
         { label: "Delete backtest", danger: true, onClick: () => setDialog("delete"), ...demo },
       ]
     : portfolio.isAggregate
@@ -456,7 +481,11 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new") }] : []),
           ...(real.length > 1 ? [{ label: "Compare", onClick: () => open("compare") }] : []),
           ...strategyAction,
+          { label: "Taxes", onClick: () => open("taxes") },
+          { label: "Stress test", onClick: () => open("stress") },
+          { label: "Projection", onClick: () => open("projection") },
           { label: "Asset categories", onClick: () => open("categories") },
+          { label: "Manual assets", onClick: () => open("manualAssets") },
           ...extraActions,
         ]
       : [
@@ -465,10 +494,16 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           { label: "Alerts", onClick: () => open("alerts") },
           ...strategyAction,
           { label: "Reports", onClick: () => open("reports") },
+          { label: "Stress test", onClick: () => open("stress") },
+          { label: "Projection", onClick: () => open("projection") },
           // The only portfolio stands for the investments: the way to a second one is here, and to
           // the categories of everything held.
           ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new") }] : []),
-          ...(isInvestments ? [{ label: "Asset categories", onClick: () => open("categories") }] : []),
+          ...(isInvestments ? [
+            { label: "Taxes", onClick: () => open("taxes") },
+            { label: "Asset categories", onClick: () => open("categories") },
+            { label: "Manual assets", onClick: () => open("manualAssets") },
+          ] : []),
           ...extraActions,
           ...(canManage ? [
             { label: "Rename", onClick: () => setDialog("rename"), ...demo },
@@ -695,6 +730,26 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       />
     );
   }
+  // The owner's taxes on every portfolio: the investments' page (a link to another portfolio's
+  // lands on theirs, see viewFromHistory).
+  if (page === "taxes") {
+    const investments = investmentsOf(portfolios);
+    return (
+      <TaxesPage
+        key={client?.uuid ?? "own"}
+        trail={pageTrail}
+        onOpenSettings={onOpenTaxSettings}
+        // Manage portfolios, where each one's taxation mode is set (the only portfolio's list too).
+        onOpenPortfolios={() => investments && onOpen(investments.uuid, "portfolios")}
+      />
+    );
+  }
+  if (page === "stress") {
+    return <StressTestPage key={portfolio.uuid} portfolioUuid={portfolio.uuid} trail={pageTrail} eyebrow={`${client ? `${client.name} · ` : ""}${portfolio.name}`} />;
+  }
+  if (page === "projection") {
+    return <ProjectionPage key={portfolio.uuid} portfolioUuid={portfolio.uuid} trail={pageTrail} eyebrow={`${client ? `${client.name} · ` : ""}${portfolio.name}`} />;
+  }
   // The user's, whichever portfolio it's opened from: a correction holds in all of them.
   if (page === "categories") {
     return (
@@ -706,6 +761,21 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
             : "The category each of your securities counts in, across all your portfolios: alerts on a category, and adopting a strategy by category, weigh a portfolio by it. Each one comes with a suggestion; a category you pick replaces it everywhere, until you restore it."}
         </p>
         <AssetCategoriesEditor clientUuid={client?.uuid} />
+      </div>
+    );
+  }
+
+  // The user's, whichever portfolio it's opened from.
+  if (page === "manualAssets") {
+    return (
+      <div className="space-y-6 pb-12">
+        <Breadcrumb trail={pageTrail} current={PAGE_LABELS.manualAssets} />
+        <p className="text-[13px] text-slate-500 leading-relaxed max-w-3xl">
+          {client
+            ? `${client.name}'s investments with no market price — unlisted shares, private equity, a loan, physical gold — valued by hand. Each one is picked in a transaction like a security, and counts in the portfolios that hold it by its valuations.`
+            : "Your investments with no market price — unlisted shares, private equity, a loan, physical gold — valued by hand. Each one is picked in a transaction like a security, and counts in the portfolios that hold it by its valuations."}
+        </p>
+        <ManualAssetsEditor clientUuid={client?.uuid} />
       </div>
     );
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2, XCircle, Loader2, Clock, Bell, BellRing, Target } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Clock, Bell, BellRing, Target, Hourglass } from "lucide-react";
 import type { NotificationResponse } from "../../services/notificationService";
 import { categoryLabel, formatAlertPct, formatRange, WINDOW_LABEL } from "../../lib/alerts";
 import type { AlertWindow } from "../../models/Alert";
@@ -9,6 +9,7 @@ import { WEALTH_SECTION } from "../../lib/dashboardNav";
 import type { WealthView } from "./WealthSection";
 import { ALERT_TYPES, OMI_ATTRIBUTION, alertFindingText, findingFromPayload } from "../../lib/realEstate";
 import type { RealEstateAlertType } from "../../models/RealEstate";
+import { formatCurrency } from "../../lib/format";
 
 interface NotificationListProps {
   notifications: NotificationResponse[];
@@ -190,6 +191,30 @@ function getRealEstateAlertSummary(n: NotificationResponse): { title: string; de
   };
 }
 
+// Losses carried forward that expire at the end of the year (type LOSSES_EXPIRING, sent on 1 October
+// and 1 December). Payload (snake_case): year, currency, total, harvestable_positions (how many
+// positions in gain would take them) and losses, each with category, origin_year, amount,
+// portfolio_uuid / portfolio_name (a broker's; null: the tax return's). It links to the
+// investments' Taxes page, on the year in course.
+const LOSSES_EXPIRING_CONFIG = {
+  label: "Taxes",
+  icon: <Hourglass className="w-5 h-5 text-amber-500 shrink-0" />,
+  pill: "bg-amber-50 text-amber-700 border-amber-200",
+};
+
+function getLossesExpiringSummary(n: NotificationResponse): { title: string; detail: string } {
+  const p = n.payload ?? {};
+  const year = typeof p.year === "number" ? p.year : new Date(n.created_at).getFullYear();
+  const total = typeof p.total === "number" && typeof p.currency === "string" ? formatCurrency(p.total, p.currency, 0) : null;
+  const positions = typeof p.harvestable_positions === "number" ? p.harvestable_positions : 0;
+  return {
+    title: total ? `${total} of tax losses expire on 31 December ${year}` : `Tax losses expire on 31 December ${year}`,
+    detail: positions > 0
+      ? `${positions} ${positions === 1 ? "position in gain" : "positions in gain"} could use them before they're lost.`
+      : "Gains realized before the end of the year can use them; after, they're lost.",
+  };
+}
+
 function formatDate(iso: string): string {
   const date = new Date(iso);
   const diffMs = Date.now() - date.getTime();
@@ -231,15 +256,18 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
         const isStrategyFailed = n.type === "STRATEGY_FAILED";
         const isStrategyShared = n.type === "STRATEGY_SHARED";
         const isRealEstateAlert = n.type === "REAL_ESTATE_ALERT";
-        const cfg = isAlert || isRealEstateAlert ? ALERT_CONFIG : isStrategyFailed ? STATUS_CONFIG.FAILED : isStrategyShared ? STRATEGY_SHARED_CONFIG : getJobStatus(n);
+        const isLossesExpiring = n.type === "LOSSES_EXPIRING";
+        const cfg = isAlert || isRealEstateAlert ? ALERT_CONFIG : isStrategyFailed ? STATUS_CONFIG.FAILED : isStrategyShared ? STRATEGY_SHARED_CONFIG : isLossesExpiring ? LOSSES_EXPIRING_CONFIG : getJobStatus(n);
         const summary = isAlert ? getAlertSummary(n)
           : isRealEstateAlert ? getRealEstateAlertSummary(n)
+          : isLossesExpiring ? getLossesExpiringSummary(n)
           : isStrategyFailed ? getStrategyFailedSummary(n)
             : isStrategyShared ? getStrategySharedSummary(n)
               : null;
         const jobId = getJobId(n);
         const documentId = getDocumentId(n);
-        const portfolioUuid = getPortfolioUuid(n);
+        // A losses notice's portfolios are its losses' (a broker's), not one it's about.
+        const portfolioUuid = isLossesExpiring ? undefined : getPortfolioUuid(n);
         const errorMessage = getErrorMessage(n);
         const reportName = getReportName(n);
         const isUnread = n.read_at === null;
@@ -299,6 +327,15 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
                     className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
                   >
                     View alerts
+                  </button>
+                )}
+                {isLossesExpiring && onOpenPage && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPage(WEALTH_SECTION, { kind: "portfolio", uuid: "", page: "taxes" } satisfies WealthView)}
+                    className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
+                  >
+                    View taxes
                   </button>
                 )}
                 {isStrategyShared && portfolioUuid && onOpenPage && (

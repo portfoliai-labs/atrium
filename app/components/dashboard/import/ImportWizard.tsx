@@ -17,8 +17,10 @@ import {
   valueCounts,
 } from "../../../lib/import";
 import { importService } from "../../../services/importService";
+import { transactionService } from "../../../services/transactionService";
 import {
   ColumnFieldMapping,
+  AutoResolvedInstrumentResponse,
   ColumnMappingDTO,
   CommitImportResponse,
   CommitMappingPayload,
@@ -33,9 +35,13 @@ import { PreviewBlock } from "./PreviewBlock";
 import { AnomaliesBlock } from "./AnomaliesBlock";
 import { CommitSummary } from "./CommitSummary";
 import { UnresolvedInstrumentsBlock } from "./UnresolvedInstrumentsBlock";
+import { TransferCostsBlock } from "./TransferCostsBlock";
+import { AutoResolvedInstrumentsBlock } from "./AutoResolvedInstrumentsBlock";
 import { NUMERIC_TARGETS } from "./types";
 import type { Portfolio } from "../../../models/Portfolio";
 import { PortfolioSelect } from "../PortfolioSelect";
+import type { RewardKind } from "../../../models/Transaction";
+import { isCashOperation } from "../../../lib/operations";
 
 type Phase = "parsing" | "analyzing" | "confirm" | "committing" | "done" | "error";
 type Tab = "columns" | "values" | "preview" | "issues";
@@ -88,11 +94,24 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
   const [valueColumn, setValueColumn] = useState<string | null>(null);
   const [valueMapping, setValueMapping] = useState<ValueMappingRow[]>([]);
   const [commitResult, setCommitResult] = useState<CommitImportResponse | null>(null);
+  // The listings the import picked by itself, across every round (a recommit reports its own).
+  const [autoResolved, setAutoResolved] = useState<AutoResolvedInstrumentResponse[]>([]);
+  const keepAutoResolved = (result: CommitImportResponse) =>
+    setAutoResolved((prev) => {
+      const added = result.auto_resolved_instruments ?? [];
+      const keys = new Set(added.map((a) => a.raw_identifier));
+      return [...prev.filter((a) => !keys.has(a.raw_identifier)), ...added];
+    });
   const [committing, setCommitting] = useState(false);
   // Accumulates across recommits so a raw identifier resolved in an earlier round stays
   // resolved even though the backend re-processes the whole file from scratch each time.
   const [manualOverrides, setManualOverrides] = useState<Record<string, InstrumentOverridePayload>>({});
   const [recommitting, setRecommitting] = useState(false);
+  // The transfers in left out for having no cost, across every round, until their costs import them.
+  const [transfersWithoutCost, setTransfersWithoutCost] = useState<number[]>([]);
+  const [savingTransfers, setSavingTransfers] = useState(false);
+  const keepTransfers = (result: CommitImportResponse, done: number[] = []) =>
+    setTransfersWithoutCost((prev) => Array.from(new Set([...prev.filter((i) => !done.includes(i)), ...(result.transfers_without_cost ?? [])])).sort((a, b) => a - b));
   // True when detectDateFormat couldn't pin the date column to a single confident pattern —
   // gates confirmation the same way a missing required field does, since importing on a guess
   // here risks every date being silently day/month-swapped rather than merely absent.
@@ -111,7 +130,7 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
       setValueMapping(
         distinct.map((v) => {
           const entry = byValue.get(v);
-          return { raw_value: v, target: entry?.target ?? null, confidence: entry?.confidence ?? "low", count: counts[v] ?? 0 };
+          return { raw_value: v, target: entry?.target ?? null, reward_kind: entry?.reward_kind ?? null, confidence: entry?.confidence ?? "low", count: counts[v] ?? 0 };
         }),
       );
     } catch {
@@ -225,7 +244,9 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
   }, [parsedFile, valueColumn]);
 
   const anomalyCount = useMemo(() => previewRows.filter((r) => r.anomalies.length > 0).length, [previewRows]);
-  const unresolvedValueCount = useMemo(() => valueMapping.filter((r) => r.target === null).length, [valueMapping]);
+  const unresolvedValueCount = useMemo(() => valueMapping.filter((r) => r.target === null || (r.target === "reward" && !r.reward_kind)).length, [valueMapping]);
+  // A reward is imported with its kind (staking, airdrop): one without it can't be (422).
+  const rewardsWithoutKind = useMemo(() => valueMapping.filter((r) => r.target === "reward" && !r.reward_kind).length, [valueMapping]);
   const requiredFieldsMissing = useMemo(
     () => (mapping ? REQUIRED_MAPPING_TARGETS.filter((t) => !isPopulated(mapping.fields[t])) : REQUIRED_MAPPING_TARGETS),
     [mapping],
@@ -233,11 +254,18 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
   // Ticker and ISIN aren't each required (either one is enough to resolve an instrument), but
   // having neither mapped means every row would import with no way to identify what was
   // traded — that's an all-or-nothing gate on the mapping, unlike a single row's blank cell
-  // (which surfaces as the "missing-instrument" anomaly instead, without blocking the rest).
+  // (which surfaces as the "missing-instrument" anomaly instead, without blocking the rest). A file
+  // of cash movements only (every value mapped to one) names no security, and needs neither.
   const hasInstrumentMapping = useMemo(
-    () => (mapping ? isPopulated(mapping.fields.ticker) || isPopulated(mapping.fields.isin) : false),
-    [mapping],
+    () => {
+      if (!mapping) return false;
+      if (isPopulated(mapping.fields.ticker) || isPopulated(mapping.fields.isin)) return true;
+      const targets = valueMapping.map((r) => r.target).filter((t): t is TransactionTarget => t !== null);
+      return targets.length > 0 && targets.every((t) => isCashOperation(t));
+    },
+    [mapping, valueMapping],
   );
+  const blocked = requiredFieldsMissing.length > 0 || !hasInstrumentMapping || dateFormatAmbiguous || rewardsWithoutKind > 0;
 
   const handleChangeColumn = (target: MappingTarget, column: string | null) => {
     if (!parsedFile) return;
@@ -276,12 +304,16 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
     setDateFormatAmbiguous(false);
   };
 
-  const handleValueChange = (rawValue: string, target: TransactionTarget | null) => {
-    setValueMapping((prev) => prev.map((r) => (r.raw_value === rawValue ? { ...r, target, confidence: "high" } : r)));
+  const handleValueChange = (rawValue: string, target: TransactionTarget | null, rewardKind: RewardKind | null) => {
+    setValueMapping((prev) => prev.map((r) => (r.raw_value === rawValue ? { ...r, target, reward_kind: target === "reward" ? rewardKind : null, confidence: "high" } : r)));
   };
 
+  // The confirmed values, a reward's with its kind (and no other's: 422).
+  const valuesPayload = () =>
+    valueMapping.map((r) => ({ raw_value: r.raw_value, target: r.target, confidence: r.confidence, ...(r.target === "reward" ? { reward_kind: r.reward_kind ?? null } : {}) }));
+
   const handleConfirm = async () => {
-    if (!parsedFile || !mapping || requiredFieldsMissing.length > 0 || !hasInstrumentMapping || dateFormatAmbiguous) return;
+    if (!parsedFile || !mapping || blocked) return;
     setCommitting(true);
     setPhase("committing");
     try {
@@ -289,12 +321,14 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
         confirmed_column_mapping: mapping,
         confirmed_value_mapping: {
           column_name: valueColumn ?? mapping.fields.type?.source_column ?? "",
-          values: valueMapping.map((r) => ({ raw_value: r.raw_value, target: r.target, confidence: r.confidence })),
+          values: valuesPayload(),
         },
         proposed_column_mapping: proposedMapping ?? undefined,
       };
       const result = await importService.commit(targetUuid, file, payload);
       setCommitResult(result);
+      keepAutoResolved(result);
+      keepTransfers(result);
       setPhase("done");
       onImported();
     } catch (err) {
@@ -322,7 +356,7 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
         confirmed_column_mapping: mapping,
         confirmed_value_mapping: {
           column_name: valueColumn ?? mapping.fields.type?.source_column ?? "",
-          values: valueMapping.map((r) => ({ raw_value: r.raw_value, target: r.target, confidence: r.confidence })),
+          values: valuesPayload(),
         },
         proposed_column_mapping: proposedMapping ?? undefined,
         manual_instrument_overrides: merged,
@@ -330,6 +364,8 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
       };
       const result = await importService.commit(targetUuid, file, payload);
       setCommitResult(result);
+      keepAutoResolved(result);
+      keepTransfers(result);
       // A recommit persists new rows just like the initial commit does — the caller's list
       // needs telling again, or rows resolved in this round never show up without a reload.
       onImported();
@@ -339,6 +375,50 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
     } finally {
       setRecommitting(false);
     }
+  };
+
+  // Imports the transfers in that had no cost, with the costs given: a commit of just those rows.
+  // What it imports adds to the summary's count, the rest of the summary staying as it was.
+  const handleTransferCosts = async (costs: Record<string, string>) => {
+    if (!mapping || !commitResult) return;
+    const rows = Object.keys(costs).map(Number);
+    setSavingTransfers(true);
+    try {
+      const payload: CommitMappingPayload = {
+        confirmed_column_mapping: mapping,
+        confirmed_value_mapping: {
+          column_name: valueColumn ?? mapping.fields.type?.source_column ?? "",
+          values: valuesPayload(),
+        },
+        proposed_column_mapping: proposedMapping ?? undefined,
+        manual_instrument_overrides: manualOverrides,
+        only_row_indexes: rows,
+        transfer_costs: costs,
+      };
+      const result = await importService.commit(targetUuid, file, payload);
+      setCommitResult((prev) => prev && ({
+        ...prev,
+        imported_count: prev.imported_count + result.imported_count,
+        issues: [...prev.issues.filter((i) => !rows.includes(i.row_index)), ...result.issues],
+      }));
+      keepTransfers(result, rows);
+      onImported();
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Failed to import the transfers.");
+      setPhase("error");
+    } finally {
+      setSavingTransfers(false);
+    }
+  };
+
+  // Moves the transactions recorded on a listing the import picked to the one the user chose.
+  const moveAutoResolved = async (item: AutoResolvedInstrumentResponse, listing: AutoResolvedInstrumentResponse["listing"]) => {
+    if (!listing.listing_id) return;
+    for (const uuid of item.transaction_uuids) {
+      await transactionService.updateTransaction(targetUuid, uuid, { listing_id: listing.listing_id });
+    }
+    setAutoResolved((prev) => prev.map((a) => (a.raw_identifier === item.raw_identifier ? { ...a, listing } : a)));
+    onImported();
   };
 
   const TABS: { id: Tab; label: string; badge?: number }[] = [
@@ -423,6 +503,10 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
         {phase === "done" && commitResult && (
           <>
             <CommitSummary summary={commitResult} />
+            {autoResolved.length > 0 && <AutoResolvedInstrumentsBlock items={autoResolved} onMove={moveAutoResolved} />}
+            {transfersWithoutCost.length > 0 && (
+              <TransferCostsBlock rowIndexes={transfersWithoutCost} previewRows={previewRows} onSubmit={(costs) => { void handleTransferCosts(costs); }} submitting={savingTransfers} />
+            )}
             {commitResult.unresolved_instruments.length > 0 && (
               <UnresolvedInstrumentsBlock
                 unresolved={commitResult.unresolved_instruments}
@@ -495,17 +579,22 @@ export function ImportWizard({ file, onClose, onImported, portfolioUuid, portfol
               <p className="text-xs font-semibold text-slate-500">
                 {previewRows.length - anomalyCount} row{previewRows.length - anomalyCount !== 1 ? "s" : ""} ready
                 {anomalyCount > 0 && <span className="text-amber-600"> · {anomalyCount} to verify</span>}
+                {rewardsWithoutKind > 0 && (
+                  <button type="button" onClick={() => setTab("values")} className="text-rose-600 underline underline-offset-2">
+                    {" "}· {rewardsWithoutKind === 1 ? "a reward needs" : `${rewardsWithoutKind} rewards need`} staking or airdrop
+                  </button>
+                )}
               </p>
               <div className="flex items-center gap-3">
                 <button onClick={onClose} className="px-5 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors">
                   Cancel
                 </button>
                 <button
-                  disabled={requiredFieldsMissing.length > 0 || !hasInstrumentMapping || dateFormatAmbiguous || !targetUuid || committing}
+                  disabled={blocked || !targetUuid || committing}
                   onClick={handleConfirm}
                   title={!targetUuid ? "Choose the portfolio to import into first" : undefined}
                   className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white transition-colors shadow-md shadow-slate-200 ${
-                    requiredFieldsMissing.length > 0 || !hasInstrumentMapping || dateFormatAmbiguous || !targetUuid
+                    blocked || !targetUuid
                       ? "bg-slate-200 text-slate-400 cursor-not-allowed"
                       : "bg-slate-900 hover:bg-blue-600"
                   }`}

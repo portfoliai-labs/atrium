@@ -52,11 +52,24 @@ export type Block =
   | { type: "quote"; spans: Span[]; attribution?: string | null }
   | ({ type: "image" } & ArticleImage);
 
-/** A listing as /v1/asset-search gives it: its ticker, and its ISIN when known. */
+/**
+ * An instrument an article names: census' listing (listingId, as /v1/listings gives it), with the
+ * ticker, ISIN, instrument and name acta takes from census. One saved before listings names a
+ * market-data ticker alone (listingId, instrumentId and name null).
+ */
 export interface ArticleInstrument {
+  listingId?: string | null;
+  instrumentId?: string | null;
+  name?: string | null;
   ticker: string;
   isin: string | null;
 }
+
+/** An instrument as a request names it: its listing, or the ticker and ISIN of one saved before listings. */
+export type ArticleInstrumentRef = { listingId: string } | { ticker: string; isin: string | null };
+
+export const instrumentRef = (i: ArticleInstrument): ArticleInstrumentRef =>
+  i.listingId ? { listingId: i.listingId } : { ticker: i.ticker, isin: i.isin };
 
 // ── Articles ──
 
@@ -72,7 +85,7 @@ export interface ArticleContent {
   language?: ArticleLanguage | null;
   cover?: ArticleImage | null;
   body: Block[];
-  instruments: ArticleInstrument[];
+  instruments: ArticleInstrumentRef[];
   audience?: ArticleAudience | null;
   // An advisor's interests in the instruments they write about (MAR, art. 20).
   interestDisclosure?: string | null;
@@ -145,7 +158,10 @@ export interface ArticleFilters {
   category?: ArticleCategory;
   authorKind?: AuthorKind;
   authorUuid?: string;
-  // An instrument across its listings (with isin, either).
+  // An instrument across its listings, or one listing.
+  instrumentId?: string;
+  listingId?: string;
+  // An article saved before listings, by its ticker across its listings (with isin, either).
   ticker?: string;
   isin?: string;
   // Words to find: matches by relevance, else the newest first.

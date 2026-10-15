@@ -1,4 +1,5 @@
 // models/Report.ts
+import type { RewardKind, TransactionOperation } from "./Transaction";
 
 // Matches DocumentStatuses enum from backend
 type DocumentStatus = 'UPLOADED' | 'PROCESSING' | 'FAILED';
@@ -37,12 +38,16 @@ interface PresignedUrl {
 // Frontend-only shape used while a transaction is being parsed/edited client-side,
 // before it is turned into a backend TransactionInput (see models/Transaction.ts) and saved.
 // `id` is a locally-generated key (the ticker, or isin as a last resort), not the
-// backend transaction_uuid. `ticker` is always required — the backend has no
-// ticker-from-ISIN resolver, so `isin` can only ever supplement it, never replace it.
+// backend transaction_uuid. A transaction on census' listing carries its `listingId` (what is
+// sent), its ticker, name and ISIN only to be shown; one without names its security by `ticker`
+// (a file's rows, transactions recorded before listings), `isin` only supplementing it. A manual
+// asset's carries its `assetId` ("manual:<uuid>") and name; a cash movement names nothing (ticker
+// ""). Which of the optional fields an operation takes is in lib/operations.
 type StandardTransaction = {
   id: string;
   date: string;
-  operation: 'buy' | 'sell' | 'dividend' | 'other';
+  operation: TransactionOperation;
+  // NaN where it's left to the backend (a transfer_out without one).
   amount: number;
   quantity: number | null;
   price: number | null;
@@ -51,6 +56,14 @@ type StandardTransaction = {
   broker: string;
   ticker: string;
   isin?: string;
+  listingId?: string;
+  name?: string;
+  assetId?: string;
+  withholdingTax?: number | null;
+  accruedInterest?: number | null;
+  counterAmount?: number | null;
+  counterCurrency?: string | null;
+  rewardKind?: RewardKind | null;
   // Frontend-only: the portfolio a not-yet-saved row will be saved into, where the user can
   // pick one (see FileUploader). Never sent as part of the transaction itself.
   portfolioUuid?: string;

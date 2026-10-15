@@ -2,6 +2,7 @@
 
 import { AlertTriangle } from "lucide-react";
 import { PreviewRow } from "../../../lib/import";
+import { isCashOperation, operationLabel } from "../../../lib/operations";
 
 const TYPE_STYLES: Record<string, string> = {
   buy: "bg-emerald-100 text-emerald-700",
@@ -9,6 +10,11 @@ const TYPE_STYLES: Record<string, string> = {
   dividend: "bg-violet-100 text-violet-700",
   ignore: "bg-slate-100 text-slate-500",
 };
+// The other operations on a security, and the cash movements.
+const OTHER_STYLE = "bg-sky-100 text-sky-700";
+const CASH_STYLE = "bg-amber-100 text-amber-800";
+const typeStyle = (type: string | null | undefined) =>
+  !type ? TYPE_STYLES.ignore : TYPE_STYLES[type] ?? (isCashOperation(type) ? CASH_STYLE : OTHER_STYLE);
 
 function fmtNum(n: number | undefined): string {
   return n === undefined ? "—" : n.toLocaleString(undefined, { maximumFractionDigits: 4 });
@@ -46,8 +52,8 @@ export function PreviewBlock({ rows }: PreviewBlockProps) {
                       {p?.date || <span className="text-rose-500 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />unparsed</span>}
                     </td>
                     <td className="px-3 py-2.5 text-xs whitespace-nowrap">
-                      <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] uppercase ${TYPE_STYLES[p?.type ?? "ignore"]}`}>
-                        {p?.type ?? "ignore"}
+                      <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] uppercase ${typeStyle(p?.type)}`}>
+                        {p?.type ? operationLabel(p.type) : "ignore"}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-xs font-medium text-slate-600 whitespace-nowrap">{p?.ticker || p?.isin || "—"}</td>

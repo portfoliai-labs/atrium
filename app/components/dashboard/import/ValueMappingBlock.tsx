@@ -3,6 +3,8 @@
 import { Fragment, useState } from "react";
 import { AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 import { ConfidenceLevel, TransactionTarget } from "../../../models/Import";
+import type { RewardKind } from "../../../models/Transaction";
+import { CASH_OPERATIONS, INSTRUMENT_OPERATIONS, OPERATION_LABELS, REWARD_KINDS, REWARD_KIND_LABELS } from "../../../lib/operations";
 import { RawRow } from "../../../lib/import";
 
 const CONFIDENCE_STYLES: Record<ConfidenceLevel, string> = {
@@ -11,15 +13,34 @@ const CONFIDENCE_STYLES: Record<ConfidenceLevel, string> = {
   low: "bg-rose-100 text-rose-700",
 };
 
-const TARGET_OPTIONS: { value: TransactionTarget; label: string }[] = [
-  { value: "buy", label: "Buy" },
-  { value: "sell", label: "Sell" },
-  { value: "dividend", label: "Dividend" },
+// Every operation but a conversion, which isn't imported yet; a reward picked with its kind, as
+// "reward:staking". Grouped as the transaction form groups them.
+const TARGET_GROUPS: { label: string; options: { value: string; label: string }[] }[] = [
+  {
+    label: "On a security",
+    options: INSTRUMENT_OPERATIONS.flatMap((o) => (o === "reward"
+      ? REWARD_KINDS.map((k) => ({ value: `reward:${k}`, label: `Reward · ${REWARD_KIND_LABELS[k]}` }))
+      : [{ value: o, label: OPERATION_LABELS[o] }])),
+  },
+  {
+    label: "Cash",
+    options: CASH_OPERATIONS.filter((o) => o !== "fx_conversion").map((o) => ({ value: o, label: OPERATION_LABELS[o] })),
+  },
 ];
+
+const optionValue = (row: Pick<ValueMappingRow, "target" | "reward_kind">) =>
+  row.target === "reward" ? `reward:${row.reward_kind ?? ""}` : row.target ?? "";
+const fromOption = (value: string): { target: TransactionTarget | null; rewardKind: RewardKind | null } => {
+  if (!value) return { target: null, rewardKind: null };
+  const [target, kind] = value.split(":");
+  return { target: target as TransactionTarget, rewardKind: (kind as RewardKind | undefined) || null };
+};
 
 export interface ValueMappingRow {
   raw_value: string;
   target: TransactionTarget | null;
+  // With target reward: required.
+  reward_kind?: RewardKind | null;
   confidence: ConfidenceLevel;
   count: number;
 }
@@ -35,8 +56,11 @@ interface ValueMappingBlockProps {
   // column, a separate credit/debit flag) varies by broker and can't be predicted, so the
   // user needs to see everything to recognize the real transaction.
   examples?: Record<string, RawRow>;
-  onChange: (rawValue: string, target: TransactionTarget | null) => void;
+  onChange: (rawValue: string, target: TransactionTarget | null, rewardKind: RewardKind | null) => void;
 }
+
+// Not imported: no target, or a reward whose kind isn't said.
+const unmapped = (r: ValueMappingRow) => r.target === null || (r.target === "reward" && !r.reward_kind);
 
 export function ValueMappingBlock({ columnName, headers, rows, examples, onChange }: ValueMappingBlockProps) {
   const [expandedValue, setExpandedValue] = useState<string | null>(null);
@@ -47,10 +71,10 @@ export function ValueMappingBlock({ columnName, headers, rows, examples, onChang
 
   // Unresolved / low-confidence values first, so what needs a decision surfaces immediately.
   const sorted = [...rows].sort((a, b) => {
-    const rank = (r: ValueMappingRow) => (r.target === null ? 0 : r.confidence === "low" ? 1 : 2);
+    const rank = (r: ValueMappingRow) => (unmapped(r) ? 0 : r.confidence === "low" ? 1 : 2);
     return rank(a) - rank(b);
   });
-  const unresolvedCount = rows.filter((r) => r.target === null).length;
+  const unresolvedCount = rows.filter(unmapped).length;
 
   return (
     <div className="space-y-3">
@@ -74,7 +98,7 @@ export function ValueMappingBlock({ columnName, headers, rows, examples, onChang
           </thead>
           <tbody className="divide-y divide-slate-100">
             {sorted.map((row) => {
-              const needsAttention = row.target === null || row.confidence === "low";
+              const needsAttention = unmapped(row) || row.confidence === "low";
               const example = examples?.[row.raw_value];
               const isExpanded = expandedValue === row.raw_value;
               return (
@@ -95,21 +119,24 @@ export function ValueMappingBlock({ columnName, headers, rows, examples, onChang
                     <td className="px-4 py-2.5 text-xs text-slate-500">{row.count}</td>
                     <td className="px-4 py-2.5">
                       <select
-                        value={row.target ?? ""}
-                        onChange={(e) => onChange(row.raw_value, (e.target.value || null) as TransactionTarget | null)}
+                        value={optionValue(row)}
+                        onChange={(e) => { const { target, rewardKind } = fromOption(e.target.value); onChange(row.raw_value, target, rewardKind); }}
                         className={`text-xs bg-white border rounded-xl px-2.5 py-2 font-semibold outline-none transition-all focus:ring-4 min-w-36 ${
-                          row.target === null ? "border-rose-300 focus:ring-rose-50" : "border-slate-200 focus:ring-slate-50 focus:border-slate-300"
+                          unmapped(row) ? "border-rose-300 focus:ring-rose-50" : "border-slate-200 focus:ring-slate-50 focus:border-slate-300"
                         }`}
                       >
                         <option value="">Ignore (not imported)</option>
-                        {TARGET_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        {row.target === "reward" && !row.reward_kind && <option value="reward:" disabled>Reward — staking or airdrop?</option>}
+                        {TARGET_GROUPS.map((g) => (
+                          <optgroup key={g.label} label={g.label}>
+                            {g.options.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                          </optgroup>
                         ))}
                       </select>
                     </td>
                     <td className="px-4 py-2.5">
                       <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full ${CONFIDENCE_STYLES[row.confidence]}`}>
-                        {row.target === null ? "unmapped" : row.confidence}
+                        {unmapped(row) ? "unmapped" : row.confidence}
                       </span>
                     </td>
                   </tr>

@@ -44,6 +44,8 @@ interface Client {
   financial_goals: string | null;
   risk_tolerance: string | null;
   currency: string | null;
+  // ISO 3166-1 alpha-2; null until given (see models/Tax).
+  tax_residence?: string | null;
 }
 
 // Matches ClientCreatePayload DTO (POST /advisor/clients)
@@ -67,6 +69,7 @@ interface ClientProfileUpdatePayload {
   risk_tolerance?: string | null;
   currency?: string | null;
   language?: string | null;
+  tax_residence?: string | null;
 }
 
 // Matches ClientLookupResponse DTO (GET /advisor/clients/lookup)

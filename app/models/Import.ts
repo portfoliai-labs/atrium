@@ -4,18 +4,22 @@
 // straight into commit's confirmed_column_mapping), so drifting from the backend shape here
 // breaks the request rather than just failing to render.
 
+import type { RewardKind, TransactionOperation } from "./Transaction";
+
 type ConfidenceLevel = "high" | "medium" | "low";
 
-// The AI's enum for a categorical value's target. Deliberately has no "ignore" — a value left
-// unmapped (target: null) already means "not imported", which is how every row that doesn't
-// resolve to buy/sell/dividend ends up excluded, explicitly and visibly, rather than dropped.
-type TransactionTarget = "buy" | "sell" | "dividend";
+// The AI's enum for a categorical value's target: every operation but fx_conversion, which isn't
+// imported yet (422). Deliberately has no "ignore" — a value left unmapped (target: null) already
+// means "not imported", which is how every row that doesn't resolve to an operation ends up
+// excluded, explicitly and visibly, rather than dropped.
+type TransactionTarget = Exclude<TransactionOperation, "fx_conversion">;
 
 // Matches ImportTargetField (backend enum) — the internal schema an uploaded file is mapped onto.
-type MappingTarget = "date" | "type" | "amount" | "quantity" | "price" | "fees" | "currency" | "ticker" | "isin" | "name" | "broker";
+// accrued_interest: a bond's accrued interest, on a buy or a sell.
+type MappingTarget = "date" | "type" | "amount" | "quantity" | "price" | "fees" | "accrued_interest" | "currency" | "ticker" | "isin" | "name" | "broker";
 
 const MAPPING_TARGETS: MappingTarget[] = [
-  "date", "type", "amount", "quantity", "price", "fees", "currency", "ticker", "isin", "name", "broker",
+  "date", "type", "amount", "quantity", "price", "fees", "accrued_interest", "currency", "ticker", "isin", "name", "broker",
 ];
 
 // date/type/amount are what the AI's own confidence scoring centers on; currency is added
@@ -69,6 +73,8 @@ interface ValueMappingEntryDTO {
   raw_value: string;
   target: TransactionTarget | null;
   confidence: ConfidenceLevel;
+  // Required with target reward, refused with any other (422).
+  reward_kind?: RewardKind | null;
 }
 
 // Only the single column mapped to `type` ever needs value mapping — every other categorical
@@ -80,15 +86,19 @@ interface CategoricalColumnMappingDTO {
 
 type ValueMappingResponse = CategoricalColumnMappingDTO;
 
+// The instrument the user chose for a raw identifier: census' listing (as /v1/listings or a
+// candidate gives it).
 interface InstrumentOverridePayload {
-  ticker: string;
-  isin?: string | null;
-  exchange?: string | null;
+  listing_id: string;
 }
 
-// A single resolved listing OpenFIGI found for an ambiguous ISIN (e.g. the same ETF on two
-// markets) — offered to the user as a pick instead of asking them to type a ticker blind.
+// One of the listings found for an ambiguous ISIN (e.g. the same ETF on two markets) — offered
+// to the user as a pick instead of asking them to search for it.
 interface InstrumentCandidateDTO {
+  // census' listing and its instrument: what an override names.
+  listing_id?: string | null;
+  instrument_id?: string | null;
+  name?: string | null;
   ticker: string;
   isin?: string | null;
   exchange?: string | null; // raw MIC, e.g. "XMIL"
@@ -106,6 +116,9 @@ interface CommitMappingPayload {
   // response) so rows already persisted in an earlier round aren't reprocessed and duplicated.
   // Omitted/null means "process every row" — the original, non-recommit behavior.
   only_row_indexes?: number[] | null;
+  // The total cost of each transfer_in that had none (a prior response's transfers_without_cost),
+  // by row index as a string, each > 0 — sent with only_row_indexes those rows.
+  transfer_costs?: Record<string, string>;
 }
 
 interface ImportRowIssueResponse {
@@ -119,11 +132,11 @@ interface ImportIntegrityWarningResponse {
   row_indexes: number[];
 }
 
-// "ambiguous" means OpenFIGI found more than one listing and the row's currency wasn't enough
-// to narrow it to one — `candidates` then carries every listing found, for the user to pick
-// from. "not_found" (the original, still-default case) means candidates is always empty and
-// the user has to type a ticker/ISIN by hand, exactly as before this field existed.
-type UnresolvedReason = "not_found" | "ambiguous";
+// "ambiguous" means more than one listing was found and the row's currency or exchange wasn't
+// enough to narrow it to one — `candidates` then carries every listing found, for the user to
+// pick from. "not_found" means candidates is empty; "not_priced" that the listing found isn't
+// priced by any provider. Either way the user searches for the listing.
+type UnresolvedReason = "not_found" | "ambiguous" | "not_priced";
 
 interface UnresolvedInstrumentResponse {
   raw_identifier: string;
@@ -132,11 +145,27 @@ interface UnresolvedInstrumentResponse {
   candidates: InstrumentCandidateDTO[];
 }
 
+// An identifier the import took a listing for by itself, among several (the only one in the rows'
+// currency): its rows were recorded on `listing`. Moving them to another candidate is a PATCH of
+// each of `transaction_uuids` naming its listing_id.
+interface AutoResolvedInstrumentResponse {
+  raw_identifier: string;
+  row_indexes: number[];
+  listing: InstrumentCandidateDTO;
+  candidates: InstrumentCandidateDTO[];
+  transaction_uuids: string[];
+}
+
 interface CommitImportResponse {
   imported_count: number;
   issues: ImportRowIssueResponse[];
   integrity_warnings: ImportIntegrityWarningResponse[];
   unresolved_instruments: UnresolvedInstrumentResponse[];
+  auto_resolved_instruments?: AutoResolvedInstrumentResponse[];
+  // transfer_in rows without a cost: NOT recorded, until a recommit gives them one (transfer_costs).
+  transfers_without_cost?: number[];
+  // reward rows recorded at the asset's close of that day.
+  rewards_valued_at_close?: number[];
 }
 
 export type {
@@ -159,6 +188,7 @@ export type {
   ImportIntegrityWarningResponse,
   UnresolvedReason,
   UnresolvedInstrumentResponse,
+  AutoResolvedInstrumentResponse,
   CommitImportResponse,
 };
 

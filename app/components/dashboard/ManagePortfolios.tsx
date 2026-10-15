@@ -15,6 +15,8 @@ import { VIRTUAL_COLOR, VirtualBadge } from "./BacktestMarks";
 import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import type { Portfolio } from "../../models/Portfolio";
+import type { TaxationMode } from "../../models/Tax";
+import { TAXATION_MODE_LABELS } from "../../lib/taxes";
 import type { PortfolioComparisonEntry } from "../../models/PortfolioData";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
@@ -28,8 +30,10 @@ const createdLabel = (iso: string) =>
  * answers 409), then the strategies' backtests. "All portfolios" isn't listed: it's built from the
  * others and can be neither renamed nor deleted, which a line under the list says. Values come
  * from GET /v1/portfolios/comparison, like the hub's. A real portfolio's row counts its alerts (an
- * adopted strategy's included) and leads to them (`onOpenAlerts`: its Alerts tab). Backtests are adopted
- * from Plan / Strategy. A demo account sees the list but can't change anything.
+ * adopted strategy's included) and leads to them (`onOpenAlerts`: its Alerts tab), and says who pays
+ * its taxes, to change there: the user in their tax return, or its broker (see models/Tax; an
+ * advisor sets a client's too). Backtests are adopted from Plan / Strategy. A demo account sees the
+ * list but can't change anything.
  */
 export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
   trail: Crumb[];
@@ -86,6 +90,7 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
       // Backtests take no alerts; undefined while they load.
       alertCount={p.isVirtual || rules === null ? undefined : rules.filter((r) => r.portfolioUuid === p.uuid).length}
       onOpenAlerts={() => onOpenAlerts(p.uuid)}
+      taxable={!p.isVirtual}
       onOpen={() => onOpenPortfolio(p.uuid)}
       onDelete={() => setToDelete(p)}
     />
@@ -173,7 +178,7 @@ function ManageGroup({ title, note, tone, children }: { title: string; note?: st
  * with why. Without `manageable` (a client's, for their advisor), Open only.
  */
 function ManageRow({
-  portfolio, color, entry, readOnly, manageable, alertCount, onOpenAlerts, onOpen, onDelete,
+  portfolio, color, entry, readOnly, manageable, alertCount, onOpenAlerts, taxable, onOpen, onDelete,
 }: {
   portfolio: Portfolio;
   color: string;
@@ -183,10 +188,13 @@ function ManageRow({
   manageable: boolean;
   alertCount?: number;
   onOpenAlerts: () => void;
+  // A real portfolio: who pays its taxes, to change.
+  taxable: boolean;
   onOpen: () => void;
   onDelete: () => void;
 }) {
-  const { renamePortfolio } = usePortfolio();
+  const { renamePortfolio, setTaxationMode } = usePortfolio();
+  const [savingMode, setSavingMode] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(portfolio.name);
   const [saving, setSaving] = useState(false);
@@ -213,6 +221,18 @@ function ManageRow({
       setError(err instanceof Error ? err.message : "Unable to rename this portfolio.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const changeTaxationMode = async (mode: TaxationMode) => {
+    setSavingMode(true);
+    setError(null);
+    try {
+      await setTaxationMode(portfolio.uuid, mode);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to change who pays this portfolio's taxes.");
+    } finally {
+      setSavingMode(false);
     }
   };
 
@@ -309,6 +329,24 @@ function ManageRow({
           {value ? formatCurrency(value.marketValue, value.currency, 0) : "—"} · created {createdLabel(portfolio.createdAt)}
         </span>
       </div>
+      {taxable && (
+        <label className="mt-1.5 pl-5.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          <span className="font-semibold">Taxes</span>
+          <select
+            value={portfolio.taxationMode ?? "declared"}
+            onChange={(e) => changeTaxationMode(e.target.value as TaxationMode)}
+            disabled={readOnly || savingMode}
+            title={readOnly ? DEMO_DISABLED_TITLE : TAXATION_MODE_LABELS[portfolio.taxationMode ?? "declared"].detail}
+            className="h-7 pl-2 pr-6 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 outline-none hover:border-[#C49A3C]/60 focus:ring-2 focus:ring-[#C49A3C]/30 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {(Object.keys(TAXATION_MODE_LABELS) as TaxationMode[]).map((m) => (
+              <option key={m} value={m}>{TAXATION_MODE_LABELS[m].label}</option>
+            ))}
+          </select>
+          {savingMode && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-300" />}
+          <span className="hidden sm:inline text-slate-400">{TAXATION_MODE_LABELS[portfolio.taxationMode ?? "declared"].detail}</span>
+        </label>
+      )}
       {error && <p className="mt-1.5 pl-5.5 text-xs font-medium text-rose-600">{error}</p>}
     </li>
   );

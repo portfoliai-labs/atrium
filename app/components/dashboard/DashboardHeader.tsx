@@ -7,6 +7,9 @@ import { useUser } from "../../context/UserContext";
 import { useNotificationsContext } from "../../context/NotificationsContext";
 import { NotificationPanel } from "./NotificationPanel";
 import { SubscriptionPopover } from "./SubscriptionPopover";
+import { TopbarSearch } from "./TopbarSearch";
+import type { AssetView } from "./AssetSection";
+import { ASSET_SECTION } from "../../lib/dashboardNav";
 import { userService } from "../../services/userService";
 import { BetaBadge } from "../common/BetaBadge";
 import type { SubscriptionTier, SubscriptionResponse } from "../../models/User";
@@ -104,6 +107,15 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
 
       {/* RIGHT: Actions */}
       <div className="flex items-center gap-2 md:gap-3">
+
+        {/* Search: a security's page, from anywhere in the dashboard. */}
+        {onOpenPage && (
+          <TopbarSearch
+            onOpen={({ listingId, instrumentId, ticker, name }) =>
+              onOpenPage(ASSET_SECTION, { listingId, instrumentId, ticker, name } satisfies AssetView)
+            }
+          />
+        )}
 
         {/* Bell (mobile) — a fixed-width absolute dropdown has nowhere to sit on a
             narrow viewport without overflowing it, so mobile routes to the

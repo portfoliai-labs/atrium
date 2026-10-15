@@ -3,7 +3,7 @@
 
 import { ArrowUpRight, UserRound } from "lucide-react";
 import { formatAlertPct, formatRange } from "../../lib/alerts";
-import { exchangeLabel } from "../../models/AssetSearch";
+import { exchangeLabel } from "../../models/Listing";
 import { targetLabel, type StrategyTarget } from "../../models/Strategy";
 import type { SharedStrategy, TargetStanding } from "../../models/AdoptedStrategy";
 import { describeRebalancing } from "./BacktestMarks";

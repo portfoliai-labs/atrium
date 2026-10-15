@@ -1,5 +1,6 @@
 // services/adoptionService.ts
 import type { AdoptStrategyPayload, AdoptedStrategy, SharedStrategy, StrategyAllocation } from "../models/AdoptedStrategy";
+import type { RebalancingMode, RebalancingOrders } from "../models/Rebalancing";
 import { ApiError, apiFetch } from "./apiClient";
 
 const path = (portfolioUuid: string) => `/v1/portfolios/${portfolioUuid}/adopted-strategy`;
@@ -26,10 +27,12 @@ export const adoptionService = {
   },
 
   // PUT — refines its targets and rebalancing band; its rules follow. A security target is sent as
-  // its ticker and isin, as when the strategy was made.
+  // its listing; one the strategy held before census' listings, as its ticker and isin, which the
+  // backend keeps.
   async refine(portfolioUuid: string, allocation: StrategyAllocation): Promise<AdoptedStrategy> {
     const targets = allocation.targets.map((t) =>
-      t.kind === "asset" ? { ...t, asset: { ticker: t.asset.ticker, isin: t.asset.isin } } : t);
+      t.kind !== "asset" ? t
+        : { ...t, asset: t.asset.listingId ? { listingId: t.asset.listingId } : { ticker: t.asset.ticker, isin: t.asset.isin } });
     return apiFetch<AdoptedStrategy>(path(portfolioUuid), {
       method: "PUT",
       body: JSON.stringify({ targets, rebalancing: allocation.rebalancing }),
@@ -39,6 +42,15 @@ export const adoptionService = {
   // DELETE — the adoption, with its rules.
   async remove(portfolioUuid: string): Promise<void> {
     await apiFetch<{ status: string }>(path(portfolioUuid), { method: "DELETE" });
+  },
+
+  // GET .../rebalancing-orders — the orders back to the caller's adoption, at the last tick's
+  // prices; suggestions, nothing recorded. `contribution`: new cash to invest, ≥ 0. 404
+  // AdoptionNotFoundError without one; 409 VirtualPortfolioOperationError on a virtual portfolio.
+  async rebalancingOrders(portfolioUuid: string, mode: RebalancingMode, contribution?: number): Promise<RebalancingOrders> {
+    const query = new URLSearchParams({ mode });
+    if (contribution) query.set("contribution", contribution.toFixed(2));
+    return apiFetch<RebalancingOrders>(`${path(portfolioUuid)}/rebalancing-orders?${query}`);
   },
 
   // PUT .../sharing — an advisor shares their adoption on a client's portfolio with the client, or

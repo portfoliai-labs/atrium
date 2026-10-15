@@ -60,13 +60,14 @@ interface StrategyCosts {
   spreadPct: number;
 }
 
-// A security a strategy buys as it is, picked with the asset search (models/AssetSearch). A
-// request sends its ticker and isin; the backend answers with the listing it resolved, keyed by
-// assetId (the ISIN when there is one, the ticker otherwise). One it can't resolve is a 422
-// InvalidFieldError naming the target (e.g. `strategy.targets.1.asset`).
+// A security a strategy buys as it is, picked with the listing search (models/Listing). A request
+// sends its listingId alone; the backend answers with the listing it resolved, keyed by assetId
+// (census' instrument; the ISIN or the ticker for a strategy saved before listings). One no
+// provider prices is a 422 InvalidFieldError naming the target (e.g. `strategy.targets.1.asset`).
 interface StrategyAsset {
-  ticker: string;
-  isin: string | null;
+  listingId?: string | null;
+  ticker?: string;
+  isin?: string | null;
   assetId?: string;
   exchangeMic?: string | null;
   currency?: string | null;
@@ -143,7 +144,7 @@ const MAX_STRATEGY_TARGETS = 20;
 
 /** What a target is called: its category, or its security's name (the ticker until resolved). */
 function targetLabel(t: StrategyTarget): string {
-  return t.kind === "category" ? STRATEGY_CATEGORY_LABELS[t.category] : t.asset.name || t.asset.ticker;
+  return t.kind === "category" ? STRATEGY_CATEGORY_LABELS[t.category] : t.asset.name || t.asset.ticker || "";
 }
 
 /** "Simulated from Jan 3, 2005 to today", or null until the backtest has run. */

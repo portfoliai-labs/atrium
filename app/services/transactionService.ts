@@ -5,6 +5,8 @@ import type {
   TransactionResponse,
   TransactionListResponse,
   TransactionUpdatePayload,
+  TransferPayload,
+  TransferResponse,
 } from "../models/Transaction";
 import { apiFetch } from "./apiClient";
 
@@ -53,6 +55,15 @@ export const transactionService = {
   ): Promise<TransactionResponse> {
     return apiFetch<TransactionResponse>(`/v1/portfolios/${portfolioUuid}/transactions/${transactionUuid}`, {
       method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // POST /v1/portfolios/{p}/transactions/transfer — moves units to another standard portfolio of
+  // the same owner, at this one's average cost: a transfer_out here, a transfer_in there.
+  async transfer(portfolioUuid: string, payload: TransferPayload): Promise<TransferResponse> {
+    return apiFetch<TransferResponse>(`/v1/portfolios/${portfolioUuid}/transactions/transfer`, {
+      method: 'POST',
       body: JSON.stringify(payload),
     });
   },

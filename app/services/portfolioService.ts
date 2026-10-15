@@ -125,7 +125,7 @@ export const portfolioService = {
   // portfolio. `ticker` is the market-data ticker the holdings rows carry (VWCE.MI, BTC-USD…),
   // not the ISIN; it's URL-encoded since some contain ^ or =. Throws ApiError 404 for a ticker
   // no provider knows.
-  async getAssetDetail(ticker: string, range: AssetChartRange = "1Y"): Promise<AssetDetailResponse> {
-    return apiFetch<AssetDetailResponse>(`/v1/assets/${encodeURIComponent(ticker)}${buildQuery({ range })}`);
+  async getAssetDetail(asset: string, range: AssetChartRange = "1Y"): Promise<AssetDetailResponse> {
+    return apiFetch<AssetDetailResponse>(`/v1/assets/${encodeURIComponent(asset)}${buildQuery({ range })}`);
   },
 };

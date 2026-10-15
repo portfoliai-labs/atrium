@@ -2,7 +2,7 @@
 //
 // Types for the Insights page's endpoints under GET /v1/portfolios/{p}/insights/* (four section
 // overviews, a status to poll, and one detail per explore view), /positions/{asset_id},
-// /v1/portfolios/comparison and /v1/assets/{ticker}. Mirrors the backend's generated
+// /v1/portfolios/comparison and /v1/assets/{listing_id} (or a ticker). Mirrors the backend's generated
 // doc/frontend/portfolio-data-api.d.ts — regenerate from there if the routes change.
 //
 // Conventions shared by all of them:
@@ -18,6 +18,8 @@
 //   rebuild hasn't landed). The tick modules (holdings, exposure, realized P&L), dividends and
 //   trading costs are always "ok"; the tick ones are never stale.
 
+import type { InstrumentProfile } from "./InstrumentProfile";
+import type { Listing } from "./Listing";
 import type { Portfolio, DailyValueChange } from "./Portfolio";
 
 // "unavailable" only ever appears on the risk model.
@@ -55,6 +57,9 @@ interface ModuleState {
 interface PortfolioHoldingResponse {
   assetId: string;
   ticker: string | null;
+  // census' listing, what the asset page opens on; null for an asset recorded by its ticker, and
+  // in documents built before listings.
+  listingId?: string | null;
   isin: string | null;
   name: string;
   assetClass: string;
@@ -118,6 +123,9 @@ interface RiskEventEntry {
 interface DividendAssetEntry {
   assetId: string;
   ticker: string | null;
+  // census' listing, what the asset page opens on; null for an asset recorded by its ticker, and
+  // in documents built before listings.
+  listingId?: string | null;
   name: string;
   trailing12MIncome: number;
   prior12MIncome: number;
@@ -147,6 +155,9 @@ interface PlatformCostEntry {
 interface AssetCostEntry {
   assetId: string;
   ticker: string | null;
+  // census' listing, what the asset page opens on; null for an asset recorded by its ticker, and
+  // in documents built before listings.
+  listingId?: string | null;
   name: string;
   broker: string;
   transactionCount: number;
@@ -164,6 +175,9 @@ interface AssetCostEntry {
 interface RealizedPnlEntryResponse {
   assetId: string;
   ticker: string | null;
+  // census' listing, what the asset page opens on; null for an asset recorded by its ticker, and
+  // in documents built before listings.
+  listingId?: string | null;
   name: string;
   assetClass: string;
   realizedTradingPnl: number;
@@ -265,6 +279,9 @@ interface AssetHoldingEntry {
 interface OverlappingAssetEntry {
   assetId: string;
   ticker: string | null;
+  // census' listing, what the asset page opens on; null for an asset recorded by its ticker, and
+  // in documents built before listings.
+  listingId?: string | null;
   name: string;
   marketValue: number;
   weightPct: number;
@@ -757,6 +774,8 @@ interface AssetWeightEntryResponse {
 // in the range. sector / industry / country are for single stocks (null for funds, which use
 // the weightings instead); terPct for funds. topHoldings is [] for anything but a fund.
 interface AssetDetailResponse {
+  // census' listing, for an asset asked by its listing id.
+  listing?: Listing | null;
   ticker: string;
   isin: string | null;
   name: string;
@@ -775,6 +794,9 @@ interface AssetDetailResponse {
   topHoldings: AssetWeightEntryResponse[];
   sectorWeightings: AssetWeightEntryResponse[];
   regionWeightings: AssetWeightEntryResponse[];
+  // census' profile of the listing's instrument, each field citing its source; null for an asset
+  // asked by its ticker, or when census couldn't be asked.
+  profile?: InstrumentProfile | null;
 }
 
 export type {
