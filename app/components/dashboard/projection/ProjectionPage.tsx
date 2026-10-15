@@ -88,7 +88,7 @@ function requestOf(question: Question, forms: Forms): { request: ProjectionReque
  * monthly withdrawals last (the success rate, the ending balances), and the safe withdrawal (the
  * largest that lasts in the success rate asked). Goal and survival draw the balance's fan, year by
  * year, with the probability beside it. What the runs rest on (models/Projection's basis) is
- * spelled out under them. Inputs are in today's money, results nominal: the page says so. Under 12
+ * spelled out under them. Inputs are in today's money, balances nominal: the page says so. Under 12
  * months of returns the backend refuses, and the page says why and when to come back.
  */
 export function ProjectionPage({ portfolioUuid, trail, eyebrow }: { portfolioUuid: string; trail: Crumb[]; eyebrow?: string }) {
@@ -112,8 +112,8 @@ export function ProjectionPage({ portfolioUuid, trail, eyebrow }: { portfolioUui
       setCurrency(data.currency);
       setOutcomes((o) => ({ ...o, [asked]: { data, error: null } }));
     } catch (err) {
-      const tooShort = err instanceof ApiError && (err.errorType === PROJECTION_HISTORY_TOO_SHORT || err.message.includes(PROJECTION_HISTORY_TOO_SHORT));
-      const months = tooShort && err.metadata.months !== undefined ? Number(err.metadata.months) : null;
+      const tooShort = err instanceof ApiError && err.status === 409 && err.errorType === PROJECTION_HISTORY_TOO_SHORT;
+      const months = tooShort && err.metadata.months !== undefined ? Number(err.metadata.months) : NaN;
       setOutcomes((o) => ({
         ...o,
         [asked]: tooShort
@@ -208,10 +208,17 @@ export function ProjectionPage({ portfolioUuid, trail, eyebrow }: { portfolioUui
         <Module>
           <div className="px-6 py-6 flex items-start gap-3 text-[13px] text-[#57534e]">
             <Hourglass className="h-5 w-5 shrink-0 text-[#C49A3C]" />
-            <p>
-              Not enough history to project yet: it needs {PROJECTION_MIN_MONTHS} months of returns the positions held share
-              {outcome.tooShort.months !== null && <>, and there are {outcome.tooShort.months}</>}. A portfolio just created or changed is rebuilt overnight (at 04:00) and after each edit; try again once it has been.
-            </p>
+            {outcome.tooShort.months === 0 ? (
+              <p>
+                Nothing to project yet: the portfolio holds nothing, or hasn&apos;t been rebuilt since it was created. It&apos;s rebuilt overnight (at 04:00) and after each edit; try again once it has been.
+              </p>
+            ) : (
+              <p>
+                Not enough history to project yet: {outcome.tooShort.months === null
+                  ? `a projection needs ${PROJECTION_MIN_MONTHS} months of returns the positions held share.`
+                  : `the positions held have ${outcome.tooShort.months} ${outcome.tooShort.months === 1 ? "month" : "months"} of returns together, and a projection needs ${PROJECTION_MIN_MONTHS}.`} It comes once they have them.
+              </p>
+            )}
           </div>
         </Module>
       ) : outcome?.error ? (
@@ -300,8 +307,12 @@ function Result({ data }: { data: Projection }) {
         <ModuleHead title="Safe withdrawal" />
         <div className={`${MODULE_BODY} space-y-4`}>
           <Figs>
-            <Fig label="Each month" value={money(w.monthlyWithdrawal)} strong sub="Growing with inflation each year" />
-            <Fig label="A year, of the starting value" value={pct(w.annualWithdrawalRatePct)} />
+            <Fig label="Each month" value={money(w.monthlyWithdrawal)} strong sub={`In today's money: each withdrawal grows with inflation (about ${pct(data.basis.inflationPct)} a year)`} />
+            <Fig
+              label="Withdrawal rate"
+              value={pct(w.annualWithdrawalRatePct)}
+              sub={w.medianBalanceAtRetirement !== null ? "A year, of the median balance at retirement" : "A year, of the value today"}
+            />
             <Fig label="Lasts in" value={pct(w.achievedSuccessPct)} sub={`Asked ${pct(w.targetSuccessPct)}`} />
             {w.medianBalanceAtRetirement !== null && <Fig label="Median at retirement" value={money(w.medianBalanceAtRetirement)} />}
           </Figs>
@@ -377,7 +388,7 @@ function Basis({ data }: { data: Projection }) {
       : `Their own return was ${pct(b.ownReturnPct)} a year.`,
     `The simulated return is ${pct(b.simulatedReturnPct)} a year${b.capped ? ", held at the 10% ceiling" : ""}.`,
     b.cashPct > 0 ? `The cash, ${pct(b.cashPct)} of the portfolio, earns nothing.` : null,
-    `Inflation ${pct(b.inflationPct)} a year, give or take ${pct(b.inflationStdPct)}, grows the contributions, withdrawals and goal.`,
+    `Inflation ${pct(b.inflationPct)} a year, give or take ${pct(b.inflationStdPct)}, grows the contributions, withdrawals and goal month by month from today; the balances shown include it.`,
   ].filter(Boolean);
   return (
     <Module>

@@ -3,11 +3,14 @@
 // portfolio as it is could go, nothing recorded. Any portfolio the caller can read (the owner's,
 // an advisor's client's, a shared backtest), as the stress test. The body asks one question, a
 // goal, whether withdrawals survive, or the safe withdrawal (422 without exactly one). Inputs are
-// in today's money; the response's amounts are nominal, in `currency` (inflation grows the
-// contributions, withdrawals and goal). The same request on the same data gives the same answer.
-// PROJECTION_HISTORY_TOO_SHORT (metadata months, min_months = 12) when the positions held have
-// under 12 months of returns together, nothing is held, or before the portfolio's first rebuild
-// (nightly at 04:00, and after every edit).
+// in today's money (targetAmount, monthlyContribution, monthlyWithdrawal), grown by the simulated
+// inflation month by month from today; every balance in the response is nominal at the time it
+// refers to, in `currency`, so not comparable with the inputs without deflating. A goal is reached
+// when the balance passes the target grown by inflation to that month. The same request on the
+// same data gives the same answer. 409 ProjectionHistoryTooShortError (metadata `months`,
+// `min_months` "12", strings) when the positions held have under 12 months of returns together;
+// `months` "0" when nothing is held, or before the portfolio's first rebuild (nightly at 04:00,
+// and after every edit).
 
 // Will the portfolio reach targetAmount, and when? Without a horizon, within 50 years.
 interface GoalRequest {
@@ -91,7 +94,11 @@ interface SurvivalResult {
 }
 
 interface SafeWithdrawalResult {
+  // In today's money: each withdrawal is it grown by inflation, from today (so already grown once
+  // withdrawals start, after an accumulation).
   monthlyWithdrawal: number;
+  // monthlyWithdrawal × 12 over the balance it's drawn from: initialValue, or after an
+  // accumulation medianBalanceAtRetirement (nominal then).
   annualWithdrawalRatePct: number;
   targetSuccessPct: number;
   achievedSuccessPct: number;
@@ -113,7 +120,8 @@ interface Projection {
   safeWithdrawal: SafeWithdrawalResult | null;
 }
 
-const PROJECTION_HISTORY_TOO_SHORT = "PROJECTION_HISTORY_TOO_SHORT";
+// The 409's error_type.
+const PROJECTION_HISTORY_TOO_SHORT = "ProjectionHistoryTooShortError";
 const PROJECTION_MIN_MONTHS = 12;
 const PROJECTION_MAX_YEARS = 60;
 
