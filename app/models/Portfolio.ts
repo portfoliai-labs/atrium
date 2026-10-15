@@ -1,4 +1,6 @@
 // models/Portfolio.ts
+import type { TaxationMode } from "./Tax";
+
 // Matches TransactionsSummaryResponse / PortfolioOverviewResponse DTOs (GET /v1/portfolios/{p}/overview)
 
 // Matches PortfolioResponse (GET/POST/PATCH /v1/portfolios, GET /v1/portfolios/{p},
@@ -27,6 +29,8 @@ interface Portfolio {
   isVirtual: boolean;
   isAggregate: boolean;
   createdAt: string;
+  // Who pays its taxes: the user ("declared", the default) or its broker ("withheld"). See models/Tax.
+  taxationMode: TaxationMode;
 }
 
 /** A strategy's backtest: virtual, and not the aggregate. */

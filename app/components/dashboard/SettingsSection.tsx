@@ -10,6 +10,7 @@ import SubscriptionSection from "./SubscriptionSection";
 import { DeleteAccountModal } from "./DeleteAccountModal";
 import { Toggle } from "./Toggle";
 import { useUser } from "../../context/UserContext";
+import { TAX_REGIME_COUNTRIES, residenceOptions } from "../../lib/taxes";
 
 // Tally form used for tester applications: https://tally.so/r/QKWeYg
 const TESTER_APPLICATION_FORM_ID = "QKWeYg";
@@ -62,6 +63,13 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
+// The tab the next Settings opens on, when a link elsewhere asks for one (the Taxes page's way to
+// the tax residence, under Preferences); read once, as it mounts.
+let requestedTab: TabId | null = null;
+export const requestSettingsTab = (tab: TabId) => {
+  requestedTab = tab;
+};
+
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇬🇧" },
   { code: "it", label: "Italian", flag: "🇮🇹" },
@@ -77,7 +85,11 @@ const CURRENCIES = [
 
 export function SettingsSection() {
   const { user, logout, refreshUser, isDemo } = useUser();
-  const [activeTab, setActiveTab] = useState<TabId>("subscription");
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    const tab = requestedTab ?? "subscription";
+    requestedTab = null;
+    return tab;
+  });
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
@@ -88,7 +100,9 @@ export function SettingsSection() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const [localeForm, setLocaleForm] = useState({ language: "en", currency: "USD" });
+  // The tax residence ("" until set) picks the regime the investor's taxes are computed by.
+  const [localeForm, setLocaleForm] = useState({ language: "en", currency: "USD", taxResidence: "" });
+  const [savedResidence, setSavedResidence] = useState<string | null>(null);
   const [localeLoading, setLocaleLoading] = useState(true);
   const [localeSaving, setLocaleSaving] = useState(false);
   const [isLangOpen, setIsLangOpen] = useState(false);
@@ -117,7 +131,8 @@ export function SettingsSection() {
 
     userService.getUserProfile()
       .then((profile) => {
-        setLocaleForm({ language: profile.language || "en", currency: profile.currency || "USD" });
+        setLocaleForm({ language: profile.language || "en", currency: profile.currency || "USD", taxResidence: profile.tax_residence ?? "" });
+        setSavedResidence(profile.tax_residence ?? null);
         setNameForm({ first_name: profile.first_name ?? "", last_name: profile.last_name ?? "" });
       })
       .catch((error) => console.error("Failed to load locale preferences:", error))
@@ -164,7 +179,10 @@ export function SettingsSection() {
   const handleSaveLocale = async () => {
     setLocaleSaving(true);
     try {
-      await userService.updateUserProfile({ language: localeForm.language, currency: localeForm.currency });
+      // The residence only when picked: once set it's changed, not cleared.
+      const residence = localeForm.taxResidence && localeForm.taxResidence !== savedResidence ? { tax_residence: localeForm.taxResidence } : {};
+      await userService.updateUserProfile({ language: localeForm.language, currency: localeForm.currency, ...residence });
+      if (residence.tax_residence) setSavedResidence(residence.tax_residence);
       localStorage.removeItem("user_profile");
       await refreshUser();
       setMessage({ type: "success", text: "Preferences updated" });
@@ -485,6 +503,30 @@ export function SettingsSection() {
                   )}
                 </div>
               </div>
+
+              {/* An investor's taxes are computed by their residence's regime (see Wealth's Taxes). */}
+              {user?.role !== "ADVISOR" && (
+                <div className="space-y-2">
+                  <label htmlFor="tax-residence" className="text-[10px] font-bold uppercase tracking-wider text-[#78716c] ml-1">Tax residence</label>
+                  <div className="relative">
+                    <select
+                      id="tax-residence"
+                      value={localeForm.taxResidence}
+                      onChange={(e) => setLocaleForm({ ...localeForm, taxResidence: e.target.value })}
+                      className="w-full appearance-none p-3.5 pr-10 bg-white border border-[rgba(196,154,60,0.25)] rounded-xl font-medium text-[#1c1917] hover:border-[#C49A3C] transition-all outline-none focus:ring-4 focus:ring-[#C49A3C]/10"
+                    >
+                      {!localeForm.taxResidence && <option value="" disabled>Not set</option>}
+                      {residenceOptions(savedResidence).map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a8a29e]" />
+                  </div>
+                  <p className="text-[11px] text-[#78716c] ml-1">
+                    {localeForm.taxResidence && !TAX_REGIME_COUNTRIES.includes(localeForm.taxResidence)
+                      ? "Taxes are computed for residents of Italy only, for now."
+                      : "Where you pay taxes: your investments' taxes are estimated by its rules."}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

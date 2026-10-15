@@ -13,6 +13,7 @@ import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHisto
 import { CLIENTS_SECTION } from "../../lib/dashboardNav";
 import { alertState } from "../../lib/alerts";
 import { formatCurrency } from "../../lib/format";
+import { TAX_REGIME_COUNTRIES, residenceOptions } from "../../lib/taxes";
 import { UserRole } from "../../models/Advisor";
 import type { Client, ClientCreatePayload, ClientProfileUpdatePayload } from "../../models/Advisor";
 import type { ClientAlertRuleResponse } from "../../models/Alert";
@@ -289,7 +290,14 @@ function ClientWealth({ client, onBack, onNavigate }: { client: Client; onBack: 
 
   return (
     <>
-      <WealthSection onNavigate={onNavigate} section={SECTION} scope={scope} rootTrail={trail} extraActions={extraActions} />
+      <WealthSection
+        onNavigate={onNavigate}
+        section={SECTION}
+        scope={scope}
+        rootTrail={trail}
+        extraActions={extraActions}
+        onOpenTaxSettings={() => setDialog("settings")}
+      />
       {dialog === "settings" && (
         <ClientSettingsDialog
           client={client}
@@ -511,23 +519,35 @@ function AddClientDialog({ onClose, onCreated }: { onClose: () => void; onCreate
 }
 
 /**
- * CLIENT SETTINGS — a client's language and portfolio currency. Changing the currency makes the
- * backend recompute the client's whole history in it.
+ * CLIENT SETTINGS — a client's language, portfolio currency and tax residence. Changing the
+ * currency makes the backend recompute the client's whole history in it; the residence picks the
+ * regime their taxes are computed by (see their investments' Taxes page).
  */
 function ClientSettingsDialog({ client, onClose, onSaved }: { client: Client; onClose: () => void; onSaved: (client: Client) => void }) {
-  const [form, setForm] = useState({ currency: client.currency ?? "EUR", language: client.language ?? "it" });
+  const [form, setForm] = useState({ currency: client.currency ?? "EUR", language: client.language ?? "it", taxResidence: client.tax_residence ?? "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dirty = form.currency !== (client.currency ?? "EUR") || form.language !== (client.language ?? "it");
+  const residenceChanged = form.taxResidence !== (client.tax_residence ?? "");
+  const dirty = form.currency !== (client.currency ?? "EUR") || form.language !== (client.language ?? "it") || residenceChanged;
   const currencyChanged = form.currency !== (client.currency ?? "EUR");
 
   const save = async () => {
     setBusy(true);
     setError(null);
     try {
-      const payload: ClientProfileUpdatePayload = { currency: form.currency || null, language: form.language || null };
+      // The residence only when picked: once set it's changed, not cleared.
+      const payload: ClientProfileUpdatePayload = {
+        currency: form.currency || null,
+        language: form.language || null,
+        ...(residenceChanged && form.taxResidence ? { tax_residence: form.taxResidence } : {}),
+      };
       await advisorService.updateClientProfile(client.uuid, payload);
-      onSaved({ ...client, currency: payload.currency ?? client.currency, language: payload.language ?? client.language });
+      onSaved({
+        ...client,
+        currency: payload.currency ?? client.currency,
+        language: payload.language ?? client.language,
+        tax_residence: payload.tax_residence ?? client.tax_residence,
+      });
     } catch {
       setError("Unable to save the client's settings. Please try again.");
       setBusy(false);
@@ -549,6 +569,15 @@ function ClientSettingsDialog({ client, onClose, onSaved }: { client: Client; on
             </select>
           </Field>
         </div>
+        <Field label="Tax residence">
+          <select value={form.taxResidence} onChange={(e) => setForm((f) => ({ ...f, taxResidence: e.target.value }))} className={fieldClass}>
+            {!form.taxResidence && <option value="" disabled>Not set</option>}
+            {residenceOptions(client.tax_residence).map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
+          </select>
+        </Field>
+        {form.taxResidence && !TAX_REGIME_COUNTRIES.includes(form.taxResidence) && (
+          <p className="text-xs text-[#78716c]">Taxes are computed for residents of Italy only, for now.</p>
+        )}
         {currencyChanged && (
           <p className="rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-xs font-semibold text-amber-800">
             Every figure of {clientDisplayName(client)}&apos;s is recomputed in {form.currency}: it can take a few minutes.
