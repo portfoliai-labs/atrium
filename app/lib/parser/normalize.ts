@@ -2,6 +2,7 @@ import { StandardTransaction } from "../../models/Report";
 import { RawRow } from "./types";
 import { BROKER_CONFIGS } from "./config";
 import { parseDateValue } from "./dateFormat";
+import { isOperation } from "../operations";
 
 export const identifyBroker = (data: RawRow[]): string => {
   if (!data.length) return "UNKNOWN";
@@ -36,13 +37,25 @@ export const standardizeRow = (
   const optStr = (val: unknown): string | undefined =>
     val !== undefined && val !== null && val !== "" ? String(val) : undefined;
 
+  // The operation a raw type reads as: its own name, else the words brokers use for it. One that
+  // matches none is left as it came, for validation to flag.
   const fallbackOperation = (val: unknown): StandardTransaction["operation"] => {
-    if (!val) return "other";
-    const s = String(val).toUpperCase();
+    const raw = String(val ?? "").trim();
+    const lower = raw.toLowerCase().replace(/[\s-]+/g, "_");
+    if (isOperation(lower)) return lower;
+    const s = raw.toUpperCase();
+    if (s.includes("DIV")) return "dividend";
+    if (s.includes("COUPON") || s.includes("CEDOL")) return "coupon";
+    if (s.includes("REDEMPTION") || s.includes("RIMBORSO")) return "redemption";
+    if (s.includes("STAKING") || s.includes("AIRDROP") || s.includes("REWARD")) return "reward";
+    if (s.includes("DEPOSIT") || s.includes("VERSAMENTO")) return "deposit";
+    if (s.includes("WITHDRAW") || s.includes("PRELIEVO")) return "withdrawal";
+    if (s.includes("INTEREST") || s.includes("INTERESS")) return "interest";
+    if (s.includes("TAX") || s.includes("IMPOST") || s.includes("BOLLO")) return "tax";
+    if (s.includes("FEE") || s.includes("COMMISSION")) return "fee";
     if (s.includes("BUY") || s.includes("ACQUISTO") || s === "A" || s.includes("+")) return "buy";
     if (s.includes("SELL") || s.includes("VENDITA") || s === "S" || s.includes("-")) return "sell";
-    if (s.includes("DIV")) return "dividend";
-    return "other";
+    return raw as StandardTransaction["operation"];
   };
 
   const isin   = fmt.isin   ? fmt.isin(getVal("isin"), row)     : optStr(getVal("isin"));

@@ -1,7 +1,12 @@
 "use client";
 
 import { ReactNode } from "react";
-import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, CircleDollarSign, FileText, Loader2, Trash2 } from "lucide-react";
+import {
+  ArrowDownLeft, ArrowDownRight, ArrowLeftRight, ArrowUpRight, Banknote, ChevronLeft, ChevronRight, CircleDollarSign, FileText, Gift,
+  Landmark, Loader2, Percent, Receipt, Trash2, Undo2,
+} from "lucide-react";
+import type { TransactionOperation } from "../../models/Transaction";
+import { CASH_OPERATIONS, OPERATION_LABELS, REWARD_KIND_LABELS, isCashOperation, operationLabel } from "../../lib/operations";
 
 // Normalized shape both pending (client-parsed StandardTransaction) and existing
 // (backend TransactionResponse) rows are converted into before reaching this component.
@@ -19,6 +24,13 @@ export interface DisplayTransaction {
   currency: string;
   fees: number;
   broker: string | null;
+  // A manual asset's ("manual:<uuid>").
+  assetId?: string | null;
+  withholdingTax?: number | null;
+  accruedInterest?: number | null;
+  counterAmount?: number | null;
+  counterCurrency?: string | null;
+  rewardKind?: "staking" | "airdrop" | null;
 }
 
 export interface TransactionRow {
@@ -31,9 +43,12 @@ export interface TransactionRow {
   portfolioUuid?: string;
 }
 
-// The three operations a user can bulk-reassign selected rows to — "other" is deliberately
-// excluded, same as TransactionModal's own edit form: it's not a value a user picks by hand.
-export type BulkOperation = "buy" | "sell" | "dividend";
+// The operations selected rows can be reassigned to at once: those that take no field of their own
+// (a reward's kind, a conversion's other currency). A row on a security only becomes another
+// operation on one, a cash movement another cash one (see FileUploader).
+export const BULK_INSTRUMENT_OPERATIONS = ["buy", "sell", "dividend", "coupon", "redemption", "transfer_in", "transfer_out"] as const satisfies readonly TransactionOperation[];
+export const BULK_CASH_OPERATIONS = CASH_OPERATIONS.filter((o) => o !== "fx_conversion");
+export type BulkOperation = (typeof BULK_INSTRUMENT_OPERATIONS)[number] | "deposit" | "withdrawal" | "interest" | "fee" | "tax";
 
 interface TransactionsSectionProps {
   title: string;
@@ -47,7 +62,7 @@ interface TransactionsSectionProps {
   onToggleRow: (key: string) => void;
   onToggleAll: (keysOnPage: string[]) => void;
   onDeleteSelected: (keys: string[]) => void;
-  // Reassigns the operation (buy/sell/dividend) for every selected row at once — the manual
+  // Reassigns the operation for every selected row at once — the manual
   // equivalent of what the AI's value-mapping step does per distinct raw value, but usable
   // any time afterwards on rows it got wrong, not just during import. Omit to hide the control.
   onBulkEditOperation?: (keys: string[], operation: BulkOperation) => void;
@@ -64,12 +79,23 @@ interface TransactionsSectionProps {
   readOnly?: boolean;
 }
 
-const OPERATION_STYLES: Record<string, { icon: typeof ArrowUpRight; classes: string }> = {
+const OPERATION_STYLES: Record<TransactionOperation, { icon: typeof ArrowUpRight; classes: string }> = {
   buy: { icon: ArrowUpRight, classes: "bg-emerald-50 text-emerald-600" },
   sell: { icon: ArrowDownRight, classes: "bg-rose-50 text-rose-600" },
   dividend: { icon: CircleDollarSign, classes: "bg-blue-50 text-blue-600" },
-  other: { icon: CircleDollarSign, classes: "bg-slate-100 text-slate-500" },
+  coupon: { icon: CircleDollarSign, classes: "bg-blue-50 text-blue-600" },
+  redemption: { icon: Undo2, classes: "bg-violet-50 text-violet-600" },
+  transfer_in: { icon: ArrowDownLeft, classes: "bg-teal-50 text-teal-700" },
+  transfer_out: { icon: ArrowUpRight, classes: "bg-orange-50 text-orange-600" },
+  reward: { icon: Gift, classes: "bg-fuchsia-50 text-fuchsia-600" },
+  deposit: { icon: Banknote, classes: "bg-amber-50 text-amber-700" },
+  withdrawal: { icon: Banknote, classes: "bg-amber-50 text-amber-700" },
+  interest: { icon: Percent, classes: "bg-amber-50 text-amber-700" },
+  fee: { icon: Receipt, classes: "bg-slate-100 text-slate-600" },
+  tax: { icon: Landmark, classes: "bg-slate-100 text-slate-600" },
+  fx_conversion: { icon: ArrowLeftRight, classes: "bg-amber-50 text-amber-700" },
 };
+const UNKNOWN_STYLE = { icon: CircleDollarSign, classes: "bg-slate-100 text-slate-500" };
 
 function formatMoney(value: number, currency: string): string {
   if (Number.isNaN(value)) return "-";
@@ -79,9 +105,13 @@ function formatMoney(value: number, currency: string): string {
 // The asset's name is the row's primary identifier when known, with its ticker alongside
 // for quick recognition — pending (not-yet-saved) rows don't have a resolved name yet, so
 // this falls back to whatever identifier is available (ticker, then ISIN).
+// A cash movement names no security: it reads as its currency (a conversion, both).
 function rowIdentifier(tx: DisplayTransaction): string {
+  if (isCashOperation(tx.operation)) {
+    return tx.operation === "fx_conversion" && tx.counterCurrency ? `Cash · ${tx.currency} → ${tx.counterCurrency}` : `Cash · ${tx.currency}`;
+  }
   if (tx.name && tx.ticker) return `${tx.name} (${tx.ticker})`;
-  return tx.name || tx.ticker || tx.isin || "—";
+  return tx.name || tx.ticker || tx.isin || (tx.assetId ? "Manual asset" : "—");
 }
 
 export function TransactionsSection({
@@ -141,9 +171,12 @@ export function TransactionsSection({
                   className="text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-xl px-3 py-2 outline-none cursor-pointer transition-all focus:ring-4 focus:ring-slate-50"
                 >
                   <option value="" disabled>Set operation ({selectedOnPage.length})…</option>
-                  <option value="buy">Buy</option>
-                  <option value="sell">Sell</option>
-                  <option value="dividend">Dividend</option>
+                  <optgroup label="On a security">
+                    {BULK_INSTRUMENT_OPERATIONS.map((o) => <option key={o} value={o}>{OPERATION_LABELS[o]}</option>)}
+                  </optgroup>
+                  <optgroup label="Cash">
+                    {BULK_CASH_OPERATIONS.map((o) => <option key={o} value={o}>{OPERATION_LABELS[o]}</option>)}
+                  </optgroup>
                 </select>
               )}
               <button
@@ -174,14 +207,18 @@ export function TransactionsSection({
           {rows.map((row) => {
             const tx = row.transaction;
             const isExisting = row.origin === "existing";
-            const opStyle = OPERATION_STYLES[tx.operation] ?? OPERATION_STYLES.other;
+            const opStyle = OPERATION_STYLES[tx.operation as TransactionOperation] ?? UNKNOWN_STYLE;
             const OpIcon = opStyle.icon;
             const isDeleting = deletingKeys.has(row.key);
             const hasError = (field: keyof DisplayTransaction) => row.errorFields.has(field);
 
             const secondaryParts = [
               tx.quantity != null && tx.price != null && `${tx.quantity} @ ${formatMoney(tx.price, tx.currency)}`,
-              `= ${formatMoney(tx.amount, tx.currency)}`,
+              !Number.isNaN(tx.amount) && `= ${formatMoney(tx.amount, tx.currency)}`,
+              tx.counterAmount != null && tx.counterCurrency && `→ ${formatMoney(tx.counterAmount, tx.counterCurrency)}`,
+              tx.withholdingTax != null && tx.withholdingTax > 0 && `withheld ${formatMoney(tx.withholdingTax, tx.currency)}`,
+              tx.accruedInterest != null && tx.accruedInterest > 0 && `accrued ${formatMoney(tx.accruedInterest, tx.currency)}`,
+              tx.rewardKind && REWARD_KIND_LABELS[tx.rewardKind],
               tx.isin && `ISIN ${tx.isin}`,
               tx.broker,
               tx.fees > 0 && `fees ${formatMoney(tx.fees, tx.currency)}`,
@@ -222,7 +259,7 @@ export function TransactionsSection({
                       {rowIdentifier(tx)}
                     </span>
                     <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full shrink-0 ${opStyle.classes}`}>
-                      {tx.operation}
+                      {operationLabel(tx.operation)}
                     </span>
                     <span className={`text-xs font-semibold shrink-0 ${hasError("date") ? "text-rose-500" : "text-slate-400"}`}>
                       {tx.date || "no date"}

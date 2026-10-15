@@ -7,6 +7,7 @@ export const FIELD_LABELS: Record<MappingTarget, string> = {
   quantity: "Quantity",
   price: "Price",
   fees: "Fees",
+  accrued_interest: "Accrued interest",
   currency: "Currency",
   ticker: "Ticker",
   isin: "ISIN",
@@ -14,4 +15,4 @@ export const FIELD_LABELS: Record<MappingTarget, string> = {
   broker: "Broker",
 };
 
-export const NUMERIC_TARGETS: MappingTarget[] = ["amount", "quantity", "price", "fees"];
+export const NUMERIC_TARGETS: MappingTarget[] = ["amount", "quantity", "price", "fees", "accrued_interest"];

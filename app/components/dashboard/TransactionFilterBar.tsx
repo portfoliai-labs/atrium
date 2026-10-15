@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, SlidersHorizontal, X } from "lucide-react";
 import type { TransactionOperation } from "../../models/Transaction";
+import { CASH_OPERATIONS, INSTRUMENT_OPERATIONS, OPERATION_LABELS } from "../../lib/operations";
 import type { Portfolio } from "../../models/Portfolio";
 
 export interface TransactionFilterState {
@@ -27,7 +28,6 @@ export const EMPTY_TRANSACTION_FILTERS: TransactionFilterState = {
   dateTo: "",
 };
 
-const OPERATIONS: TransactionOperation[] = ["buy", "sell", "dividend", "other"];
 
 function FilterInput({
   placeholder, value, onChange, type = "text",
@@ -145,7 +145,7 @@ export function TransactionFilterBar({ filters, onChange, portfolios = [] }: Tra
           <FilterInput placeholder="Ticker" value={filters.ticker} onChange={set("ticker")} />
           <FilterInput placeholder="ISIN" value={filters.isin} onChange={set("isin")} />
           <FilterInput placeholder="Broker" value={filters.broker} onChange={set("broker")} />
-          <div className="relative w-full sm:w-32">
+          <div className="relative w-full sm:w-40">
             <select
               value={filters.operation}
               onChange={(e) => set("operation")(e.target.value as TransactionOperation | "")}
@@ -153,7 +153,12 @@ export function TransactionFilterBar({ filters, onChange, portfolios = [] }: Tra
               className="h-9 pl-3 pr-8 w-full rounded-lg bg-white border border-slate-200 text-slate-900 text-xs font-semibold outline-none focus:ring-4 focus:ring-slate-50 focus:border-slate-300 transition-all appearance-none"
             >
               <option value="">All types</option>
-              {OPERATIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+              <optgroup label="Investments">
+                {INSTRUMENT_OPERATIONS.map((o) => <option key={o} value={o}>{OPERATION_LABELS[o]}</option>)}
+              </optgroup>
+              <optgroup label="Cash">
+                {CASH_OPERATIONS.map((o) => <option key={o} value={o}>{OPERATION_LABELS[o]}</option>)}
+              </optgroup>
             </select>
             <ChevronDown className="h-3.5 w-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>

@@ -4,18 +4,22 @@
 // straight into commit's confirmed_column_mapping), so drifting from the backend shape here
 // breaks the request rather than just failing to render.
 
+import type { RewardKind, TransactionOperation } from "./Transaction";
+
 type ConfidenceLevel = "high" | "medium" | "low";
 
-// The AI's enum for a categorical value's target. Deliberately has no "ignore" — a value left
-// unmapped (target: null) already means "not imported", which is how every row that doesn't
-// resolve to buy/sell/dividend ends up excluded, explicitly and visibly, rather than dropped.
-type TransactionTarget = "buy" | "sell" | "dividend";
+// The AI's enum for a categorical value's target: every operation but fx_conversion, which isn't
+// imported yet (422). Deliberately has no "ignore" — a value left unmapped (target: null) already
+// means "not imported", which is how every row that doesn't resolve to an operation ends up
+// excluded, explicitly and visibly, rather than dropped.
+type TransactionTarget = Exclude<TransactionOperation, "fx_conversion">;
 
 // Matches ImportTargetField (backend enum) — the internal schema an uploaded file is mapped onto.
-type MappingTarget = "date" | "type" | "amount" | "quantity" | "price" | "fees" | "currency" | "ticker" | "isin" | "name" | "broker";
+// accrued_interest: a bond's accrued interest, on a buy or a sell.
+type MappingTarget = "date" | "type" | "amount" | "quantity" | "price" | "fees" | "accrued_interest" | "currency" | "ticker" | "isin" | "name" | "broker";
 
 const MAPPING_TARGETS: MappingTarget[] = [
-  "date", "type", "amount", "quantity", "price", "fees", "currency", "ticker", "isin", "name", "broker",
+  "date", "type", "amount", "quantity", "price", "fees", "accrued_interest", "currency", "ticker", "isin", "name", "broker",
 ];
 
 // date/type/amount are what the AI's own confidence scoring centers on; currency is added
@@ -69,6 +73,8 @@ interface ValueMappingEntryDTO {
   raw_value: string;
   target: TransactionTarget | null;
   confidence: ConfidenceLevel;
+  // Required with target reward, refused with any other (422).
+  reward_kind?: RewardKind | null;
 }
 
 // Only the single column mapped to `type` ever needs value mapping — every other categorical
@@ -110,6 +116,9 @@ interface CommitMappingPayload {
   // response) so rows already persisted in an earlier round aren't reprocessed and duplicated.
   // Omitted/null means "process every row" — the original, non-recommit behavior.
   only_row_indexes?: number[] | null;
+  // The total cost of each transfer_in that had none (a prior response's transfers_without_cost),
+  // by row index as a string, each > 0 — sent with only_row_indexes those rows.
+  transfer_costs?: Record<string, string>;
 }
 
 interface ImportRowIssueResponse {
@@ -153,6 +162,10 @@ interface CommitImportResponse {
   integrity_warnings: ImportIntegrityWarningResponse[];
   unresolved_instruments: UnresolvedInstrumentResponse[];
   auto_resolved_instruments?: AutoResolvedInstrumentResponse[];
+  // transfer_in rows without a cost: NOT recorded, until a recommit gives them one (transfer_costs).
+  transfers_without_cost?: number[];
+  // reward rows recorded at the asset's close of that day.
+  rewards_valued_at_close?: number[];
 }
 
 export type {
