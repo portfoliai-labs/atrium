@@ -4,11 +4,11 @@
 // share: the disclaimer the backend leaves to us, how a regime's categories read, the countries
 // a tax residence can be.
 
-import type { CostMethod, TaxCategory, TaxationMode } from "../models/Tax";
+import type { CostMethod, IncomeKind, TaxCategory, TaxationMode } from "../models/Tax";
 
-// Every taxes page says it: the figures are estimates on what's recorded.
+// Every taxes page says it: the figures are estimates on what's recorded, and what they leave out.
 export const TAX_DISCLAIMER =
-  "Estimates based on the transactions you recorded: check them with your tax advisor before filing.";
+  "Estimates based on the transactions you recorded: check them with your tax advisor before filing. Not included: the credit for taxes withheld abroad, refunds under tax treaties, staking and airdrops.";
 
 // Italy's categories (the only regime so far); another regime's read as sent.
 const CATEGORY_LABELS: Record<string, { label: string; detail: string }> = {
@@ -16,6 +16,17 @@ const CATEGORY_LABELS: Record<string, { label: string; detail: string }> = {
   redditi_diversi_titoli_pubblici: { label: "Government bonds", detail: "Redditi diversi · titoli di Stato" },
   redditi_di_capitale: { label: "ETFs and funds", detail: "Redditi di capitale" },
   cripto_attivita: { label: "Crypto-assets", detail: "Cripto-attività" },
+  dividendi: { label: "Dividends", detail: "Dividendi" },
+  proventi_oicr: { label: "ETF and fund income", detail: "Proventi OICR" },
+  interessi: { label: "Interest", detail: "Interessi" },
+  interessi_titoli_pubblici: { label: "Government bond interest", detail: "Interessi · titoli di Stato" },
+};
+
+export const INCOME_KIND_LABELS: Record<IncomeKind, string> = {
+  dividend: "Dividend",
+  coupon: "Coupon",
+  accrued_interest: "Accrued interest on sale",
+  cash_interest: "Cash interest",
 };
 
 export const categoryLabel = (category: TaxCategory | null | undefined) =>

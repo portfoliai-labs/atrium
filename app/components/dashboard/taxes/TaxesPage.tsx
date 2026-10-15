@@ -8,11 +8,12 @@ import { taxService } from "../../../services/taxService";
 import { ApiError } from "../../../services/apiClient";
 import { formatCurrency, formatQuantity } from "../../../lib/format";
 import {
-  COST_METHOD_LABELS, TAX_DISCLAIMER, TAXATION_MODE_LABELS, categoryDetail, categoryLabel, ratePct, taxYears,
+  COST_METHOD_LABELS, INCOME_KIND_LABELS, TAX_DISCLAIMER, TAXATION_MODE_LABELS, categoryDetail, categoryLabel, ratePct, taxYears,
 } from "../../../lib/taxes";
 import {
   TAX_REGIME_UNAVAILABLE,
-  type CarriedLoss, type CostMethod, type RealizedGain, type RealizedGains, type TaxedIncome, type TaxYear, type UnrealizedGain,
+  type CarriedLoss, type CostMethod, type IncomeCategory, type IncomePayment, type InvestmentIncome, type RealizedGain,
+  type RealizedGains, type TaxedIncome, type TaxYear, type UnrealizedGain,
 } from "../../../models/Tax";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
 import { Fig, Figs, Module, ModuleHead, MODULE_BODY } from "../PerformanceSection";
@@ -43,9 +44,12 @@ const toneClass = (v: number) => (v > 0 ? "text-[#047857]" : v < 0 ? "text-[#e11
  *   broker's, and those whose last year it is: in the year in course, the positions in gain that
  *   would take them before they're lost, and those that wouldn't (an ETF's gain);
  * - the year's sales, each against what its units cost (the regime's method, or FIFO / average
- *   cost on request).
- * Without a residence (or with one that has no regime) only the sales are there, with the way to
- * set it (`onOpenSettings`). Every figure is an estimate on the recorded transactions: the page says
+ *   cost on request);
+ * - the year's investment income (dividends, coupons, interest): a declared portfolio's taxed in
+ *   the tax return by its own categories, never offset with the gains' losses; a withheld one's
+ *   taxed at source by its broker.
+ * Without a residence (or with one that has no regime) only the sales and the income are there,
+ * with the way to set it (`onOpenSettings`). Every figure is an estimate on the recorded transactions: the page says
  * so, the backend doesn't. Who pays a portfolio's taxes is set in Manage portfolios (`onOpenPortfolios`).
  */
 export function TaxesPage({ trail, onOpenSettings, onOpenPortfolios }: {
@@ -63,6 +67,7 @@ export function TaxesPage({ trail, onOpenSettings, onOpenPortfolios }: {
   const [method, setMethod] = useState<CostMethod | null>(null);
   const [taxYear, setTaxYear] = useState<Loaded<TaxYear> | null>(null);
   const [gains, setGains] = useState<Loaded<RealizedGains> | null>(null);
+  const [income, setIncome] = useState<Loaded<InvestmentIncome> | null>(null);
 
   const yearKey = `${clientUuid}:${year}`;
   const gainsKey = `${yearKey}:${method}`;
@@ -80,6 +85,13 @@ export function TaxesPage({ trail, onOpenSettings, onOpenPortfolios }: {
   }, [year, clientUuid, yearKey]);
   useEffect(() => {
     let cancelled = false;
+    taxService.income(year, clientUuid)
+      .then((data) => { if (!cancelled) setIncome({ key: yearKey, data, error: null }); })
+      .catch((err) => { if (!cancelled) setIncome({ key: yearKey, data: null, error: errorText(err, "this year's income") }); });
+    return () => { cancelled = true; };
+  }, [year, clientUuid, yearKey]);
+  useEffect(() => {
+    let cancelled = false;
     taxService.realizedGains(year, method, clientUuid)
       .then((data) => { if (!cancelled) setGains({ key: gainsKey, data, error: null }); })
       .catch((err) => { if (!cancelled) setGains({ key: gainsKey, data: null, error: errorText(err, "this year's sales") }); });
@@ -88,6 +100,7 @@ export function TaxesPage({ trail, onOpenSettings, onOpenPortfolios }: {
 
   const tax = taxYear?.key === yearKey ? taxYear : null;
   const sales = gains?.key === gainsKey ? gains : null;
+  const payments = income?.key === yearKey ? income : null;
   // The gains of the year asked before, kept on screen while another method's load.
   const shownSales = sales ?? (gains?.key.startsWith(`${yearKey}:`) ? gains : null);
 
@@ -136,6 +149,7 @@ export function TaxesPage({ trail, onOpenSettings, onOpenPortfolios }: {
         <TaxYearModules
           data={tax.data}
           net={shownSales?.data?.net ?? null}
+          incomeGross={payments?.data?.totalGross ?? null}
           isCurrent={isCurrent}
           nameOf={nameOf}
           whose={whose}
@@ -152,6 +166,8 @@ export function TaxesPage({ trail, onOpenSettings, onOpenPortfolios }: {
         nameOf={nameOf}
         whose={whose}
       />
+
+      <IncomeModule loaded={payments} nameOf={nameOf} whose={whose} />
     </div>
   );
 }
@@ -177,7 +193,7 @@ function NoRegime({ client, onOpenSettings }: { client?: string; onOpenSettings?
             </p>
             <p className="text-[12.5px] text-[#78716c] mt-0.5 max-w-xl">
               The taxes due, the losses carried forward and those about to expire follow the rules of the country
-              {client ? " they pay" : " you pay"} taxes in. Only Italy&apos;s are computed for now. The year&apos;s sales are below either way.
+              {client ? " they pay" : " you pay"} taxes in. Only Italy&apos;s are computed for now. The year&apos;s sales and income are below either way.
             </p>
           </div>
         </div>
@@ -197,10 +213,12 @@ function NoRegime({ client, onOpenSettings }: { client?: string; onOpenSettings?
 
 // ── The year by the regime ────────────────────────────────────────────────────────────────
 
-function TaxYearModules({ data, net, isCurrent, nameOf, whose, withheldCount, onOpenPortfolios }: {
+function TaxYearModules({ data, net, incomeGross, isCurrent, nameOf, whose, withheldCount, onOpenPortfolios }: {
   data: TaxYear;
   // The year's realized net, from the sales (null while they load).
   net: number | null;
+  // The year's investment income before taxes, from the payments (null while they load).
+  incomeGross: number | null;
   isCurrent: boolean;
   nameOf: (uuid: string | null) => string;
   whose: string;
@@ -210,6 +228,8 @@ function TaxYearModules({ data, net, isCurrent, nameOf, whose, withheldCount, on
   const money = (v: number) => formatCurrency(v, data.currency);
   const carried = data.carriedLosses.reduce((s, l) => s + l.amount, 0);
   const expiring = data.expiringLosses.reduce((s, l) => s + l.amount, 0);
+  // Each withheld portfolio's gains and income, as its broker taxed them.
+  const withheldUuids = [...new Set([...data.withheld.map((w) => w.portfolioUuid), ...data.withheldIncome.map((w) => w.portfolioUuid)])];
 
   return (
     <>
@@ -217,9 +237,16 @@ function TaxYearModules({ data, net, isCurrent, nameOf, whose, withheldCount, on
         <ModuleHead title="The year at a glance" />
         <div className={MODULE_BODY}>
           <Figs>
-            <Fig label="Tax to declare" value={money(data.tax)} strong info="What the declared portfolios' gains owe, to put in the tax return." />
-            <Fig label="Withheld by brokers" value={money(data.withheldTax)} info="What the brokers of the portfolios under the regime amministrato withhold." />
+            <Fig
+              label="Tax to declare"
+              value={money(data.tax + data.incomeTax)}
+              sub={`${money(data.tax)} on gains · ${money(data.incomeTax)} on income`}
+              strong
+              info="What the declared portfolios' gains and income owe, to put in the tax return."
+            />
+            <Fig label="Withheld by brokers" value={money(data.withheldTax)} info="What the brokers of the portfolios under the regime amministrato withhold on their gains. Their income was taxed at source." />
             <Fig label="Net realized" value={net === null ? "—" : money(net)} tone={net === null ? undefined : toneOf(net)} info="The year's gains less its losses, on every portfolio." />
+            <Fig label="Investment income" value={incomeGross === null ? "—" : money(incomeGross)} info="The year's dividends, coupons and interest before taxes, on every portfolio." />
             <Fig label="Losses carried forward" value={money(carried)} sub={expiring > 0 ? `${money(expiring)} expire this year` : undefined} />
           </Figs>
           <p className="mt-4 text-xs text-[#78716c]">
@@ -238,27 +265,50 @@ function TaxYearModules({ data, net, isCurrent, nameOf, whose, withheldCount, on
       )}
 
       <Module>
-        <ModuleHead title="Tax return" desc="The declared portfolios' income, by kind" />
-        <div className={MODULE_BODY}>
-          {data.incomes.length === 0
-            ? <Empty text={`Nothing to declare from ${whose} investments in ${data.year}.`} />
-            : <IncomesTable incomes={data.incomes} money={money} total={data.tax} />}
+        <ModuleHead title="Tax return" desc="The declared portfolios' gains and income, by kind" />
+        <div className={`${MODULE_BODY} space-y-6`}>
+          {data.incomes.length === 0 && data.investmentIncome.length === 0 && (
+            <Empty text={`Nothing to declare from ${whose} investments in ${data.year}.`} />
+          )}
+          {data.incomes.length > 0 && (
+            <div className="space-y-2">
+              <SubHead title="Capital gains" note="Offset by the losses" />
+              <IncomesTable incomes={data.incomes} money={money} total={data.tax} />
+            </div>
+          )}
+          {data.investmentIncome.length > 0 && (
+            <div className="space-y-2">
+              <SubHead title="Dividends, coupons and interest" note="Quadro RM · never offset by the losses" />
+              <IncomeCategoriesTable categories={data.investmentIncome} money={money} total={data.incomeTax} />
+            </div>
+          )}
         </div>
       </Module>
 
-      {data.withheld.length > 0 && (
+      {withheldUuids.length > 0 && (
         <Module>
           <ModuleHead title="Withheld by the broker" desc="What each portfolio under the regime amministrato has taken from it" />
           <div className={`${MODULE_BODY} space-y-6`}>
-            {data.withheld.map((w) => (
-              <div key={w.portfolioUuid} className="space-y-2">
-                <p className="flex items-baseline justify-between gap-3">
-                  <span className="text-sm font-bold text-[#1c1917]">{nameOf(w.portfolioUuid)}</span>
-                  <span className="text-sm font-bold tabular-nums text-[#1c1917]">{money(w.tax)}</span>
-                </p>
-                {w.incomes.length > 0 ? <IncomesTable incomes={w.incomes} money={money} total={w.tax} /> : <Empty text="No gains or losses this year." />}
-              </div>
-            ))}
+            {withheldUuids.map((uuid) => {
+              const gains = data.withheld.find((w) => w.portfolioUuid === uuid);
+              const income = data.withheldIncome.find((w) => w.portfolioUuid === uuid);
+              return (
+                <div key={uuid} className="space-y-2">
+                  <p className="flex items-baseline justify-between gap-3">
+                    <span className="text-sm font-bold text-[#1c1917]">{nameOf(uuid)}</span>
+                    {gains && <span className="text-sm font-bold tabular-nums text-[#1c1917]">{money(gains.tax)} on gains</span>}
+                  </p>
+                  {gains && gains.incomes.length > 0 ? <IncomesTable incomes={gains.incomes} money={money} total={gains.tax} /> : <Empty text="No gains or losses this year." />}
+                  {income && (
+                    <p className="text-xs text-[#78716c]">
+                      Income <b className="text-[#1c1917] tabular-nums">{money(income.gross)}</b> gross
+                      {income.withheldAtSource > 0 && <>, <b className="text-[#1c1917] tabular-nums">{money(income.withheldAtSource)}</b> withheld abroad</>}
+                      : taxed at source by the broker.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </Module>
       )}
@@ -285,6 +335,15 @@ function TaxYearModules({ data, net, isCurrent, nameOf, whose, withheldCount, on
 
 function Empty({ text }: { text: string }) {
   return <p className="text-[13px] text-[#78716c]">{text}</p>;
+}
+
+function SubHead({ title, note }: { title: string; note?: string }) {
+  return (
+    <p className="flex flex-wrap items-baseline gap-x-2">
+      <span className="text-[13px] font-bold text-[#1c1917]">{title}</span>
+      {note && <span className="text-[11px] text-[#a8a29e]">{note}</span>}
+    </p>
+  );
 }
 
 const TH = "py-2 pr-4 text-left text-[10px] font-black uppercase tracking-[0.12em] text-[#a8a29e] whitespace-nowrap";
@@ -332,6 +391,52 @@ function IncomesTable({ incomes, money, total }: { incomes: TaxedIncome[]; money
           })}
         </tbody>
         {incomes.length > 1 && (
+          <tfoot className="border-t border-[#E0DACC]">
+            <tr>
+              <td className={`${TD} font-bold`} colSpan={6}>Total</td>
+              <td className={`${TDR} font-bold`}>{money(total)}</td>
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  );
+}
+
+function IncomeCategoriesTable({ categories, money, total }: { categories: IncomeCategory[]; money: (v: number) => string; total: number }) {
+  return (
+    <div className="overflow-x-auto -mx-1 px-1">
+      <table className="w-full min-w-[620px] text-[13px]">
+        <thead className="border-b border-[#EEE9DD]">
+          <tr>
+            <th className={TH}>Income</th>
+            <th className={THR}>Gross</th>
+            <th className={THR}>Withheld abroad</th>
+            <th className={THR}>Accrued paid</th>
+            <th className={THR}>Taxable</th>
+            <th className={THR}>Rate</th>
+            <th className={THR}>Tax</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[#EEE9DD]">
+          {categories.map((c) => (
+            <tr key={c.category}>
+              <td className={TD}>
+                <span className="block font-semibold text-[#1c1917]">{categoryLabel(c.category)}</span>
+                {categoryDetail(c.category) && <span className="block text-[11px] text-[#a8a29e]">{categoryDetail(c.category)}</span>}
+              </td>
+              <td className={TDR}>{money(c.gross)}</td>
+              <td className={TDR}>{c.withheldAtSource === 0 ? "—" : money(c.withheldAtSource)}</td>
+              <td className={TDR} title="The accrued interest paid with a bond's purchase, which its coupon gives back">
+                {c.accruedOffset === 0 ? "—" : money(c.accruedOffset)}
+              </td>
+              <td className={TDR}>{money(c.taxable)}</td>
+              <td className={TDR}>{ratePct(c.rate)}</td>
+              <td className={`${TDR} font-bold text-[#1c1917]`}>{money(c.tax)}</td>
+            </tr>
+          ))}
+        </tbody>
+        {categories.length > 1 && (
           <tfoot className="border-t border-[#E0DACC]">
             <tr>
               <td className={`${TD} font-bold`} colSpan={6}>Total</td>
@@ -643,5 +748,89 @@ function SaleRow({ gain: g, money, portfolio, open, onToggle }: {
         </tr>
       )}
     </Fragment>
+  );
+}
+
+// ── The year's income ─────────────────────────────────────────────────────────────────────
+
+/**
+ * The year's dividends, coupons and interest, each payment with what was withheld abroad and, on a
+ * declared portfolio with a regime, its taxable base and tax; a withheld portfolio's broker taxed it
+ * at source, so only its gross and what was withheld are there.
+ */
+function IncomeModule({ loaded, nameOf, whose }: {
+  loaded: Loaded<InvestmentIncome> | null;
+  nameOf: (uuid: string | null) => string;
+  whose: string;
+}) {
+  const data = loaded?.data ?? null;
+  const money = (v: number) => formatCurrency(v, data?.currency ?? "EUR");
+  const sorted = data ? [...data.payments].sort((a, b) => b.executedAt.localeCompare(a.executedAt)) : [];
+
+  return (
+    <Module>
+      <ModuleHead title="Dividends, coupons and interest" desc="The year's investment income, payment by payment" />
+      <div className={`${MODULE_BODY} space-y-5`}>
+        {!loaded ? <Loading /> : loaded.error ? <ErrorNote text={loaded.error} /> : data && (
+          <>
+            <Figs>
+              <Fig label="Gross" value={money(data.totalGross)} />
+              <Fig label="Withheld abroad" value={money(data.totalWithheldAtSource)} info="The taxes withheld at source, as recorded. Their credit isn't estimated." />
+              <Fig label="Tax to declare" value={data.totalTax === null ? "—" : money(data.totalTax)} strong info="The declared portfolios' income's estimated tax. A withheld portfolio's broker has already taxed its own." />
+            </Figs>
+            {sorted.length === 0 ? (
+              <Empty text={`No dividends, coupons or interest in ${whose} portfolios this year.`} />
+            ) : (
+              <div className="overflow-x-auto -mx-1 px-1">
+                <table className="w-full min-w-[720px] text-[13px]">
+                  <thead className="border-b border-[#EEE9DD]">
+                    <tr>
+                      <th className={TH}>Date</th>
+                      <th className={TH}>Income</th>
+                      <th className={TH}>Portfolio</th>
+                      <th className={THR}>Gross</th>
+                      <th className={THR}>Withheld abroad</th>
+                      <th className={THR}>Taxable</th>
+                      <th className={THR}>Tax</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#EEE9DD]">
+                    {sorted.map((p) => <PaymentRow key={p.transactionUuid} payment={p} money={money} portfolio={nameOf(p.portfolioUuid)} />)}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Module>
+  );
+}
+
+function PaymentRow({ payment: p, money, portfolio }: { payment: IncomePayment; money: (v: number) => string; portfolio: string }) {
+  const withheld = p.taxationMode === "withheld";
+  return (
+    <tr>
+      <td className={`${TD} whitespace-nowrap text-[#78716c]`}>{dateLabel(p.executedAt)}</td>
+      <td className={TD}>
+        <span className="block font-semibold text-[#1c1917]">{p.assetId ? assetName({ ...p, assetId: p.assetId }) : "Cash"}</span>
+        <span className="block text-[11px] text-[#a8a29e]">
+          {INCOME_KIND_LABELS[p.kind] ?? p.kind}
+          {p.taxCategory ? ` · ${categoryLabel(p.taxCategory)}` : ""}
+          {p.rate !== null ? ` · ${ratePct(p.rate)}` : ""}
+        </span>
+      </td>
+      <td className={`${TD} text-[#78716c]`}>
+        {portfolio}
+        {withheld && <span className="block text-[11px] text-[#a8a29e]">Taxed at source by the broker</span>}
+      </td>
+      <td className={TDR}>{money(p.gross)}</td>
+      <td className={TDR}>{p.withheldAtSource === 0 ? "—" : money(p.withheldAtSource)}</td>
+      <td className={TDR}>
+        {p.taxable === null ? "—" : money(p.taxable)}
+        {p.accruedOffset > 0 && <span className="block text-[11px] text-[#a8a29e]">less {money(p.accruedOffset)} accrued paid</span>}
+      </td>
+      <td className={`${TDR} font-bold text-[#1c1917]`}>{p.tax === null ? "—" : money(p.tax)}</td>
+    </tr>
   );
 }

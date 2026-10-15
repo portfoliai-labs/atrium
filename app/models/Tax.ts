@@ -14,9 +14,10 @@ type TaxationMode = "declared" | "withheld";
 // How a sale's cost is taken. Without one asked, the tax regime's (Italy: average_cost).
 type CostMethod = "average_cost" | "fifo";
 
-// How a regime taxes a gain. Italy's: redditi_diversi (capital gains, offset by the losses),
+// How a regime taxes a gain or an income. Italy's gains': redditi_diversi (capital gains, offset by the losses),
 // redditi_diversi_titoli_pubblici (government bonds, a share of the gain taxed), redditi_di_capitale
-// (an ETF's or a fund's gain: it offsets no loss), cripto_attivita. Another regime may add its own.
+// (an ETF's or a fund's gain: it offsets no loss), cripto_attivita; its income's: dividendi,
+// proventi_oicr, interessi, interessi_titoli_pubblici. Another regime may add its own.
 type TaxCategory = "redditi_diversi" | "redditi_diversi_titoli_pubblici" | "redditi_di_capitale" | "cripto_attivita" | (string & {});
 
 // FIFO only: one lot a sale took, oldest first.
@@ -155,6 +156,74 @@ interface TaxYear {
   // The year in course only, while a loss expires: the positions in gain that would take it.
   harvestable: UnrealizedGain[];
   unclassifiedAssetIds: string[];
+  // The investment income (dividends, coupons, interest): the declared portfolios' by category,
+  // never offset with the gains' losses; each withheld portfolio's, as its broker taxed it at
+  // source; and the declared income's estimated tax. `tax` is the gains': what's declared in all
+  // is tax + incomeTax.
+  investmentIncome: IncomeCategory[];
+  withheldIncome: WithheldIncome[];
+  incomeTax: number;
+}
+
+// What a payment of investment income is: a dividend, a coupon, the accrued interest received
+// with a bond's sale, the cash's interest.
+type IncomeKind = "dividend" | "coupon" | "accrued_interest" | "cash_interest";
+
+// One payment of investment income, in the response's currency at its day's rate.
+interface IncomePayment {
+  transactionUuid: string;
+  portfolioUuid: string;
+  // null for the cash's interest.
+  assetId: string | null;
+  ticker: string | null;
+  isin: string | null;
+  executedAt: string;
+  kind: IncomeKind;
+  gross: number;
+  // The tax withheld at source (abroad), as recorded.
+  withheldAtSource: number;
+  // The accrued interest paid with the bond's buy that this coupon gives back.
+  accruedOffset: number;
+  taxationMode: TaxationMode;
+  // With a regime: its category and rate (Italy: dividendi 0.26, proventi_oicr 0.26 for ETFs and
+  // funds, interessi 0.26, interessi_titoli_pubblici 0.125). null without one.
+  taxCategory: TaxCategory | null;
+  rate: number | null;
+  // A declared portfolio's only (gross − withheld at source − accrued offset, in the quadro RM),
+  // with a regime; a withheld one's was taxed at source by its broker: null.
+  taxable: number | null;
+  tax: number | null;
+}
+
+// GET /v1/taxes/income?year= — the year's investment income. 422 for a year before 1900 or in
+// the future; 503 for a currency without rates.
+interface InvestmentIncome {
+  currency: string;
+  payments: IncomePayment[];
+  totalGross: number;
+  totalWithheldAtSource: number;
+  // With a regime: the declared payments' estimated tax.
+  totalTax: number | null;
+  taxResidence: string | null;
+  unclassifiedAssetIds: string[];
+}
+
+// A year's declared income of one category.
+interface IncomeCategory {
+  category: TaxCategory;
+  gross: number;
+  withheldAtSource: number;
+  accruedOffset: number;
+  taxable: number;
+  rate: number;
+  tax: number;
+}
+
+// A year's income in a portfolio whose broker taxed it at source.
+interface WithheldIncome {
+  portfolioUuid: string;
+  gross: number;
+  withheldAtSource: number;
 }
 
 // The 409's error_type: no tax residence, or no regime for it.
@@ -163,5 +232,6 @@ const TAX_REGIME_UNAVAILABLE = "TaxRegimeUnavailableError";
 export type {
   TaxationMode, CostMethod, TaxCategory, ConsumedLot, RealizedGain, GainsBreakdown, RealizedGains,
   OffsetLoss, TaxedIncome, WithheldAccount, CarriedLoss, UnrealizedGain, TaxYear,
+  IncomeKind, IncomePayment, InvestmentIncome, IncomeCategory, WithheldIncome,
 };
 export { TAX_REGIME_UNAVAILABLE };
