@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Archive, ChevronDown, ChevronUp, Loader2, Trash2, X } from "lucide-react";
+import { Archive, Calculator, ChevronDown, ChevronUp, Loader2, Trash2, X } from "lucide-react";
 import { useRealEstate, useRealEstateSummary } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { formatCurrency } from "../../../lib/format";
@@ -21,7 +21,13 @@ import { PreviewBadge } from "../../preview/PreviewKit";
 import { MortgageMarketRates } from "../MarketRates";
 import { CashFlowModule, ValueModule } from "./RealEstateNode";
 import { MortgageDialog, PropertyEditDialog, RateChangeDialog, ValuationDialog } from "./PropertyDialogs";
-import { RealEstateTransactionDialog } from "./RealEstateTransactionForm";
+import { RealEstateTransactionDialog, type TaxPaymentPrefill } from "./RealEstateTransactionForm";
+import { PropertyTaxModule, PropertyUsesModule } from "./PropertyTaxes";
+import { LeasesModule, TaxpayerYearDialog } from "./PropertyRentals";
+import { SaleSimulatorModule } from "./SaleTax";
+import { alertsCounter, useAlertRules } from "./RealEstateAlerts";
+import { MortgageSimulatorDialog } from "./MortgageSimulator";
+import { PropertyMarketModule } from "./PropertyMarket";
 
 const ARCHIVED_TITLE = "An archived property is read only";
 const pct = (v: number, digits = 1) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}%`;
@@ -33,14 +39,17 @@ type Dialog = "transaction" | "valuation" | "mortgage" | "edit" | "archive" | "d
  * PROPERTY PAGE — one property, under the real estate: a header with its value at the user's
  * share, how that stands against what was put in, its year in figures and what can be done with it
  * (a transaction, a valuation, a mortgage, its settings, archive, delete); under it its value since
- * the purchase and its last 12 months' cash flow, its mortgages (each with its schedule and rate
- * changes, closed or reopened), its valuations and its details. Its amounts are in its own
+ * the purchase and its last 12 months' cash flow, its taxes (Italy's IMU and the tax on its rents,
+ * PropertyTaxModule), its leases, its zone's market (Italy's OMI, PropertyMarketModule), what a sale
+ * would be taxed (SaleSimulatorModule), its mortgages (each with its schedule and rate changes, closed or
+ * reopened, a prepayment or a refinancing simulated), its valuations, its use over time and its details. Its amounts are in its own
  * currency. An archived property, and a demo account's, are read only.
  */
-export function PropertyPage({ property, trail, onOpenTransactions, onGone }: {
+export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts, onGone }: {
   property: Property;
   trail: Crumb[];
   onOpenTransactions: () => void;
+  onOpenAlerts: () => void;
   // After it's deleted.
   onGone: () => void;
 }) {
@@ -48,9 +57,13 @@ export function PropertyPage({ property, trail, onOpenTransactions, onGone }: {
   const summary = useRealEstateSummary(property.uuid, (property.purchasedOn ?? property.createdAt).slice(0, 7));
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [rateFor, setRateFor] = useState<Mortgage | null>(null);
+  const [simulating, setSimulating] = useState<Mortgage | null>(null);
+  const [taxPayment, setTaxPayment] = useState<TaxPaymentPrefill | null>(null);
+  const [taxpayerYear, setTaxpayerYear] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const count = useTransactionCount(property.uuid);
+  const alertRules = useAlertRules(property.uuid);
 
   const f = property.figures;
   const money = (v: number) => formatCurrency(v, property.currency, 0);
@@ -109,7 +122,10 @@ export function PropertyPage({ property, trail, onOpenTransactions, onGone }: {
         value={money(f.valueAtShare)}
         change={gain === null ? null : { text: `${pct(gain)} on what was put in`, tone: toneOf(gain) }}
         note={note}
-        counters={[{ key: "transactions", label: "transactions", count, onClick: onOpenTransactions }]}
+        counters={[
+          { key: "transactions", label: "transactions", count, onClick: onOpenTransactions },
+          ...(alertRules === null ? [] : [alertsCounter(alertRules, onOpenAlerts, property.uuid)]),
+        ]}
         actions={actions}
         figures={figures}
       />
@@ -125,22 +141,58 @@ export function PropertyPage({ property, trail, onOpenTransactions, onGone }: {
         <CashFlowModule summary={summary} />
       </div>
 
+      <PropertyTaxModule
+        property={property}
+        readOnly={readOnly}
+        onEdit={() => setDialog("edit")}
+        onEditTaxpayer={setTaxpayerYear}
+        onRecordPayment={setTaxPayment}
+      />
+
+      <LeasesModule property={property} readOnly={readOnly} onChanged={changed} />
+
+      {property.address.country === "IT" && <PropertyMarketModule property={property} readOnly={readOnly} onEdit={() => setDialog("edit")} />}
+
+      {property.address.country === "IT" && !property.soldOn && !property.archived && <SaleSimulatorModule property={property} />}
+
       <MortgagesModule
         property={property}
         source={source}
         version={version}
         readOnly={readOnly}
         onChangeRate={setRateFor}
+        onSimulate={setSimulating}
         onChanged={changed}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ValuationsModule property={property} source={source} version={version} readOnly={readOnly} onChanged={changed} />
-        <DetailsModule property={property} />
+        <PropertyUsesModule property={property} readOnly={readOnly} onChanged={changed} />
       </div>
+      <DetailsModule property={property} />
 
       {dialog === "transaction" && (
         <RealEstateTransactionDialog initialKind="rent" initialPropertyUuid={property.uuid} onClose={close} onSaved={close} />
+      )}
+      {simulating && (
+        <MortgageSimulatorDialog
+          property={property}
+          mortgage={simulating}
+          readOnly={readOnly}
+          onClose={() => setSimulating(null)}
+          onRecorded={() => { setSimulating(null); changed(); }}
+        />
+      )}
+      {taxpayerYear !== null && (
+        <TaxpayerYearDialog year={taxpayerYear} onClose={() => setTaxpayerYear(null)} onSaved={() => { setTaxpayerYear(null); changed(); }} />
+      )}
+      {taxPayment && (
+        <RealEstateTransactionDialog
+          initialPropertyUuid={property.uuid}
+          taxPayment={taxPayment}
+          onClose={() => setTaxPayment(null)}
+          onSaved={() => setTaxPayment(null)}
+        />
       )}
       {dialog === "valuation" && <ValuationDialog property={property} onClose={close} onSaved={done} />}
       {dialog === "mortgage" && <MortgageDialog property={property} onClose={close} onSaved={done} />}
@@ -215,12 +267,14 @@ function rateText(m: Mortgage) {
 }
 
 /** The property's mortgages, open first: each with its figures, its schedule and its rate changes. */
-function MortgagesModule({ property, source, version, readOnly, onChangeRate, onChanged }: {
+function MortgagesModule({ property, source, version, readOnly, onChangeRate, onSimulate, onChanged }: {
   property: Property;
   source: Source;
   version: number;
   readOnly: boolean;
   onChangeRate: (m: Mortgage) => void;
+  // Prepaying or refinancing it, simulated (read only too: nothing is stored until recorded).
+  onSimulate: (m: Mortgage) => void;
   onChanged: () => void;
 }) {
   const mortgages = useRead(`mortgages:${property.uuid}`, () => source.mortgages(property.uuid), version);
@@ -264,6 +318,7 @@ function MortgagesModule({ property, source, version, readOnly, onChangeRate, on
             readOnly={readOnly}
             busy={busy !== null}
             onChangeRate={() => onChangeRate(m)}
+            onSimulate={() => onSimulate(m)}
             onRemoveRate={(day) => act(m.uuid, () => realEstateService.removeRateChange(m.uuid, day), "Unable to remove this rate change.")}
             onToggleClosed={() => act(m.uuid, () => realEstateService.updateMortgage(m.uuid, { closedOn: m.closedOn ? "" : today() }), "Unable to change this mortgage.")}
             onDelete={() => { setError(null); setDeleting(m); }}
@@ -285,7 +340,7 @@ function MortgagesModule({ property, source, version, readOnly, onChangeRate, on
   );
 }
 
-function MortgageCard({ mortgage: m, source, version, money, readOnly, busy, onChangeRate, onRemoveRate, onToggleClosed, onDelete }: {
+function MortgageCard({ mortgage: m, source, version, money, readOnly, busy, onChangeRate, onSimulate, onRemoveRate, onToggleClosed, onDelete }: {
   mortgage: Mortgage;
   source: Source;
   version: number;
@@ -293,6 +348,7 @@ function MortgageCard({ mortgage: m, source, version, money, readOnly, busy, onC
   readOnly: boolean;
   busy: boolean;
   onChangeRate: () => void;
+  onSimulate: () => void;
   onRemoveRate: (day: string) => void;
   onToggleClosed: () => void;
   onDelete: () => void;
@@ -312,13 +368,20 @@ function MortgageCard({ mortgage: m, source, version, money, readOnly, busy, onC
             {money(m.principal)} over {m.termMonths % 12 === 0 ? `${m.termMonths / 12} years` : `${m.termMonths} months`} · {FREQUENCY_LABELS[m.frequency]} · {rateText(m)}
           </p>
         </div>
-        {!readOnly && (
-          <div className="flex flex-wrap gap-2">
-            {!m.closedOn && <button type="button" disabled={busy} onClick={onChangeRate} className={button}>Change rate</button>}
-            <button type="button" disabled={busy} onClick={onToggleClosed} className={button}>{m.closedOn ? "Reopen" : "Close"}</button>
-            <button type="button" disabled={busy} onClick={onDelete} aria-label="Delete mortgage" className={`${button} text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {!m.closedOn && m.residualDebt > 0 && (
+            <button type="button" disabled={busy} onClick={onSimulate} className={`${button} inline-flex items-center gap-1.5 text-[#8A6A28] border-[#E0DACC] hover:border-[#C49A3C]`}>
+              <Calculator className="h-3 w-3" /> Prepay or refinance
+            </button>
+          )}
+          {!readOnly && (
+            <>
+              {!m.closedOn && <button type="button" disabled={busy} onClick={onChangeRate} className={button}>Change rate</button>}
+              <button type="button" disabled={busy} onClick={onToggleClosed} className={button}>{m.closedOn ? "Reopen" : "Close"}</button>
+              <button type="button" disabled={busy} onClick={onDelete} aria-label="Delete mortgage" className={`${button} text-rose-600`}><Trash2 className="h-3.5 w-3.5" /></button>
+            </>
+          )}
+        </div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-2 text-[12px]">
         <Stat label="Left to repay" value={money(m.residualDebt)} />
@@ -434,7 +497,8 @@ function ValuationsModule({ property, source, version, readOnly, onChanged }: {
           <p className="text-[12.5px] text-[#a8a29e]">Loading…</p>
         ) : !valuations || valuations.length === 0 ? (
           <p className="text-[12.5px] text-[#a8a29e]">
-            {property.figures.valueSource === "purchase_price" ? "None yet: its value is the purchase price." : "None yet."}
+            {property.figures.valueSource === "purchase_price" ? "None yet: its value is the purchase price."
+              : property.figures.valueSource === "market_zone" ? "None yet: its value is the middle of its zone's market range." : "None yet."}
           </p>
         ) : (
           <ul className="divide-y divide-[#EEE9DD]">
@@ -464,6 +528,10 @@ function ValuationsModule({ property, source, version, readOnly, onChanged }: {
 
 function DetailsModule({ property: p }: { property: Property }) {
   const italy = p.details.italy;
+  const { properties, source } = useRealEstate();
+  const owner = p.appurtenantToUuid ? properties.find((x) => x.uuid === p.appurtenantToUuid) : undefined;
+  const appurtenances = properties.filter((x) => x.appurtenantToUuid === p.uuid);
+  const municipality = useRead(`municipality:${italy?.municipalityCode ?? ""}`, () => (italy?.municipalityCode ? source.municipalities({ codes: [italy.municipalityCode] }) : Promise.resolve([])), 0);
   const rows: [string, string | null][] = [
     ["Address", [p.address.street, [p.address.postalCode, p.address.locality].filter(Boolean).join(" "), p.address.region, p.address.country].filter(Boolean).join(", ")],
     ["Neighbourhood", p.address.neighbourhood ?? null],
@@ -472,15 +540,21 @@ function DetailsModule({ property: p }: { property: Property }) {
     ["Year built", p.yearBuilt != null ? String(p.yearBuilt) : null],
     ["Energy rating", p.energyRating],
     ["Your share", `${p.ownershipSharePct}%`],
+    ["Held by", p.holder.name ? `${p.holder.name}${p.holder.kind === "company" ? " (a company)" : ""}` : p.holder.kind === "company" ? "A company" : null],
+    ["Belongs to", owner?.name ?? null],
+    ["Its appurtenances", appurtenances.length ? appurtenances.map((x) => x.name).join(", ") : null],
     ["Bought", p.purchasedOn ? dayLabel(p.purchasedOn) : null],
     ["Sold", p.soldOn ? dayLabel(p.soldOn) : null],
     ["Value from", p.figures.valueSource ? `${VALUATION_SOURCE_LABELS[p.figures.valueSource]}${p.figures.valuedOn ? `, ${dayLabel(p.figures.valuedOn)}` : ""}` : null],
     ["Currency", p.currency],
+    ["Municipality", italy?.municipalityCode ? (municipality?.[0] ? `${municipality[0].name} (${municipality[0].province}) · ${italy.municipalityCode}` : italy.municipalityCode) : null],
     ["Cadastral reference", italy && (italy.cadastralSheet || italy.cadastralParcel)
-      ? [italy.municipalityCode, italy.cadastralSheet && `Fg. ${italy.cadastralSheet}`, italy.cadastralParcel && `Part. ${italy.cadastralParcel}`, italy.cadastralSubunit && `Sub. ${italy.cadastralSubunit}`].filter(Boolean).join(", ")
+      ? [ italy.cadastralSheet && `Fg. ${italy.cadastralSheet}`, italy.cadastralParcel && `Part. ${italy.cadastralParcel}`, italy.cadastralSubunit && `Sub. ${italy.cadastralSubunit}`].filter(Boolean).join(", ")
       : null],
     ["Cadastral category", italy?.cadastralCategory ?? null],
     ["Cadastral income", italy?.cadastralIncome != null ? formatCurrency(italy.cadastralIncome, "EUR", 2) : null],
+    ["Listed building", italy?.historic ? "Yes: IMU on half the base" : null],
+    ["Lent to a relative", italy?.freeLoanToRelative && p.use === "free_loan" ? "On IMU's conditions: half the base" : null],
     ["Note", p.note],
   ];
   return (

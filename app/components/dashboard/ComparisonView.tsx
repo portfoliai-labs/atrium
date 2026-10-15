@@ -9,13 +9,40 @@ import { portfolioColorMap } from "../../lib/chartColors";
 import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { VirtualBadge } from "./BacktestMarks";
-import { CompareMetrics } from "./CompareMetrics";
+import { CompareMetrics, type CompareEntry } from "./CompareMetrics";
 import { AllocationModule, CumulativeReturnsModule } from "./CompareCharts";
+import { useRealEstate, useRealEstateOverview } from "../../context/RealEstateContext";
+import { PreviewBadge } from "../preview/PreviewKit";
 import type { Portfolio } from "../../models/Portfolio";
 import type { PortfolioComparisonEntry } from "../../models/PortfolioData";
+import type { RealEstateOverview } from "../../models/RealEstate";
 
 // More columns than this stop fitting a comparison table a person can read across.
 export const MAX_COMPARED = 4;
+
+// The real estate's column: picked like a portfolio, by this id in the selection.
+export const REAL_ESTATE_COLUMN = "real-estate";
+// Wealth's real estate colour.
+const REAL_ESTATE_COLOR = "#eb6834";
+
+/** The real estate as a column of Compare: its value and what went into it, all of it real estate. */
+function realEstateEntry(o: RealEstateOverview): CompareEntry {
+  return {
+    portfolio: { uuid: REAL_ESTATE_COLUMN, name: "Real estate", isAggregate: false, isVirtual: false } as Portfolio,
+    isStale: false,
+    value: {
+      valuedAt: new Date().toISOString(), currency: o.currency, marketValue: o.value, investedCapital: o.invested,
+      unrealizedPnl: o.value - o.invested, realizedPnl: 0, dividendIncome: 0, netContributed: o.invested, tradingCosts: 0,
+    },
+    performance: null,
+    volatility: null,
+    allocation: [{ assetClass: "REAL_ESTATE", weightPct: 100, marketValue: o.value }],
+    dividends: null,
+    tradingCosts: null,
+    benchmark: null,
+    realEstate: o,
+  };
+}
 
 const SELECTION_KEY = "compare_selected_portfolio_uuids";
 // Same isStale contract as the rest of the dashboard (see useAnalytics in PerformanceSection).
@@ -47,7 +74,8 @@ export const rememberCompareSelection = (uuids: string[]) => {
  * portfolios"): it's the sum of the others, not a peer of theirs. Capped at MAX_COMPARED.
  */
 export function initialCompareSelection(portfolios: Portfolio[], currentUuid: string | null): string[] {
-  const known = new Set(portfolios.filter((p) => !p.isAggregate).map((p) => p.uuid));
+  // The real estate is kept when remembered: Compare leaves it out where it isn't offered.
+  const known = new Set([...portfolios.filter((p) => !p.isAggregate).map((p) => p.uuid), REAL_ESTATE_COLUMN]);
   const current = portfolios.find((p) => p.uuid === currentUuid && !p.isAggregate);
   const picked = [...(current ? [current.uuid] : []), ...(readSelection() ?? []).filter((u) => known.has(u))];
   const unique = [...new Set(picked)];
@@ -65,9 +93,13 @@ export function initialCompareSelection(portfolios: Portfolio[], currentUuid: st
  * returns and the allocation (CompareCharts), all following the cards. Each portfolio keeps its colour
  * (portfolioColorMap), so changing the selection never repaints the others. Columns follow the
  * portfolio list's order, not the order they were picked in, so they don't shuffle.
+ *
+ * Where the investor's real estate is theirs to see (`onOpenRealEstate`), it's offered too, as a
+ * last card and column (in Wealth's orange): filled where it means something (value, debt, equity,
+ * rents, 100% real estate), "—" for returns, risk and the benchmark, and never a row's best.
  */
 export function ComparisonView({
-  selection, onToggle, trail, onOpen,
+  selection, onToggle, trail, onOpen, onOpenRealEstate,
 }: {
   selection: string[];
   // Adds a portfolio to the comparison, or takes it out.
@@ -76,14 +108,29 @@ export function ComparisonView({
   trail: Crumb[];
   // Opens one portfolio's own Insights, from its column head.
   onOpen: (uuid: string) => void;
+  // Opens the real estate; offers it as a column where given.
+  onOpenRealEstate?: () => void;
 }) {
   const { portfolios } = usePortfolio();
-  const colorOf = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
+  const { available: realEstateAvailable, sample: realEstateSample } = useRealEstate();
+  const realEstateShown = !!onOpenRealEstate && realEstateAvailable;
+  const realEstate = useRealEstateOverview(realEstateShown);
+  // Offered once there's a property; null: there is, but it can't be added up (a rate missing).
+  const realEstateOffered = realEstateShown && realEstate !== undefined && (realEstate === null || realEstate.propertyCount > 0);
+  const realEstatePicked = realEstateOffered && !!realEstate && selection.includes(REAL_ESTATE_COLUMN);
+  const portfolioColors = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
+  const colorOf = useMemo(() => (uuid: string) => (uuid === REAL_ESTATE_COLUMN ? REAL_ESTATE_COLOR : portfolioColors(uuid)), [portfolioColors]);
   // Every portfolio but the aggregate, which is the sum of the others rather than a peer of theirs.
   const comparable = useMemo(() => portfolios.filter((p) => !p.isAggregate), [portfolios]);
   const ordered = useMemo(() => comparable.filter((p) => selection.includes(p.uuid)).map((p) => p.uuid), [comparable, selection]);
   const cardFigures = useAllFigures(portfolios.map((p) => p.uuid).join(","));
-  const { entries, loading, failed, timedOut } = useComparison(ordered.join(","));
+  const picked = ordered.length + (realEstatePicked ? 1 : 0);
+  const { entries: portfolioEntries, loading, failed, timedOut } = useComparison(ordered.join(","), picked >= 2);
+  // The real estate's column last, after the portfolios'.
+  const entries = useMemo<CompareEntry[] | null>(
+    () => (portfolioEntries ? [...portfolioEntries, ...(realEstatePicked && realEstate ? [realEstateEntry(realEstate)] : [])] : null),
+    [portfolioEntries, realEstatePicked, realEstate],
+  );
   // A stale column is hidden while its rebuild is expected any moment, then shown with a hint.
   const isUpdating = (e: PortfolioComparisonEntry) => e.isStale && !timedOut;
   const visible = useMemo(() => (entries ?? []).filter((e) => !(e.isStale && !timedOut)), [entries, timedOut]);
@@ -91,11 +138,22 @@ export function ComparisonView({
   return (
     <div className="space-y-6 pb-12">
       <Breadcrumb trail={trail} current="Compare" />
-      <CompareCards portfolios={comparable} selection={ordered} figures={cardFigures} colorOf={colorOf} onToggle={onToggle} onOpen={onOpen} />
-      {ordered.length < 2 ? (
+      <CompareCards
+        portfolios={comparable}
+        selection={ordered}
+        picked={picked}
+        figures={cardFigures}
+        colorOf={colorOf}
+        onToggle={onToggle}
+        onOpen={onOpen}
+        realEstate={realEstateOffered ? { overview: realEstate ?? null, picked: realEstatePicked, sample: realEstateSample, onOpen: onOpenRealEstate! } : undefined}
+      />
+      {picked < 2 ? (
         <div className="flex items-center justify-center text-center py-14 px-6 bg-white border border-slate-200 border-dashed rounded-4xl">
           <p className="text-slate-500 text-sm max-w-sm">
-            {ordered.length === 1 ? "Pick one more portfolio above to compare them." : "Pick at least two portfolios above to compare them."}
+            {picked === 1
+              ? `Pick one more ${realEstateOffered ? "card" : "portfolio"} above to compare them.`
+              : `Pick at least two ${realEstateOffered ? "cards" : "portfolios"} above to compare them.`}
           </p>
         </div>
       ) : loading && entries === null ? (
@@ -130,18 +188,23 @@ export function ComparisonView({
  * (arrows above it move it too, when it doesn't all fit): its name, its value and return
  * since inception (`figures`: every portfolio's, from one call; undefined while loading), and a
  * check when it's compared. A click picks it or takes it out (none left to pick past
- * MAX_COMPARED); the arrow opens its Insights.
+ * MAX_COMPARED); the arrow opens its Insights. The real estate, where offered, is the last card:
+ * its value and its equity, the arrow opening its page.
  */
-function CompareCards({ portfolios, selection, figures, colorOf, onToggle, onOpen }: {
+function CompareCards({ portfolios, selection, picked, figures, colorOf, onToggle, onOpen, realEstate }: {
   portfolios: Portfolio[];
   selection: string[];
+  // How many columns are picked, the real estate included.
+  picked: number;
   figures: Map<string, PortfolioComparisonEntry> | undefined;
   colorOf: (uuid: string) => string;
   onToggle: (uuid: string) => void;
   onOpen: (uuid: string) => void;
+  // overview null: it can't be added up (a rate missing), so it can't be picked.
+  realEstate?: { overview: RealEstateOverview | null; picked: boolean; sample: boolean; onOpen: () => void };
 }) {
-  const full = selection.length >= MAX_COMPARED;
-  const { ref, canLeft, canRight, scrollBy } = useSideScroll(portfolios.length);
+  const full = picked >= MAX_COMPARED;
+  const { ref, canLeft, canRight, scrollBy } = useSideScroll(portfolios.length + (realEstate ? 1 : 0));
   return (
     <div>
       {(canLeft || canRight) && (
@@ -216,10 +279,65 @@ function CompareCards({ portfolios, selection, figures, colorOf, onToggle, onOpe
             </div>
           );
         })}
+        {realEstate && <RealEstateCard {...realEstate} blocked={!realEstate.picked && full} onToggle={() => onToggle(REAL_ESTATE_COLUMN)} />}
       </div>
       <div className={`pointer-events-none absolute inset-y-0 left-0 w-10 bg-linear-to-r from-[#F7F5EF] to-transparent transition-opacity ${canLeft ? "opacity-100" : "opacity-0"}`} />
       <div className={`pointer-events-none absolute inset-y-0 right-0 w-10 bg-linear-to-l from-[#F7F5EF] to-transparent transition-opacity ${canRight ? "opacity-100" : "opacity-0"}`} />
       </div>
+    </div>
+  );
+}
+
+/** The real estate's card, alike a portfolio's: its value, and its equity under it. */
+function RealEstateCard({ overview, picked, sample, blocked, onToggle, onOpen }: {
+  overview: RealEstateOverview | null;
+  picked: boolean;
+  sample: boolean;
+  blocked: boolean;
+  onToggle: () => void;
+  onOpen: () => void;
+}) {
+  const disabled = blocked || overview === null;
+  return (
+    <div
+      className={`group relative w-60 shrink-0 snap-start rounded-2xl border-2 bg-white overflow-hidden transition-all ${
+        picked ? "border-[#C49A3C] shadow-md" : "border-slate-200 hover:border-slate-300"
+      } ${disabled ? "opacity-50" : "hover:-translate-y-0.5 hover:shadow-md"}`}
+    >
+      <div className="h-1.5" style={{ backgroundColor: REAL_ESTATE_COLOR }} />
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={disabled}
+        aria-pressed={picked}
+        title={overview === null ? "Can't be added up right now: an exchange rate is missing" : blocked ? `Up to ${MAX_COMPARED} at once: take one out to pick another` : undefined}
+        className="block w-full text-left p-4 pr-11 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C49A3C]/60 disabled:cursor-not-allowed"
+      >
+        <span className="block text-base font-black text-slate-900 truncate" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>Real estate</span>
+        {sample && <span className="block mt-1"><PreviewBadge label="Sample data" /></span>}
+        <span className="block mt-2 text-lg font-black text-slate-900 tabular-nums" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
+          {overview ? formatCurrency(overview.value, overview.currency, 0) : "—"}
+        </span>
+        <span className="block text-xs font-semibold text-slate-400 tabular-nums">
+          {overview
+            ? <><span className={`font-bold ${overview.equity >= 0 ? "text-slate-600" : "text-rose-600"}`}>{formatCurrency(overview.equity, overview.currency, 0)}</span> equity</>
+            : "An exchange rate is missing"}
+        </span>
+      </button>
+      <span className={`absolute top-4 right-3 w-6 h-6 rounded-full flex items-center justify-center border-2 pointer-events-none transition-colors ${
+        picked ? "bg-[#C49A3C] border-[#C49A3C] text-white" : "border-slate-300 text-transparent"
+      }`}>
+        <Check className="h-3.5 w-3.5" strokeWidth={3} />
+      </span>
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label="Open the real estate"
+        title="Open the real estate"
+        className="absolute bottom-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-[#C49A3C] hover:bg-[#C49A3C]/10 transition-colors"
+      >
+        <ArrowUpRight className="h-4 w-4" />
+      </button>
     </div>
   );
 }
@@ -275,11 +393,12 @@ function useAllFigures(uuidsKey: string) {
 }
 
 /**
- * Fetches the comparison for the given (comma-joined) uuids, refetching every
+ * Fetches the comparison for the given (comma-joined) uuids, once `enabled` (two columns picked,
+ * the real estate's maybe one of them, so one portfolio may be enough), refetching every
  * STALE_POLL_INTERVAL_MS while any column is stale, for up to STALE_TIMEOUT_MS. `timedOut`
  * means stale columns should now be drawn anyway, with a hint.
  */
-function useComparison(uuidsKey: string) {
+function useComparison(uuidsKey: string, enabled: boolean) {
   const { client } = usePortfolio();
   const clientUuid = client?.uuid ?? null;
   const [state, setState] = useState<{ entries: PortfolioComparisonEntry[] | null; loading: boolean; failed: boolean; timedOut: boolean }>({
@@ -288,7 +407,7 @@ function useComparison(uuidsKey: string) {
 
   useEffect(() => {
     const uuids = uuidsKey ? uuidsKey.split(",") : [];
-    if (uuids.length < 2) return;
+    if (!enabled || uuids.length < 1) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const startedAt = Date.now();
@@ -313,7 +432,7 @@ function useComparison(uuidsKey: string) {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [uuidsKey, clientUuid]);
+  }, [uuidsKey, clientUuid, enabled]);
 
   return state;
 }
