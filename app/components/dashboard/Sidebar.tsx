@@ -197,14 +197,14 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
           {isActive && <ChevronRight className="h-4 w-4 opacity-50" />}
         </button>
         {subs.length > 0 && (
-          <div className="flex flex-col gap-0.5 mt-1 mb-2 ml-6 pl-3 border-l border-white/10">
+          <div className="flex flex-col gap-0.5 mt-1 mb-2 ml-5 pl-1 border-l border-white/10">
             {subs.map((sub) => (
               <button
                 key={sub.key}
                 type="button"
                 onClick={() => handleSubClick(item.id, sub)}
                 aria-current={sub.active ? "page" : undefined}
-                className={`flex items-center gap-2 min-h-9 px-3 rounded-lg text-left text-[13px] transition-colors ${sub.depth ? "pl-6 text-[12.5px]" : ""} ${
+                className={`flex items-center gap-2 min-h-9 px-2.5 rounded-lg text-left text-[13px] transition-colors ${sub.depth ? "pl-5 text-[12.5px]" : ""} ${
                   sub.active ? "bg-white/10 text-white font-bold" : "text-[#a8a29e] font-medium hover:text-white hover:bg-white/5"
                 }`}
               >
