@@ -9,8 +9,8 @@
 // the client sees it only once the advisor shares it (PUT .../adopted-strategy/sharing), read-only,
 // as a SharedStrategy. Only an advisor's adoption on a client's portfolio can be shared.
 //
-// What it shows says where the portfolio stands against the ranges the user chose, never what to
-// buy or sell.
+// What it shows says where the portfolio stands against the ranges the user chose; the orders back
+// to them (GET .../rebalancing-orders, models/Rebalancing) are suggestions, nothing recorded.
 
 import type { AlertRuleResponse } from "./Alert";
 import type { StrategyRebalancing, StrategyTarget } from "./Strategy";

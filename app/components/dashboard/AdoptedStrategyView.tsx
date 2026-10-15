@@ -19,6 +19,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { SharedStrategyPanel } from "./SharedStrategyPanel";
 import { ClientStrategySharing } from "./ClientStrategySharing";
 import { AdoptStrategyDialog } from "./AdoptStrategyDialog";
+import { RebalancingOrdersPanel } from "./RebalancingOrdersPanel";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
@@ -37,8 +38,9 @@ interface Draft {
  * ADOPTED STRATEGY — a portfolio's "Strategy" page in Wealth: the strategy adopted on it (GET
  * /v1/portfolios/{p}/adopted-strategy), the backtest it came from, and one row per target with its
  * weight, its range and where the portfolio stands against it, from the target's alert rule
- * (matched by selector, see models/AdoptedStrategy). It says where the portfolio is, never what to
- * buy or sell. "Refine ranges" changes the targets' weights, drops targets and sets the band (PUT),
+ * (matched by selector, see models/AdoptedStrategy). Below them, on a standard portfolio, the
+ * orders that would take it back to the strategy (RebalancingOrdersPanel), as suggestions: nothing
+ * is recorded. "Refine ranges" changes the targets' weights, drops targets and sets the band (PUT),
  * previewing the ranges that come out; changed rules start again with no reading. "Remove" takes
  * the adoption away with its alerts (DELETE). Without one, the way to adopt one is Plan's Strategy.
  * Above it, read-only, the strategies the user's advisor shared for the portfolio
@@ -363,8 +365,10 @@ export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimul
         <p className="flex items-center gap-2 text-sm font-semibold text-rose-600"><AlertCircle className="h-4 w-4" /> {saveError}</p>
       )}
 
+      {!draft && !portfolio.isVirtual && <RebalancingOrdersPanel key={adoption.updatedAt} portfolioUuid={portfolio.uuid} />}
+
       <p className="text-[11px] text-slate-400 max-w-2xl leading-relaxed">
-        These ranges are the ones you chose. They show where the portfolio stands against them; they aren&apos;t advice to buy or sell.
+        These ranges, and the orders back to them, come from the strategy you chose; they aren&apos;t advice to buy or sell.
       </p>
 
       {confirmRemove && (

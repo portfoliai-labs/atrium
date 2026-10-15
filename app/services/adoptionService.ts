@@ -1,5 +1,6 @@
 // services/adoptionService.ts
 import type { AdoptStrategyPayload, AdoptedStrategy, SharedStrategy, StrategyAllocation } from "../models/AdoptedStrategy";
+import type { RebalancingMode, RebalancingOrders } from "../models/Rebalancing";
 import { ApiError, apiFetch } from "./apiClient";
 
 const path = (portfolioUuid: string) => `/v1/portfolios/${portfolioUuid}/adopted-strategy`;
@@ -41,6 +42,15 @@ export const adoptionService = {
   // DELETE — the adoption, with its rules.
   async remove(portfolioUuid: string): Promise<void> {
     await apiFetch<{ status: string }>(path(portfolioUuid), { method: "DELETE" });
+  },
+
+  // GET .../rebalancing-orders — the orders back to the caller's adoption, at the last tick's
+  // prices; suggestions, nothing recorded. `contribution`: new cash to invest, ≥ 0. 404
+  // AdoptionNotFoundError without one; 409 VirtualPortfolioOperationError on a virtual portfolio.
+  async rebalancingOrders(portfolioUuid: string, mode: RebalancingMode, contribution?: number): Promise<RebalancingOrders> {
+    const query = new URLSearchParams({ mode });
+    if (contribution) query.set("contribution", contribution.toFixed(2));
+    return apiFetch<RebalancingOrders>(`${path(portfolioUuid)}/rebalancing-orders?${query}`);
   },
 
   // PUT .../sharing — an advisor shares their adoption on a client's portfolio with the client, or
