@@ -18,6 +18,7 @@ import { PageHeader, type PageAction, type PageFigure } from "../PageHeader";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { PreviewBadge } from "../../preview/PreviewKit";
+import { MortgageMarketRates } from "../MarketRates";
 import { CashFlowModule, ValueModule } from "./RealEstateNode";
 import { MortgageDialog, PropertyEditDialog, RateChangeDialog, ValuationDialog } from "./PropertyDialogs";
 import { RealEstateTransactionDialog, type TaxPaymentPrefill } from "./RealEstateTransactionForm";
@@ -391,6 +392,7 @@ function MortgageCard({ mortgage: m, source, version, money, readOnly, busy, onC
       <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden" title={`${paidShare.toFixed(0)}% repaid`}>
         <div className="h-full rounded-full bg-[#0f766e]" style={{ width: `${paidShare}%` }} />
       </div>
+      <MortgageMarketRates mortgage={m} />
       {m.rateChanges.length > 1 && (
         <div className="flex flex-wrap gap-1.5">
           {m.rateChanges.map((c, i) => (
