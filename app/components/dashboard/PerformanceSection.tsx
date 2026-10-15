@@ -25,6 +25,7 @@ import { usePortfolio } from "../../context/PortfolioContext";
 import { useDetail, useInsights, type Insights, type SectionState } from "../../hooks/useInsights";
 import { pushDashboardEntry, readDashboardEntry, type DashboardOverlay } from "../../lib/dashboardHistory";
 import { NoDataEmptyState } from "./NoDataEmptyState";
+import { InstrumentProfileModule } from "./InstrumentProfileModule";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { PageHeader } from "./PageHeader";
 import { ExploreView, ExploreHostContext, ExplorePanel, DataTable, type DataColumn, type ExploreHeader } from "./ExploreView";
@@ -2014,7 +2015,8 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
     ...(data.sector ? [{ label: "Sector", value: data.sector }] : []),
     ...(data.industry ? [{ label: "Industry", value: data.industry }] : []),
     ...(data.country ? [{ label: "Country", value: data.country }] : []),
-    ...(data.terPct !== null ? [{ label: "TER", value: `${data.terPct.toFixed(2)}%` }] : []),
+    // census' TER, with its source, is under Key facts.
+    ...(data.terPct !== null && data.profile?.terPct == null ? [{ label: "TER", value: `${data.terPct.toFixed(2)}%` }] : []),
     { label: "Quoted in", value: data.quoteCurrency },
   ];
   const held = position.data?.holding ?? null;
@@ -2112,6 +2114,7 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
             {facts.map((f) => <Fig key={f.label} label={f.label} value={f.value} />)}
           </Figs>
         </Module>
+        <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
         {data.sectorWeightings.length > 1 && (
           <Module>
             <ModuleHead title="By Sector" desc="Where the fund's companies operate, by weight." />

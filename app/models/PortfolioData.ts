@@ -18,6 +18,7 @@
 //   rebuild hasn't landed). The tick modules (holdings, exposure, realized P&L), dividends and
 //   trading costs are always "ok"; the tick ones are never stale.
 
+import type { InstrumentProfile } from "./InstrumentProfile";
 import type { Listing } from "./Listing";
 import type { Portfolio, DailyValueChange } from "./Portfolio";
 
@@ -793,6 +794,9 @@ interface AssetDetailResponse {
   topHoldings: AssetWeightEntryResponse[];
   sectorWeightings: AssetWeightEntryResponse[];
   regionWeightings: AssetWeightEntryResponse[];
+  // census' profile of the listing's instrument, each field citing its source; null for an asset
+  // asked by its ticker, or when census couldn't be asked.
+  profile?: InstrumentProfile | null;
 }
 
 export type {
