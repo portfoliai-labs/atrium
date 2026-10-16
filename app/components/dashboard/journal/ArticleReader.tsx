@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bookmark, BookmarkCheck, EyeOff, Flag, Info, Loader2, PenLine } from "lucide-react";
+import { Bookmark, BookmarkCheck, EyeOff, Flag, HandHeart, Info, Loader2, PenLine } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
 import { useJournal } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
@@ -15,6 +15,7 @@ import type { JournalFilters } from "../JournalSection";
 import { ArticleBody, ArticleFigure } from "./ArticleBody";
 import { AuthorBadge, BackLink, EmptyState, ErrorState, Meta, Spinner } from "./JournalKit";
 import { ReportDialog } from "./ReportDialog";
+import { ArticleComments } from "./ArticleComments";
 
 /**
  * An article as its readers see it: the byline, cover, body, the instruments it's about, and
@@ -106,8 +107,8 @@ export function HiddenNotice({ article }: { article: Article }) {
 }
 
 /**
- * ARTICLE — one article by its slug, as the reader's page: saving it, reporting it, and, the
- * author's own, a way to its editor.
+ * ARTICLE — one article by its slug, as the reader's page: applauding it (once, not one's own),
+ * saving it, reporting it, its comments, and, the author's own, a way to its editor.
  */
 export function ArticleReader({ slug, onBack, onEdit, onFilter }: {
   slug: string;
@@ -116,13 +117,14 @@ export function ArticleReader({ slug, onBack, onEdit, onFilter }: {
   onFilter: (filters: JournalFilters) => void;
 }) {
   const { user } = useUser();
-  const { source, canWrite } = useJournal();
+  const { source, canWrite, mode } = useJournal();
   const [article, setArticle] = useState<Article | null>(null);
   const [error, setError] = useState<{ message: string; missing: boolean } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [reporting, setReporting] = useState(false);
+  const [applauding, setApplauding] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,8 +163,41 @@ export function ArticleReader({ slug, onBack, onEdit, onFilter }: {
     }
   };
 
+  const toggleApplause = async () => {
+    setApplauding(true);
+    setSaveError(null);
+    try {
+      if (article.applauded) {
+        await journalService.withdrawApplause(article.uuid);
+        setArticle({ ...article, applauded: false, applauseCount: Math.max(0, article.applauseCount - 1) });
+      } else {
+        const { applauseCount } = await journalService.applaud(article.uuid);
+        setArticle({ ...article, applauded: true, applauseCount });
+      }
+    } catch (err) {
+      setSaveError(journalErrorText(err, "That didn't work. Try again."));
+    } finally {
+      setApplauding(false);
+    }
+  };
+
+  const applause = mode === "api" && (
+    <button
+      type="button"
+      onClick={() => void toggleApplause()}
+      // One's own article shows its count, without the button.
+      disabled={!canWrite || own || applauding}
+      title={own ? "Readers' applause" : article.applauded ? "Take your applause back" : "Applaud this article"}
+      className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${article.applauded ? "bg-[#C49A3C]/15 text-[#9a7424]" : "text-slate-500 enabled:hover:bg-slate-100"} disabled:cursor-default`}
+    >
+      {applauding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <HandHeart className="h-3.5 w-3.5" />}
+      {article.applauseCount > 0 ? article.applauseCount : own ? "0" : "Applaud"}
+    </button>
+  );
+
   const actions = (
     <div className="flex items-center gap-1.5">
+      {applause}
       {canWrite && (
         <button
           type="button"
@@ -199,7 +234,15 @@ export function ArticleReader({ slug, onBack, onEdit, onFilter }: {
         onAuthor={authorUuid ? () => onFilter({ author: { uuid: authorUuid, name: authorName(author) } }) : undefined}
         onInstrument={(i) => onFilter({ instrument: { ticker: i.ticker, isin: i.isin, instrumentId: i.instrumentId } })}
       />
-      {reporting && <ReportDialog articleUuid={article.uuid} onClose={() => setReporting(false)} />}
+      {mode === "api" && article.status === "published" && (
+        <ArticleComments
+          article={article}
+          canWrite={canWrite}
+          ownArticle={own}
+          onCount={(delta) => setArticle((a) => (a ? { ...a, commentCount: Math.max(0, a.commentCount + delta) } : a))}
+        />
+      )}
+      {reporting && <ReportDialog target={{ kind: "article", uuid: article.uuid }} onClose={() => setReporting(false)} />}
     </div>
   );
 }

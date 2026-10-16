@@ -10,9 +10,11 @@ const STATUS_TONES: Record<ReportStatus, string> = {
   open: "bg-amber-50 text-amber-700",
   article_kept: "bg-slate-100 text-slate-600",
   article_hidden: "bg-emerald-50 text-emerald-700",
+  comment_kept: "bg-slate-100 text-slate-600",
+  comment_hidden: "bg-emerald-50 text-emerald-700",
 };
 
-/** YOUR REPORTS — the reader's reports on articles, the newest first, each with the editors' decision. */
+/** YOUR REPORTS — the reader's reports on articles and comments, the newest first, each with the editors' decision. */
 export function MyReports({ onBack }: { onBack: () => void }) {
   const list = usePaged((offset) => journalService.reports(PAGE_SIZE, offset), "reports");
 
@@ -25,14 +27,17 @@ export function MyReports({ onBack }: { onBack: () => void }) {
       ) : !list.items ? (
         <Spinner />
       ) : list.items.length === 0 ? (
-        <EmptyState>You haven&apos;t reported any article.</EmptyState>
+        <EmptyState>You haven&apos;t reported any article or comment.</EmptyState>
       ) : (
         <>
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm divide-y divide-slate-100">
             {list.items.map((r) => (
               <div key={r.uuid} className="px-5 py-4 md:px-6 flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-slate-900">{r.articleTitle}</p>
+                  <p className="text-sm font-bold text-slate-900">
+                    {r.commentUuid && <span className="font-semibold text-slate-500">A comment on </span>}
+                    {r.articleTitle}
+                  </p>
                   <p className="mt-0.5 text-xs text-slate-500">
                     {REASON_LABELS[r.reason]} · reported {dateLabel(r.createdAt)}
                     {r.decidedAt && ` · decided ${dateLabel(r.decidedAt)}`}

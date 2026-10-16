@@ -9,11 +9,15 @@ import { journalService } from "../../../services/journalService";
 import { NOTE_MAX, REASONS, REASON_LABELS, journalErrorText } from "../../../lib/journal";
 import { ApiError } from "../../../services/apiClient";
 
+/** What a report is about: an article, or a comment under one. */
+export type ReportTarget = { kind: "article" | "comment"; uuid: string };
+
 /**
- * Reports an article to the editors: a reason from the fixed list and a note (required with
- * "Something else"). Reporting again while the last report is open replaces it.
+ * Reports an article or a comment to the editors: a reason from the fixed list and a note
+ * (required with "Something else"). Reporting again while the last report is open replaces it.
  */
-export function ReportDialog({ articleUuid, onClose }: { articleUuid: string; onClose: () => void }) {
+export function ReportDialog({ target, onClose }: { target: ReportTarget; onClose: () => void }) {
+  const what = target.kind === "comment" ? "comment" : "article";
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
@@ -27,12 +31,12 @@ export function ReportDialog({ articleUuid, onClose }: { articleUuid: string; on
     setSending(true);
     setError(null);
     try {
-      await journalService.report(articleUuid, reason, note.trim());
+      if (target.kind === "comment") await journalService.reportComment(target.uuid, reason, note.trim());
+      else await journalService.report(target.uuid, reason, note.trim());
       setSent(true);
     } catch (err) {
-      setError(err instanceof ApiError && err.errorType === "OwnArticleError"
-        ? "You can't report your own article."
-        : journalErrorText(err, "The report couldn't be sent."));
+      const own = err instanceof ApiError && (err.errorType === "OwnArticleError" || err.errorType === "OwnCommentError");
+      setError(own ? `You can't report your own ${what}.` : journalErrorText(err, "The report couldn't be sent."));
     } finally {
       setSending(false);
     }
@@ -44,7 +48,7 @@ export function ReportDialog({ articleUuid, onClose }: { articleUuid: string; on
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-rose-50 rounded-xl shrink-0"><Flag className="h-5 w-5 text-rose-600" /></div>
-            <h3 className="text-lg font-black text-slate-900">Report this article</h3>
+            <h3 className="text-lg font-black text-slate-900">Report this {what}</h3>
           </div>
           <button onClick={onClose} disabled={sending} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors shrink-0" aria-label="Close">
             <X className="h-4 w-4" />

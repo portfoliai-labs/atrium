@@ -8,6 +8,7 @@ import { CATEGORIES, CATEGORY_LABELS, QUERY_MAX } from "../../../lib/journal";
 import type { ArticleCategory } from "../../../models/Journal";
 import type { JournalFilters } from "../JournalSection";
 import { ArticleCard, EmptyState, ErrorState, JournalHeader, LeadCard, LoadMore, PAGE_SIZE, Spinner, usePaged } from "./JournalKit";
+import { TopArticles } from "./TopArticles";
 
 const SEARCH_DEBOUNCE_MS = 350;
 
@@ -24,7 +25,8 @@ function FilterChip({ label, onClear }: { label: string; onClear: () => void }) 
 
 /**
  * The Journal's articles, newest first (or a search's, by relevance), the reader's language
- * first: the newest on a large card, the rest in a grid. Narrowed by a category, words, an
+ * first: the day's most applauded in a row on top (the API's only), the newest on a large card,
+ * the rest in a grid. Narrowed by a category, words, an
  * author or an instrument (the last two from an article's page); the narrowing lives in the
  * history entry (`onFilters` replaces it), so coming back from an article finds it.
  */
@@ -118,6 +120,7 @@ export function ArticleList({ filters, onFilters, onOpen }: {
         <EmptyState>{narrowed ? "No articles match." : "No articles yet."}</EmptyState>
       ) : (
         <>
+          {!narrowed && mode === "api" && <TopArticles language={language} onOpen={onOpen} />}
           {!narrowed && lead && <LeadCard article={lead} onOpen={() => lead.slug && onOpen(lead.slug)} />}
           {grid.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">

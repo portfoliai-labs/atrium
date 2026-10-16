@@ -1,7 +1,8 @@
 // services/journalService.ts
 import type {
-  Article, ArticleContent, ArticleFilters, ArticleReport, ArticleStatus, ArticleSummary, ArticleUpdate, Decision,
-  ImageFile, ImageFormat, ImageUpload, ModerationCase, ModerationCaseDetail, Page, ReportReason, SavedArticle,
+  Article, ArticleContent, ArticleFilters, ArticleReport, ArticleStatus, ArticleSummary, ArticleUpdate, Comment,
+  CommentCase, Decision, ImageFile, ImageFormat, ImageUpload, ModerationCase, ModerationCaseDetail, Page, ReportReason,
+  SavedArticle,
 } from "../models/Journal";
 import { apiFetch } from "./apiClient";
 
@@ -12,6 +13,8 @@ import { apiFetch } from "./apiClient";
 // ArticleNotFoundError / ImageNotFoundError (404: not there, or not the caller's to read or
 // write), ArticleChangedError (409, a stale expectedUpdatedAt), ArticleNotDraftError,
 // ArticleHiddenError, ArticleNotHiddenError, ReviewAlreadyRequestedError, OwnArticleError (409),
+// InvalidCommentError (422, `field`), CommentNotFoundError (404), OwnCommentError,
+// CommentModeratedError (409: hidden by the editors, theirs to show again),
 // NotAnEditorError (403), AuthorUnavailableError (503, publishing: retry). A backend without the
 // Journal answers its routes with FastAPI's own 404, without an error_type. A demo account's
 // writes are refused before they leave (see lib/demo).
@@ -95,11 +98,63 @@ export const journalService = {
     return apiFetch<Page<SavedArticle>>(`${BASE}/saved${pageQuery(limit, offset)}`);
   },
 
+  // ── Applause: one per reader, not on their own article (OwnArticleError) ──
+
+  async applaud(articleUuid: string): Promise<{ applaudedAt: string; applauseCount: number }> {
+    return apiFetch<{ applaudedAt: string; applauseCount: number }>(`${BASE}/articles/${articleUuid}/applause`, { method: "PUT" });
+  },
+
+  async withdrawApplause(articleUuid: string): Promise<void> {
+    await apiFetch(`${BASE}/articles/${articleUuid}/applause`, { method: "DELETE" });
+  },
+
+  // ── Comments ──
+
+  // GET .../comments — the top-level comments, the newest first, or (parentCommentUuid) a
+  // comment's replies, the oldest first; hidden ones only for whom may read them.
+  async comments(articleUuid: string, parentCommentUuid?: string, limit?: number, offset?: number): Promise<Page<Comment>> {
+    return apiFetch<Page<Comment>>(`${BASE}/articles/${articleUuid}/comments${query({ parentCommentUuid, limit, offset })}`);
+  },
+
+  // POST .../comments — on a published article; a reply to a reply goes under its top-level comment.
+  async comment(articleUuid: string, text: string, parentCommentUuid?: string): Promise<Comment> {
+    return apiFetch<Comment>(`${BASE}/articles/${articleUuid}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ text, parentCommentUuid: parentCommentUuid ?? null }),
+    });
+  },
+
+  async updateComment(commentUuid: string, text: string): Promise<Comment> {
+    return apiFetch<Comment>(`${BASE}/comments/${commentUuid}`, { method: "PUT", body: JSON.stringify({ text }) });
+  },
+
+  // DELETE /comments/{c} — the caller's, with its replies.
+  async removeComment(commentUuid: string): Promise<void> {
+    await apiFetch(`${BASE}/comments/${commentUuid}`, { method: "DELETE" });
+  },
+
+  // POST .../hide, .../show — the article's author, on a comment under their article.
+  async hideComment(commentUuid: string): Promise<Comment> {
+    return apiFetch<Comment>(`${BASE}/comments/${commentUuid}/hide`, { method: "POST" });
+  },
+
+  async showComment(commentUuid: string): Promise<Comment> {
+    return apiFetch<Comment>(`${BASE}/comments/${commentUuid}/show`, { method: "POST" });
+  },
+
   // ── Reports ──
 
   // POST .../reports — `note` required with "other"; reporting again while open replaces it.
   async report(articleUuid: string, reason: ReportReason, note?: string): Promise<ArticleReport> {
     return apiFetch<ArticleReport>(`${BASE}/articles/${articleUuid}/reports`, {
+      method: "POST",
+      body: JSON.stringify({ reason, note: note || null }),
+    });
+  },
+
+  // POST /comments/{c}/reports — as an article's, not on the caller's own (OwnCommentError).
+  async reportComment(commentUuid: string, reason: ReportReason, note?: string): Promise<ArticleReport> {
+    return apiFetch<ArticleReport>(`${BASE}/comments/${commentUuid}/reports`, {
       method: "POST",
       body: JSON.stringify({ reason, note: note || null }),
     });
@@ -140,6 +195,19 @@ export const journalService = {
   // reports and the author's ask.
   async decide(articleUuid: string, decision: Decision, reason?: ReportReason, note?: string): Promise<Article> {
     return apiFetch<Article>(`${BASE}/moderation/cases/${articleUuid}/decision`, {
+      method: "POST",
+      body: JSON.stringify({ decision, reason: reason ?? null, note: note || null }),
+    });
+  },
+
+  // GET /moderation/comment-cases — the comments with open reports, the longest waiting first.
+  async commentCases(limit?: number, offset?: number): Promise<Page<CommentCase>> {
+    return apiFetch<Page<CommentCase>>(`${BASE}/moderation/comment-cases${pageQuery(limit, offset)}`);
+  },
+
+  // POST .../decision — keep (one the editors hid is shown again) or hide it, with its replies.
+  async decideComment(commentUuid: string, decision: Decision, reason?: ReportReason, note?: string): Promise<Comment> {
+    return apiFetch<Comment>(`${BASE}/moderation/comment-cases/${commentUuid}/decision`, {
       method: "POST",
       body: JSON.stringify({ decision, reason: reason ?? null, note: note || null }),
     });

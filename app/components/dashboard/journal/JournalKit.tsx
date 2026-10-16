@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, ArrowUpRight, Clock, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Clock, HandHeart, Loader2, MessageCircle } from "lucide-react";
 import type { ArticleAuthor, ArticleStatus, ArticleSummary, Page } from "../../../models/Journal";
 import { CATEGORY_LABELS, STATUS_LABELS, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
 import { serif } from "../../preview/PreviewKit";
@@ -50,12 +50,31 @@ export function Meta({ article, dark = false }: { article: ArticleSummary; dark?
   );
 }
 
-/** Who wrote it, under a card's text. */
+/** Its readers' applause and comments, when it has some. */
+export function Engagement({ article, dark = false }: { article: ArticleSummary; dark?: boolean }) {
+  if (article.applauseCount === 0 && article.commentCount === 0) return null;
+  const tone = dark ? "text-stone-400" : "text-slate-400";
+  return (
+    <span className={`flex items-center gap-2.5 text-[11px] font-bold ${tone}`}>
+      {article.applauseCount > 0 && (
+        <span className={`flex items-center gap-1 ${article.applauded ? "text-[#C49A3C]" : ""}`} title="Applause">
+          <HandHeart className="h-3 w-3" />{article.applauseCount}
+        </span>
+      )}
+      {article.commentCount > 0 && (
+        <span className="flex items-center gap-1" title="Comments"><MessageCircle className="h-3 w-3" />{article.commentCount}</span>
+      )}
+    </span>
+  );
+}
+
+/** Who wrote it, under a card's text, with its applause and comments. */
 function CardByline({ article, dark = false }: { article: ArticleSummary; dark?: boolean }) {
   return (
     <p className={`flex items-center gap-2 text-[11px] font-bold ${dark ? "text-stone-300" : "text-slate-600"}`}>
       {authorName(article.author)}
       <AuthorBadge author={article.author} dark={dark} />
+      <Engagement article={article} dark={dark} />
     </p>
   );
 }

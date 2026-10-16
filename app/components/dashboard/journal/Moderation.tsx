@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { ChevronRight, EyeOff, Flag, Loader2, RotateCcw, ShieldCheck } from "lucide-react";
 import { journalService } from "../../../services/journalService";
-import type { Decision, ModerationCaseDetail, ReportReason } from "../../../models/Journal";
+import type { CommentCase, Decision, ModerationCaseDetail, ReportReason } from "../../../models/Journal";
 import { NOTE_MAX, REASONS, REASON_LABELS, REPORT_STATUS_LABELS, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
 import { serif } from "../../preview/PreviewKit";
 import { ArticleDocument } from "./ArticleReader";
@@ -12,15 +12,15 @@ import { BackLink, EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE, S
 
 /**
  * MODERATION — the editors' (NotAnEditorError for anyone else): the articles waiting for a
- * decision, the oldest first: published ones with open reports, hidden ones whose author asked for
- * a review.
+ * decision, the oldest first (published ones with open reports, hidden ones whose author asked for
+ * a review), then the reported comments, each decided in place.
  */
 export function ModerationCases({ onOpen }: { onOpen: (articleUuid: string) => void }) {
   const list = usePaged((offset) => journalService.cases(PAGE_SIZE, offset), "cases");
 
   return (
     <div className="space-y-6 pb-12">
-      <JournalHeader title="Moderation" subtitle="Reported articles, and hidden ones whose authors asked for a review. The oldest first." />
+      <JournalHeader title="Moderation" subtitle="Reported articles, hidden ones whose authors asked for a review, and reported comments. The oldest first." />
       {list.error ? (
         <ErrorState message={list.error} onRetry={list.retry} />
       ) : !list.items ? (
@@ -61,7 +61,129 @@ export function ModerationCases({ onOpen }: { onOpen: (articleUuid: string) => v
           {list.hasMore && <LoadMore onClick={() => void list.more()} loading={list.loadingMore} />}
         </>
       )}
+      <CommentCases />
     </div>
+  );
+}
+
+/** One reported comment: its text, its article, its reports, and the decision taken in place. */
+function CommentCaseCard({ item, onDecided }: { item: CommentCase; onDecided: (uuid: string) => void }) {
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const [reason, setReason] = useState<ReportReason | "">("");
+  const [note, setNote] = useState("");
+  const [deciding, setDeciding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { comment, article, reports } = item;
+  const canDecide = decision === "keep" || (decision === "hide" && !!reason);
+
+  const decide = async () => {
+    if (!decision || !canDecide) return;
+    setDeciding(true);
+    setError(null);
+    try {
+      await journalService.decideComment(comment.uuid, decision, reason || undefined, note.trim());
+      onDecided(comment.uuid);
+    } catch (err) {
+      setError(journalErrorText(err, "The decision couldn't be saved."));
+    } finally {
+      setDeciding(false);
+    }
+  };
+
+  return (
+    <div className="px-5 py-5 md:px-6 space-y-3">
+      <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
+        <span className="flex items-center gap-1 text-rose-600">
+          <Flag className="h-3 w-3" /> {item.openReports} open report{item.openReports === 1 ? "" : "s"}
+        </span>
+        <span className="text-slate-400">· waiting since {dateLabel(item.waitingSince)}</span>
+      </div>
+      <p className="text-[11px] font-semibold text-slate-400">
+        {authorName(comment.author)} on <span className="text-slate-600" style={serif}>{article.title || "Untitled"}</span>
+      </p>
+      <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700 leading-relaxed whitespace-pre-line">{comment.text}</p>
+      <ul className="space-y-1.5">
+        {reports.map((r) => (
+          <li key={r.uuid} className="text-xs text-slate-500">
+            <span className="font-bold text-slate-700">{REASON_LABELS[r.reason]}</span> · {dateLabel(r.createdAt)} · {REPORT_STATUS_LABELS[r.status]}
+            {r.note && <span className="block text-slate-500 whitespace-pre-line">{r.note}</span>}
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setDecision("keep")}
+          className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold ${decision === "keep" ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}
+        >
+          <ShieldCheck className="h-3.5 w-3.5" /> {comment.status === "hidden_by_editors" ? "Show again" : "Keep"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setDecision("hide")}
+          className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold ${decision === "hide" ? "border-rose-500 bg-rose-50 text-rose-700" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}
+        >
+          <EyeOff className="h-3.5 w-3.5" /> Hide
+        </button>
+        {decision === "hide" && (
+          <select
+            value={reason}
+            onChange={(e) => setReason(e.target.value as ReportReason | "")}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#C49A3C]"
+          >
+            <option value="">Why (its writer reads it)</option>
+            {REASONS.map((r) => <option key={r} value={r}>{REASON_LABELS[r]}</option>)}
+          </select>
+        )}
+      </div>
+      {decision && (
+        <>
+          <textarea
+            value={note}
+            maxLength={NOTE_MAX}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder="A note to its writer (optional)"
+            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-[#C49A3C] resize-none"
+          />
+          {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
+          <button
+            type="button"
+            onClick={() => void decide()}
+            disabled={!canDecide || deciding}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50"
+          >
+            {deciding && <Loader2 className="h-4 w-4 animate-spin" />} Confirm
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The comments with open reports, the longest waiting first; a decided one leaves the list. */
+function CommentCases() {
+  const list = usePaged((offset) => journalService.commentCases(PAGE_SIZE, offset), "comment-cases");
+  const decided = (uuid: string) => list.update((items) => items.filter((c) => c.comment.uuid !== uuid));
+
+  return (
+    <section className="space-y-3 pt-4">
+      <h2 className="text-lg font-black text-slate-900" style={serif}>Reported comments</h2>
+      {list.error ? (
+        <ErrorState message={list.error} onRetry={list.retry} />
+      ) : !list.items ? (
+        <Spinner />
+      ) : list.items.length === 0 ? (
+        <EmptyState>No comment is waiting for a decision.</EmptyState>
+      ) : (
+        <>
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
+            {list.items.map((c) => <CommentCaseCard key={c.comment.uuid} item={c} onDecided={decided} />)}
+          </div>
+          {list.hasMore && <LoadMore onClick={() => void list.more()} loading={list.loadingMore} />}
+        </>
+      )}
+    </section>
   );
 }
 
