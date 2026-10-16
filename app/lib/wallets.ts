@@ -1,8 +1,8 @@
 // lib/wallets.ts
 //
 // WALLETS — what every wallet page shares: the names and colours of kinds and categories, where a
-// page reads its figures from (a WalletSource: the API, or a demo account's sample data, see
-// lib/mock/wallets), and the sums the API doesn't make yet (spending by category).
+// page reads its figures from (a WalletSource: the API, a demo account's too), and how a rule, a
+// finding or an observation is worded.
 
 import type {
   BudgetMonth, Cadence, CategoryMonths, Merchants, MovementCategory, MovementFilters, MovementList, Observation, Observations,
@@ -90,9 +90,9 @@ export function savingsRate(months: { income: number; spending: number }[]) {
 // ── Where the figures come from ──
 
 /**
- * Where a wallet page reads from: the API (apiWalletSource) or, for a demo account, the sample
- * data (lib/mock/wallets' demoWalletSource), in the same shapes. Writes always go to walletService:
- * a demo account's are refused (see lib/demo).
+ * Where a wallet page reads from: the API (apiWalletSource), for a demo account too (arca's demo
+ * data). Writes always go to walletService: a demo account's are refused (see lib/demo, and ianus'
+ * read-only gate).
  */
 export interface WalletSource {
   summary(walletUuid: string | null, from?: string, to?: string): Promise<WalletSummary>;

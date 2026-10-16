@@ -16,6 +16,11 @@ import { AXIS_TICK, Panel, TOOLTIP_STYLE } from "../../preview/PreviewKit";
 
 // The categories the month-by-month chart names; the rest are "Other".
 const TOP = 6;
+// The merchants shown, from the most asked: rent, mortgages and bills (fixed costs, not where the
+// money "goes") are left out unless asked for.
+const MERCHANTS_SHOWN = 8;
+const MERCHANTS_ASKED = 20;
+const FIXED_COSTS: (MovementCategory | null)[] = ["housing", "utilities"];
 
 type Read = { categories: CategoryMonths; merchants: Merchants; recurring: RecurringPayments; observations: Observations };
 
@@ -29,7 +34,7 @@ function useInsights(scope: string | null, from: string | undefined, to: string 
     let cancelled = false;
     Promise.all([
       source.categoryMonths(scope, from, to),
-      source.merchants(scope, from, to, 8),
+      source.merchants(scope, from, to, MERCHANTS_ASKED),
       source.recurringPayments(scope),
       source.observations(scope),
     ])
@@ -78,6 +83,8 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
     return row;
   }), [read, top]);
   const walletName = (uuid: string) => wallets.find((w) => w.uuid === uuid)?.name ?? "A wallet";
+  const [fixedCosts, setFixedCosts] = useState(false);
+  const shownMerchants = (read?.merchants.merchants ?? []).filter((m) => fixedCosts || !FIXED_COSTS.includes(m.category)).slice(0, MERCHANTS_SHOWN);
 
   if (summary === undefined) {
     return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 text-slate-300 animate-spin" /></div>;
@@ -207,12 +214,20 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Panel title="Top merchants" subtitle="Where the money went, last 12 months.">
-              {read.merchants.merchants.length === 0 ? (
+            <Panel
+              title="Top merchants"
+              subtitle={`Where the money went, last 12 months${fixedCosts ? "" : ", rent and bills aside"}.`}
+              right={
+                <button type="button" onClick={() => setFixedCosts((v) => !v)} className="text-[11px] font-bold text-[#8A6A28] hover:text-[#C49A3C]">
+                  {fixedCosts ? "Leave rent and bills aside" : "Include rent and bills"}
+                </button>
+              }
+            >
+              {shownMerchants.length === 0 ? (
                 <p className="p-6 text-sm font-semibold text-slate-500">No payments in this period.</p>
               ) : (
                 <ul className="px-6 md:px-7 py-4 divide-y divide-slate-100">
-                  {read.merchants.merchants.map((m) => (
+                  {shownMerchants.map((m) => (
                     <li key={m.name} className="py-2.5 flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-[13px] font-bold text-slate-800 truncate">{m.name}</p>

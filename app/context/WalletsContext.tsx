@@ -6,13 +6,12 @@ import { useUser } from "./UserContext";
 import { ApiError } from "../services/apiClient";
 import { walletService } from "../services/walletService";
 import { apiWalletSource, type WalletSource } from "../lib/wallets";
-import { DEMO_WALLETS, demoWalletSource } from "../lib/mock/wallets";
 import type { Wallet, WalletSummary } from "../models/Wallet";
 
 /**
  * WALLETS CONTEXT — an investor's wallets, loaded once for the dashboard: the Dashboard, Wealth, the
  * Sidebar's rows under Wealth and the wallet pages read the same list, archived wallets included.
- * A demo account's are the sample data (lib/mock/wallets), read only. Pages that read movements or
+ * A demo account reads its own from the API like any other (arca's demo data), read only. Pages that read movements or
  * summaries refetch when `version` moves: after any write, `changed()` bumps it and reloads the
  * list (balances move with every movement). Empty, and never loaded, for an advisor.
  */
@@ -24,7 +23,7 @@ interface WalletsContextType {
   // Whether the wallets can be shown at all: false while the API doesn't have them (a backend
   // without /v1/wallets answers 404), and for an advisor.
   available: boolean;
-  // A demo account's sample data: read only, and said so.
+  // A demo account's: its sample data, read only, and said so.
   sample: boolean;
   source: WalletSource;
   version: number;
@@ -44,34 +43,35 @@ export function WalletsProvider({ children }: { children: React.ReactNode }) {
   const [missing, setMissing] = useState(false);
   const [version, setVersion] = useState(0);
 
-  const load = useCallback(async () => {
-    if (!enabled || sample) return;
-    try {
-      setWallets(await walletService.list(true));
-      setError(null);
-      setMissing(false);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) setMissing(true);
-      else setError(err instanceof Error ? err.message : "Unable to load your wallets.");
-    } finally {
-      setLoaded(true);
-    }
-  }, [enabled, sample]);
-
   useEffect(() => {
-    void load();
-  }, [load, version]);
+    if (!enabled) return;
+    let cancelled = false;
+    walletService.list(true)
+      .then((list) => {
+        if (cancelled) return;
+        setWallets(list);
+        setError(null);
+        setMissing(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 404) setMissing(true);
+        else setError(err instanceof Error ? err.message : "Unable to load your wallets.");
+      })
+      .finally(() => { if (!cancelled) setLoaded(true); });
+    return () => { cancelled = true; };
+  }, [enabled, version]);
 
-  const loading = enabled && !sample && !loaded;
+  const loading = enabled && !loaded;
   const changed = useCallback(() => setVersion((v) => v + 1), []);
 
   const value = useMemo<WalletsContextType>(() => ({
-    wallets: sample ? DEMO_WALLETS : wallets,
+    wallets,
     loading,
     error,
     available: enabled && !missing,
     sample,
-    source: sample ? demoWalletSource : apiWalletSource,
+    source: apiWalletSource,
     version,
     changed,
   }), [sample, wallets, loading, error, enabled, missing, version, changed]);

@@ -365,7 +365,7 @@ export const REAL_ESTATE_REPORTS: RealEstateReport[] = [
 
 // ── The same portfolio in the API's shapes (demoRealEstateSource) ───────────────────────────
 
-// The sample's today: the wallets' sample runs to the same day (lib/mock/wallets).
+// The sample's today.
 const DEMO_TODAY = "2026-09-28";
 const DEMO_MONTH = DEMO_TODAY.slice(0, 7);
 
