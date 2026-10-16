@@ -140,6 +140,88 @@ export interface WalletSummary {
   months: WalletSummaryMonth[];
 }
 
+// ── Insights ──
+// arca's, computed from the movements, transfers left out: one wallet's in its currency, every
+// wallet's in the user's reference currency.
+
+export interface CategoryFigures {
+  // null: not categorised yet.
+  category: MovementCategory | null;
+  // A positive amount.
+  spending: number;
+  income: number;
+}
+
+export interface CategoryMonths {
+  currency: string;
+  // One per month, oldest first, each with the categories that had money in or out.
+  months: { month: string; categories: CategoryFigures[] }[];
+}
+
+export interface Merchant {
+  name: string;
+  spent: number;
+  payments: number;
+  category: MovementCategory | null;
+  lastBookedOn: string;
+}
+
+export interface Merchants {
+  currency: string;
+  // Most spent first.
+  merchants: Merchant[];
+}
+
+export type Cadence = "weekly" | "monthly" | "quarterly" | "yearly";
+
+export interface RecurringPayment {
+  name: string;
+  walletUuid: string;
+  // The wallet's.
+  currency: string;
+  // The latest payment.
+  amount: number;
+  cadence: Cadence;
+  occurrences: number;
+  firstBookedOn: string;
+  lastBookedOn: string;
+  nextExpectedOn: string;
+  category: MovementCategory | null;
+  yearlyAmount: number;
+}
+
+export interface RecurringPayments {
+  // The yearly total's.
+  currency: string;
+  yearlyTotal: number;
+  // Most costly over a year first.
+  payments: RecurringPayment[];
+}
+
+export type ObservationKind = "category_up" | "category_down" | "savings_rate" | "new_recurring_payment" | "subscriptions_yearly";
+
+/** A fact that stands out about last month, its kind's fields set: worded by observationText. */
+export interface Observation {
+  kind: ObservationKind;
+  category: MovementCategory | null;
+  // YYYY-MM.
+  month: string | null;
+  amount: number | null;
+  reference: number | null;
+  changePct: number | null;
+  ratePct: number | null;
+  referenceRatePct: number | null;
+  name: string | null;
+  cadence: Cadence | null;
+  count: number | null;
+}
+
+export interface Observations {
+  currency: string;
+  // Most telling first.
+  observations: Observation[];
+}
+
 // ── Budgets ──
 
 /** A spending category's monthly limit, across every non-archived wallet. */

@@ -5,66 +5,79 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Bar, BarChart, Cell, Legend, Line, LineChart, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Loader2 } from "lucide-react";
+import { Lightbulb, Loader2 } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
 import { formatCompact, formatCurrency } from "../../../lib/format";
 import {
-  allMovements, categoryColor, categoryLabel, errorText, incomeByCategory, monthLabel, savingsRate, spendingByCategory,
+  CADENCE_LABELS, categoryColor, categoryLabel, dayLabel, errorText, monthLabel, observationText, savingsRate,
 } from "../../../lib/wallets";
-import type { Movement, MovementCategory, WalletSummary } from "../../../models/Wallet";
+import type { CategoryMonths, Merchants, MovementCategory, Observations, RecurringPayments, WalletSummary } from "../../../models/Wallet";
 import { AXIS_TICK, Panel, TOOLTIP_STYLE } from "../../preview/PreviewKit";
-import { DemoInsightExtras } from "../../preview/WalletPages";
 
 // The categories the month-by-month chart names; the rest are "Other".
 const TOP = 6;
 
+type Read = { categories: CategoryMonths; merchants: Merchants; recurring: RecurringPayments; observations: Observations };
+
+/** The insights' four reads for the summary's months, refetched as the wallets change. */
+function useInsights(scope: string | null, from: string | undefined, to: string | undefined) {
+  const { source, version } = useWallets();
+  const key = `${scope ?? "all"}:${from}:${to}:${version}`;
+  const [state, setState] = useState<{ key: string; read: Read | null; error: string | null } | null>(null);
+  useEffect(() => {
+    if (!from) return;
+    let cancelled = false;
+    Promise.all([
+      source.categoryMonths(scope, from, to),
+      source.merchants(scope, from, to, 8),
+      source.recurringPayments(scope),
+      source.observations(scope),
+    ])
+      .then(([categories, merchants, recurring, observations]) => {
+        if (!cancelled) setState({ key, read: { categories, merchants, recurring, observations }, error: null });
+      })
+      .catch((err) => { if (!cancelled) setState({ key, read: null, error: errorText(err, "Unable to work out the insights.") }); });
+    return () => { cancelled = true; };
+  }, [source, scope, from, to, key]);
+  return state?.key === key ? state : null;
+}
+
+/** Each category's money out or in over the months, largest first. */
+function byCategory(months: CategoryMonths["months"], field: "spending" | "income") {
+  const map = new Map<MovementCategory | null, number>();
+  for (const m of months) for (const c of m.categories) if (c[field] > 0) map.set(c.category, (map.get(c.category) ?? 0) + c[field]);
+  return [...map].map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount);
+}
+
 /**
  * A wallet's Insights (or every wallet's: `scope` null), over the summary's months (the last 12):
- * money in and out and the balance month by month (the summary's), then where the money went and
- * came from by category, summed here from the movements (the API doesn't sum them yet), transfers
- * between the user's wallets left out. Across wallets, only those in the summary's currency are
- * summed by category, and archived wallets are left out as the summary leaves them. A demo
- * account also sees the previews of what's coming (DemoInsightExtras).
+ * what stands out about last month, money in and out and the balance month by month (the
+ * summary's), then where the money went and came from by category, the payees and the payments
+ * that repeat, all arca's, transfers between the user's wallets left out. Across wallets, in the
+ * reference currency, archived wallets left out as the summary leaves them. A demo account reads
+ * its sample's, worked out the same way.
  */
 export function WalletInsights({ scope, summary }: { scope: string | null; summary: WalletSummary | null | undefined }) {
-  const { wallets, source, version, sample } = useWallets();
-  const [movements, setMovements] = useState<{ key: string; items: Movement[]; complete: boolean; error: string | null } | null>(null);
+  const { wallets } = useWallets();
   const first = summary?.months[0]?.month;
-  const key = `${scope ?? "all"}:${first}:${version}`;
-
-  useEffect(() => {
-    if (!first) return;
-    let cancelled = false;
-    allMovements(source, scope, { bookedFrom: `${first}-01`, excludeTransfers: true })
-      .then(({ items, complete }) => { if (!cancelled) setMovements({ key, items, complete, error: null }); })
-      .catch((err) => { if (!cancelled) setMovements({ key, items: [], complete: true, error: errorText(err, "Unable to load the movements.") }); });
-    return () => { cancelled = true; };
-  }, [source, scope, first, key]);
-
-  const current = movements?.key === key ? movements : null;
-  const currency = summary?.currency ?? "EUR";
+  const last = summary?.months.at(-1)?.month;
+  const current = useInsights(scope, first, last);
+  const read = current?.read ?? null;
+  const currency = read?.categories.currency ?? summary?.currency ?? "EUR";
   const eur = (v: number, d = 0) => formatCurrency(v, currency, d);
 
-  // Across wallets: the active ones in the summary's currency (others can't be added up here).
-  const active = useMemo(() => new Set(wallets.filter((w) => !w.archived).map((w) => w.uuid)), [wallets]);
-  const counted = useMemo(
-    () => (current?.items ?? []).filter((m) => scope || (active.has(m.walletUuid) && m.currency === currency)),
-    [current, scope, active, currency],
-  );
-  const leftOut = !scope && wallets.some((w) => !w.archived && w.currency !== currency);
-
-  const spending = useMemo(() => spendingByCategory(counted), [counted]);
-  const income = useMemo(() => incomeByCategory(counted), [counted]);
+  const spending = useMemo(() => byCategory(read?.categories.months ?? [], "spending"), [read]);
+  const income = useMemo(() => byCategory(read?.categories.months ?? [], "income"), [read]);
   const spendingTotal = spending.reduce((s, c) => s + c.amount, 0);
   const incomeTotal = income.reduce((s, c) => s + c.amount, 0);
   const top = useMemo(() => spending.slice(0, TOP).map((c) => c.category), [spending]);
-  const stacked = useMemo(() => (summary?.months ?? []).map(({ month }) => {
+  const stacked = useMemo(() => (read?.categories.months ?? []).map(({ month, categories }) => {
     const row: Record<string, string | number> = { label: monthLabel(month) };
-    const inMonth = spendingByCategory(counted.filter((m) => m.bookedOn.startsWith(month)));
-    for (const c of top) row[categoryLabel(c)] = inMonth.find((x) => x.category === c)?.amount ?? 0;
-    row.Other = inMonth.filter((x) => !top.includes(x.category)).reduce((s, x) => s + x.amount, 0);
+    for (const c of top) row[categoryLabel(c)] = categories.find((x) => x.category === c)?.spending ?? 0;
+    row.Other = categories.filter((x) => !top.includes(x.category)).reduce((s, x) => s + x.spending, 0);
     return row;
-  }), [summary, counted, top]);
+  }), [read, top]);
+  const walletName = (uuid: string) => wallets.find((w) => w.uuid === uuid)?.name ?? "A wallet";
 
   if (summary === undefined) {
     return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 text-slate-300 animate-spin" /></div>;
@@ -85,15 +98,25 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
   const yearOut = months.reduce((s, m) => s + m.spending, 0);
   const rate = savingsRate(months);
   const empty = yearIn === 0 && yearOut === 0;
-  const note = [
-    "Last 12 months, transfers between your wallets excluded",
-    leftOut ? `only wallets in ${currency}` : null,
-    current && !current.complete ? "from the latest 2,000 movements" : null,
-  ].filter(Boolean).join(" · ") + ".";
+  const note = "Last 12 months, transfers between your wallets excluded.";
 
   return (
     <>
-      {sample && <DemoInsightExtras scope={scope} />}
+      {read && read.observations.observations.length > 0 && (
+        <div className="bg-[#1c1917] rounded-3xl p-5 md:p-6 space-y-3">
+          <div className="flex items-center gap-2">
+            <Lightbulb className="h-4 w-4 text-[#C49A3C]" />
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">What PortfoliAI noticed</p>
+          </div>
+          <ul className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {read.observations.observations.slice(0, 6).map((o, i) => (
+              <li key={`${o.kind}:${o.category ?? o.name ?? i}`} className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-[13px] text-stone-300 leading-relaxed">
+                {observationText(o, read.observations.currency)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-6">
         <Panel
@@ -140,7 +163,7 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
         </p>
       ) : !current ? (
         <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 text-slate-300 animate-spin" /></div>
-      ) : current.error ? (
+      ) : !read ? (
         <p className="text-sm font-semibold text-rose-600">{current.error}</p>
       ) : (
         <>
@@ -180,6 +203,51 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+            </Panel>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Panel title="Top merchants" subtitle="Where the money went, last 12 months.">
+              {read.merchants.merchants.length === 0 ? (
+                <p className="p-6 text-sm font-semibold text-slate-500">No payments in this period.</p>
+              ) : (
+                <ul className="px-6 md:px-7 py-4 divide-y divide-slate-100">
+                  {read.merchants.merchants.map((m) => (
+                    <li key={m.name} className="py-2.5 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-bold text-slate-800 truncate">{m.name}</p>
+                        <p className="text-[11px] font-semibold text-slate-400">
+                          {m.payments} {m.payments === 1 ? "payment" : "payments"} · {categoryLabel(m.category)} · last {dayLabel(m.lastBookedOn)}
+                        </p>
+                      </div>
+                      <span className="text-[13px] font-black tabular-nums text-slate-900">{formatCurrency(m.spent, read.merchants.currency, 0)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Panel>
+            <Panel
+              title="Recurring payments"
+              subtitle="Detected from repeating payments, the last 13 months."
+              right={read.recurring.payments.length > 0 ? <MiniFig label="A year" value={formatCurrency(read.recurring.yearlyTotal, read.recurring.currency, 0)} /> : undefined}
+            >
+              {read.recurring.payments.length === 0 ? (
+                <p className="p-6 text-sm font-semibold text-slate-500">Nothing repeats yet: recurring payments show after a few of them.</p>
+              ) : (
+                <ul className="px-6 md:px-7 py-4 divide-y divide-slate-100">
+                  {read.recurring.payments.map((r) => (
+                    <li key={`${r.walletUuid}:${r.name}`} className="py-2.5 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-bold text-slate-800 truncate">{r.name}</p>
+                        <p className="text-[11px] font-semibold text-slate-400">
+                          {CADENCE_LABELS[r.cadence]} · next {dayLabel(r.nextExpectedOn)}{scope ? "" : ` · ${walletName(r.walletUuid)}`}
+                        </p>
+                      </div>
+                      <span className="text-[13px] font-black tabular-nums text-slate-900">{formatCurrency(r.amount, r.currency, 2)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Panel>
           </div>
         </>

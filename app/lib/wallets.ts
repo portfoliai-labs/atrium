@@ -5,7 +5,8 @@
 // lib/mock/wallets), and the sums the API doesn't make yet (spending by category).
 
 import type {
-  BudgetMonth, Movement, MovementCategory, MovementFilters, MovementList, Wallet, WalletAlertFinding, WalletAlertParams,
+  BudgetMonth, Cadence, CategoryMonths, Merchants, MovementCategory, MovementFilters, MovementList, Observation, Observations,
+  RecurringPayments, Wallet, WalletAlertFinding, WalletAlertParams,
   WalletAlertRule, WalletAlertType, WalletKind, WalletSummary,
 } from "../models/Wallet";
 import { formatCurrency } from "./format";
@@ -100,6 +101,11 @@ export interface WalletSource {
   budgetMonth(month?: string): Promise<BudgetMonth>;
   // Every alert rule, or a wallet's (its own and those on every wallet), with what each finds today.
   alertRules(walletUuid: string | null): Promise<WalletAlertRule[]>;
+  // The insights: one wallet's (in its currency) or every wallet's (in the reference currency).
+  categoryMonths(walletUuid: string | null, from?: string, to?: string): Promise<CategoryMonths>;
+  merchants(walletUuid: string | null, from?: string, to?: string, limit?: number): Promise<Merchants>;
+  recurringPayments(walletUuid: string | null): Promise<RecurringPayments>;
+  observations(walletUuid: string | null): Promise<Observations>;
 }
 
 export const apiWalletSource: WalletSource = {
@@ -107,40 +113,33 @@ export const apiWalletSource: WalletSource = {
   movements: (walletUuid, filters) => walletService.movements(walletUuid, filters),
   budgetMonth: (month) => walletService.budgetMonth(month),
   alertRules: (walletUuid) => walletService.alertRules(walletUuid),
+  categoryMonths: (walletUuid, from, to) => walletService.categoryMonths(walletUuid, from, to),
+  merchants: (walletUuid, from, to, limit) => walletService.merchants(walletUuid, from, to, limit),
+  recurringPayments: (walletUuid) => walletService.recurringPayments(walletUuid),
+  observations: (walletUuid) => walletService.observations(walletUuid),
 };
 
-const PAGE = 200;
+// ── Insights ──
 
-/**
- * Every movement matching `filters`, page after page, up to `cap` (newest first): for the sums
- * the API doesn't make yet. `complete` is false when there were more than that.
- */
-export async function allMovements(source: WalletSource, walletUuid: string | null, filters: MovementFilters, cap = 2000) {
-  const items: Movement[] = [];
-  let total = 0;
-  for (let offset = 0; offset < cap; offset += PAGE) {
-    const page = await source.movements(walletUuid, { ...filters, limit: PAGE, offset });
-    items.push(...page.items);
-    total = page.total;
-    if (items.length >= total || page.items.length === 0) break;
+export const CADENCE_LABELS: Record<Cadence, string> = { weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly" };
+
+/** An observation in a sentence; amounts in `currency`. */
+export function observationText(o: Observation, currency: string): string {
+  const money = (v: number | null, d = 0) => formatCurrency(v ?? 0, currency, d);
+  const month = o.month ? monthName(o.month) : "Last month";
+  const category = categoryLabel(o.category);
+  switch (o.kind) {
+    case "category_up":
+      return `${category} went up to ${money(o.amount)} in ${month}, ${Math.round(o.changePct ?? 0)}% above the ${money(o.reference)} of the three months before.`;
+    case "category_down":
+      return `${category} came down to ${money(o.amount)} in ${month}, ${Math.abs(Math.round(o.changePct ?? 0))}% below the ${money(o.reference)} of the three months before.`;
+    case "savings_rate":
+      return `You saved ${Math.round(o.ratePct ?? 0)}% of your income in ${month}, against ${Math.round(o.referenceRatePct ?? 0)}% over the year before.`;
+    case "new_recurring_payment":
+      return `A new ${o.cadence ? CADENCE_LABELS[o.cadence].toLowerCase() : "recurring"} payment since ${month}: ${o.name}, ${money(o.amount, 2)}.`;
+    case "subscriptions_yearly":
+      return `Your ${o.count ?? 0} ${o.count === 1 ? "subscription costs" : "subscriptions cost"} ${money(o.amount)} a year. Invested monthly instead, that's ${money((o.amount ?? 0) / 12)} a month.`;
   }
-  return { items, complete: items.length >= total };
-}
-
-/** Money out (as positive amounts) by category, largest first; transfers' legs left out. */
-export function spendingByCategory(movements: Movement[]) {
-  return sumByCategory(movements.filter((m) => m.amount < 0 && !m.transferUuid), -1);
-}
-
-/** Money in by category, largest first; transfers' legs left out. */
-export function incomeByCategory(movements: Movement[]) {
-  return sumByCategory(movements.filter((m) => m.amount > 0 && !m.transferUuid), 1);
-}
-
-function sumByCategory(movements: Movement[], sign: 1 | -1) {
-  const map = new Map<MovementCategory | null, number>();
-  for (const m of movements) map.set(m.category, (map.get(m.category) ?? 0) + sign * m.amount);
-  return [...map].map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount);
 }
 
 // ── Alerts ──
