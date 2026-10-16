@@ -211,6 +211,8 @@ function StrategiesList({ trail, onOpen }: { trail: Crumb[]; onOpen: (publicatio
   return (
     <div className="space-y-6 pb-12">
       <Breadcrumb trail={trail} current="Explore" />
+      {/* Titled as Strategy, Projection and Stress test are. */}
+      <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Explore strategies</h1>
       <SimulationDisclaimer />
 
       <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-6 space-y-4">
