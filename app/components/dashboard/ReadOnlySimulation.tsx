@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { portfoliosService } from "../../services/portfoliosService";
+import type { PortfolioComparisonEntry } from "../../models/PortfolioData";
 import { PerformanceSection } from "./PerformanceSection";
 import { PageHeader, type PageAction } from "./PageHeader";
 import { BacktestBanner } from "./BacktestMarks";
@@ -38,6 +39,18 @@ export function ReadOnlySimulation({ portfolioUuid, trail, eyebrow, title: known
 }) {
   const [name, setName] = useState<{ uuid: string; value: string | null } | null>(null);
   const [tool, setTool] = useState<"stress" | "projection" | null>(null);
+  // Its returns beside the Performance chart (TWR since inception, last 12 months, per year), from
+  // the comparison as a portfolio's page has them (GET /v1/portfolios/comparison reads any portfolio
+  // the viewer can).
+  const [comparison, setComparison] = useState<{ uuid: string; value: PortfolioComparisonEntry | null } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    portfoliosService.compare([portfolioUuid])
+      .then((list) => { if (!cancelled) setComparison({ uuid: portfolioUuid, value: list[0] ?? null }); })
+      .catch(() => { if (!cancelled) setComparison({ uuid: portfolioUuid, value: null }); });
+    return () => { cancelled = true; };
+  }, [portfolioUuid]);
 
   useEffect(() => {
     if (knownTitle) return;
@@ -63,6 +76,7 @@ export function ReadOnlySimulation({ portfolioUuid, trail, eyebrow, title: known
       key={portfolioUuid}
       portfolioUuid={portfolioUuid}
       backtest
+      comparison={comparison?.uuid === portfolioUuid ? comparison.value : null}
       strategyShown={strategyShown}
       trail={trail}
       pageLabel={title}
