@@ -108,7 +108,7 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     label: PLAN_PAGE_LABELS[page],
     view: { page },
     // Strategy's form for a new backtest, each backtest and Explore are under Strategy.
-    active: view?.page === page || (page === 'strategy' && (view?.page === 'builder' || view?.page === 'backtest' || view?.page === 'explore')),
+    active: view?.page === page || (page === 'strategy' && (view?.page === 'builder' || view?.page === 'backtest' || view?.page === 'explore' || view?.page === 'compare')),
     preview: PREVIEW_PAGES.includes(page),
   }));
 

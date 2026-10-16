@@ -16,8 +16,7 @@ import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { describeRebalancing } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
-import { openCompareWith } from "../../lib/dashboardNav";
-import { MAX_COMPARED } from "./ComparisonView";
+import { MAX_COMPARED, type CompareStrategy } from "./ComparisonView";
 import { CATEGORY_COLORS, SECURITY_COLORS } from "./StrategyBuilder";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
@@ -159,20 +158,26 @@ const positive = (v: string) => {
  * under a disclaimer; nothing here is matched to the viewer, and nothing can be copied or adopted.
  * A strategy opens its page (StrategyDetail).
  */
-export function StrategiesExplore({ trail, publicationId, onOpen, onNavigate }: {
+export function StrategiesExplore({ trail, publicationId, onOpen, onCompare, onNavigate }: {
   trail: Crumb[];
   // The strategy open, if any.
   publicationId?: string;
   onOpen: (publicationId: string | null) => void;
+  // Opens Plan's Compare on these strategies, the user's portfolios beside them or not.
+  onCompare?: (strategies: CompareStrategy[], withPortfolios: boolean) => void;
   onNavigate?: (section: string) => void;
 }) {
   if (publicationId) {
-    return <StrategyDetail publicationId={publicationId} trail={[...trail, { label: "Explore", onClick: () => onOpen(null) }]} onNavigate={onNavigate} />;
+    return <StrategyDetail publicationId={publicationId} trail={[...trail, { label: "Explore", onClick: () => onOpen(null) }]} onCompare={onCompare} onNavigate={onNavigate} />;
   }
-  return <StrategiesList trail={trail} onOpen={onOpen} onNavigate={onNavigate} />;
+  return <StrategiesList trail={trail} onOpen={onOpen} onCompare={onCompare} />;
 }
 
-function StrategiesList({ trail, onOpen, onNavigate }: { trail: Crumb[]; onOpen: (publicationId: string) => void; onNavigate?: (section: string) => void }) {
+function StrategiesList({ trail, onOpen, onCompare }: {
+  trail: Crumb[];
+  onOpen: (publicationId: string) => void;
+  onCompare?: (strategies: CompareStrategy[], withPortfolios: boolean) => void;
+}) {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   // The strategies picked to compare, across pages and filters, in the order picked.
   const [toCompare, setToCompare] = useState<{ uuid: string; name: string }[]>([]);
@@ -318,7 +323,7 @@ function StrategiesList({ trail, onOpen, onNavigate }: { trail: Crumb[]; onOpen:
                 strategy={s}
                 horizon={filters.horizon}
                 onOpen={() => onOpen(s.publicationId)}
-                compare={onNavigate ? {
+                compare={onCompare ? {
                   picked: toCompare.some((x) => x.uuid === s.portfolioUuid),
                   full: toCompare.length >= MAX_COMPARED,
                   onToggle: () => toggleCompare(s),
@@ -340,7 +345,7 @@ function StrategiesList({ trail, onOpen, onNavigate }: { trail: Crumb[]; onOpen:
         </>
       )}
 
-      {onNavigate && toCompare.length > 0 && (
+      {onCompare && toCompare.length > 0 && (
         <div className="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 rounded-2xl bg-[#1c1917] text-white px-4 py-3 shadow-xl">
           <span className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
             {toCompare.map((s) => (
@@ -360,7 +365,7 @@ function StrategiesList({ trail, onOpen, onNavigate }: { trail: Crumb[]; onOpen:
           <span className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => openCompareWith(onNavigate, toCompare, true)}
+              onClick={() => onCompare(toCompare, false)}
               disabled={toCompare.length < 2}
               title={toCompare.length < 2 ? "Pick at least two to compare them" : undefined}
               className="min-h-9 px-3.5 rounded-xl bg-[#C49A3C] text-xs font-bold hover:bg-[#a87f2f] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -369,7 +374,7 @@ function StrategiesList({ trail, onOpen, onNavigate }: { trail: Crumb[]; onOpen:
             </button>
             <button
               type="button"
-              onClick={() => openCompareWith(onNavigate, toCompare)}
+              onClick={() => onCompare(toCompare, true)}
               className="min-h-9 px-3.5 rounded-xl border border-white/20 text-xs font-bold hover:bg-white/10 transition-colors"
             >
               With my portfolios
@@ -480,7 +485,12 @@ const HORIZON_ORDER = [...FILTER_HORIZONS, "inception"] as const;
  * Insights, annualized as in the list) and how it went through the past crises its history covers, then its
  * portfolio's Insights (ReadOnlySimulation), all simulated. Read only: no way to copy or adopt it.
  */
-function StrategyDetail({ publicationId, trail, onNavigate }: { publicationId: string; trail: Crumb[]; onNavigate?: (section: string) => void }) {
+function StrategyDetail({ publicationId, trail, onCompare, onNavigate }: {
+  publicationId: string;
+  trail: Crumb[];
+  onCompare?: (strategies: CompareStrategy[], withPortfolios: boolean) => void;
+  onNavigate?: (section: string) => void;
+}) {
   const [result, setResult] = useState<{ id: string; strategy: PublishedStrategy | null; error: string | null } | null>(null);
 
   useEffect(() => {
@@ -538,7 +548,7 @@ function StrategyDetail({ publicationId, trail, onNavigate }: { publicationId: s
       strategyShown
       notice={<SimulationDisclaimer />}
       onNavigate={onNavigate}
-      extraActions={onNavigate ? [{ label: "Compare with my portfolios", onClick: () => openCompareWith(onNavigate, { uuid: s.portfolioUuid, name: s.portfolioName }) }] : []}
+      extraActions={onCompare ? [{ label: "Compare", onClick: () => onCompare([{ uuid: s.portfolioUuid, name: s.portfolioName }], true) }] : []}
     >
       <div className="space-y-6">
         <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-7 space-y-3">

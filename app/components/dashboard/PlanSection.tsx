@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowUpRight, ChevronRight, History, Info, Plus, Target, Telescope, Trash2, Wrench, X } from "lucide-react";
+import { ArrowUpRight, ChevronRight, Columns3, History, Info, Plus, Target, Telescope, Trash2, Wrench, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
@@ -17,6 +17,8 @@ import { investmentsOf, isBacktest, type Portfolio } from "../../models/Portfoli
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { StrategyBuilder } from "./StrategyBuilder";
 import { StrategiesExplore } from "./StrategiesExplore";
+import { StrategiesCompare } from "./StrategiesCompare";
+import type { CompareStrategy } from "./ComparisonView";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AdoptStrategyDialog } from "./AdoptStrategyDialog";
 import { VirtualBadge } from "./BacktestMarks";
@@ -31,21 +33,26 @@ import { Panel, PreviewBanner } from "../preview/PreviewKit";
 // "explore", the strategies catalog (StrategiesExplore), to look at before making one's own.
 // "projection" and "stress": a real portfolio's (All portfolios' included) Projection and Stress
 // test, the one picked on the page (a backtest's are its own pages, under Strategy).
-export type PlanPage = "profile" | "goals" | "retirement" | "strategy" | "projection" | "stress" | "builder" | "backtest" | "explore";
+// "compare": strategies and portfolios side by side (StrategiesCompare), under Strategy.
+export type PlanPage = "profile" | "goals" | "retirement" | "strategy" | "projection" | "stress" | "builder" | "backtest" | "explore" | "compare";
 export type PlanToolPage = Extract<PlanPage, "projection" | "stress">;
 // A backtest's pages: its own, and its generated transactions.
 export type BacktestPage = "overview" | "transactions" | "stress" | "projection";
 
 // Explore adds the open strategy's publication; Projection and Stress test the portfolio picked
-// (the investments when none is).
-type PlanView = { page: PlanPage; uuid?: string; sub?: BacktestPage; publicationId?: string; portfolio?: string };
+// (the investments when none is); Compare the strategies it opened with that aren't the user's, and
+// whether the user's portfolios start picked beside them.
+type PlanView = {
+  page: PlanPage; uuid?: string; sub?: BacktestPage; publicationId?: string; portfolio?: string;
+  compareWith?: CompareStrategy[]; withPortfolios?: boolean;
+};
 
 const SECTION = PLAN_SECTION;
 
 // The pages a demo account sees only: previews, with nothing behind them yet.
 export const PREVIEW_PAGES: PlanPage[] = ["profile", "goals", "retirement"];
 
-type ListedPlanPage = Exclude<PlanPage, "builder" | "backtest" | "explore">;
+type ListedPlanPage = Exclude<PlanPage, "builder" | "backtest" | "explore" | "compare">;
 
 export const PLAN_PAGE_LABELS: Record<ListedPlanPage, string> = {
   profile: "Investor profile",
@@ -91,6 +98,12 @@ export function PlanSection({ onNavigate }: { onNavigate: (section: string) => v
     }
     if (page === "explore" && typeof view.publicationId === "string") return { page, publicationId: view.publicationId };
     if ((page === "projection" || page === "stress") && typeof view.portfolio === "string") return { page, portfolio: view.portfolio };
+    if (page === "compare") {
+      const compareWith = Array.isArray(view.compareWith)
+        ? view.compareWith.filter((s): s is CompareStrategy => typeof s?.uuid === "string" && typeof s?.name === "string")
+        : [];
+      return compareWith.length > 0 ? { page, compareWith, ...(view.withPortfolios === true ? { withPortfolios: true } : {}) } : { page };
+    }
     return { page };
   };
   const [view, setView] = useState<PlanView>(viewFromHistory);
@@ -138,6 +151,20 @@ export function PlanSection({ onNavigate }: { onNavigate: (section: string) => v
         trail={strategyTrail}
         publicationId={view.publicationId}
         onOpen={(publicationId) => goView(publicationId ? { page: "explore", publicationId } : { page: "explore" })}
+        onCompare={(compareWith, withPortfolios) => goView({ page: "compare", compareWith, ...(withPortfolios ? { withPortfolios: true } : {}) })}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+  if (page === "compare") {
+    return (
+      <StrategiesCompare
+        // Opened again with other strategies: starts over on them.
+        key={JSON.stringify([view.compareWith, view.withPortfolios])}
+        trail={strategyTrail}
+        compareWith={view.compareWith}
+        withPortfolios={view.withPortfolios}
+        onOpenBacktest={(uuid) => openBacktest(uuid)}
         onNavigate={onNavigate}
       />
     );
@@ -171,7 +198,7 @@ export function PlanSection({ onNavigate }: { onNavigate: (section: string) => v
       {page === "profile" && <ProfilePreview />}
       {page === "goals" && <GoalsPreview />}
       {page === "retirement" && <RetirementPreview />}
-      {(page === "strategy" || page === "backtest") && <StrategyPage onBuild={() => go("builder")} onExplore={() => go("explore")} onOpen={openBacktest} onNavigate={onNavigate} />}
+      {(page === "strategy" || page === "backtest") && <StrategyPage onBuild={() => go("builder")} onExplore={() => go("explore")} onCompare={() => go("compare")} onOpen={openBacktest} onNavigate={onNavigate} />}
     </div>
   );
 }
@@ -299,9 +326,10 @@ function RetirementPreview() {
  * An advisor adopts theirs on a client's portfolio (opening it in the client's Wealth, where it's
  * shared with the client or not), and publishes them to Explore or withdraws them.
  */
-function StrategyPage({ onBuild, onExplore, onOpen, onNavigate }: {
+function StrategyPage({ onBuild, onExplore, onCompare, onOpen, onNavigate }: {
   onBuild: () => void;
   onExplore: () => void;
+  onCompare: () => void;
   onOpen: (uuid: string) => void;
   onNavigate: (section: string) => void;
 }) {
@@ -355,13 +383,22 @@ function StrategyPage({ onBuild, onExplore, onOpen, onNavigate }: {
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Strategy</h1>
-          <button
-            type="button"
-            onClick={() => setChoosing(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" /> New strategy
-          </button>
+          <span className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onCompare}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:border-slate-300 transition-colors"
+            >
+              <Columns3 className="h-3.5 w-3.5" /> Compare
+            </button>
+            <button
+              type="button"
+              onClick={() => setChoosing(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" /> New strategy
+            </button>
+          </span>
         </div>
         <p className="flex items-start gap-2 text-[12.5px] text-[#78716c] max-w-3xl">
           <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />

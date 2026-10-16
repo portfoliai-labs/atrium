@@ -55,51 +55,14 @@ export interface CompareStrategy {
   name: string;
 }
 
-const SELECTION_KEY = "compare_selected_portfolio_uuids";
 // Same isStale contract as the rest of the dashboard (see useAnalytics in PerformanceSection).
 const STALE_POLL_INTERVAL_MS = 15_000;
 const STALE_TIMEOUT_MS = 5 * 60_000;
 
-const readSelection = (): string[] | null => {
-  try {
-    const raw = localStorage.getItem(SELECTION_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return Array.isArray(parsed) ? parsed.filter((u): u is string => typeof u === "string") : null;
-  } catch {
-    return null;
-  }
-};
-
-/** Remembers the compared portfolios in this browser, for the next time Compare is opened. */
-export const rememberCompareSelection = (uuids: string[]) => {
-  try {
-    localStorage.setItem(SELECTION_KEY, JSON.stringify(uuids));
-  } catch {
-    // Private mode or blocked storage: the selection just isn't remembered.
-  }
-};
-
 /**
- * What Compare starts from: the portfolio being looked at, then the ones remembered from last
- * time, then the other portfolios in list order until there are two. Never the aggregate ("All
- * portfolios"): it's the sum of the others, not a peer of theirs. Capped at MAX_COMPARED.
- */
-export function initialCompareSelection(portfolios: Portfolio[], currentUuid: string | null): string[] {
-  // The real estate is kept when remembered: Compare leaves it out where it isn't offered.
-  const known = new Set([...portfolios.filter((p) => !p.isAggregate).map((p) => p.uuid), REAL_ESTATE_COLUMN]);
-  const current = portfolios.find((p) => p.uuid === currentUuid && !p.isAggregate);
-  const picked = [...(current ? [current.uuid] : []), ...(readSelection() ?? []).filter((u) => known.has(u))];
-  const unique = [...new Set(picked)];
-  for (const p of portfolios) {
-    if (unique.length >= 2) break;
-    if (!p.isAggregate && !unique.includes(p.uuid)) unique.push(p.uuid);
-  }
-  return unique.slice(0, MAX_COMPARED);
-}
-
-/**
- * COMPARISON VIEW — "All portfolios / Compare" (see WealthSection): every portfolio as a
- * card on top (CompareCards), picked or not with a click, up to MAX_COMPARED; the picked ones side
+ * COMPARISON VIEW — Plan's Compare (see StrategiesCompare): every candidate (`candidates`: the
+ * user's backtests and portfolios) as a card on top (CompareCards), picked or not with a click, up
+ * to MAX_COMPARED; the picked ones side
  * by side under them (GET /v1/portfolios/comparison): a module per subject (CompareMetrics), the cumulative
  * returns and the allocation (CompareCharts), all following the cards. Each portfolio keeps its colour
  * (portfolioColorMap), so changing the selection never repaints the others. Columns follow the
@@ -118,12 +81,14 @@ export function initialCompareSelection(portfolios: Portfolio[], currentUuid: st
  * rents, 100% real estate), "—" for returns, risk and the benchmark, and never a row's best.
  */
 export function ComparisonView({
-  selection, onToggle, trail, onOpen, onOpenRealEstate, strategies = [], onRemoveStrategy, onAddStrategies,
+  candidates, selection, onToggle, trail, onOpen, onOpenRealEstate, strategies = [], onRemoveStrategy, onAddStrategies,
 }: {
+  // The user's portfolios that can be picked, in their order; all but the aggregate unless said.
+  candidates?: Portfolio[];
   selection: string[];
   // Adds a portfolio to the comparison, or takes it out.
   onToggle: (uuid: string) => void;
-  // The pages above Compare ("Investments").
+  // The pages above Compare.
   trail: Crumb[];
   // Opens one portfolio's own Insights, from its column head.
   onOpen: (uuid: string) => void;
@@ -144,8 +109,8 @@ export function ComparisonView({
   // Offered once there's a property; null: there is, but it can't be added up (a rate missing).
   const realEstateOffered = realEstateShown && realEstate !== undefined && (realEstate === null || realEstate.propertyCount > 0);
   const realEstatePicked = realEstateOffered && !!realEstate && selection.includes(REAL_ESTATE_COLUMN);
-  // Every portfolio but the aggregate, which is the sum of the others rather than a peer of theirs.
-  const comparable = useMemo(() => portfolios.filter((p) => !p.isAggregate), [portfolios]);
+  // Never the aggregate, which is the sum of the others rather than a peer of theirs.
+  const comparable = useMemo(() => (candidates ?? portfolios).filter((p) => !p.isAggregate), [candidates, portfolios]);
   // A strategy that's one of the user's own (a backtest of theirs) is just that portfolio.
   const external = useMemo(() => strategies.filter((s) => !portfolios.some((p) => p.uuid === s.uuid)), [strategies, portfolios]);
   const portfolioColors = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
@@ -161,7 +126,7 @@ export function ComparisonView({
     () => [...comparable.filter((p) => selection.includes(p.uuid)).map((p) => p.uuid).slice(0, ownRoom), ...external.map((s) => s.uuid)],
     [comparable, selection, ownRoom, external],
   );
-  const cardFigures = useAllFigures(portfolios.map((p) => p.uuid).join(","));
+  const cardFigures = useAllFigures(comparable.map((p) => p.uuid).join(","));
   const picked = ordered.length + (realEstatePicked ? 1 : 0);
   const { entries: portfolioEntries, loading, failed, failedStatus, timedOut } = useComparison(ordered.join(","), picked >= 2);
   // A strategy's card reads its figures from the comparison.
@@ -500,14 +465,16 @@ function useSideScroll(itemCount: number) {
   return { ref, ...edges, scrollBy };
 }
 
-/** Every portfolio's figures for the cards, from one call (GET /v1/portfolios/comparison, none listed). */
+/** The cards' figures, from one call (GET /v1/portfolios/comparison, those listed). */
 function useAllFigures(uuidsKey: string) {
   const { client } = usePortfolio();
   const clientUuid = client?.uuid ?? null;
   const [state, setState] = useState<{ key: string; byUuid: Map<string, PortfolioComparisonEntry> } | null>(null);
   useEffect(() => {
     let cancelled = false;
-    portfoliosService.compare([], clientUuid)
+    const uuids = uuidsKey ? uuidsKey.split(",") : [];
+    if (uuids.length === 0) return;
+    portfoliosService.compare(uuids, clientUuid)
       .then((list) => { if (!cancelled) setState({ key: uuidsKey, byUuid: new Map(list.map((e) => [e.portfolio.uuid, e])) }); })
       .catch(() => { if (!cancelled) setState({ key: uuidsKey, byUuid: new Map() }); });
     return () => { cancelled = true; };
