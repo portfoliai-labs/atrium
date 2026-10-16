@@ -144,8 +144,8 @@ export function StrategiesExplore({ trail, publicationId, onOpen, onCompare, onN
   // The strategy open, if any.
   publicationId?: string;
   onOpen: (publicationId: string | null) => void;
-  // Opens Plan's Compare on these strategies, the user's portfolios beside them or not.
-  onCompare?: (strategies: CompareStrategy[], withPortfolios: boolean) => void;
+  // Opens Wealth's Compare on these strategies, beside the user's portfolios.
+  onCompare?: (strategies: CompareStrategy[]) => void;
   onNavigate?: (section: string) => void;
 }) {
   if (publicationId) {
@@ -421,7 +421,7 @@ const HORIZON_ORDER = [...FILTER_HORIZONS, "inception"] as const;
 function StrategyDetail({ publicationId, trail, onCompare, onNavigate }: {
   publicationId: string;
   trail: Crumb[];
-  onCompare?: (strategies: CompareStrategy[], withPortfolios: boolean) => void;
+  onCompare?: (strategies: CompareStrategy[]) => void;
   onNavigate?: (section: string) => void;
 }) {
   const [result, setResult] = useState<{ id: string; strategy: PublishedStrategy | null; error: string | null } | null>(null);
@@ -481,7 +481,7 @@ function StrategyDetail({ publicationId, trail, onCompare, onNavigate }: {
       strategyShown
       notice={<SimulationDisclaimer />}
       onNavigate={onNavigate}
-      extraActions={onCompare ? [{ label: "Compare", onClick: () => onCompare([{ uuid: s.portfolioUuid, name: s.portfolioName }], true) }] : []}
+      extraActions={onCompare ? [{ label: "Compare", onClick: () => onCompare([{ uuid: s.portfolioUuid, name: s.portfolioName }]) }] : []}
     >
       <div className="space-y-6">
         <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-7 space-y-3">

@@ -59,8 +59,8 @@ const STALE_POLL_INTERVAL_MS = 15_000;
 const STALE_TIMEOUT_MS = 5 * 60_000;
 
 /**
- * COMPARISON VIEW — Plan's Compare (see StrategiesCompare): every candidate (`candidates`: the
- * user's backtests and portfolios) as a card on top (CompareCards), picked or not with a click, up
+ * COMPARISON VIEW — Wealth's Compare (see PortfoliosCompare): every candidate (`candidates`: the
+ * user's portfolios) as a card on top (CompareCards), picked or not with a click, up
  * to MAX_COMPARED; the picked ones side
  * by side under them (GET /v1/portfolios/comparison): a module per subject (CompareMetrics), the cumulative
  * returns and the allocation (CompareCharts), all following the cards. Each portfolio keeps its colour
