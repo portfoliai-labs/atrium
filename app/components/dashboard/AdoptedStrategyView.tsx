@@ -51,11 +51,13 @@ interface Draft {
  * from one of their own backtests: adopted here from those (AdoptStrategyDialog), and shared with
  * the client or not (ClientStrategySharing).
  */
-export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimulation, onOpenAlerts, onNavigate, onChanged }: {
+export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimulation, onCompareWith, onOpenAlerts, onNavigate, onChanged }: {
   portfolio: Portfolio;
   trail: Crumb[];
   shared?: SharedStrategy[];
   onOpenSimulation?: (portfolioUuid: string) => void;
+  // Compares a shared strategy's simulation with the user's portfolios.
+  onCompareWith?: (strategy: { uuid: string; name: string }) => void;
   onOpenAlerts: () => void;
   onNavigate: (section: string) => void;
   // After a change that may add or remove the adoption, so the page header follows.
@@ -94,6 +96,7 @@ export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimul
       key={s.adoptionId}
       shared={s}
       onOpenSimulation={(uuid) => onOpenSimulation?.(uuid)}
+      onCompare={onCompareWith}
     />
   ));
 

@@ -69,3 +69,10 @@ export const openBacktestPage = (onNavigate: Navigate, portfolioUuid: string) =>
 /** Explore, under Plan's Strategy: the catalog, or one strategy of it. */
 export const openExplorePage = (onNavigate: Navigate, publicationId?: string) =>
   openSectionView(onNavigate, PLAN_SECTION, publicationId ? { page: "explore", publicationId } : { page: "explore" });
+
+/**
+ * Compare, on the investments, with a strategy that isn't the user's beside their portfolios: a
+ * published strategy (its portfolioUuid) or the backtest a strategy their advisor shared came from.
+ */
+export const openCompareWith = (onNavigate: Navigate, strategy: { uuid: string; name: string }) =>
+  openWealthView(onNavigate, { kind: "portfolio", uuid: "", page: "compare", compareWith: [strategy] });

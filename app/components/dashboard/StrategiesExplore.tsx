@@ -16,6 +16,7 @@ import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { describeRebalancing } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
+import { openCompareWith } from "../../lib/dashboardNav";
 import { CATEGORY_COLORS, SECURITY_COLORS } from "./StrategyBuilder";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
@@ -460,6 +461,7 @@ function StrategyDetail({ publicationId, trail, onNavigate }: { publicationId: s
       strategyShown
       notice={<SimulationDisclaimer />}
       onNavigate={onNavigate}
+      extraActions={onNavigate ? [{ label: "Compare with my portfolios", onClick: () => openCompareWith(onNavigate, { uuid: s.portfolioUuid, name: s.portfolioName }) }] : []}
     >
       <div className="space-y-6">
         <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-7 space-y-3">

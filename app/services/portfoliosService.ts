@@ -40,8 +40,11 @@ export const portfoliosService = {
   },
 
   // GET /v1/portfolios/comparison?portfolio=…&portfolio=… — side-by-side figures, one entry
-  // per portfolio in the order given (without any, all of the caller's, aggregate first). 404
-  // if one isn't the caller's. Lives here rather than in portfolioService since it spans
+  // per portfolio in the order given (without any, all of the caller's, aggregate first). Any
+  // portfolio the caller can read: their own, a published strategy of the catalog (its
+  // portfolioUuid, its saved figures gross of costs), the backtest a strategy their advisor shared
+  // came from, mixed. 404 PortfolioNotFoundError for one that isn't there; 403 NotYourClientError
+  // for one they can't read. Lives here rather than in portfolioService since it spans
   // several portfolios.
   // With `clientUuid`, an advisor's view of that client's (GET
   // /v1/advisor/clients/{c}/portfolios/comparison, the same answer): the caller's own route only

@@ -2,10 +2,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowUpRight, Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowUpRight, Check, ChevronLeft, ChevronRight, Info, Loader2, X } from "lucide-react";
 import { portfoliosService } from "../../services/portfoliosService";
+import { ApiError } from "../../services/apiClient";
 import { usePortfolio } from "../../context/PortfolioContext";
-import { portfolioColorMap } from "../../lib/chartColors";
+import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
 import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { VirtualBadge } from "./BacktestMarks";
@@ -42,6 +43,15 @@ function realEstateEntry(o: RealEstateOverview): CompareEntry {
     benchmark: null,
     realEstate: o,
   };
+}
+
+// A strategy compared though it isn't the user's: a published strategy of the catalog (its
+// portfolioUuid), or the backtest a strategy their advisor shared came from. The backend reads
+// it like their own (GET /v1/portfolios/comparison takes any portfolio they can read); `name` is
+// shown until the comparison names it.
+export interface CompareStrategy {
+  uuid: string;
+  name: string;
 }
 
 const SELECTION_KEY = "compare_selected_portfolio_uuids";
@@ -94,12 +104,18 @@ export function initialCompareSelection(portfolios: Portfolio[], currentUuid: st
  * (portfolioColorMap), so changing the selection never repaints the others. Columns follow the
  * portfolio list's order, not the order they were picked in, so they don't shuffle.
  *
+ * Strategies that aren't the user's (`strategies`: one from Explore, or the simulation a strategy
+ * their advisor shared came from) are compared beside them: picked for as long as they're there,
+ * after the user's portfolios, each a card with a cross to take it out and a colour past theirs.
+ * They count towards MAX_COMPARED, so they leave fewer of the user's picks. A strategy no longer
+ * readable (withdrawn, no longer shared: 403, 404) is said, with the way to take it out.
+ *
  * Where the investor's real estate is theirs to see (`onOpenRealEstate`), it's offered too, as a
  * last card and column (in Wealth's orange): filled where it means something (value, debt, equity,
  * rents, 100% real estate), "—" for returns, risk and the benchmark, and never a row's best.
  */
 export function ComparisonView({
-  selection, onToggle, trail, onOpen, onOpenRealEstate,
+  selection, onToggle, trail, onOpen, onOpenRealEstate, strategies = [], onRemoveStrategy,
 }: {
   selection: string[];
   // Adds a portfolio to the comparison, or takes it out.
@@ -110,6 +126,10 @@ export function ComparisonView({
   onOpen: (uuid: string) => void;
   // Opens the real estate; offers it as a column where given.
   onOpenRealEstate?: () => void;
+  // Strategies that aren't the user's, compared beside them (see CompareStrategy): always picked,
+  // after the user's portfolios, until taken out.
+  strategies?: CompareStrategy[];
+  onRemoveStrategy?: (uuid: string) => void;
 }) {
   const { portfolios } = usePortfolio();
   const { available: realEstateAvailable, sample: realEstateSample } = useRealEstate();
@@ -118,14 +138,28 @@ export function ComparisonView({
   // Offered once there's a property; null: there is, but it can't be added up (a rate missing).
   const realEstateOffered = realEstateShown && realEstate !== undefined && (realEstate === null || realEstate.propertyCount > 0);
   const realEstatePicked = realEstateOffered && !!realEstate && selection.includes(REAL_ESTATE_COLUMN);
-  const portfolioColors = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
-  const colorOf = useMemo(() => (uuid: string) => (uuid === REAL_ESTATE_COLUMN ? REAL_ESTATE_COLOR : portfolioColors(uuid)), [portfolioColors]);
   // Every portfolio but the aggregate, which is the sum of the others rather than a peer of theirs.
   const comparable = useMemo(() => portfolios.filter((p) => !p.isAggregate), [portfolios]);
-  const ordered = useMemo(() => comparable.filter((p) => selection.includes(p.uuid)).map((p) => p.uuid), [comparable, selection]);
+  // A strategy that's one of the user's own (a backtest of theirs) is just that portfolio.
+  const external = useMemo(() => strategies.filter((s) => !portfolios.some((p) => p.uuid === s.uuid)), [strategies, portfolios]);
+  const portfolioColors = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
+  // The strategies take the palette's colours past the portfolios', so none repaints another.
+  const colorOf = useMemo(() => (uuid: string) => {
+    if (uuid === REAL_ESTATE_COLUMN) return REAL_ESTATE_COLOR;
+    const i = external.findIndex((s) => s.uuid === uuid);
+    return i < 0 ? portfolioColors(uuid) : CATEGORICAL_PALETTE[(comparable.length + i) % CATEGORICAL_PALETTE.length];
+  }, [portfolioColors, external, comparable.length]);
+  // The user's picks fill what the strategies leave of MAX_COMPARED.
+  const ownRoom = Math.max(0, MAX_COMPARED - external.length - (realEstatePicked ? 1 : 0));
+  const ordered = useMemo(
+    () => [...comparable.filter((p) => selection.includes(p.uuid)).map((p) => p.uuid).slice(0, ownRoom), ...external.map((s) => s.uuid)],
+    [comparable, selection, ownRoom, external],
+  );
   const cardFigures = useAllFigures(portfolios.map((p) => p.uuid).join(","));
   const picked = ordered.length + (realEstatePicked ? 1 : 0);
-  const { entries: portfolioEntries, loading, failed, timedOut } = useComparison(ordered.join(","), picked >= 2);
+  const { entries: portfolioEntries, loading, failed, failedStatus, timedOut } = useComparison(ordered.join(","), picked >= 2);
+  // A strategy's card reads its figures from the comparison.
+  const strategyFigures = useMemo(() => new Map((portfolioEntries ?? []).map((e) => [e.portfolio.uuid, e])), [portfolioEntries]);
   // The real estate's column last, after the portfolios'.
   const entries = useMemo<CompareEntry[] | null>(
     () => (portfolioEntries ? [...portfolioEntries, ...(realEstatePicked && realEstate ? [realEstateEntry(realEstate)] : [])] : null),
@@ -147,8 +181,28 @@ export function ComparisonView({
         onToggle={onToggle}
         onOpen={onOpen}
         realEstate={realEstateOffered ? { overview: realEstate ?? null, picked: realEstatePicked, sample: realEstateSample, onOpen: onOpenRealEstate! } : undefined}
+        strategies={external.map((s) => ({ ...s, entry: strategyFigures.get(s.uuid) }))}
+        onRemoveStrategy={onRemoveStrategy}
       />
-      {picked < 2 ? (
+      {external.length > 0 && (
+        <p className="flex items-start gap-2 text-xs text-slate-500 max-w-3xl">
+          <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          A strategy&apos;s figures are its backtest&apos;s, simulated, as saved; a published strategy&apos;s are gross of costs, as in the catalog.
+        </p>
+      )}
+      {failed && (failedStatus === 403 || failedStatus === 404) && external.length > 0 ? (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-wrap items-center gap-3 text-amber-800">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <p className="text-sm font-bold flex-1 min-w-48">
+            {external.length === 1 ? "This strategy can't" : "One of these strategies can't"} be compared any more: it was withdrawn from the catalog, or isn&apos;t shared with you now.
+          </p>
+          {onRemoveStrategy && (
+            <button type="button" onClick={() => external.forEach((s) => onRemoveStrategy(s.uuid))} className="px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold hover:bg-amber-100">
+              Take {external.length === 1 ? "it" : "them"} out
+            </button>
+          )}
+        </div>
+      ) : picked < 2 ? (
         <div className="flex items-center justify-center text-center py-14 px-6 bg-white border border-slate-200 border-dashed rounded-4xl">
           <p className="text-slate-500 text-sm max-w-sm">
             {picked === 1
@@ -191,7 +245,7 @@ export function ComparisonView({
  * MAX_COMPARED); the arrow opens its Insights. The real estate, where offered, is the last card:
  * its value and its equity, the arrow opening its page.
  */
-function CompareCards({ portfolios, selection, picked, figures, colorOf, onToggle, onOpen, realEstate }: {
+function CompareCards({ portfolios, selection, picked, figures, colorOf, onToggle, onOpen, realEstate, strategies = [], onRemoveStrategy }: {
   portfolios: Portfolio[];
   selection: string[];
   // How many columns are picked, the real estate included.
@@ -202,9 +256,12 @@ function CompareCards({ portfolios, selection, picked, figures, colorOf, onToggl
   onOpen: (uuid: string) => void;
   // overview null: it can't be added up (a rate missing), so it can't be picked.
   realEstate?: { overview: RealEstateOverview | null; picked: boolean; sample: boolean; onOpen: () => void };
+  // The strategies compared that aren't the user's, each with its column's figures once loaded.
+  strategies?: (CompareStrategy & { entry?: PortfolioComparisonEntry })[];
+  onRemoveStrategy?: (uuid: string) => void;
 }) {
   const full = picked >= MAX_COMPARED;
-  const { ref, canLeft, canRight, scrollBy } = useSideScroll(portfolios.length + (realEstate ? 1 : 0));
+  const { ref, canLeft, canRight, scrollBy } = useSideScroll(portfolios.length + strategies.length + (realEstate ? 1 : 0));
   return (
     <div>
       {(canLeft || canRight) && (
@@ -279,11 +336,52 @@ function CompareCards({ portfolios, selection, picked, figures, colorOf, onToggl
             </div>
           );
         })}
+        {strategies.map((s) => (
+          <StrategyCard key={s.uuid} strategy={s} color={colorOf(s.uuid)} onRemove={onRemoveStrategy ? () => onRemoveStrategy(s.uuid) : undefined} />
+        ))}
         {realEstate && <RealEstateCard {...realEstate} blocked={!realEstate.picked && full} onToggle={() => onToggle(REAL_ESTATE_COLUMN)} />}
       </div>
       <div className={`pointer-events-none absolute inset-y-0 left-0 w-10 bg-linear-to-r from-[#F7F5EF] to-transparent transition-opacity ${canLeft ? "opacity-100" : "opacity-0"}`} />
       <div className={`pointer-events-none absolute inset-y-0 right-0 w-10 bg-linear-to-l from-[#F7F5EF] to-transparent transition-opacity ${canRight ? "opacity-100" : "opacity-0"}`} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * A strategy's card, compared though it isn't the user's: always picked, its name and return from
+ * its column (a simulation's, so no value of the user's), and a cross to take it out.
+ */
+function StrategyCard({ strategy, color, onRemove }: {
+  strategy: CompareStrategy & { entry?: PortfolioComparisonEntry };
+  color: string;
+  onRemove?: () => void;
+}) {
+  const name = strategy.entry?.portfolio.name ?? strategy.name;
+  const total = strategy.entry?.performance?.totalReturnPct ?? null;
+  return (
+    <div className="relative w-60 shrink-0 snap-start rounded-2xl border-2 border-[#C49A3C] shadow-md bg-white overflow-hidden">
+      <div className="h-1.5" style={{ backgroundColor: color }} />
+      <div className="p-4 pr-11">
+        <span className="block text-base font-black text-slate-900 truncate" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>{name}</span>
+        <span className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider">Strategy · simulated</span>
+        <span className="block mt-2 text-xs font-bold tabular-nums">
+          {total === null
+            ? <span className="text-slate-400 font-semibold">{strategy.entry ? "No return yet" : "…"}</span>
+            : <><span className={total >= 0 ? "text-emerald-600" : "text-rose-600"}>{total >= 0 ? "+" : ""}{total.toFixed(2)}%</span><span className="text-slate-400 font-semibold"> since inception</span></>}
+        </span>
+      </div>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Take ${name} out of the comparison`}
+          title="Take it out"
+          className="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }
@@ -401,7 +499,9 @@ function useAllFigures(uuidsKey: string) {
 function useComparison(uuidsKey: string, enabled: boolean) {
   const { client } = usePortfolio();
   const clientUuid = client?.uuid ?? null;
-  const [state, setState] = useState<{ entries: PortfolioComparisonEntry[] | null; loading: boolean; failed: boolean; timedOut: boolean }>({
+  // `failedStatus`: the refusal's HTTP status, when it was one (403, 404: a strategy not readable
+  // any more).
+  const [state, setState] = useState<{ entries: PortfolioComparisonEntry[] | null; loading: boolean; failed: boolean; failedStatus?: number; timedOut: boolean }>({
     entries: null, loading: true, failed: false, timedOut: false,
   });
 
@@ -422,8 +522,8 @@ function useComparison(uuidsKey: string, enabled: boolean) {
         const timedOut = anyStale && Date.now() - startedAt >= STALE_TIMEOUT_MS;
         setState({ entries, loading: false, failed: false, timedOut });
         if (anyStale && !timedOut) timer = setTimeout(() => tick(false), STALE_POLL_INTERVAL_MS);
-      } catch {
-        if (!cancelled) setState({ entries: null, loading: false, failed: true, timedOut: false });
+      } catch (err) {
+        if (!cancelled) setState({ entries: null, loading: false, failed: true, failedStatus: err instanceof ApiError ? err.status : undefined, timedOut: false });
       }
     };
     tick(true);
