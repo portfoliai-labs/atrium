@@ -18,15 +18,17 @@ const targetKey = (t: StrategyTarget) => (t.kind === "asset" ? `asset:${t.asset.
  * (GET .../shared-strategies), read-only: each held target with its band, the portfolio's weight in
  * it as of the last check, the drift from the target and whether it's within the band; the
  * rebalancing rule, when it was shared, and the way to the advisor's simulation (their strategy
- * portfolio, readable while it's shared). No edit controls: the advisor keeps it. It says where the
+ * portfolio, readable while it's shared), and to compare that with the client's portfolios. No edit controls: the advisor keeps it. It says where the
  * portfolio stands, never what to buy or sell.
  */
-export function SharedStrategyPanel({ shared, showPortfolio = false, onOpenSimulation }: {
+export function SharedStrategyPanel({ shared, showPortfolio = false, onOpenSimulation, onCompare }: {
   shared: SharedStrategy;
   // Where it's listed apart from its portfolio's page (GET /v1/portfolios/shared-strategies):
   // say which portfolio it's for.
   showPortfolio?: boolean;
   onOpenSimulation: (portfolioUuid: string) => void;
+  // Compares the advisor's simulation with the client's portfolios, where offered.
+  onCompare?: (strategy: { uuid: string; name: string }) => void;
 }) {
   // Every held target, with its standing when there's one.
   const rows: (Partial<TargetStanding> & { target: StrategyTarget })[] = shared.standings.length > 0
@@ -51,13 +53,24 @@ export function SharedStrategyPanel({ shared, showPortfolio = false, onOpenSimul
           </p>
         </div>
         {shared.originPortfolioUuid ? (
-          <button
-            type="button"
-            onClick={() => onOpenSimulation(shared.originPortfolioUuid!)}
-            className="flex items-center gap-1.5 min-h-10 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:border-slate-300 transition-colors"
-          >
-            Open the simulation <ArrowUpRight className="h-3.5 w-3.5" />
-          </button>
+          <span className="flex flex-wrap gap-2">
+            {onCompare && (
+              <button
+                type="button"
+                onClick={() => onCompare({ uuid: shared.originPortfolioUuid!, name: `Strategy from ${shared.advisorName ?? "your advisor"}` })}
+                className="flex items-center gap-1.5 min-h-10 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:border-slate-300 transition-colors"
+              >
+                Compare with my portfolios
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onOpenSimulation(shared.originPortfolioUuid!)}
+              className="flex items-center gap-1.5 min-h-10 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:border-slate-300 transition-colors"
+            >
+              Open the simulation <ArrowUpRight className="h-3.5 w-3.5" />
+            </button>
+          </span>
         ) : (
           <span className="text-[11px] font-semibold text-slate-400">Its simulation has been deleted; the strategy stays.</span>
         )}

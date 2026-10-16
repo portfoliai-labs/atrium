@@ -25,7 +25,7 @@ import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { FileUploader } from "./FileUploader";
 import { AlertsSettings } from "./AlertsSettings";
 import { ReportsBrowser } from "./ReportsBrowser";
-import { ComparisonView, initialCompareSelection, rememberCompareSelection, MAX_COMPARED } from "./ComparisonView";
+import { ComparisonView, initialCompareSelection, rememberCompareSelection, MAX_COMPARED, type CompareStrategy } from "./ComparisonView";
 import { ManagePortfolios } from "./ManagePortfolios";
 import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { NewPortfolioDialog } from "./NewPortfolioDialog";
@@ -67,8 +67,9 @@ export type WealthView =
   | { kind: "root" }
   // A portfolio, "All portfolios" (the investments) included. A strategy's backtest is Plan's.
   // `simulation`: on its Strategy page, the advisor's strategy portfolio a shared strategy came
-  // from, opened read-only.
-  | { kind: "portfolio"; uuid: string; page: PortfolioPage; simulation?: string }
+  // from, opened read-only. `compareWith`: on Compare, strategies that aren't the user's compared beside
+  // their portfolios (one from Explore, one an advisor shared).
+  | { kind: "portfolio"; uuid: string; page: PortfolioPage; simulation?: string; compareWith?: CompareStrategy[] }
   // A wallet, or every wallet together (ALL_WALLETS). A demo account's are sample data.
   | { kind: "wallet"; id: string; page: WalletPage }
   // The real estate: every property together, or one (`property`, its page or its transactions).
@@ -98,6 +99,13 @@ type WealthScope = Record<string, string>;
 const inScope = (view: unknown, scope: WealthScope) =>
   typeof view === "object" && view !== null && Object.entries(scope).every(([k, v]) => (view as Record<string, unknown>)[k] === v);
 
+// The strategies a history entry compares, those well formed.
+const compareStrategiesOf = (raw: unknown): CompareStrategy[] | undefined => {
+  if (!Array.isArray(raw)) return undefined;
+  const list = raw.filter((s): s is CompareStrategy => typeof s?.uuid === "string" && typeof s?.name === "string");
+  return list.length > 0 ? list : undefined;
+};
+
 /**
  * The page the current history entry was on, read for this account (and this scope). `hasRoot`:
  * Wealth itself is a page, with the wallets under it; `hasRealEstate`: the real estate too.
@@ -114,18 +122,19 @@ function viewFromHistory(hasRealEstate: boolean, hasRoot: boolean, portfolios: P
     case "root":
       return top;
     case "portfolio": {
-      const v = view as { uuid?: string; page?: string; simulation?: unknown };
+      const v = view as { uuid?: string; page?: string; simulation?: unknown; compareWith?: unknown };
       // A portfolio had tabs (`tab`), then Insights as its first page, before its own page.
       const page = PORTFOLIO_PAGES.includes(v.page as PortfolioPage) ? (v.page as PortfolioPage) : "overview";
+      const compareWith = page === "compare" ? compareStrategiesOf(v.compareWith) : undefined;
       // No portfolio named (""): the investments, on that page (a link from outside, which
       // doesn't know which portfolio stands for them).
-      if (v.uuid === "" && investments) return { kind: "portfolio", uuid: investments.uuid, page };
+      if (v.uuid === "" && investments) return { kind: "portfolio", uuid: investments.uuid, page, ...(compareWith ? { compareWith } : {}) };
       if (!portfolios.some((p) => p.uuid === v.uuid)) return top;
       // The taxes are all the investments'.
       if (page === "taxes" && investments && v.uuid !== investments.uuid) return { kind: "portfolio", uuid: investments.uuid, page };
       return page === "strategy" && typeof v.simulation === "string"
         ? { kind: "portfolio", uuid: v.uuid!, page, simulation: v.simulation }
-        : { kind: "portfolio", uuid: v.uuid!, page };
+        : { kind: "portfolio", uuid: v.uuid!, page, ...(compareWith ? { compareWith } : {}) };
     }
     // Investments' own pages before they were the investments' (Manage / Investments / Alerts…).
     case "investments":
@@ -250,6 +259,7 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
   if (!portfolio) return null;
   const page = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.page : "overview";
   const simulation = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.simulation : undefined;
+  const compareWith = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.compareWith : undefined;
   // A backtest is a simulation, not something owned: it's Plan's (see BacktestRedirect).
   if (isBacktest(portfolio)) {
     return <BacktestRedirect uuid={portfolio.uuid} transactions={page === "transactions"} onNavigate={onNavigate} />;
@@ -271,6 +281,8 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
       extraActions={portfolio.uuid === investments?.uuid ? extraActions : undefined}
       onOpen={openPortfolio}
       simulation={simulation}
+      compareWith={compareWith}
+      onCompareWith={investments ? (strategy) => go({ kind: "portfolio", uuid: investments.uuid, page: "compare", compareWith: [strategy] }) : undefined}
       onOpenSimulation={(uuid) => go({ kind: "portfolio", uuid: portfolio.uuid, page: "strategy", simulation: uuid })}
       onOpenRealEstate={hasRealEstate ? () => go({ kind: "realEstate", page: "home" }) : undefined}
       onOpenTaxSettings={onOpenTaxSettings ?? (() => {
@@ -398,7 +410,7 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  * client's (PortfolioContext's `client`) can't rename or delete it; its alerts are the advisor's,
  * its asset categories the client's, and its Strategy page says whether the client sees it.
  */
-export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, onOpenSimulation, onOpenRealEstate, onOpenTaxSettings, onBacktestGone, onNavigate }: {
+export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, compareWith, onCompareWith, onOpenSimulation, onOpenRealEstate, onOpenTaxSettings, onBacktestGone, onNavigate }: {
   portfolio: Portfolio;
   page: PortfolioPage;
   trail: Crumb[];
@@ -407,6 +419,10 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   // Added to its actions, last.
   extraActions?: PageAction[];
   onOpen: (uuid: string, page?: PortfolioPage) => void;
+  // On Compare: strategies that aren't the user's, compared beside their portfolios.
+  compareWith?: CompareStrategy[];
+  // Opens Compare with a strategy that isn't the user's beside their portfolios.
+  onCompareWith?: (strategy: CompareStrategy) => void;
   // On its Strategy page: the advisor's simulation a shared strategy came from, open read-only,
   // and the way to open one.
   simulation?: string;
@@ -441,6 +457,14 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [selection, setSelection] = useState<string[]>(() => initialCompareSelection(portfolios, null));
+  // The strategies compared that aren't the user's: those the page opened with, until taken out.
+  const [compared, setCompared] = useState<CompareStrategy[]>(compareWith ?? []);
+  // Opened again on Compare with other strategies: those.
+  const [comparedFrom, setComparedFrom] = useState(compareWith);
+  if (comparedFrom !== compareWith) {
+    setComparedFrom(compareWith);
+    setCompared(compareWith ?? []);
+  }
   // Bumped to start the page over (back at the top, any detail closed) from its own crumb.
   const [visit, setVisit] = useState(0);
 
@@ -693,13 +717,15 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       <ComparisonView
         selection={selection}
         onToggle={(uuid) => setSelection((prev) => {
-          const next = prev.includes(uuid) ? prev.filter((u) => u !== uuid) : prev.length >= MAX_COMPARED ? prev : [...prev, uuid];
+          const next = prev.includes(uuid) ? prev.filter((u) => u !== uuid) : prev.length >= MAX_COMPARED - compared.length ? prev : [...prev, uuid];
           rememberCompareSelection(next);
           return next;
         })}
         trail={pageTrail}
         onOpen={(uuid) => onOpen(uuid)}
         onOpenRealEstate={onOpenRealEstate}
+        strategies={compared}
+        onRemoveStrategy={(uuid) => setCompared((prev) => prev.filter((s) => s.uuid !== uuid))}
       />
     );
   }
@@ -712,6 +738,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
         portfolioUuid={simulation}
         trail={[...pageTrail, { label: PAGE_LABELS.strategy, onClick: () => open("strategy") }]}
         eyebrow="Your advisor's simulation"
+        extraActions={onCompareWith ? [{ label: "Compare with my portfolios", onClick: () => onCompareWith({ uuid: simulation, name: "Your advisor's strategy" }) }] : []}
         notice={(
           <ReadOnlyNote>
             The simulation your advisor made this strategy from, shared with you to read. It can&apos;t be changed or copied.
@@ -729,6 +756,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
         trail={pageTrail}
         shared={shared}
         onOpenSimulation={(uuid) => onOpenSimulation?.(uuid)}
+        onCompareWith={onCompareWith}
         onOpenAlerts={() => open("alerts")}
         onNavigate={onNavigate}
         onChanged={reloadAdoption}
