@@ -1,6 +1,6 @@
 // services/walletService.ts
 import type {
-  AnalyzeStatementRequest, Movement, MovementCategory, MovementFilters, MovementInput, MovementList,
+  AnalyzeStatementRequest, Budget, BudgetInput, BudgetMonth, Movement, MovementCategory, MovementFilters, MovementInput, MovementList,
   MovementUpdateRequest, StatementColumnMapping, StatementColumnMappingResponse, StatementImportResult,
   Transfer, TransferCreateRequest, Wallet, WalletCreateRequest, WalletSummary, WalletUpdateRequest,
 } from "../models/Wallet";
@@ -10,8 +10,8 @@ import { apiFetch, apiFetchForm } from "./apiClient";
 // WalletNotFoundError / MovementNotFoundError (404, someone else's included), WalletArchivedError
 // (409, a write on an archived wallet), WalletHasMovementsError (409, a currency change),
 // MovementInTransferError (409, a transfer leg's date, amount or category), InvalidWalletError /
-// InvalidMovementError / InvalidTransferError (422), FxRatesUnavailableError (503, the summary
-// across wallets), ImportFileParsingError / ImportMappingIncompleteError (422). A demo account's
+// InvalidMovementError / InvalidTransferError / InvalidBudgetError (422), FxRatesUnavailableError
+// (503, the summary or the budgets across wallets), ImportFileParsingError / ImportMappingIncompleteError (422). A demo account's
 // writes are refused before they leave (see lib/demo).
 
 function movementQuery(filters: MovementFilters = {}) {
@@ -120,6 +120,27 @@ export const walletService = {
   // POST /v1/wallets/transfers/{t}/unlink — back to two plain, uncategorised movements.
   async unlinkTransfer(transferUuid: string): Promise<Movement[]> {
     return apiFetch<Movement[]>(`/v1/wallets/transfers/${transferUuid}/unlink`, { method: "POST" });
+  },
+
+  // GET /v1/wallets/budgets — this month's, in the categories' order.
+  async budgets(): Promise<Budget[]> {
+    return apiFetch<Budget[]>(`/v1/wallets/budgets`);
+  },
+
+  // POST /v1/wallets/budgets — sets the categories' monthly limits from this month on (one per
+  // spending category), all or none; answers every budget.
+  async setBudgets(budgets: BudgetInput[]): Promise<Budget[]> {
+    return apiFetch<Budget[]>(`/v1/wallets/budgets`, { method: "POST", body: JSON.stringify(budgets) });
+  },
+
+  // DELETE /v1/wallets/budgets — from this month on: the months before keep them.
+  async deleteBudgets(categories: MovementCategory[]): Promise<void> {
+    await apiFetch(`/v1/wallets/budgets`, { method: "DELETE", body: JSON.stringify(categories) });
+  },
+
+  // GET /v1/wallets/budgets/month — a month (YYYY-MM, this one by default) against the budgets it had.
+  async budgetMonth(month?: string): Promise<BudgetMonth> {
+    return apiFetch<BudgetMonth>(`/v1/wallets/budgets/month${month ? `?month=${month}` : ""}`);
   },
 
   // POST /v1/wallets/{w}/import/analyze-columns — a proposed mapping for a statement's columns.

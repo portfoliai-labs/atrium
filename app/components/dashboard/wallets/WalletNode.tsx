@@ -19,7 +19,8 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { WalletsComposition } from "./WalletsComposition";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { PreviewBadge } from "../../preview/PreviewKit";
-import { WalletAlerts, WalletBudgets, WalletReports } from "../../preview/WalletPages";
+import { WalletAlerts, WalletReports } from "../../preview/WalletPages";
+import { WalletBudgets } from "./WalletBudgets";
 import { MovementDialog, TransferDialog, WalletFormDialog } from "./WalletDialogs";
 import { WalletImportDialog } from "./WalletImportDialog";
 import { WalletInsights } from "./WalletInsights";
@@ -28,7 +29,7 @@ import { WalletTransactions } from "./WalletTransactions";
 export type WalletPage = "insights" | "transactions" | "budgets" | "reports" | "alerts";
 
 // What the API doesn't have yet: a demo account's previews (components/preview/WalletPages).
-export const PREVIEW_WALLET_PAGES: WalletPage[] = ["budgets", "reports", "alerts"];
+export const PREVIEW_WALLET_PAGES: WalletPage[] = ["reports", "alerts"];
 
 export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
   insights: "Insights", transactions: "Transactions", budgets: "Budgets", reports: "Reports", alerts: "Alerts",
@@ -43,8 +44,8 @@ type Dialog = "new" | "edit" | "movement" | "import" | "transfer" | "archive" | 
  * page, All wallets standing to its wallets as All portfolios to its portfolios: a header with its
  * balance, its activity (each count opening its page), what can be done with it and its year in
  * figures; under it, on All wallets, its Composition, a row per wallet going down to that wallet
- * (the archived ones listed after it), then the Insights. Its Transactions are a page of their own; a demo account's also has Budgets, Reports
- * and Alerts, previews on sample data. A wallet that's gone (deleted, or from an old link) opens all
+ * (the archived ones listed after it), then the Insights. Its Transactions and Budgets are pages of their own; a demo account's also
+ * has Reports and Alerts, previews on sample data. A wallet that's gone (deleted, or from an old link) opens all
  * of them. Archived wallets are read only, and so is everything for a demo account.
  */
 export function WalletNode({ id, page: requested, rootTrail, onOpen }: {
@@ -110,6 +111,7 @@ export function WalletNode({ id, page: requested, rootTrail, onOpen }: {
 
   const counters = [
     { key: "transactions", label: "transactions", count, onClick: () => onOpen(id, "transactions") },
+    { key: "budgets", label: "budgets", onClick: () => onOpen(id, "budgets") },
     ...(sample ? PREVIEW_WALLET_PAGES.map((p) => ({ key: p, label: WALLET_PAGE_LABELS[p].toLowerCase(), onClick: () => onOpen(id, p) })) : []),
   ];
 
@@ -181,7 +183,7 @@ export function WalletNode({ id, page: requested, rootTrail, onOpen }: {
         <Breadcrumb trail={[...trail, nodeCrumb]} current={WALLET_PAGE_LABELS[page]} right={right} />
         {wallet?.archived && <ArchivedNote />}
         {page === "transactions" && <WalletTransactions key={scopeKey} initial={scopeKey} readOnly={sample} />}
-        {page === "budgets" && <WalletBudgets scope={scope} />}
+        {page === "budgets" && <WalletBudgets scope={scope} onManage={() => onOpen(ALL_WALLETS, "budgets")} />}
         {page === "reports" && <WalletReports />}
         {page === "alerts" && <WalletAlerts />}
         {dialogs}

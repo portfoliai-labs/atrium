@@ -2,14 +2,16 @@
 //
 // SAMPLE DATA for a demo account's Wallets: three made-up accounts with a year of everyday money in
 // and out (salary, rent, groceries, bills…), in the API's shapes (models/Wallet), served by
-// demoWalletSource as the API would; then what the API doesn't have yet, shown only to a demo
-// account as previews (components/preview/WalletPages): budgets, alerts, monthly statements,
-// recurring payments and top merchants. Generated from fixed seeds so the pages look the same on
+// demoWalletSource as the API would (their budgets included); then what the API doesn't have yet,
+// shown only to a demo account as previews (components/preview/WalletPages): alerts, monthly
+// statements, recurring payments and top merchants. Generated from fixed seeds so the pages look the same on
 // every visit.
 
 import { hashSeed, round, seeded } from "./random";
 import type { WalletSource } from "../wallets";
-import type { Movement, MovementCategory, MovementFilters, Wallet, WalletSummary } from "../../models/Wallet";
+import type {
+  BudgetMonth, BudgetProgress, BudgetStatus, Movement, MovementCategory, MovementFilters, Wallet, WalletSummary,
+} from "../../models/Wallet";
 
 const OPENING_DATE = "2025-10-01";
 
@@ -127,8 +129,58 @@ function matches(m: Movement, f: MovementFilters) {
   return true;
 }
 
+// The sample's budgets (arca's demo seed has the same), every month.
+const BUDGETS: { category: MovementCategory; limit: number }[] = [
+  { category: "groceries", limit: 320 },
+  { category: "restaurants", limit: 220 },
+  { category: "transport", limit: 90 },
+  { category: "shopping", limit: 200 },
+  { category: "subscriptions", limit: 35 },
+  { category: "leisure", limit: 80 },
+  { category: "utilities", limit: 170 },
+  { category: "health", limit: 60 },
+];
+
+// The sample's last month runs to the 28th of September's 30.
+const DAYS_ELAPSED = 28;
+
+// arca's rule (domain/budget.py): over, almost used from 90%, ahead of pace by over 5% of the limit.
+function budgetStatus(limit: number, spent: number, expected: number): BudgetStatus {
+  if (spent > limit) return "over";
+  if (limit > 0 && spent >= limit * 0.9) return "almost_used";
+  if (spent > expected + limit * 0.05) return "ahead_of_pace";
+  return "on_track";
+}
+
+function progress(category: MovementCategory | null, limit: number, byWallet: Map<string, number>, elapsed: number, days: number): BudgetProgress {
+  const wallets = [...byWallet].map(([walletUuid, spent]) => ({ walletUuid, spent: round(spent, 2) }))
+    .filter((w) => w.spent > 0).sort((a, b) => b.spent - a.spent);
+  const spent = round(Math.max(0, [...byWallet.values()].reduce((s, v) => s + v, 0)), 2);
+  const expected = round((limit * elapsed) / days, 2);
+  return { category, limit, spent, expected, status: budgetStatus(limit, spent, expected), wallets };
+}
+
+/** A month against the sample's budgets, as arca computes it: money out less money in, never below 0. */
+function demoBudgetMonth(month = CURRENT_MONTH): BudgetMonth {
+  const [y, m] = month.split("-").map(Number);
+  const days = new Date(y, m, 0).getDate();
+  const elapsed = month === CURRENT_MONTH ? DAYS_ELAPSED : days;
+  const budgets = BUDGETS.map((b) => {
+    const byWallet = new Map<string, number>();
+    for (const mv of movementsOf(null)) {
+      if (mv.category === b.category && mv.bookedOn.startsWith(month)) byWallet.set(mv.walletUuid, (byWallet.get(mv.walletUuid) ?? 0) - mv.amount);
+    }
+    return progress(b.category, b.limit, byWallet, elapsed, days);
+  });
+  const shares = new Map<string, number>();
+  for (const b of budgets) for (const w of b.wallets) shares.set(w.walletUuid, (shares.get(w.walletUuid) ?? 0) + w.spent);
+  const total = progress(null, budgets.reduce((s, b) => s + b.limit, 0), shares, elapsed, days);
+  return { currency: "EUR", month, daysInMonth: days, daysElapsed: elapsed, budgets, total };
+}
+
 /** A demo account's wallets, read as the API would serve them. */
 export const demoWalletSource: WalletSource = {
+  budgetMonth: async (month) => demoBudgetMonth(month),
   summary: async (walletUuid, from, to) => demoSummary(walletUuid, from, to),
   movements: async (walletUuid, filters = {}) => {
     const all = movementsOf(walletUuid).filter((m) => matches(m, filters));
@@ -159,22 +211,6 @@ export function spentThisMonth(walletUuid: string | null, category: MovementCate
     .filter((m) => m.bookedOn.startsWith(CURRENT_MONTH) && m.category === category && m.amount < 0 && !m.transferUuid)
     .reduce((s, m) => s + m.amount, 0);
 }
-
-export interface Budget {
-  category: MovementCategory;
-  limit: number; // per month
-}
-
-export const BUDGETS: Budget[] = [
-  { category: "groceries", limit: 320 },
-  { category: "restaurants", limit: 220 },
-  { category: "transport", limit: 90 },
-  { category: "shopping", limit: 200 },
-  { category: "subscriptions", limit: 35 },
-  { category: "leisure", limit: 80 },
-  { category: "utilities", limit: 170 },
-  { category: "health", limit: 60 },
-];
 
 export interface WalletAlert {
   id: string;
