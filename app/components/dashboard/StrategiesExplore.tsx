@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, ArrowUpRight, Check, ChevronLeft, ChevronRight, Info, Loader2, Plus, Telescope, X } from "lucide-react";
+import { AlertCircle, ArrowUpRight, ChevronLeft, ChevronRight, Info, Loader2, Telescope } from "lucide-react";
 import { publicationService } from "../../services/publicationService";
 import { ApiError } from "../../services/apiClient";
 import { STRATEGY_PROXIES, simulatedPeriod, targetLabel, type StrategyCosts, type StrategyParams, type StrategyResponse, type StrategyTarget } from "../../models/Strategy";
@@ -16,7 +16,7 @@ import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { describeRebalancing } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
-import { MAX_COMPARED, type CompareStrategy } from "./ComparisonView";
+import type { CompareStrategy } from "./ComparisonView";
 import { CATEGORY_COLORS, SECURITY_COLORS } from "./StrategyBuilder";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
@@ -113,25 +113,6 @@ function cardFigures(s: PublishedStrategy, horizon: FilterHorizon | null): Horiz
   return null;
 }
 
-function FigureGrid({ figures }: { figures: HorizonFigures }) {
-  const items = [
-    { label: "Annualized return", value: fig(figures.annualizedReturnPct, signedPct), tone: figures.annualizedReturnPct },
-    { label: "Volatility", value: fig(figures.volatilityPct, plainPct) },
-    { label: "Max drawdown", value: fig(figures.maxDrawdownPct, signedPct) },
-    { label: "Return / risk", value: fig(figures.returnPerRisk, (v) => v.toFixed(2)) },
-  ];
-  return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-      {items.map((i) => (
-        <div key={i.label}>
-          <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{i.label}</dt>
-          <dd className={`text-[15px] font-black tabular-nums ${i.tone == null ? "text-slate-900" : i.tone >= 0 ? "text-emerald-700" : "text-rose-600"}`}>{i.value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
 // ── Explore: the list ─────────────────────────────────────────────────────────────────────
 
 interface Filters {
@@ -170,21 +151,11 @@ export function StrategiesExplore({ trail, publicationId, onOpen, onCompare, onN
   if (publicationId) {
     return <StrategyDetail publicationId={publicationId} trail={[...trail, { label: "Explore", onClick: () => onOpen(null) }]} onCompare={onCompare} onNavigate={onNavigate} />;
   }
-  return <StrategiesList trail={trail} onOpen={onOpen} onCompare={onCompare} />;
+  return <StrategiesList trail={trail} onOpen={onOpen} />;
 }
 
-function StrategiesList({ trail, onOpen, onCompare }: {
-  trail: Crumb[];
-  onOpen: (publicationId: string) => void;
-  onCompare?: (strategies: CompareStrategy[], withPortfolios: boolean) => void;
-}) {
+function StrategiesList({ trail, onOpen }: { trail: Crumb[]; onOpen: (publicationId: string) => void }) {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
-  // The strategies picked to compare, across pages and filters, in the order picked.
-  const [toCompare, setToCompare] = useState<{ uuid: string; name: string }[]>([]);
-  const toggleCompare = (s: PublishedStrategy) => setToCompare((prev) => (
-    prev.some((x) => x.uuid === s.portfolioUuid) ? prev.filter((x) => x.uuid !== s.portfolioUuid)
-      : prev.length >= MAX_COMPARED ? prev : [...prev, { uuid: s.portfolioUuid, name: s.portfolioName }]
-  ));
   // The figure filters as last sent: they follow the inputs once typing stops.
   const [applied, setApplied] = useState({ maxVolatilityPct: "", maxDrawdownPct: "" });
   const [page, setPage] = useState(0);
@@ -240,10 +211,6 @@ function StrategiesList({ trail, onOpen, onCompare }: {
   return (
     <div className="space-y-6 pb-12">
       <Breadcrumb trail={trail} current="Explore" />
-      <p className="text-[13px] text-slate-500 leading-relaxed max-w-2xl">
-        Strategies advisors have published, each simulated on historical prices. Browse them to see how different mixes and
-        rules would have behaved; they&apos;re the same for everyone and aren&apos;t matched to you.
-      </p>
       <SimulationDisclaimer />
 
       <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-6 space-y-4">
@@ -318,17 +285,7 @@ function StrategiesList({ trail, onOpen, onCompare }: {
         <>
           <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
             {shown.strategies.map((s) => (
-              <StrategyCard
-                key={s.publicationId}
-                strategy={s}
-                horizon={filters.horizon}
-                onOpen={() => onOpen(s.publicationId)}
-                compare={onCompare ? {
-                  picked: toCompare.some((x) => x.uuid === s.portfolioUuid),
-                  full: toCompare.length >= MAX_COMPARED,
-                  onToggle: () => toggleCompare(s),
-                } : undefined}
-              />
+              <StrategyCard key={s.publicationId} strategy={s} horizon={filters.horizon} onOpen={() => onOpen(s.publicationId)} />
             ))}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -345,96 +302,70 @@ function StrategiesList({ trail, onOpen, onCompare }: {
         </>
       )}
 
-      {onCompare && toCompare.length > 0 && (
-        <div className="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 rounded-2xl bg-[#1c1917] text-white px-4 py-3 shadow-xl">
-          <span className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
-            {toCompare.map((s) => (
-              <span key={s.uuid} className="inline-flex items-center gap-1 max-w-48 pl-2.5 pr-1 py-1 rounded-full bg-white/10 text-xs font-bold">
-                <span className="truncate">{s.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setToCompare((prev) => prev.filter((x) => x.uuid !== s.uuid))}
-                  aria-label={`Take ${s.name} out`}
-                  className="p-0.5 rounded-full hover:bg-white/20"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-          </span>
-          <span className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onCompare(toCompare, false)}
-              disabled={toCompare.length < 2}
-              title={toCompare.length < 2 ? "Pick at least two to compare them" : undefined}
-              className="min-h-9 px-3.5 rounded-xl bg-[#C49A3C] text-xs font-bold hover:bg-[#a87f2f] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Compare {toCompare.length >= 2 ? `these ${toCompare.length}` : "them"}
-            </button>
-            <button
-              type="button"
-              onClick={() => onCompare(toCompare, true)}
-              className="min-h-9 px-3.5 rounded-xl border border-white/20 text-xs font-bold hover:bg-white/10 transition-colors"
-            >
-              With my portfolios
-            </button>
-          </span>
-        </div>
-      )}
     </div>
   );
 }
 
-function StrategyCard({ strategy: s, horizon, onOpen, compare }: {
-  strategy: PublishedStrategy;
-  horizon: FilterHorizon | null;
-  onOpen: () => void;
-  // Picking it to compare, where comparing is offered.
-  compare?: { picked: boolean; full: boolean; onToggle: () => void };
-}) {
+/**
+ * A strategy of the catalog as a card, the whole of it opening its page (as a module of a
+ * portfolio's Insights opens its detail, the arrow in its corner turning gold as it's hovered):
+ * its name and author, what it's for, one horizon's figures with the annualized return first, what
+ * it holds, and the author's costs the figures are gross of.
+ */
+function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStrategy; horizon: FilterHorizon | null; onOpen: () => void }) {
   const figures = cardFigures(s, horizon);
+  const r = figures?.annualizedReturnPct ?? null;
   return (
-    <article className="rounded-3xl border border-slate-200 bg-white shadow-sm p-5 md:p-6 flex flex-col gap-4">
-      <div className="min-w-0">
-        <h3 className="text-lg font-black text-slate-900 truncate" style={serif}>{s.portfolioName}</h3>
-        <p className="text-[11px] font-semibold text-slate-400 mt-0.5">{byline(s)}</p>
-        {s.description && <p className="text-[13px] text-slate-600 leading-relaxed mt-2 line-clamp-3">{s.description}</p>}
-      </div>
-      <AllocationBar targets={s.strategy.targets} />
-      <div className="rounded-2xl bg-slate-50 border border-slate-200/70 p-4 space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <SimulatedBadge />
-          <span className="text-[11px] font-bold text-slate-500">{figures ? `Last ${HORIZON_LABELS[figures.horizon]}` : ""}</span>
-        </div>
-        {figures ? <FigureGrid figures={figures} /> : (
-          <p className="text-xs text-slate-500">{s.figuresComputedAt ? "Its history is shorter than a year." : "Its figures are being computed."}</p>
-        )}
-        <p className="text-[10px] text-slate-400 leading-snug">Author&apos;s costs, not taken out of these figures: {costsLine(s.costs, s.currency)}</p>
-      </div>
-      <span className="mt-auto flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex items-center gap-1.5 min-h-10 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:border-slate-300 transition-colors"
-        >
-          See the strategy <ArrowUpRight className="h-3.5 w-3.5" />
-        </button>
-        {compare && (
-          <button
-            type="button"
-            onClick={compare.onToggle}
-            aria-pressed={compare.picked}
-            disabled={!compare.picked && compare.full}
-            title={!compare.picked && compare.full ? `Up to ${MAX_COMPARED} at once` : undefined}
-            className={`flex items-center gap-1.5 min-h-10 px-4 rounded-xl border text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-              compare.picked ? "border-[#C49A3C] bg-[#C49A3C]/10 text-[#8A6A28]" : "border-slate-200 text-slate-700 hover:border-slate-300"
-            }`}
-          >
-            {compare.picked ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />} Compare
-          </button>
-        )}
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      aria-label={`Open ${s.portfolioName}`}
+      className="group/card relative h-full bg-white rounded-[1.75rem] border border-[#EEE9DD] p-6 flex flex-col gap-5 cursor-pointer transition-colors hover:border-[#C49A3C]/60 hover:bg-[#FBFAF6] outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40"
+    >
+      <span aria-hidden className="absolute top-5 right-5 h-6 w-6 rounded-full flex items-center justify-center text-[#a8a29e] transition-colors group-hover/card:text-[#C49A3C]">
+        <ArrowUpRight className="h-4 w-4" />
       </span>
+
+      <div className="min-w-0 pr-8">
+        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-700">
+          Simulated{figures ? ` · last ${HORIZON_LABELS[figures.horizon]}` : ""}
+        </p>
+        <h3 className="mt-1.5 text-xl font-bold text-[#1c1917] leading-tight line-clamp-2" style={serif}>{s.portfolioName}</h3>
+        <p className="text-[11px] text-[#78716c] mt-1">{byline(s)}</p>
+        {s.description && <p className="text-[12.5px] text-[#57534e] leading-relaxed mt-3 line-clamp-2">{s.description}</p>}
+      </div>
+
+      {figures ? (
+        <div className="space-y-3">
+          <p className="flex items-baseline gap-2">
+            <span className={`text-[30px] font-bold leading-none tabular-nums ${r == null ? "text-[#1c1917]" : r >= 0 ? "text-[#047857]" : "text-[#e11d48]"}`} style={serif}>
+              {fig(r, signedPct)}
+            </span>
+            <span className="text-[11px] text-[#78716c]">a year</span>
+          </p>
+          <dl className="grid grid-cols-3 gap-3 border-t border-[#EEE9DD] pt-3">
+            {[
+              { label: "Volatility", value: fig(figures.volatilityPct, plainPct) },
+              { label: "Worst drop", value: fig(figures.maxDrawdownPct, signedPct) },
+              { label: "Return / risk", value: fig(figures.returnPerRisk, (v) => v.toFixed(2)) },
+            ].map((i) => (
+              <div key={i.label} className="min-w-0">
+                <dt className="text-[10.5px] text-[#78716c] truncate">{i.label}</dt>
+                <dd className="text-[14px] font-bold tabular-nums text-[#1c1917]">{i.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : (
+        <p className="text-xs text-[#78716c]">{s.figuresComputedAt ? "Its history is shorter than a year." : "Its figures are being computed."}</p>
+      )}
+
+      <div className="mt-auto space-y-3">
+        <AllocationBar targets={s.strategy.targets} />
+        <p className="text-[10px] text-[#a8a29e] leading-snug">Gross of the author&apos;s costs: {costsLine(s.costs, s.currency)}</p>
+      </div>
     </article>
   );
 }

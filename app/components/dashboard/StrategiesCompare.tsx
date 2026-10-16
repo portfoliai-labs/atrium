@@ -12,8 +12,8 @@ import type { Crumb } from "./Breadcrumb";
  * STRATEGIES COMPARE — Plan's Compare, under Strategy: strategies and portfolios side by side
  * (ComparisonView). The cards are the user's backtests, then their portfolios (and their real
  * estate, where it's theirs to see); beside them the strategies that aren't theirs, as it opened
- * with them (`compareWith`: picked in Explore, or one their advisor shared) or as added from the
- * catalog. It starts on those strategies alone, with the user's portfolios too when asked
+ * with them (`compareWith`: one opened from its page in Explore, or one their advisor shared). It
+ * starts on those strategies alone, with the user's portfolios too when asked
  * (`withPortfolios`), or, opened on its own, on the first two backtests (else portfolios).
  */
 export function StrategiesCompare({ trail, compareWith, withPortfolios = false, onOpenBacktest, onNavigate }: {
@@ -49,7 +49,6 @@ export function StrategiesCompare({ trail, compareWith, withPortfolios = false, 
       onOpenRealEstate={() => openRealEstatePage(onNavigate)}
       strategies={compared}
       onRemoveStrategy={(uuid) => setCompared((prev) => prev.filter((s) => s.uuid !== uuid))}
-      onAddStrategies={(added) => setCompared((prev) => [...prev, ...added.filter((a) => !prev.some((s) => s.uuid === a.uuid))])}
     />
   );
 }

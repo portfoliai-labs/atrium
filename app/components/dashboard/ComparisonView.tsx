@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowUpRight, Check, ChevronLeft, ChevronRight, Info, Loader2, Plus, X } from "lucide-react";
+import { AlertCircle, ArrowUpRight, Check, ChevronLeft, ChevronRight, Info, Loader2, X } from "lucide-react";
 import { portfoliosService } from "../../services/portfoliosService";
 import { ApiError } from "../../services/apiClient";
 import { usePortfolio } from "../../context/PortfolioContext";
@@ -11,7 +11,6 @@ import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { VirtualBadge } from "./BacktestMarks";
 import { CompareMetrics, type CompareEntry } from "./CompareMetrics";
-import { CompareStrategyPicker } from "./CompareStrategyPicker";
 import { AllocationModule, CumulativeReturnsModule } from "./CompareCharts";
 import { useRealEstate, useRealEstateOverview } from "../../context/RealEstateContext";
 import { PreviewBadge } from "../preview/PreviewKit";
@@ -72,8 +71,7 @@ const STALE_TIMEOUT_MS = 5 * 60_000;
  * their advisor shared came from) are compared beside them: picked for as long as they're there,
  * after the user's portfolios, each a card with a cross to take it out and a colour past theirs.
  * They count towards MAX_COMPARED, so they leave fewer of the user's picks; with none of those,
- * the strategies are compared among themselves. "Add a strategy" picks more from the catalog
- * (CompareStrategyPicker), as Explore's own selection does. A strategy no longer
+ * the strategies are compared among themselves. A strategy no longer
  * readable (withdrawn, no longer shared: 403, 404) is said, with the way to take it out.
  *
  * Where the investor's real estate is theirs to see (`onOpenRealEstate`), it's offered too, as a
@@ -81,7 +79,7 @@ const STALE_TIMEOUT_MS = 5 * 60_000;
  * rents, 100% real estate), "—" for returns, risk and the benchmark, and never a row's best.
  */
 export function ComparisonView({
-  candidates, selection, onToggle, trail, onOpen, onOpenRealEstate, strategies = [], onRemoveStrategy, onAddStrategies,
+  candidates, selection, onToggle, trail, onOpen, onOpenRealEstate, strategies = [], onRemoveStrategy,
 }: {
   // The user's portfolios that can be picked, in their order; all but the aggregate unless said.
   candidates?: Portfolio[];
@@ -98,11 +96,8 @@ export function ComparisonView({
   // after the user's portfolios, until taken out.
   strategies?: CompareStrategy[];
   onRemoveStrategy?: (uuid: string) => void;
-  // Adds published strategies of the catalog, picked here (CompareStrategyPicker).
-  onAddStrategies?: (strategies: CompareStrategy[]) => void;
 }) {
   const { portfolios } = usePortfolio();
-  const [adding, setAdding] = useState(false);
   const { available: realEstateAvailable, sample: realEstateSample } = useRealEstate();
   const realEstateShown = !!onOpenRealEstate && realEstateAvailable;
   const realEstate = useRealEstateOverview(realEstateShown);
@@ -142,27 +137,7 @@ export function ComparisonView({
 
   return (
     <div className="space-y-6 pb-12">
-      <Breadcrumb
-        trail={trail}
-        current="Compare"
-        right={onAddStrategies ? (
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:border-slate-300 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add a strategy
-          </button>
-        ) : undefined}
-      />
-      {adding && onAddStrategies && (
-        <CompareStrategyPicker
-          room={MAX_COMPARED - picked}
-          excluded={external.map((s) => s.uuid)}
-          onAdd={(added) => { onAddStrategies(added); setAdding(false); }}
-          onClose={() => setAdding(false)}
-        />
-      )}
+      <Breadcrumb trail={trail} current="Compare" />
       <CompareCards
         portfolios={comparable}
         selection={ordered}
@@ -197,8 +172,8 @@ export function ComparisonView({
         <div className="flex items-center justify-center text-center py-14 px-6 bg-white border border-slate-200 border-dashed rounded-4xl">
           <p className="text-slate-500 text-sm max-w-sm">
             {picked === 1
-              ? `Pick one more ${realEstateOffered || external.length > 0 ? "card" : "portfolio"} above${onAddStrategies ? ", or add a strategy," : ""} to compare them.`
-              : `Pick at least two ${realEstateOffered ? "cards" : "portfolios"} above${onAddStrategies ? ", or add strategies," : ""} to compare them.`}
+              ? `Pick one more ${realEstateOffered || external.length > 0 ? "card" : "portfolio"} above to compare them.`
+              : `Pick at least two ${realEstateOffered ? "cards" : "portfolios"} above to compare them.`}
           </p>
         </div>
       ) : loading && entries === null ? (
