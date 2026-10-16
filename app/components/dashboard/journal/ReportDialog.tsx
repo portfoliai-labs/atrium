@@ -83,7 +83,7 @@ export function ReportDialog({ target, onClose }: { target: ReportTarget; onClos
                 maxLength={NOTE_MAX}
                 onChange={(e) => setNote(e.target.value)}
                 rows={3}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-[#C49A3C] resize-none"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-[#C49A3C] resize-none"
               />
             </label>
             {error && <p className="text-xs font-medium text-rose-600">{error}</p>}

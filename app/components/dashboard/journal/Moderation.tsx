@@ -144,7 +144,7 @@ function CommentCaseCard({ item, onDecided }: { item: CommentCase; onDecided: (u
             onChange={(e) => setNote(e.target.value)}
             rows={2}
             placeholder="A note to its writer (optional)"
-            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-[#C49A3C] resize-none"
+            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-[#C49A3C] resize-none"
           />
           {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
           <button
@@ -321,7 +321,7 @@ export function ModerationCasePage({ uuid, onBack }: { uuid: string; onBack: () 
                 onChange={(e) => setNote(e.target.value)}
                 rows={3}
                 placeholder="A note to the author (optional)"
-                className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-[#C49A3C] resize-none"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-[#C49A3C] resize-none"
               />
             )}
             {decideError && <p className="text-xs font-medium text-rose-600">{decideError}</p>}

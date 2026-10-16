@@ -51,7 +51,7 @@ function Composer({ articleUuid, parentUuid, initial, placeholder, submitLabel, 
         onChange={(e) => setText(e.target.value)}
         rows={initial || parentUuid ? 2 : 3}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#C49A3C] resize-y"
+        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-[#C49A3C] resize-y"
       />
       {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
       <div className="flex items-center justify-end gap-2">
