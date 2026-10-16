@@ -2,23 +2,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileText, Lightbulb, Plus, Search } from "lucide-react";
-import { PortfolioGroupCard } from "../dashboard/PortfolioGroupCard";
+import { FileText, Lightbulb, Search } from "lucide-react";
 import { ReportFileTile } from "../dashboard/ReportFileTile";
 import { GenerateReportDialog } from "../dashboard/GenerateReportDialog";
-import { TONE_STYLES } from "../dashboard/AlertGauge";
-import { Toggle } from "../dashboard/Toggle";
 import { formatCurrency } from "../../lib/format";
-import { KIND_LABELS, categoryLabel } from "../../lib/wallets";
+import { categoryLabel } from "../../lib/wallets";
 import {
-  DEMO_WALLETS, RECURRING, WALLET_ALERTS, WALLET_REPORTS, spentThisMonth, topMerchants,
-  type WalletAlert,
+  DEMO_WALLETS, RECURRING, WALLET_REPORTS, spentThisMonth, topMerchants,
 } from "../../lib/mock/wallets";
-import { ComingSoonButton, Panel, PreviewBadge, PreviewBanner, formatPct } from "./PreviewKit";
+import { Panel, PreviewBadge, PreviewBanner, formatPct } from "./PreviewKit";
 
 /**
  * WALLET PREVIEWS — what the Wallets don't have from the API yet, shown to a demo account only, on
- * its sample data (lib/mock/wallets): Reports and Alerts as pages of their own, and on
+ * its sample data (lib/mock/wallets): Reports as a page of its own, and on
  * Insights what PortfoliAI noticed, the top merchants and the recurring payments. Everything else
  * on a wallet's pages is the real thing (components/dashboard/wallets), which a demo account reads
  * on the same sample data.
@@ -176,103 +172,3 @@ export function WalletReports() {
     </>
   );
 }
-
-// ── Alerts ───────────────────────────────────────────────────────────────────────────────────
-
-const ALERT_BAR: Record<"danger" | "warn" | "ok" | "muted", string> = {
-  danger: "bg-rose-500", warn: "bg-amber-500", ok: "bg-emerald-500", muted: "bg-slate-300",
-};
-
-// A sample rule's state, worded as the investments' are (see lib/alerts).
-function walletAlertState(a: WalletAlert): { label: string; tone: keyof typeof ALERT_BAR } {
-  if (!a.enabled) return { label: "Off", tone: "muted" };
-  if (a.triggered) return { label: "Triggered", tone: "danger" };
-  if (a.progressPct === undefined) return { label: "Watching", tone: "ok" };
-  return a.progressPct >= 60 ? { label: "Approaching", tone: "warn" } : { label: "Within range", tone: "ok" };
-}
-
-/**
- * The sample rules, as on Investments' Alerts: a card per wallet (PortfolioGroupCard) with its
- * count, its rules by state and its (not yet available) "New alert", then one row per rule across
- * the card — what it watches; where it stands (now against the limit, how far along the way);
- * its switch, which works on this page only.
- */
-export function WalletAlerts() {
-  const [alerts, setAlerts] = useState(WALLET_ALERTS);
-  return (
-    <>
-      <PreviewBanner feature="Wallet alerts">Sample rules. Switching them on or off works on this page only and isn&apos;t saved.</PreviewBanner>
-      {DEMO_WALLETS.map((w) => {
-        const own = alerts.filter((a) => a.walletUuid === w.uuid);
-        const counts = (["danger", "warn", "ok", "muted"] as const)
-          .map((tone) => ({ tone, count: own.filter((a) => walletAlertState(a).tone === tone).length }))
-          .filter((t) => t.count > 0);
-        return (
-          <PortfolioGroupCard
-            key={w.uuid}
-            name={w.name}
-            eyebrow="Wallet"
-            color={w.color!}
-            subtitle={<>{own.length === 0 ? "No alerts yet" : `${own.length} ${own.length === 1 ? "alert" : "alerts"}`}<span className="text-[#a8a29e]"> · {KIND_LABELS[w.kind]}</span></>}
-            right={<>
-              {counts.map((t) => (
-                <span key={t.tone} className={`px-3 py-1 rounded-full text-xs font-bold tabular-nums ${TONE_STYLES[t.tone].chip}`}>
-                  {t.count} {TONE_WORD[t.tone]}
-                </span>
-              ))}
-              <ComingSoonButton icon={<Plus className="h-4 w-4" />}>New alert</ComingSoonButton>
-            </>}
-          >
-            {own.length === 0 ? (
-              <p className="px-6 md:px-8 py-5 border-t border-[rgba(196,154,60,0.12)] text-sm text-[#a8a29e]">
-                Nothing watched on this wallet. Alerts will tell you about a low balance, a large payment or a budget running out.
-              </p>
-            ) : (
-              <ul className="px-6 md:px-8 border-t border-[rgba(196,154,60,0.12)] divide-y divide-[rgba(196,154,60,0.1)]">
-                {own.map((a) => {
-                  const state = walletAlertState(a);
-                  const progress = a.enabled ? a.progressPct : undefined;
-                  return (
-                    <li key={a.id} className="grid grid-cols-1 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] items-center gap-x-8 gap-y-4 py-5">
-                      <div className="min-w-0">
-                        <p className="flex flex-wrap items-center gap-2 text-[15px] font-black text-[#1c1917]">{a.title}<PreviewBadge label="Sample" /></p>
-                        <p className="text-[13px] text-[#78716c] mt-1">{a.detail}</p>
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${TONE_STYLES[state.tone].chip}`}>{state.label}</span>
-                          {a.enabled && a.now && (
-                            <span className="text-[13px] font-bold tabular-nums text-[#1c1917]">
-                              {a.now} <span className="text-[#a8a29e] font-semibold">of {a.limit}</span>
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-2.5 h-2 rounded-full bg-[#F1EEE6] overflow-hidden">
-                          {progress !== undefined && <div className={`h-full rounded-full ${ALERT_BAR[state.tone]}`} style={{ width: `${Math.max(3, progress)}%` }} />}
-                        </div>
-                        <p className="text-[11px] font-semibold text-[#a8a29e] mt-1.5">
-                          {progress !== undefined ? `${progress}% of the way to the limit` : a.enabled ? "Fires on the event itself" : "Not being checked"}
-                        </p>
-                      </div>
-                      <div className="md:justify-self-end">
-                        <Toggle
-                          checked={a.enabled}
-                          label={a.title}
-                          onChange={(v) => setAlerts((list) => list.map((x) => (x.id === a.id ? { ...x, enabled: v } : x)))}
-                        />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </PortfolioGroupCard>
-        );
-      })}
-    </>
-  );
-}
-
-const TONE_WORD: Record<keyof typeof ALERT_BAR, string> = {
-  danger: "triggered", warn: "approaching", ok: "within range", muted: "off",
-};

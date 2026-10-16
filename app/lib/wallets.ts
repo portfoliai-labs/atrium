@@ -4,7 +4,11 @@
 // page reads its figures from (a WalletSource: the API, or a demo account's sample data, see
 // lib/mock/wallets), and the sums the API doesn't make yet (spending by category).
 
-import type { BudgetMonth, Movement, MovementCategory, MovementFilters, MovementList, Wallet, WalletKind, WalletSummary } from "../models/Wallet";
+import type {
+  BudgetMonth, Movement, MovementCategory, MovementFilters, MovementList, Wallet, WalletAlertFinding, WalletAlertParams,
+  WalletAlertRule, WalletAlertType, WalletKind, WalletSummary,
+} from "../models/Wallet";
+import { formatCurrency } from "./format";
 import { walletService } from "../services/walletService";
 
 /** The id of every wallet together (the Wallets hub, "All wallets"). */
@@ -94,12 +98,15 @@ export interface WalletSource {
   movements(walletUuid: string | null, filters?: MovementFilters): Promise<MovementList>;
   // A month (YYYY-MM, this one by default) against the budgets, across the wallets.
   budgetMonth(month?: string): Promise<BudgetMonth>;
+  // Every alert rule, or a wallet's (its own and those on every wallet), with what each finds today.
+  alertRules(walletUuid: string | null): Promise<WalletAlertRule[]>;
 }
 
 export const apiWalletSource: WalletSource = {
   summary: (walletUuid, from, to) => walletService.summary(walletUuid, from, to),
   movements: (walletUuid, filters) => walletService.movements(walletUuid, filters),
   budgetMonth: (month) => walletService.budgetMonth(month),
+  alertRules: (walletUuid) => walletService.alertRules(walletUuid),
 };
 
 const PAGE = 200;
@@ -134,6 +141,80 @@ function sumByCategory(movements: Movement[], sign: 1 | -1) {
   const map = new Map<MovementCategory | null, number>();
   for (const m of movements) map.set(m.category, (map.get(m.category) ?? 0) + sign * m.amount);
   return [...map].map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount);
+}
+
+// ── Alerts ──
+
+/**
+ * What each alert type watches, and its one parameter: an amount in the wallet's currency, a
+ * percentage of a budget's limit, or an income category. `wallet`: whether a rule names one
+ * (always, never, or either).
+ */
+export const ALERT_TYPES: Record<WalletAlertType, { label: string; desc: string; wallet: "one" | "all" | "either" }> = {
+  low_balance: { label: "Low balance", desc: "The wallet's balance drops under an amount (a card's: owes more than it).", wallet: "one" },
+  budget_threshold: { label: "Budget running out", desc: "This month's spending in a budget reaches a share of its limit.", wallet: "all" },
+  large_payment: { label: "Large payment", desc: "A single payment of an amount or more (transfers left out).", wallet: "one" },
+  income_received: { label: "Money in", desc: "Money comes in as a category: the salary has arrived.", wallet: "either" },
+};
+export const ALERT_TYPE_LIST = Object.keys(ALERT_TYPES) as WalletAlertType[];
+
+/** A rule in a line ("Balance under €500"); amounts in `currency`, the wallet's. */
+export function alertRuleText(params: WalletAlertParams, currency = "EUR") {
+  switch (params.type) {
+    case "low_balance":
+      return `Balance under ${formatCurrency(Number(params.threshold), currency, 0)}`;
+    case "budget_threshold":
+      return `A budget at ${Number(params.thresholdPct)}% of its limit`;
+    case "large_payment":
+      return `A payment of ${formatCurrency(Number(params.threshold), currency, 0)} or more`;
+    case "income_received":
+      return `${CATEGORY_LABELS[params.category]} received`;
+  }
+}
+
+/** A finding in two lines: what, and its figures. */
+export function alertFindingText(f: WalletAlertFinding): { title: string; detail: string } {
+  const money = (v: number | null) => (v === null ? "" : formatCurrency(v, f.currency, 2));
+  switch (f.kind) {
+    case "low_balance":
+      return { title: `${f.walletName}: balance ${money(f.amount)}`, detail: "Under the amount you set" };
+    case "budget_threshold":
+      return {
+        title: `${categoryLabel(f.category)}: ${money(f.amount)} of ${money(f.limit)}`,
+        detail: `${f.month ? monthName(f.month) : "This month"} · ${f.limit ? Math.round((f.amount / f.limit) * 100) : 0}% of the budget`,
+      };
+    case "large_payment":
+    case "income_received":
+      return {
+        title: `${f.description ?? "A movement"}: ${money(f.amount)}`,
+        detail: [f.walletName, f.bookedOn ? dayLabel(f.bookedOn) : null, f.counterparty].filter(Boolean).join(" · "),
+      };
+  }
+}
+
+/** A finding as a WALLET_ALERT notification carries it (praeco's payload: snake_case, amounts as text). */
+export function walletFindingFromPayload(p: Record<string, unknown>): WalletAlertFinding {
+  const text = (k: string) => (typeof p[k] === "string" ? (p[k] as string) : null);
+  const number = (k: string) => (p[k] === null || p[k] === undefined ? null : Number(p[k]));
+  return {
+    key: text("key") ?? "", kind: (text("kind") ?? "low_balance") as WalletAlertType, currency: text("currency") ?? "EUR",
+    amount: number("amount") ?? 0, walletUuid: text("wallet_uuid"), walletName: text("wallet_name"),
+    movementUuid: text("movement_uuid"), bookedOn: text("booked_on"), description: text("description"),
+    counterparty: text("counterparty"), category: text("category") as MovementCategory | null, limit: number("limit"), month: text("month"),
+  };
+}
+
+/** What the enabled rules find today, each fact once, oldest day first; a wallet's only with `walletUuid`. */
+export function currentAlertFindings(rules: WalletAlertRule[], walletUuid?: string | null) {
+  const seen = new Map<string, WalletAlertFinding>();
+  for (const r of rules) {
+    if (!r.enabled) continue;
+    for (const f of r.findings) {
+      if (walletUuid && f.walletUuid !== walletUuid) continue;
+      seen.set(`${f.kind}:${f.key}`, f);
+    }
+  }
+  return [...seen.values()].sort((a, b) => (a.bookedOn ?? a.month ?? "").localeCompare(b.bookedOn ?? b.month ?? "") || a.key.localeCompare(b.key));
 }
 
 /** The text of an API error, or `fallback`. */

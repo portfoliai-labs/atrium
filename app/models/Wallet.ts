@@ -187,6 +187,74 @@ export interface BudgetMonth {
   total: BudgetProgress;
 }
 
+// ── Alerts ──
+
+export type WalletAlertType = "low_balance" | "budget_threshold" | "large_payment" | "income_received";
+
+// One type with its one parameter: an amount (as a decimal string: in the wallet's currency), a
+// percentage of a budget's limit, or an income category.
+export type WalletAlertParams =
+  | { type: "low_balance"; threshold: string }
+  | { type: "budget_threshold"; thresholdPct: string }
+  | { type: "large_payment"; threshold: string }
+  | { type: "income_received"; category: MovementCategory };
+
+/** A fact a rule finds; amounts in `currency` (the wallet's, or the reference one for a budget). */
+export interface WalletAlertFinding {
+  // Stable while the fact lasts: a rule tells it once.
+  key: string;
+  kind: WalletAlertType;
+  currency: string;
+  // The balance, the month's spending, the payment (positive), the money in.
+  amount: number;
+  // null for a budget.
+  walletUuid: string | null;
+  walletName: string | null;
+  movementUuid: string | null;
+  bookedOn: string | null;
+  description: string | null;
+  counterparty: string | null;
+  category: MovementCategory | null;
+  // budget_threshold: the limit and the month (YYYY-MM).
+  limit: number | null;
+  month: string | null;
+}
+
+/**
+ * A rule on one wallet or on every one (`walletUuid` null): low_balance and large_payment name
+ * their wallet, budget_threshold none, income_received either. Checked every morning: it tells,
+ * by email and/or in the app, only what it hadn't found the day before.
+ */
+export interface WalletAlertRule {
+  uuid: string;
+  walletUuid: string | null;
+  params: WalletAlertParams;
+  notifyEmail: boolean;
+  notifyInApp: boolean;
+  enabled: boolean;
+  // What it finds today; empty while it's off.
+  findings: WalletAlertFinding[];
+  lastCheckedAt: string | null;
+  lastTriggeredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WalletAlertRuleCreateRequest {
+  walletUuid: string | null;
+  params: WalletAlertParams;
+  notifyEmail: boolean;
+  notifyInApp: boolean;
+}
+
+// Only the fields sent change; params keep the rule's type.
+export interface WalletAlertRuleUpdateRequest {
+  params?: WalletAlertParams;
+  notifyEmail?: boolean;
+  notifyInApp?: boolean;
+  enabled?: boolean;
+}
+
 // ── Statement import ──
 
 export type StatementField = "date" | "description" | "amount" | "debit" | "credit" | "counterparty" | "currency";
