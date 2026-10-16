@@ -68,8 +68,9 @@ export type WealthView =
   // A portfolio, "All portfolios" (the investments) included. A strategy's backtest is Plan's.
   // `simulation`: on its Strategy page, the advisor's strategy portfolio a shared strategy came
   // from, opened read-only. `compareWith`: on Compare, strategies that aren't the user's compared beside
-  // their portfolios (one from Explore, one an advisor shared).
-  | { kind: "portfolio"; uuid: string; page: PortfolioPage; simulation?: string; compareWith?: CompareStrategy[] }
+  // their portfolios (one from Explore, one an advisor shared); `strategiesOnly`: among themselves, none
+  // of the user's picked to start with.
+  | { kind: "portfolio"; uuid: string; page: PortfolioPage; simulation?: string; compareWith?: CompareStrategy[]; strategiesOnly?: boolean }
   // A wallet, or every wallet together (ALL_WALLETS). A demo account's are sample data.
   | { kind: "wallet"; id: string; page: WalletPage }
   // The real estate: every property together, or one (`property`, its page or its transactions).
@@ -122,19 +123,20 @@ function viewFromHistory(hasRealEstate: boolean, hasRoot: boolean, portfolios: P
     case "root":
       return top;
     case "portfolio": {
-      const v = view as { uuid?: string; page?: string; simulation?: unknown; compareWith?: unknown };
+      const v = view as { uuid?: string; page?: string; simulation?: unknown; compareWith?: unknown; strategiesOnly?: unknown };
       // A portfolio had tabs (`tab`), then Insights as its first page, before its own page.
       const page = PORTFOLIO_PAGES.includes(v.page as PortfolioPage) ? (v.page as PortfolioPage) : "overview";
       const compareWith = page === "compare" ? compareStrategiesOf(v.compareWith) : undefined;
+      const compare = compareWith ? { compareWith, ...(v.strategiesOnly === true ? { strategiesOnly: true } : {}) } : {};
       // No portfolio named (""): the investments, on that page (a link from outside, which
       // doesn't know which portfolio stands for them).
-      if (v.uuid === "" && investments) return { kind: "portfolio", uuid: investments.uuid, page, ...(compareWith ? { compareWith } : {}) };
+      if (v.uuid === "" && investments) return { kind: "portfolio", uuid: investments.uuid, page, ...compare };
       if (!portfolios.some((p) => p.uuid === v.uuid)) return top;
       // The taxes are all the investments'.
       if (page === "taxes" && investments && v.uuid !== investments.uuid) return { kind: "portfolio", uuid: investments.uuid, page };
       return page === "strategy" && typeof v.simulation === "string"
         ? { kind: "portfolio", uuid: v.uuid!, page, simulation: v.simulation }
-        : { kind: "portfolio", uuid: v.uuid!, page, ...(compareWith ? { compareWith } : {}) };
+        : { kind: "portfolio", uuid: v.uuid!, page, ...compare };
     }
     // Investments' own pages before they were the investments' (Manage / Investments / Alerts…).
     case "investments":
@@ -260,6 +262,7 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
   const page = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.page : "overview";
   const simulation = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.simulation : undefined;
   const compareWith = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.compareWith : undefined;
+  const strategiesOnly = view.kind === "portfolio" && view.uuid === portfolio.uuid && !!view.strategiesOnly;
   // A backtest is a simulation, not something owned: it's Plan's (see BacktestRedirect).
   if (isBacktest(portfolio)) {
     return <BacktestRedirect uuid={portfolio.uuid} transactions={page === "transactions"} onNavigate={onNavigate} />;
@@ -282,6 +285,7 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
       onOpen={openPortfolio}
       simulation={simulation}
       compareWith={compareWith}
+      strategiesOnly={strategiesOnly}
       onCompareWith={investments ? (strategy) => go({ kind: "portfolio", uuid: investments.uuid, page: "compare", compareWith: [strategy] }) : undefined}
       onOpenSimulation={(uuid) => go({ kind: "portfolio", uuid: portfolio.uuid, page: "strategy", simulation: uuid })}
       onOpenRealEstate={hasRealEstate ? () => go({ kind: "realEstate", page: "home" }) : undefined}
@@ -410,7 +414,7 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  * client's (PortfolioContext's `client`) can't rename or delete it; its alerts are the advisor's,
  * its asset categories the client's, and its Strategy page says whether the client sees it.
  */
-export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, compareWith, onCompareWith, onOpenSimulation, onOpenRealEstate, onOpenTaxSettings, onBacktestGone, onNavigate }: {
+export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, compareWith, strategiesOnly = false, onCompareWith, onOpenSimulation, onOpenRealEstate, onOpenTaxSettings, onBacktestGone, onNavigate }: {
   portfolio: Portfolio;
   page: PortfolioPage;
   trail: Crumb[];
@@ -421,6 +425,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   onOpen: (uuid: string, page?: PortfolioPage) => void;
   // On Compare: strategies that aren't the user's, compared beside their portfolios.
   compareWith?: CompareStrategy[];
+  // With compareWith: compares them among themselves, none of the user's portfolios picked to start with.
+  strategiesOnly?: boolean;
   // Opens Compare with a strategy that isn't the user's beside their portfolios.
   onCompareWith?: (strategy: CompareStrategy) => void;
   // On its Strategy page: the advisor's simulation a shared strategy came from, open read-only,
@@ -456,7 +462,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [selection, setSelection] = useState<string[]>(() => initialCompareSelection(portfolios, null));
+  const [selection, setSelection] = useState<string[]>(() => (strategiesOnly && compareWith ? [] : initialCompareSelection(portfolios, null)));
   // The strategies compared that aren't the user's: those the page opened with, until taken out.
   const [compared, setCompared] = useState<CompareStrategy[]>(compareWith ?? []);
   // Opened again on Compare with other strategies: those.
@@ -464,6 +470,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   if (comparedFrom !== compareWith) {
     setComparedFrom(compareWith);
     setCompared(compareWith ?? []);
+    if (strategiesOnly && compareWith) setSelection([]);
   }
   // Bumped to start the page over (back at the top, any detail closed) from its own crumb.
   const [visit, setVisit] = useState(0);
@@ -726,6 +733,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
         onOpenRealEstate={onOpenRealEstate}
         strategies={compared}
         onRemoveStrategy={(uuid) => setCompared((prev) => prev.filter((s) => s.uuid !== uuid))}
+        onAddStrategies={(added) => setCompared((prev) => [...prev, ...added.filter((a) => !prev.some((s) => s.uuid === a.uuid))])}
       />
     );
   }

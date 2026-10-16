@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, ArrowUpRight, ChevronLeft, ChevronRight, Info, Loader2, Telescope } from "lucide-react";
+import { AlertCircle, ArrowUpRight, Check, ChevronLeft, ChevronRight, Info, Loader2, Plus, Telescope, X } from "lucide-react";
 import { publicationService } from "../../services/publicationService";
 import { ApiError } from "../../services/apiClient";
 import { STRATEGY_PROXIES, simulatedPeriod, targetLabel, type StrategyCosts, type StrategyParams, type StrategyResponse, type StrategyTarget } from "../../models/Strategy";
@@ -17,6 +17,7 @@ import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { describeRebalancing } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
 import { openCompareWith } from "../../lib/dashboardNav";
+import { MAX_COMPARED } from "./ComparisonView";
 import { CATEGORY_COLORS, SECURITY_COLORS } from "./StrategyBuilder";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
@@ -168,11 +169,17 @@ export function StrategiesExplore({ trail, publicationId, onOpen, onNavigate }: 
   if (publicationId) {
     return <StrategyDetail publicationId={publicationId} trail={[...trail, { label: "Explore", onClick: () => onOpen(null) }]} onNavigate={onNavigate} />;
   }
-  return <StrategiesList trail={trail} onOpen={onOpen} />;
+  return <StrategiesList trail={trail} onOpen={onOpen} onNavigate={onNavigate} />;
 }
 
-function StrategiesList({ trail, onOpen }: { trail: Crumb[]; onOpen: (publicationId: string) => void }) {
+function StrategiesList({ trail, onOpen, onNavigate }: { trail: Crumb[]; onOpen: (publicationId: string) => void; onNavigate?: (section: string) => void }) {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  // The strategies picked to compare, across pages and filters, in the order picked.
+  const [toCompare, setToCompare] = useState<{ uuid: string; name: string }[]>([]);
+  const toggleCompare = (s: PublishedStrategy) => setToCompare((prev) => (
+    prev.some((x) => x.uuid === s.portfolioUuid) ? prev.filter((x) => x.uuid !== s.portfolioUuid)
+      : prev.length >= MAX_COMPARED ? prev : [...prev, { uuid: s.portfolioUuid, name: s.portfolioName }]
+  ));
   // The figure filters as last sent: they follow the inputs once typing stops.
   const [applied, setApplied] = useState({ maxVolatilityPct: "", maxDrawdownPct: "" });
   const [page, setPage] = useState(0);
@@ -306,7 +313,17 @@ function StrategiesList({ trail, onOpen }: { trail: Crumb[]; onOpen: (publicatio
         <>
           <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
             {shown.strategies.map((s) => (
-              <StrategyCard key={s.publicationId} strategy={s} horizon={filters.horizon} onOpen={() => onOpen(s.publicationId)} />
+              <StrategyCard
+                key={s.publicationId}
+                strategy={s}
+                horizon={filters.horizon}
+                onOpen={() => onOpen(s.publicationId)}
+                compare={onNavigate ? {
+                  picked: toCompare.some((x) => x.uuid === s.portfolioUuid),
+                  full: toCompare.length >= MAX_COMPARED,
+                  onToggle: () => toggleCompare(s),
+                } : undefined}
+              />
             ))}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -322,11 +339,55 @@ function StrategiesList({ trail, onOpen }: { trail: Crumb[]; onOpen: (publicatio
           </div>
         </>
       )}
+
+      {onNavigate && toCompare.length > 0 && (
+        <div className="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 rounded-2xl bg-[#1c1917] text-white px-4 py-3 shadow-xl">
+          <span className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
+            {toCompare.map((s) => (
+              <span key={s.uuid} className="inline-flex items-center gap-1 max-w-48 pl-2.5 pr-1 py-1 rounded-full bg-white/10 text-xs font-bold">
+                <span className="truncate">{s.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setToCompare((prev) => prev.filter((x) => x.uuid !== s.uuid))}
+                  aria-label={`Take ${s.name} out`}
+                  className="p-0.5 rounded-full hover:bg-white/20"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </span>
+          <span className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => openCompareWith(onNavigate, toCompare, true)}
+              disabled={toCompare.length < 2}
+              title={toCompare.length < 2 ? "Pick at least two to compare them" : undefined}
+              className="min-h-9 px-3.5 rounded-xl bg-[#C49A3C] text-xs font-bold hover:bg-[#a87f2f] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Compare {toCompare.length >= 2 ? `these ${toCompare.length}` : "them"}
+            </button>
+            <button
+              type="button"
+              onClick={() => openCompareWith(onNavigate, toCompare)}
+              className="min-h-9 px-3.5 rounded-xl border border-white/20 text-xs font-bold hover:bg-white/10 transition-colors"
+            >
+              With my portfolios
+            </button>
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
-function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStrategy; horizon: FilterHorizon | null; onOpen: () => void }) {
+function StrategyCard({ strategy: s, horizon, onOpen, compare }: {
+  strategy: PublishedStrategy;
+  horizon: FilterHorizon | null;
+  onOpen: () => void;
+  // Picking it to compare, where comparing is offered.
+  compare?: { picked: boolean; full: boolean; onToggle: () => void };
+}) {
   const figures = cardFigures(s, horizon);
   return (
     <article className="rounded-3xl border border-slate-200 bg-white shadow-sm p-5 md:p-6 flex flex-col gap-4">
@@ -346,13 +407,29 @@ function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStr
         )}
         <p className="text-[10px] text-slate-400 leading-snug">Author&apos;s costs, not taken out of these figures: {costsLine(s.costs, s.currency)}</p>
       </div>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="mt-auto self-start flex items-center gap-1.5 min-h-10 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:border-slate-300 transition-colors"
-      >
-        See the strategy <ArrowUpRight className="h-3.5 w-3.5" />
-      </button>
+      <span className="mt-auto flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="flex items-center gap-1.5 min-h-10 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:border-slate-300 transition-colors"
+        >
+          See the strategy <ArrowUpRight className="h-3.5 w-3.5" />
+        </button>
+        {compare && (
+          <button
+            type="button"
+            onClick={compare.onToggle}
+            aria-pressed={compare.picked}
+            disabled={!compare.picked && compare.full}
+            title={!compare.picked && compare.full ? `Up to ${MAX_COMPARED} at once` : undefined}
+            className={`flex items-center gap-1.5 min-h-10 px-4 rounded-xl border text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              compare.picked ? "border-[#C49A3C] bg-[#C49A3C]/10 text-[#8A6A28]" : "border-slate-200 text-slate-700 hover:border-slate-300"
+            }`}
+          >
+            {compare.picked ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />} Compare
+          </button>
+        )}
+      </span>
     </article>
   );
 }

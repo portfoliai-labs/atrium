@@ -71,8 +71,17 @@ export const openExplorePage = (onNavigate: Navigate, publicationId?: string) =>
   openSectionView(onNavigate, PLAN_SECTION, publicationId ? { page: "explore", publicationId } : { page: "explore" });
 
 /**
- * Compare, on the investments, with a strategy that isn't the user's beside their portfolios: a
- * published strategy (its portfolioUuid) or the backtest a strategy their advisor shared came from.
+ * Compare, on the investments, with strategies that aren't the user's: published strategies (their
+ * portfolioUuid) or the backtest a strategy their advisor shared came from. Beside the user's
+ * portfolios, or (`strategiesOnly`) just among themselves, none of the user's picked.
  */
-export const openCompareWith = (onNavigate: Navigate, strategy: { uuid: string; name: string }) =>
-  openWealthView(onNavigate, { kind: "portfolio", uuid: "", page: "compare", compareWith: [strategy] });
+export const openCompareWith = (
+  onNavigate: Navigate,
+  strategies: { uuid: string; name: string } | { uuid: string; name: string }[],
+  strategiesOnly = false,
+) =>
+  openWealthView(onNavigate, {
+    kind: "portfolio", uuid: "", page: "compare",
+    compareWith: Array.isArray(strategies) ? strategies : [strategies],
+    ...(strategiesOnly ? { strategiesOnly: true } : {}),
+  });
