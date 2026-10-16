@@ -10,6 +10,8 @@ import type { WealthView } from "./WealthSection";
 import { ALERT_TYPES, OMI_ATTRIBUTION, alertFindingText, findingFromPayload } from "../../lib/realEstate";
 import type { RealEstateAlertType } from "../../models/RealEstate";
 import { formatCurrency } from "../../lib/format";
+import { ALERT_TYPES as WALLET_ALERT_TYPES, ALL_WALLETS, alertFindingText as walletFindingText, walletFindingFromPayload } from "../../lib/wallets";
+import type { WalletAlertType } from "../../models/Wallet";
 
 interface NotificationListProps {
   notifications: NotificationResponse[];
@@ -191,6 +193,17 @@ function getRealEstateAlertSummary(n: NotificationResponse): { title: string; de
   };
 }
 
+// A wallets' alert rule's check that found something new (type WALLET_ALERT), one per rule per
+// check. Payload (snake_case): event_id, rule_uuid, kind, threshold and findings (walletFindingFromPayload).
+// It links to the wallets' Alerts.
+function getWalletAlertSummary(n: NotificationResponse): { title: string; detail: string } {
+  const p = n.payload ?? {};
+  const findings = Array.isArray(p.findings) ? (p.findings as Record<string, unknown>[]).map(walletFindingFromPayload) : [];
+  const label = WALLET_ALERT_TYPES[p.kind as WalletAlertType]?.label ?? "Wallet alert";
+  if (findings.length === 1) return walletFindingText(findings[0]);
+  return { title: `${label}: ${findings.length} found`, detail: [...new Set(findings.map((f) => f.walletName).filter(Boolean))].join(", ") };
+}
+
 // Losses carried forward that expire at the end of the year (type LOSSES_EXPIRING, sent on 1 October
 // and 1 December). Payload (snake_case): year, currency, total, harvestable_positions (how many
 // positions in gain would take them) and losses, each with category, origin_year, amount,
@@ -256,10 +269,12 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
         const isStrategyFailed = n.type === "STRATEGY_FAILED";
         const isStrategyShared = n.type === "STRATEGY_SHARED";
         const isRealEstateAlert = n.type === "REAL_ESTATE_ALERT";
+        const isWalletAlert = n.type === "WALLET_ALERT";
         const isLossesExpiring = n.type === "LOSSES_EXPIRING";
-        const cfg = isAlert || isRealEstateAlert ? ALERT_CONFIG : isStrategyFailed ? STATUS_CONFIG.FAILED : isStrategyShared ? STRATEGY_SHARED_CONFIG : isLossesExpiring ? LOSSES_EXPIRING_CONFIG : getJobStatus(n);
+        const cfg = isAlert || isRealEstateAlert || isWalletAlert ? ALERT_CONFIG : isStrategyFailed ? STATUS_CONFIG.FAILED : isStrategyShared ? STRATEGY_SHARED_CONFIG : isLossesExpiring ? LOSSES_EXPIRING_CONFIG : getJobStatus(n);
         const summary = isAlert ? getAlertSummary(n)
           : isRealEstateAlert ? getRealEstateAlertSummary(n)
+          : isWalletAlert ? getWalletAlertSummary(n)
           : isLossesExpiring ? getLossesExpiringSummary(n)
           : isStrategyFailed ? getStrategyFailedSummary(n)
             : isStrategyShared ? getStrategySharedSummary(n)
@@ -324,6 +339,15 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
                   <button
                     type="button"
                     onClick={() => onOpenPage(WEALTH_SECTION, { kind: "realEstate", page: "alerts" } satisfies WealthView)}
+                    className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
+                  >
+                    View alerts
+                  </button>
+                )}
+                {isWalletAlert && onOpenPage && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPage(WEALTH_SECTION, { kind: "wallet", id: ALL_WALLETS, page: "alerts" } satisfies WealthView)}
                     className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
                   >
                     View alerts

@@ -2,15 +2,16 @@
 //
 // SAMPLE DATA for a demo account's Wallets: three made-up accounts with a year of everyday money in
 // and out (salary, rent, groceries, bills…), in the API's shapes (models/Wallet), served by
-// demoWalletSource as the API would (their budgets included); then what the API doesn't have yet,
-// shown only to a demo account as previews (components/preview/WalletPages): alerts, monthly
-// statements, recurring payments and top merchants. Generated from fixed seeds so the pages look the same on
+// demoWalletSource as the API would (their budgets and alert rules included); then what the API
+// doesn't have yet, shown only to a demo account as previews (components/preview/WalletPages):
+// monthly statements, recurring payments and top merchants. Generated from fixed seeds so the pages look the same on
 // every visit.
 
 import { hashSeed, round, seeded } from "./random";
 import type { WalletSource } from "../wallets";
 import type {
-  BudgetMonth, BudgetProgress, BudgetStatus, Movement, MovementCategory, MovementFilters, Wallet, WalletSummary,
+  BudgetMonth, BudgetProgress, BudgetStatus, Movement, MovementCategory, MovementFilters, Wallet, WalletAlertFinding,
+  WalletAlertParams, WalletAlertRule, WalletSummary,
 } from "../../models/Wallet";
 
 const OPENING_DATE = "2025-10-01";
@@ -178,8 +179,59 @@ function demoBudgetMonth(month = CURRENT_MONTH): BudgetMonth {
   return { currency: "EUR", month, daysInMonth: days, daysElapsed: elapsed, budgets, total };
 }
 
+// The sample's alert rules: (wallet or null for every one, params, enabled), as arca finds them on
+// the sample's last day (the 28th) — payments and money in among the last 31 days.
+const SAMPLE_TODAY = `${CURRENT_MONTH}-28`;
+const SAMPLE_RULES: [string | null, WalletAlertParams, boolean][] = [
+  ["everyday", { type: "low_balance", threshold: "2500" }, true],
+  [null, { type: "budget_threshold", thresholdPct: "90" }, true],
+  ["card", { type: "large_payment", threshold: "150" }, true],
+  ["everyday", { type: "income_received", category: "salary" }, true],
+  ["card", { type: "low_balance", threshold: "-1500" }, false],
+];
+
+function sampleFindings(walletUuid: string | null, params: WalletAlertParams): WalletAlertFinding[] {
+  const wallets = DEMO_WALLETS.filter((w) => !walletUuid || w.uuid === walletUuid);
+  const base = { movementUuid: null, bookedOn: null, description: null, counterparty: null, category: null, limit: null, month: null };
+  const since = new Date(SAMPLE_TODAY);
+  since.setDate(since.getDate() - 31);
+  const recent = (w: Wallet) => movementsOf(w.uuid).filter((m) => !m.transferUuid && new Date(m.bookedOn) >= since && m.bookedOn <= SAMPLE_TODAY);
+  const movement = (m: Movement, w: Wallet, amount: number): WalletAlertFinding => ({
+    ...base, key: `${params.type}:${m.uuid}`, kind: params.type, currency: w.currency, amount, walletUuid: w.uuid, walletName: w.name,
+    movementUuid: m.uuid, bookedOn: m.bookedOn, description: m.description, counterparty: m.counterparty, category: m.category,
+  });
+  switch (params.type) {
+    case "low_balance":
+      return wallets.filter((w) => w.balance < Number(params.threshold)).map((w) => ({
+        ...base, key: `low_balance:${w.uuid}`, kind: "low_balance", currency: w.currency, amount: w.balance, walletUuid: w.uuid, walletName: w.name,
+      }));
+    case "large_payment":
+      return wallets.flatMap((w) => recent(w).filter((m) => -m.amount >= Number(params.threshold)).map((m) => movement(m, w, -m.amount)));
+    case "income_received":
+      return wallets.flatMap((w) => recent(w).filter((m) => m.amount > 0 && m.category === params.category).map((m) => movement(m, w, m.amount)));
+    case "budget_threshold": {
+      const month = demoBudgetMonth();
+      return month.budgets.filter((b) => b.spent * 100 >= b.limit * Number(params.thresholdPct)).map((b) => ({
+        ...base, key: `budget:${b.category}:${month.month}`, kind: "budget_threshold", currency: month.currency, amount: b.spent,
+        walletUuid: null, walletName: null, category: b.category, limit: b.limit, month: month.month,
+      }));
+    }
+  }
+}
+
+function demoAlertRules(walletUuid: string | null): WalletAlertRule[] {
+  return SAMPLE_RULES
+    .filter(([wallet]) => !walletUuid || !wallet || wallet === walletUuid)
+    .map(([wallet, params, enabled], i) => ({
+      uuid: `sample-rule-${i + 1}`, walletUuid: wallet, params, notifyEmail: true, notifyInApp: true, enabled,
+      findings: enabled ? sampleFindings(wallet, params) : [],
+      lastCheckedAt: `${SAMPLE_TODAY}T05:30:00Z`, lastTriggeredAt: null, createdAt: "2025-10-01T08:00:00Z", updatedAt: "2025-10-01T08:00:00Z",
+    }));
+}
+
 /** A demo account's wallets, read as the API would serve them. */
 export const demoWalletSource: WalletSource = {
+  alertRules: async (walletUuid) => demoAlertRules(walletUuid),
   budgetMonth: async (month) => demoBudgetMonth(month),
   summary: async (walletUuid, from, to) => demoSummary(walletUuid, from, to),
   movements: async (walletUuid, filters = {}) => {
@@ -211,30 +263,6 @@ export function spentThisMonth(walletUuid: string | null, category: MovementCate
     .filter((m) => m.bookedOn.startsWith(CURRENT_MONTH) && m.category === category && m.amount < 0 && !m.transferUuid)
     .reduce((s, m) => s + m.amount, 0);
 }
-
-export interface WalletAlert {
-  id: string;
-  // The wallet it watches.
-  walletUuid: string;
-  title: string;
-  detail: string;
-  enabled: boolean;
-  triggered: boolean;
-  // Where it stands, when it measures something: now against the limit, and how far along the
-  // way it is (0–100).
-  now?: string;
-  limit?: string;
-  progressPct?: number;
-}
-
-export const WALLET_ALERTS: WalletAlert[] = [
-  { id: "a1", walletUuid: "everyday", title: "Low balance", detail: "Balance drops under €500", enabled: true, triggered: false, now: "€1,840", limit: "€500", progressPct: 27 },
-  { id: "a2", walletUuid: "everyday", title: "Budget at 90%", detail: "Any category reaches 90% of its monthly budget", enabled: true, triggered: true, now: "Restaurants 96%", limit: "90%", progressPct: 100 },
-  { id: "a4", walletUuid: "everyday", title: "Salary received", detail: "When the monthly salary lands", enabled: false, triggered: false },
-  { id: "a3", walletUuid: "card", title: "Large expense", detail: "A single payment over €250", enabled: true, triggered: true, now: "€312", limit: "€250", progressPct: 100 },
-  { id: "a5", walletUuid: "card", title: "New subscription", detail: "A recurring charge from a merchant not seen before", enabled: true, triggered: false },
-  { id: "a6", walletUuid: "card", title: "Card statement due", detail: "Three days before the card is settled", enabled: true, triggered: false, now: "5 days left", limit: "3 days", progressPct: 72 },
-];
 
 /** A report in the Wallets preview's archive: a month's statement or a year's summary. */
 export interface WalletReport {

@@ -2,7 +2,8 @@
 import type {
   AnalyzeStatementRequest, Budget, BudgetInput, BudgetMonth, Movement, MovementCategory, MovementFilters, MovementInput, MovementList,
   MovementUpdateRequest, StatementColumnMapping, StatementColumnMappingResponse, StatementImportResult,
-  Transfer, TransferCreateRequest, Wallet, WalletCreateRequest, WalletSummary, WalletUpdateRequest,
+  Transfer, TransferCreateRequest, Wallet, WalletAlertRule, WalletAlertRuleCreateRequest, WalletAlertRuleUpdateRequest,
+  WalletCreateRequest, WalletSummary, WalletUpdateRequest,
 } from "../models/Wallet";
 import { apiFetch, apiFetchForm } from "./apiClient";
 
@@ -10,7 +11,8 @@ import { apiFetch, apiFetchForm } from "./apiClient";
 // WalletNotFoundError / MovementNotFoundError (404, someone else's included), WalletArchivedError
 // (409, a write on an archived wallet), WalletHasMovementsError (409, a currency change),
 // MovementInTransferError (409, a transfer leg's date, amount or category), InvalidWalletError /
-// InvalidMovementError / InvalidTransferError / InvalidBudgetError (422), FxRatesUnavailableError
+// InvalidMovementError / InvalidTransferError / InvalidBudgetError / InvalidAlertRuleError (422),
+// AlertRuleNotFoundError (404), AlertRuleLimitReachedError (409, past 50 rules), FxRatesUnavailableError
 // (503, the summary or the budgets across wallets), ImportFileParsingError / ImportMappingIncompleteError (422). A demo account's
 // writes are refused before they leave (see lib/demo).
 
@@ -141,6 +143,26 @@ export const walletService = {
   // GET /v1/wallets/budgets/month — a month (YYYY-MM, this one by default) against the budgets it had.
   async budgetMonth(month?: string): Promise<BudgetMonth> {
     return apiFetch<BudgetMonth>(`/v1/wallets/budgets/month${month ? `?month=${month}` : ""}`);
+  },
+
+  // GET /v1/wallets/alert-rules (every rule) or /v1/wallets/{w}/alert-rules (its own and those on
+  // every wallet), oldest first, each with what it finds today.
+  async alertRules(walletUuid: string | null): Promise<WalletAlertRule[]> {
+    return apiFetch<WalletAlertRule[]>(walletUuid ? `/v1/wallets/${walletUuid}/alert-rules` : `/v1/wallets/alert-rules`);
+  },
+
+  // POST /v1/wallets/alert-rules — what it finds when made is shown, not told.
+  async addAlertRule(payload: WalletAlertRuleCreateRequest): Promise<WalletAlertRule> {
+    return apiFetch<WalletAlertRule>(`/v1/wallets/alert-rules`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // PATCH /v1/wallets/alert-rules/{r}
+  async updateAlertRule(ruleUuid: string, payload: WalletAlertRuleUpdateRequest): Promise<WalletAlertRule> {
+    return apiFetch<WalletAlertRule>(`/v1/wallets/alert-rules/${ruleUuid}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+
+  async removeAlertRule(ruleUuid: string): Promise<void> {
+    await apiFetch(`/v1/wallets/alert-rules/${ruleUuid}`, { method: "DELETE" });
   },
 
   // POST /v1/wallets/{w}/import/analyze-columns — a proposed mapping for a statement's columns.
