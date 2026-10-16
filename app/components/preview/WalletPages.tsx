@@ -2,84 +2,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileText, Lightbulb, Search } from "lucide-react";
+import { FileText, Search } from "lucide-react";
 import { ReportFileTile } from "../dashboard/ReportFileTile";
 import { GenerateReportDialog } from "../dashboard/GenerateReportDialog";
-import { formatCurrency } from "../../lib/format";
-import { categoryLabel } from "../../lib/wallets";
-import {
-  DEMO_WALLETS, RECURRING, WALLET_REPORTS, spentThisMonth, topMerchants,
-} from "../../lib/mock/wallets";
-import { Panel, PreviewBadge, PreviewBanner, formatPct } from "./PreviewKit";
+import { DEMO_WALLETS, WALLET_REPORTS } from "../../lib/mock/wallets";
+import { PreviewBanner } from "./PreviewKit";
 
 /**
  * WALLET PREVIEWS — what the Wallets don't have from the API yet, shown to a demo account only, on
- * its sample data (lib/mock/wallets): Reports as a page of its own, and on
- * Insights what PortfoliAI noticed, the top merchants and the recurring payments. Everything else
- * on a wallet's pages is the real thing (components/dashboard/wallets), which a demo account reads
+ * its sample data (lib/mock/wallets): Reports, as a page of its own. Everything else on a wallet's
+ * pages is the real thing (components/dashboard/wallets), which a demo account reads
  * on the same sample data.
  */
 
-const eur = (v: number, d = 0) => formatCurrency(v, "EUR", d);
 const walletOf = (uuid: string) => DEMO_WALLETS.find((w) => w.uuid === uuid)!;
-
-// ── Insights' extras ─────────────────────────────────────────────────────────────────────────
-
-export function DemoInsightExtras({ scope }: { scope: string | null }) {
-  const merchants = useMemo(() => topMerchants(scope), [scope]);
-  const restaurantsNow = spentThisMonth(scope, "restaurants");
-  const subscriptions = RECURRING.filter((r) => ["Netflix", "Spotify", "iCloud+"].includes(r.name)).reduce((s, r) => s + r.amount, 0);
-  const groceries = spentThisMonth(scope, "groceries");
-
-  return (
-    <>
-      <div className="bg-[#1c1917] rounded-3xl p-5 md:p-6 space-y-3">
-        <div className="flex items-center gap-2">
-          <Lightbulb className="h-4 w-4 text-[#C49A3C]" />
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">What PortfoliAI noticed</p>
-          <PreviewBadge dark />
-        </div>
-        <ul className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {[
-            `Groceries are at ${eur(groceries)} this month, ${formatPct(((groceries / 320) - 1) * 100, 0)} on your budget.`,
-            `Eating out is at ${eur(restaurantsNow)} this month.`,
-            `Streaming and cloud subscriptions cost ${eur(subscriptions * 12)} a year. Investing it monthly instead would be a ${eur(subscriptions, 2)} PAC.`,
-          ].map((text) => (
-            <li key={text} className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-[13px] text-stone-300 leading-relaxed">{text}</li>
-          ))}
-        </ul>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Panel title="Top merchants" subtitle="Last 12 months." right={<PreviewBadge />}>
-          <ul className="px-6 md:px-7 py-4 divide-y divide-slate-100">
-            {merchants.map((m) => (
-              <li key={m.name} className="py-2.5 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[13px] font-bold text-slate-800 truncate">{m.name}</p>
-                  <p className="text-[11px] font-semibold text-slate-400">{m.count} {m.count === 1 ? "payment" : "payments"} · {categoryLabel(m.category)}</p>
-                </div>
-                <span className="text-[13px] font-black tabular-nums text-slate-900">{eur(m.amount)}</span>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-        <Panel title="Recurring payments" subtitle="Detected from repeating charges." right={<PreviewBadge />}>
-          <ul className="px-6 md:px-7 py-4 divide-y divide-slate-100">
-            {RECURRING.map((r) => (
-              <li key={r.name} className="py-2.5 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[13px] font-bold text-slate-800 truncate">{r.name}</p>
-                  <p className="text-[11px] font-semibold text-slate-400">{r.every}</p>
-                </div>
-                <span className="text-[13px] font-black tabular-nums text-slate-900">{eur(r.amount, 2)}</span>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      </div>
-    </>
-  );
-}
 
 // ── Reports ──────────────────────────────────────────────────────────────────────────────────
 

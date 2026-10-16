@@ -1,6 +1,6 @@
 // services/walletService.ts
 import type {
-  AnalyzeStatementRequest, Budget, BudgetInput, BudgetMonth, Movement, MovementCategory, MovementFilters, MovementInput, MovementList,
+  AnalyzeStatementRequest, Budget, BudgetInput, BudgetMonth, CategoryMonths, Merchants, Observations, RecurringPayments, Movement, MovementCategory, MovementFilters, MovementInput, MovementList,
   MovementUpdateRequest, StatementColumnMapping, StatementColumnMappingResponse, StatementImportResult,
   Transfer, TransferCreateRequest, Wallet, WalletAlertRule, WalletAlertRuleCreateRequest, WalletAlertRuleUpdateRequest,
   WalletCreateRequest, WalletSummary, WalletUpdateRequest,
@@ -38,6 +38,8 @@ function monthRange(from?: string, to?: string) {
   const query = params.toString();
   return query ? `?${query}` : "";
 }
+
+const insightsBase = (walletUuid: string | null) => (walletUuid ? `/v1/wallets/${walletUuid}/insights` : `/v1/wallets/insights`);
 
 export const walletService = {
   // GET /v1/wallets — oldest first; the archived ones too when asked.
@@ -122,6 +124,30 @@ export const walletService = {
   // POST /v1/wallets/transfers/{t}/unlink — back to two plain, uncategorised movements.
   async unlinkTransfer(transferUuid: string): Promise<Movement[]> {
     return apiFetch<Movement[]>(`/v1/wallets/transfers/${transferUuid}/unlink`, { method: "POST" });
+  },
+
+  // GET /v1/wallets/insights/categories or /v1/wallets/{w}/insights/categories — each month's money
+  // in and out by category (the last 12 by default), transfers left out.
+  async categoryMonths(walletUuid: string | null, from?: string, to?: string): Promise<CategoryMonths> {
+    return apiFetch<CategoryMonths>(`${insightsBase(walletUuid)}/categories${monthRange(from, to)}`);
+  },
+
+  // GET .../insights/merchants — where the money went, by payee, most spent first.
+  async merchants(walletUuid: string | null, from?: string, to?: string, limit?: number): Promise<Merchants> {
+    const params = new URLSearchParams(monthRange(from, to).slice(1));
+    if (limit !== undefined) params.set("limit", String(limit));
+    const query = params.toString();
+    return apiFetch<Merchants>(`${insightsBase(walletUuid)}/merchants${query ? `?${query}` : ""}`);
+  },
+
+  // GET .../insights/recurring — the payments that repeat (the last 13 months), not lapsed.
+  async recurringPayments(walletUuid: string | null): Promise<RecurringPayments> {
+    return apiFetch<RecurringPayments>(`${insightsBase(walletUuid)}/recurring`);
+  },
+
+  // GET .../insights/observations — what stands out about last month.
+  async observations(walletUuid: string | null): Promise<Observations> {
+    return apiFetch<Observations>(`${insightsBase(walletUuid)}/observations`);
   },
 
   // GET /v1/wallets/budgets — this month's, in the categories' order.

@@ -2,14 +2,15 @@
 //
 // SAMPLE DATA for a demo account's Wallets: three made-up accounts with a year of everyday money in
 // and out (salary, rent, groceries, bills…), in the API's shapes (models/Wallet), served by
-// demoWalletSource as the API would (their budgets and alert rules included); then what the API
-// doesn't have yet, shown only to a demo account as previews (components/preview/WalletPages):
-// monthly statements, recurring payments and top merchants. Generated from fixed seeds so the pages look the same on
+// demoWalletSource as the API would (their budgets, alert rules and insights included); then what
+// the API doesn't have yet, shown only to a demo account as previews (components/preview/WalletPages):
+// the monthly statements. Generated from fixed seeds so the pages look the same on
 // every visit.
 
 import { hashSeed, round, seeded } from "./random";
 import type { WalletSource } from "../wallets";
 import type {
+  CategoryMonths, Merchants, Observation, Observations, RecurringPayments,
   BudgetMonth, BudgetProgress, BudgetStatus, Movement, MovementCategory, MovementFilters, Wallet, WalletAlertFinding,
   WalletAlertParams, WalletAlertRule, WalletSummary,
 } from "../../models/Wallet";
@@ -229,8 +230,98 @@ function demoAlertRules(walletUuid: string | null): WalletAlertRule[] {
     }));
 }
 
+// ── Insights, as arca computes them (domain/insights.py), transfers left out ──
+
+const inRange = (month: string, from?: string, to?: string) => MONTHS.filter((m) => (!from || m >= from) && (!to || m <= to)).includes(month);
+const CATALOGUE: (MovementCategory | null)[] = [
+  "salary", "freelance", "refunds", "interest", "other_income", "housing", "groceries", "restaurants", "transport", "utilities",
+  "subscriptions", "shopping", "health", "travel", "leisure", "other_spending", null,
+];
+
+function demoCategoryMonths(walletUuid: string | null, from?: string, to?: string): CategoryMonths {
+  const own = movementsOf(walletUuid).filter((m) => !m.transferUuid);
+  return {
+    currency: "EUR",
+    months: MONTHS.filter((month) => inRange(month, from, to)).map((month) => ({
+      month,
+      categories: CATALOGUE.map((category) => {
+        const inMonth = own.filter((m) => m.bookedOn.startsWith(month) && m.category === category);
+        return {
+          category,
+          spending: round(-inMonth.filter((m) => m.amount < 0).reduce((s, m) => s + m.amount, 0), 2),
+          income: round(inMonth.filter((m) => m.amount > 0).reduce((s, m) => s + m.amount, 0), 2),
+        };
+      }).filter((c) => c.spending || c.income),
+    })),
+  };
+}
+
+function demoMerchants(walletUuid: string | null, from?: string, to?: string, limit = 10): Merchants {
+  const map = new Map<string, { spent: number; payments: number; category: MovementCategory | null; lastBookedOn: string }>();
+  for (const m of movementsOf(walletUuid)) {
+    if (m.amount >= 0 || m.transferUuid || !inRange(m.bookedOn.slice(0, 7), from, to)) continue;
+    const name = m.counterparty || m.description;
+    const cur = map.get(name) ?? { spent: 0, payments: 0, category: m.category, lastBookedOn: m.bookedOn };
+    map.set(name, { ...cur, spent: cur.spent - m.amount, payments: cur.payments + 1, lastBookedOn: m.bookedOn > cur.lastBookedOn ? m.bookedOn : cur.lastBookedOn });
+  }
+  const merchants = [...map].map(([name, v]) => ({ name, ...v, spent: round(v.spent, 2) })).sort((a, b) => b.spent - a.spent).slice(0, limit);
+  return { currency: "EUR", merchants };
+}
+
+// The sample's recurring payments, on the everyday account and the card (transfers aren't payments).
+const SAMPLE_RECURRING: { name: string; amount: number; day: number; wallet: string; category: MovementCategory }[] = [
+  { name: "Rent — Via Tortona 5", amount: 950, day: 1, wallet: "everyday", category: "housing" },
+  { name: "Electricity & gas", amount: 110, day: 5, wallet: "everyday", category: "utilities" },
+  { name: "Fibre internet", amount: 29.9, day: 8, wallet: "everyday", category: "utilities" },
+  { name: "Netflix", amount: 13.99, day: 12, wallet: "card", category: "subscriptions" },
+  { name: "Spotify", amount: 11.99, day: 14, wallet: "card", category: "subscriptions" },
+  { name: "Mobile plan", amount: 9.99, day: 9, wallet: "everyday", category: "utilities" },
+  { name: "iCloud+", amount: 2.99, day: 20, wallet: "card", category: "subscriptions" },
+];
+
+function demoRecurring(walletUuid: string | null): RecurringPayments {
+  const [y, mo] = CURRENT_MONTH.split("-").map(Number);
+  const day = (year: number, month: number, d: number) => {
+    const date = new Date(year, month - 1, d);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  };
+  const payments = SAMPLE_RECURRING.filter((r) => !walletUuid || r.wallet === walletUuid).map((r) => ({
+    name: r.name, walletUuid: r.wallet, currency: "EUR", amount: r.amount, cadence: "monthly" as const, occurrences: 12,
+    firstBookedOn: day(y - 1, mo + 1, r.day), lastBookedOn: day(y, r.day <= 28 ? mo : mo - 1, r.day), nextExpectedOn: day(y, mo + 1, r.day),
+    category: r.category, yearlyAmount: round(r.amount * 12, 2),
+  })).sort((a, b) => b.yearlyAmount - a.yearlyAmount);
+  return { currency: "EUR", yearlyTotal: round(payments.reduce((s, p) => s + p.yearlyAmount, 0), 2), payments };
+}
+
+function demoObservations(walletUuid: string | null): Observations {
+  // About August, the sample's last whole month, against May to July.
+  const months = demoCategoryMonths(walletUuid).months;
+  const last = months.at(-2)!;
+  const before = months.slice(-5, -2);
+  const observations: Observation[] = [];
+  const base = { category: null, month: last.month, amount: null, reference: null, changePct: null, ratePct: null, referenceRatePct: null, name: null, cadence: null, count: null };
+  for (const category of CATALOGUE.slice(5, -1)) {
+    const now = last.categories.find((c) => c.category === category)?.spending ?? 0;
+    const avg = before.reduce((s, m) => s + (m.categories.find((c) => c.category === category)?.spending ?? 0), 0) / before.length;
+    if (Math.max(now, avg) < 50 || avg === 0) continue;
+    const change = ((now - avg) / avg) * 100;
+    if (Math.abs(change) >= 25) {
+      observations.push({ ...base, kind: change > 0 ? "category_up" : "category_down", category, amount: round(now, 2), reference: round(avg, 2), changePct: round(change, 1) });
+    }
+  }
+  const subscriptions = demoRecurring(walletUuid).payments.filter((p) => p.category === "subscriptions");
+  if (subscriptions.length) {
+    observations.push({ ...base, kind: "subscriptions_yearly", month: null, category: "subscriptions", amount: round(subscriptions.reduce((s, p) => s + p.yearlyAmount, 0), 2), count: subscriptions.length });
+  }
+  return { currency: "EUR", observations: observations.slice(0, 4) };
+}
+
 /** A demo account's wallets, read as the API would serve them. */
 export const demoWalletSource: WalletSource = {
+  categoryMonths: async (walletUuid, from, to) => demoCategoryMonths(walletUuid, from, to),
+  merchants: async (walletUuid, from, to, limit) => demoMerchants(walletUuid, from, to, limit),
+  recurringPayments: async (walletUuid) => demoRecurring(walletUuid),
+  observations: async (walletUuid) => demoObservations(walletUuid),
   alertRules: async (walletUuid) => demoAlertRules(walletUuid),
   budgetMonth: async (month) => demoBudgetMonth(month),
   summary: async (walletUuid, from, to) => demoSummary(walletUuid, from, to),
@@ -244,25 +335,7 @@ export const demoWalletSource: WalletSource = {
 
 // ── What the API doesn't have yet (previews) ────────────────────────────────────────────────
 
-/** The payees money went to most often in the twelve months (rent and bills left out). */
-export function topMerchants(walletUuid: string | null, limit = 6) {
-  const map = new Map<string, { amount: number; count: number; category: MovementCategory | null }>();
-  for (const m of movementsOf(walletUuid)) {
-    if (m.amount >= 0 || m.transferUuid || m.category === "housing" || m.category === "utilities") continue;
-    const cur = map.get(m.description) ?? { amount: 0, count: 0, category: m.category };
-    cur.amount -= m.amount;
-    cur.count += 1;
-    map.set(m.description, cur);
-  }
-  return [...map].map(([name, v]) => ({ name, ...v, amount: round(v.amount) })).sort((a, b) => b.amount - a.amount).slice(0, limit);
-}
 
-/** This month's spending in one category, on one wallet or all of them. */
-export function spentThisMonth(walletUuid: string | null, category: MovementCategory) {
-  return -movementsOf(walletUuid)
-    .filter((m) => m.bookedOn.startsWith(CURRENT_MONTH) && m.category === category && m.amount < 0 && !m.transferUuid)
-    .reduce((s, m) => s + m.amount, 0);
-}
 
 /** A report in the Wallets preview's archive: a month's statement or a year's summary. */
 export interface WalletReport {
@@ -299,13 +372,3 @@ export const WALLET_REPORTS: WalletReport[] = WALLETS.flatMap((w) => [
   },
 ]);
 
-export const RECURRING = [
-  { name: "Rent — Via Tortona 5", amount: 950, every: "Monthly, 1st" },
-  { name: "Transfer to Savings pot", amount: 400, every: "Monthly, 3rd" },
-  { name: "Electricity & gas", amount: 110, every: "Monthly, ~5th" },
-  { name: "Fibre internet", amount: 29.9, every: "Monthly, 8th" },
-  { name: "Netflix", amount: 13.99, every: "Monthly, 12th" },
-  { name: "Spotify", amount: 11.99, every: "Monthly, 14th" },
-  { name: "Mobile plan", amount: 9.99, every: "Monthly, 9th" },
-  { name: "iCloud+", amount: 2.99, every: "Monthly, 20th" },
-];
