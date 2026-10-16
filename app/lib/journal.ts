@@ -46,6 +46,8 @@ export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
   open: "Waiting for review",
   article_kept: "Reviewed: article kept",
   article_hidden: "Reviewed: article hidden",
+  comment_kept: "Reviewed: comment kept",
+  comment_hidden: "Reviewed: comment hidden",
 };
 
 // Bounds acta checks (its constants/articles.py), so the fields stop where it would refuse.
@@ -58,6 +60,7 @@ export const HEADING_MAX = 200;
 export const MAX_INSTRUMENTS = 10;
 export const DISCLOSURE_MAX = 2000;
 export const NOTE_MAX = 1000;
+export const COMMENT_MAX = 2000;
 export const QUERY_MAX = 200;
 
 // The notices an article is shown with. PLACEHOLDERS: their wording is waiting for a legal review
@@ -114,6 +117,7 @@ export const isArticleNotFound = (err: unknown) => err instanceof ApiError && er
 export function journalErrorText(err: unknown, fallback: string) {
   if (err instanceof ApiError) {
     if (err.errorType === "AuthorUnavailableError") return "Your profile couldn't be read just now. Try publishing again in a moment.";
+    if (err.errorType === "CommentNotFoundError") return "This comment isn't available anymore.";
     if (err.status === 404) return "This article isn't available anymore.";
   }
   return err instanceof Error && err.message ? err.message : fallback;

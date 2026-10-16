@@ -13,10 +13,16 @@ export type ArticleAudience = "everyone" | "advisor_clients";
 export type ArticleStatus = "draft" | "published" | "hidden";
 export type ListStyle = "bulleted" | "numbered";
 export type ImageFormat = "jpeg" | "png" | "webp";
-// Why a reader reports an article, and why an editor hides one.
+// Why a reader reports an article or a comment, and why an editor hides one.
 export type ReportReason =
   | "spam" | "misleading" | "market_manipulation" | "hate_or_harassment" | "personal_data" | "copyright" | "illegal" | "other";
-export type ReportStatus = "open" | "article_kept" | "article_hidden";
+// `comment_*`: a report on a comment.
+export type ReportStatus = "open" | "article_kept" | "article_hidden" | "comment_kept" | "comment_hidden";
+// `top_day` / `top_week`: the most applauded in the last 24 hours / 7 days first, then the newest.
+export type ArticleOrder = "newest" | "top_day" | "top_week";
+// Hidden by the article's author (the commenter's, theirs and the editors'), or by the editors on
+// a report (the commenter's and the editors'); a hidden comment hides its replies.
+export type CommentStatus = "visible" | "hidden_by_author" | "hidden_by_editors";
 export type Decision = "keep" | "hide";
 
 // ── The body's blocks: the same shape written and read ──
@@ -134,6 +140,11 @@ export interface ArticleSummary {
   editedAt: string | null;
   // Whether the caller saved it.
   saved: boolean;
+  // How many readers applaud it (one each), and whether the caller does.
+  applauseCount: number;
+  applauded: boolean;
+  // Its visible comments, replies included.
+  commentCount: number;
 }
 
 export interface Article extends ArticleSummary {
@@ -168,6 +179,8 @@ export interface ArticleFilters {
   q?: string;
   // The reader's language: its articles first.
   preferredLanguage?: ArticleLanguage;
+  // Unset: a search's matches by relevance, else the newest first.
+  order?: ArticleOrder;
   limit?: number;
   offset?: number;
 }
@@ -201,6 +214,33 @@ export interface ArticleReport {
   status: ReportStatus;
   createdAt: string;
   decidedAt: string | null;
+  // Set on a report on a comment (under articleUuid).
+  commentUuid: string | null;
+}
+
+// ── Comments ──
+
+/** A comment under an article: a top-level one, or a reply to one (one level only). */
+export interface Comment {
+  uuid: string;
+  articleUuid: string;
+  // The top-level comment it replies to; null on a top-level one.
+  parentCommentUuid: string | null;
+  // As an article's author: an editor's comment is signed by PortfoliAI.
+  author: ArticleAuthor;
+  // Plain text, line breaks kept.
+  text: string;
+  status: CommentStatus;
+  // While the editors hide it, for its commenter and the editors (reviewRequested is always false).
+  moderation: ArticleModeration | null;
+  // The caller wrote it: they can edit and delete it.
+  mine: boolean;
+  // The article's author wrote it.
+  byArticleAuthor: boolean;
+  // Its visible replies; 0 on a reply.
+  replyCount: number;
+  createdAt: string;
+  editedAt: string | null;
 }
 
 // ── Moderation (the editors') ──
@@ -228,6 +268,18 @@ export interface ModerationCaseDetail {
   article: Article;
   // Null when nothing waits on it.
   openCase: ModerationCase | null;
+  // The newest first.
+  reports: CaseReport[];
+}
+
+/** What waits on one comment: its open reports. */
+export interface CommentCase {
+  comment: Comment;
+  // The article it is under.
+  article: ArticleSummary;
+  openReports: number;
+  // Its oldest open report.
+  waitingSince: string;
   // The newest first.
   reports: CaseReport[];
 }
