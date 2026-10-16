@@ -16,7 +16,7 @@ import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { describeRebalancing } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
-import { openCompareWith } from "../../lib/dashboardNav";
+import type { CompareStrategy } from "./ComparisonView";
 import { CATEGORY_COLORS, SECURITY_COLORS } from "./StrategyBuilder";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
@@ -113,25 +113,6 @@ function cardFigures(s: PublishedStrategy, horizon: FilterHorizon | null): Horiz
   return null;
 }
 
-function FigureGrid({ figures }: { figures: HorizonFigures }) {
-  const items = [
-    { label: "Annualized return", value: fig(figures.annualizedReturnPct, signedPct), tone: figures.annualizedReturnPct },
-    { label: "Volatility", value: fig(figures.volatilityPct, plainPct) },
-    { label: "Max drawdown", value: fig(figures.maxDrawdownPct, signedPct) },
-    { label: "Return / risk", value: fig(figures.returnPerRisk, (v) => v.toFixed(2)) },
-  ];
-  return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-      {items.map((i) => (
-        <div key={i.label}>
-          <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{i.label}</dt>
-          <dd className={`text-[15px] font-black tabular-nums ${i.tone == null ? "text-slate-900" : i.tone >= 0 ? "text-emerald-700" : "text-rose-600"}`}>{i.value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
 // ── Explore: the list ─────────────────────────────────────────────────────────────────────
 
 interface Filters {
@@ -158,15 +139,17 @@ const positive = (v: string) => {
  * under a disclaimer; nothing here is matched to the viewer, and nothing can be copied or adopted.
  * A strategy opens its page (StrategyDetail).
  */
-export function StrategiesExplore({ trail, publicationId, onOpen, onNavigate }: {
+export function StrategiesExplore({ trail, publicationId, onOpen, onCompare, onNavigate }: {
   trail: Crumb[];
   // The strategy open, if any.
   publicationId?: string;
   onOpen: (publicationId: string | null) => void;
+  // Opens Wealth's Compare on these strategies, beside the user's portfolios.
+  onCompare?: (strategies: CompareStrategy[]) => void;
   onNavigate?: (section: string) => void;
 }) {
   if (publicationId) {
-    return <StrategyDetail publicationId={publicationId} trail={[...trail, { label: "Explore", onClick: () => onOpen(null) }]} onNavigate={onNavigate} />;
+    return <StrategyDetail publicationId={publicationId} trail={[...trail, { label: "Explore", onClick: () => onOpen(null) }]} onCompare={onCompare} onNavigate={onNavigate} />;
   }
   return <StrategiesList trail={trail} onOpen={onOpen} />;
 }
@@ -228,10 +211,8 @@ function StrategiesList({ trail, onOpen }: { trail: Crumb[]; onOpen: (publicatio
   return (
     <div className="space-y-6 pb-12">
       <Breadcrumb trail={trail} current="Explore" />
-      <p className="text-[13px] text-slate-500 leading-relaxed max-w-2xl">
-        Strategies advisors have published, each simulated on historical prices. Browse them to see how different mixes and
-        rules would have behaved; they&apos;re the same for everyone and aren&apos;t matched to you.
-      </p>
+      {/* Titled as Strategy, Projection and Stress test are. */}
+      <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Explore strategies</h1>
       <SimulationDisclaimer />
 
       <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-6 space-y-4">
@@ -322,37 +303,71 @@ function StrategiesList({ trail, onOpen }: { trail: Crumb[]; onOpen: (publicatio
           </div>
         </>
       )}
+
     </div>
   );
 }
 
+/**
+ * A strategy of the catalog as a card, the whole of it opening its page (as a module of a
+ * portfolio's Insights opens its detail, the arrow in its corner turning gold as it's hovered):
+ * its name and author, what it's for, one horizon's figures with the annualized return first, what
+ * it holds, and the author's costs the figures are gross of.
+ */
 function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStrategy; horizon: FilterHorizon | null; onOpen: () => void }) {
   const figures = cardFigures(s, horizon);
+  const r = figures?.annualizedReturnPct ?? null;
   return (
-    <article className="rounded-3xl border border-slate-200 bg-white shadow-sm p-5 md:p-6 flex flex-col gap-4">
-      <div className="min-w-0">
-        <h3 className="text-lg font-black text-slate-900 truncate" style={serif}>{s.portfolioName}</h3>
-        <p className="text-[11px] font-semibold text-slate-400 mt-0.5">{byline(s)}</p>
-        {s.description && <p className="text-[13px] text-slate-600 leading-relaxed mt-2 line-clamp-3">{s.description}</p>}
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      aria-label={`Open ${s.portfolioName}`}
+      className="group/card relative h-full bg-white rounded-[1.75rem] border border-[#EEE9DD] p-6 flex flex-col gap-5 cursor-pointer transition-colors hover:border-[#C49A3C]/60 hover:bg-[#FBFAF6] outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40"
+    >
+      <span aria-hidden className="absolute top-5 right-5 h-6 w-6 rounded-full flex items-center justify-center text-[#a8a29e] transition-colors group-hover/card:text-[#C49A3C]">
+        <ArrowUpRight className="h-4 w-4" />
+      </span>
+
+      <div className="min-w-0 pr-8">
+        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-700">
+          Simulated{figures ? ` · last ${HORIZON_LABELS[figures.horizon]}` : ""}
+        </p>
+        <h3 className="mt-1.5 text-xl font-bold text-[#1c1917] leading-tight line-clamp-2" style={serif}>{s.portfolioName}</h3>
+        <p className="text-[11px] text-[#78716c] mt-1">{byline(s)}</p>
+        {s.description && <p className="text-[12.5px] text-[#57534e] leading-relaxed mt-3 line-clamp-2">{s.description}</p>}
       </div>
-      <AllocationBar targets={s.strategy.targets} />
-      <div className="rounded-2xl bg-slate-50 border border-slate-200/70 p-4 space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <SimulatedBadge />
-          <span className="text-[11px] font-bold text-slate-500">{figures ? `Last ${HORIZON_LABELS[figures.horizon]}` : ""}</span>
+
+      {figures ? (
+        <div className="space-y-3">
+          <p className="flex items-baseline gap-2">
+            <span className={`text-[30px] font-bold leading-none tabular-nums ${r == null ? "text-[#1c1917]" : r >= 0 ? "text-[#047857]" : "text-[#e11d48]"}`} style={serif}>
+              {fig(r, signedPct)}
+            </span>
+            <span className="text-[11px] text-[#78716c]">a year</span>
+          </p>
+          <dl className="grid grid-cols-3 gap-3 border-t border-[#EEE9DD] pt-3">
+            {[
+              { label: "Volatility", value: fig(figures.volatilityPct, plainPct) },
+              { label: "Worst drop", value: fig(figures.maxDrawdownPct, signedPct) },
+              { label: "Return / risk", value: fig(figures.returnPerRisk, (v) => v.toFixed(2)) },
+            ].map((i) => (
+              <div key={i.label} className="min-w-0">
+                <dt className="text-[10.5px] text-[#78716c] truncate">{i.label}</dt>
+                <dd className="text-[14px] font-bold tabular-nums text-[#1c1917]">{i.value}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
-        {figures ? <FigureGrid figures={figures} /> : (
-          <p className="text-xs text-slate-500">{s.figuresComputedAt ? "Its history is shorter than a year." : "Its figures are being computed."}</p>
-        )}
-        <p className="text-[10px] text-slate-400 leading-snug">Author&apos;s costs, not taken out of these figures: {costsLine(s.costs, s.currency)}</p>
+      ) : (
+        <p className="text-xs text-[#78716c]">{s.figuresComputedAt ? "Its history is shorter than a year." : "Its figures are being computed."}</p>
+      )}
+
+      <div className="mt-auto space-y-3">
+        <AllocationBar targets={s.strategy.targets} />
+        <p className="text-[10px] text-[#a8a29e] leading-snug">Gross of the author&apos;s costs: {costsLine(s.costs, s.currency)}</p>
       </div>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="mt-auto self-start flex items-center gap-1.5 min-h-10 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:border-slate-300 transition-colors"
-      >
-        See the strategy <ArrowUpRight className="h-3.5 w-3.5" />
-      </button>
     </article>
   );
 }
@@ -403,7 +418,12 @@ const HORIZON_ORDER = [...FILTER_HORIZONS, "inception"] as const;
  * Insights, annualized as in the list) and how it went through the past crises its history covers, then its
  * portfolio's Insights (ReadOnlySimulation), all simulated. Read only: no way to copy or adopt it.
  */
-function StrategyDetail({ publicationId, trail, onNavigate }: { publicationId: string; trail: Crumb[]; onNavigate?: (section: string) => void }) {
+function StrategyDetail({ publicationId, trail, onCompare, onNavigate }: {
+  publicationId: string;
+  trail: Crumb[];
+  onCompare?: (strategies: CompareStrategy[]) => void;
+  onNavigate?: (section: string) => void;
+}) {
   const [result, setResult] = useState<{ id: string; strategy: PublishedStrategy | null; error: string | null } | null>(null);
 
   useEffect(() => {
@@ -461,7 +481,7 @@ function StrategyDetail({ publicationId, trail, onNavigate }: { publicationId: s
       strategyShown
       notice={<SimulationDisclaimer />}
       onNavigate={onNavigate}
-      extraActions={onNavigate ? [{ label: "Compare with my portfolios", onClick: () => openCompareWith(onNavigate, { uuid: s.portfolioUuid, name: s.portfolioName }) }] : []}
+      extraActions={onCompare ? [{ label: "Compare", onClick: () => onCompare([{ uuid: s.portfolioUuid, name: s.portfolioName }]) }] : []}
     >
       <div className="space-y-6">
         <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-7 space-y-3">

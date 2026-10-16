@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
-import { PLAN_SECTION, openClientPage, openPortfolioPage } from "../../lib/dashboardNav";
+import { PLAN_SECTION, openClientPage, openCompareWith, openPortfolioPage } from "../../lib/dashboardNav";
 import { useMyPublications } from "../../hooks/useMyPublications";
 import { publicationService } from "../../services/publicationService";
 import { PublishStrategyDialog } from "./PublishStrategyDialog";
@@ -138,6 +138,7 @@ export function PlanSection({ onNavigate }: { onNavigate: (section: string) => v
         trail={strategyTrail}
         publicationId={view.publicationId}
         onOpen={(publicationId) => goView(publicationId ? { page: "explore", publicationId } : { page: "explore" })}
+        onCompare={(compareWith) => openCompareWith(onNavigate, compareWith)}
         onNavigate={onNavigate}
       />
     );
@@ -355,13 +356,22 @@ function StrategyPage({ onBuild, onExplore, onOpen, onNavigate }: {
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Strategy</h1>
-          <button
-            type="button"
-            onClick={() => setChoosing(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" /> New strategy
-          </button>
+          <span className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onExplore}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:border-slate-300 transition-colors"
+            >
+              <Telescope className="h-3.5 w-3.5" /> Explore
+            </button>
+            <button
+              type="button"
+              onClick={() => setChoosing(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" /> New strategy
+            </button>
+          </span>
         </div>
         <p className="flex items-start gap-2 text-[12.5px] text-[#78716c] max-w-3xl">
           <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />

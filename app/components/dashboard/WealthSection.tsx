@@ -25,7 +25,8 @@ import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { FileUploader } from "./FileUploader";
 import { AlertsSettings } from "./AlertsSettings";
 import { ReportsBrowser } from "./ReportsBrowser";
-import { ComparisonView, initialCompareSelection, rememberCompareSelection, MAX_COMPARED, type CompareStrategy } from "./ComparisonView";
+import { PortfoliosCompare } from "./PortfoliosCompare";
+import type { CompareStrategy } from "./ComparisonView";
 import { ManagePortfolios } from "./ManagePortfolios";
 import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { NewPortfolioDialog } from "./NewPortfolioDialog";
@@ -67,8 +68,8 @@ export type WealthView =
   | { kind: "root" }
   // A portfolio, "All portfolios" (the investments) included. A strategy's backtest is Plan's.
   // `simulation`: on its Strategy page, the advisor's strategy portfolio a shared strategy came
-  // from, opened read-only. `compareWith`: on Compare, strategies that aren't the user's compared beside
-  // their portfolios (one from Explore, one an advisor shared).
+  // from, opened read-only. `compareWith`: on Compare, strategies that aren't the user's compared
+  // beside their portfolios (one from Explore, one an advisor shared).
   | { kind: "portfolio"; uuid: string; page: PortfolioPage; simulation?: string; compareWith?: CompareStrategy[] }
   // A wallet, or every wallet together (ALL_WALLETS). A demo account's are sample data.
   | { kind: "wallet"; id: string; page: WalletPage }
@@ -126,15 +127,16 @@ function viewFromHistory(hasRealEstate: boolean, hasRoot: boolean, portfolios: P
       // A portfolio had tabs (`tab`), then Insights as its first page, before its own page.
       const page = PORTFOLIO_PAGES.includes(v.page as PortfolioPage) ? (v.page as PortfolioPage) : "overview";
       const compareWith = page === "compare" ? compareStrategiesOf(v.compareWith) : undefined;
+      const compare = compareWith ? { compareWith } : {};
       // No portfolio named (""): the investments, on that page (a link from outside, which
       // doesn't know which portfolio stands for them).
-      if (v.uuid === "" && investments) return { kind: "portfolio", uuid: investments.uuid, page, ...(compareWith ? { compareWith } : {}) };
+      if (v.uuid === "" && investments) return { kind: "portfolio", uuid: investments.uuid, page, ...compare };
       if (!portfolios.some((p) => p.uuid === v.uuid)) return top;
       // The taxes are all the investments'.
       if (page === "taxes" && investments && v.uuid !== investments.uuid) return { kind: "portfolio", uuid: investments.uuid, page };
       return page === "strategy" && typeof v.simulation === "string"
         ? { kind: "portfolio", uuid: v.uuid!, page, simulation: v.simulation }
-        : { kind: "portfolio", uuid: v.uuid!, page, ...(compareWith ? { compareWith } : {}) };
+        : { kind: "portfolio", uuid: v.uuid!, page, ...compare };
     }
     // Investments' own pages before they were the investments' (Manage / Investments / Alerts…).
     case "investments":
@@ -456,15 +458,6 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [selection, setSelection] = useState<string[]>(() => initialCompareSelection(portfolios, null));
-  // The strategies compared that aren't the user's: those the page opened with, until taken out.
-  const [compared, setCompared] = useState<CompareStrategy[]>(compareWith ?? []);
-  // Opened again on Compare with other strategies: those.
-  const [comparedFrom, setComparedFrom] = useState(compareWith);
-  if (comparedFrom !== compareWith) {
-    setComparedFrom(compareWith);
-    setCompared(compareWith ?? []);
-  }
   // Bumped to start the page over (back at the top, any detail closed) from its own crumb.
   const [visit, setVisit] = useState(0);
 
@@ -528,6 +521,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           // The only portfolio stands for the investments: the way to a second one is here, and to
           // the categories of everything held.
           ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new") }] : []),
+          ...(real.length > 1 ? [{ label: "Compare", onClick: () => open("compare") }] : []),
           ...(isInvestments ? [
             { label: "Taxes", onClick: () => open("taxes") },
             { label: "Asset categories", onClick: () => open("categories") },
@@ -714,18 +708,13 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const pageTrail = [...trail, nodeCrumb];
   if (page === "compare") {
     return (
-      <ComparisonView
-        selection={selection}
-        onToggle={(uuid) => setSelection((prev) => {
-          const next = prev.includes(uuid) ? prev.filter((u) => u !== uuid) : prev.length >= MAX_COMPARED - compared.length ? prev : [...prev, uuid];
-          rememberCompareSelection(next);
-          return next;
-        })}
+      <PortfoliosCompare
+        // Opened again with other strategies: starts over on them.
+        key={JSON.stringify(compareWith ?? null)}
         trail={pageTrail}
+        compareWith={compareWith}
         onOpen={(uuid) => onOpen(uuid)}
         onOpenRealEstate={onOpenRealEstate}
-        strategies={compared}
-        onRemoveStrategy={(uuid) => setCompared((prev) => prev.filter((s) => s.uuid !== uuid))}
       />
     );
   }
