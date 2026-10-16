@@ -2,33 +2,29 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { FileText, Lightbulb, Plus, Search } from "lucide-react";
 import { PortfolioGroupCard } from "../dashboard/PortfolioGroupCard";
 import { ReportFileTile } from "../dashboard/ReportFileTile";
 import { GenerateReportDialog } from "../dashboard/GenerateReportDialog";
 import { TONE_STYLES } from "../dashboard/AlertGauge";
 import { Toggle } from "../dashboard/Toggle";
-import { CategoryChip } from "../dashboard/wallets/WalletTransactions";
-import { formatCompact, formatCurrency } from "../../lib/format";
-import { CATEGORY_LABELS, KIND_LABELS, categoryLabel, monthName } from "../../lib/wallets";
+import { formatCurrency } from "../../lib/format";
+import { KIND_LABELS, categoryLabel } from "../../lib/wallets";
 import {
-  BUDGETS, CURRENT_MONTH, DEMO_WALLETS, RECURRING, WALLET_ALERTS, WALLET_REPORTS, spentThisMonth, topMerchants,
+  DEMO_WALLETS, RECURRING, WALLET_ALERTS, WALLET_REPORTS, spentThisMonth, topMerchants,
   type WalletAlert,
 } from "../../lib/mock/wallets";
-import { AXIS_TICK, ComingSoonButton, Panel, PreviewBadge, PreviewBanner, TOOLTIP_STYLE, formatPct, serif } from "./PreviewKit";
+import { ComingSoonButton, Panel, PreviewBadge, PreviewBanner, formatPct } from "./PreviewKit";
 
 /**
  * WALLET PREVIEWS — what the Wallets don't have from the API yet, shown to a demo account only, on
- * its sample data (lib/mock/wallets): Budgets, Reports and Alerts as pages of their own, and on
+ * its sample data (lib/mock/wallets): Reports and Alerts as pages of their own, and on
  * Insights what PortfoliAI noticed, the top merchants and the recurring payments. Everything else
  * on a wallet's pages is the real thing (components/dashboard/wallets), which a demo account reads
  * on the same sample data.
  */
 
 const eur = (v: number, d = 0) => formatCurrency(v, "EUR", d);
-// Day 28 of September's 30: how far into the month budgets should be.
-const MONTH_ELAPSED = 28 / 30;
 const walletOf = (uuid: string) => DEMO_WALLETS.find((w) => w.uuid === uuid)!;
 
 // ── Insights' extras ─────────────────────────────────────────────────────────────────────────
@@ -86,86 +82,6 @@ export function DemoInsightExtras({ scope }: { scope: string | null }) {
         </Panel>
       </div>
     </>
-  );
-}
-
-// ── Budgets ──────────────────────────────────────────────────────────────────────────────────
-
-export function WalletBudgets({ scope }: { scope: string | null }) {
-  const rows = useMemo(() => BUDGETS.map((b) => ({ ...b, spent: spentThisMonth(scope, b.category) })), [scope]);
-  const totalLimit = rows.reduce((s, b) => s + b.limit, 0);
-  const totalSpent = rows.reduce((s, b) => s + b.spent, 0);
-  const chart = rows.map((b) => ({ name: CATEGORY_LABELS[b.category], spent: Math.round(b.spent), limit: b.limit }));
-
-  return (
-    <>
-      <PreviewBanner feature="Budgets" />
-      <section className="bg-white rounded-4xl border border-slate-200 shadow-sm p-6 md:p-7">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C] mb-1.5">{monthName(CURRENT_MONTH)} · day 28 of 30</p>
-            <p className="text-3xl font-black text-slate-900 tabular-nums" style={serif}>
-              {eur(totalSpent)} <span className="text-lg text-slate-400">of {eur(totalLimit)}</span>
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <p className="text-[13px] font-bold text-slate-500">
-              {totalSpent <= totalLimit ? `${eur(totalLimit - totalSpent)} left for the month` : `${eur(totalSpent - totalLimit)} over budget`}
-            </p>
-            <ComingSoonButton icon={<Plus className="h-3.5 w-3.5" />}>New budget</ComingSoonButton>
-          </div>
-        </div>
-        <BudgetBar spent={totalSpent} limit={totalLimit} big />
-      </section>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {rows.map((b) => {
-          const pct = (b.spent / b.limit) * 100;
-          const status = pct > 100 ? "Over budget" : pct > MONTH_ELAPSED * 100 + 5 ? "Ahead of pace" : pct >= 90 ? "Almost used" : "On track";
-          const tone = pct > 100 ? "text-rose-600 bg-rose-50" : status === "On track" ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50";
-          return (
-            <div key={b.category} className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
-              <div className="flex items-center justify-between gap-3">
-                <CategoryChip category={b.category} />
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${tone}`}>{status}</span>
-              </div>
-              <p className="text-lg font-black tabular-nums text-slate-900 mt-3">
-                {eur(b.spent)} <span className="text-sm text-slate-400 font-bold">/ {eur(b.limit)}</span>
-              </p>
-              <BudgetBar spent={b.spent} limit={b.limit} />
-            </div>
-          );
-        })}
-      </div>
-
-      <Panel title="Spent vs budget, this month">
-        <div className="p-4 md:p-6 h-72">
-          <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 700, height: 280 }}>
-            <BarChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <XAxis dataKey="name" tick={AXIS_TICK} axisLine={false} tickLine={false} interval={0} angle={-20} textAnchor="end" height={48} />
-              <YAxis tickFormatter={formatCompact} tick={AXIS_TICK} axisLine={false} tickLine={false} width={40} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "#f8fafc" }} formatter={(v, n) => [eur(Number(v)), n === "spent" ? "Spent" : "Budget"]} />
-              <Bar dataKey="limit" fill="#e2e8f0" radius={[4, 4, 0, 0]} maxBarSize={26} isAnimationActive={false} />
-              <Bar dataKey="spent" radius={[4, 4, 0, 0]} maxBarSize={26} isAnimationActive={false}>
-                {chart.map((c) => <Cell key={c.name} fill={c.spent > c.limit ? "#f43f5e" : "#C49A3C"} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </Panel>
-    </>
-  );
-}
-
-// The pace marker shows where spending "should" be this far into the month.
-function BudgetBar({ spent, limit, big }: { spent: number; limit: number; big?: boolean }) {
-  const pct = Math.min(100, (spent / limit) * 100);
-  const over = spent > limit;
-  return (
-    <div className={`relative ${big ? "h-3 mt-5" : "h-2 mt-3"} rounded-full bg-slate-100`}>
-      <div className={`h-full rounded-full ${over ? "bg-rose-500" : pct > MONTH_ELAPSED * 100 ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
-      <span className="absolute -top-1 -bottom-1 w-0.5 bg-slate-400 rounded" style={{ left: `${MONTH_ELAPSED * 100}%` }} title="Where spending should be by today" />
-    </div>
   );
 }
 

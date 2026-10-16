@@ -140,6 +140,53 @@ export interface WalletSummary {
   months: WalletSummaryMonth[];
 }
 
+// ── Budgets ──
+
+/** A spending category's monthly limit, across every non-archived wallet. */
+export interface Budget {
+  category: MovementCategory;
+  monthlyLimit: number;
+  // The user's reference currency when the limit was set.
+  currency: string;
+  // YYYY-MM: the month the limit holds from (a limit changed or removed later keeps the months before).
+  since: string;
+}
+
+export interface BudgetInput {
+  category: MovementCategory;
+  // Above 0; a decimal string stays exact.
+  monthlyLimit: string;
+}
+
+// The first that holds: over the limit, 90% of it or more, ahead of the even pace by over 5% of it.
+export type BudgetStatus = "over" | "almost_used" | "ahead_of_pace" | "on_track";
+
+export interface BudgetProgress {
+  // null for the total.
+  category: MovementCategory | null;
+  limit: number;
+  // Money out less money in, never below 0.
+  spent: number;
+  // Where spending would be at an even pace: limit × daysElapsed / daysInMonth.
+  expected: number;
+  status: BudgetStatus;
+  // The wallets that spent in it, most first, in the reference currency.
+  wallets: { walletUuid: string; spent: number }[];
+}
+
+/** A month's spending against the budgets it had, in the user's reference currency. */
+export interface BudgetMonth {
+  currency: string;
+  // YYYY-MM.
+  month: string;
+  daysInMonth: number;
+  // Every day of a past month; today included, for the current one.
+  daysElapsed: number;
+  // In the categories' order.
+  budgets: BudgetProgress[];
+  total: BudgetProgress;
+}
+
 // ── Statement import ──
 
 export type StatementField = "date" | "description" | "amount" | "debit" | "credit" | "counterparty" | "currency";

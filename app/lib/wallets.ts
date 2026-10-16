@@ -4,7 +4,7 @@
 // page reads its figures from (a WalletSource: the API, or a demo account's sample data, see
 // lib/mock/wallets), and the sums the API doesn't make yet (spending by category).
 
-import type { Movement, MovementCategory, MovementFilters, MovementList, Wallet, WalletKind, WalletSummary } from "../models/Wallet";
+import type { BudgetMonth, Movement, MovementCategory, MovementFilters, MovementList, Wallet, WalletKind, WalletSummary } from "../models/Wallet";
 import { walletService } from "../services/walletService";
 
 /** The id of every wallet together (the Wallets hub, "All wallets"). */
@@ -92,11 +92,14 @@ export function savingsRate(months: { income: number; spending: number }[]) {
 export interface WalletSource {
   summary(walletUuid: string | null, from?: string, to?: string): Promise<WalletSummary>;
   movements(walletUuid: string | null, filters?: MovementFilters): Promise<MovementList>;
+  // A month (YYYY-MM, this one by default) against the budgets, across the wallets.
+  budgetMonth(month?: string): Promise<BudgetMonth>;
 }
 
 export const apiWalletSource: WalletSource = {
   summary: (walletUuid, from, to) => walletService.summary(walletUuid, from, to),
   movements: (walletUuid, filters) => walletService.movements(walletUuid, filters),
+  budgetMonth: (month) => walletService.budgetMonth(month),
 };
 
 const PAGE = 200;
