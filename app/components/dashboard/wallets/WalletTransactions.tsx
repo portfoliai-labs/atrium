@@ -51,12 +51,11 @@ export function WalletTransactions({ initial, readOnly }: { initial: string; rea
   const [hideTransfers, setHideTransfers] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [rows, setRows] = useState<Movement[]>([]);
-  const [total, setTotal] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [pages, setPages] = useState(1);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // What the last answer was for (`key`): the rows stay shown while the next one loads.
+  const [result, setResult] = useState<{ key: string; rows: Movement[]; total: number | null; error: string | null } | null>(null);
+  // The pages and the selection belong to one filter: a new one starts from the first page, none selected.
+  const [paging, setPaging] = useState<{ key: string; pages: number }>({ key: "", pages: 1 });
+  const [selection, setSelection] = useState<{ key: string; uuids: Set<string> }>({ key: "", uuids: new Set() });
   const [editing, setEditing] = useState<Movement | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -77,29 +76,28 @@ export function WalletTransactions({ initial, readOnly }: { initial: string; rea
     ...(to ? { bookedTo: to } : {}),
   }), [text, direction, category, hideTransfers, from, to]);
   const filterKey = JSON.stringify([scope, filters]);
-
-  // A new filter starts from the first page, the selection cleared.
-  useEffect(() => {
-    setPages(1);
-    setSelected(new Set());
-  }, [filterKey]);
+  const pages = paging.key === filterKey ? paging.pages : 1;
+  const setPages = (change: (pages: number) => number) => setPaging({ key: filterKey, pages: change(pages) });
+  const selected = selection.key === filterKey ? selection.uuids : new Set<string>();
+  const setSelected = (change: Set<string> | ((prev: Set<string>) => Set<string>)) =>
+    setSelection({ key: filterKey, uuids: typeof change === "function" ? change(selected) : change });
+  const requestKey = `${filterKey}:${pages}:${version}`;
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     source.movements(scope, { ...filters, limit: PAGE * pages, offset: 0 })
-      .then((list) => {
-        if (cancelled) return;
-        setRows(list.items);
-        setTotal(list.total);
-        setLoadError(null);
-      })
-      .catch((err) => { if (!cancelled) setLoadError(errorText(err, "Unable to load the movements.")); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .then((list) => { if (!cancelled) setResult({ key: requestKey, rows: list.items, total: list.total, error: null }); })
+      .catch((err) => {
+        if (!cancelled) setResult((prev) => ({ key: requestKey, rows: prev?.rows ?? [], total: prev?.total ?? null, error: errorText(err, "Unable to load the movements.") }));
+      });
     return () => { cancelled = true; };
-    // filters is read through filterKey.
+    // filters and pages are read through requestKey.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, filterKey, pages, version]);
+  }, [source, requestKey]);
+  const rows = result?.rows ?? [];
+  const total = result?.total ?? null;
+  const loading = result?.key !== requestKey;
+  const loadError = result?.key === requestKey ? result.error : null;
 
   const byUuid = useMemo(() => new Map(wallets.map((w, i) => [w.uuid, { wallet: w, color: walletColor(w, i) }])), [wallets]);
   const walletOf = (m: Movement) => byUuid.get(m.walletUuid)?.wallet;

@@ -7,7 +7,7 @@ import { useWallets, useWalletSummary } from "../../../context/WalletsContext";
 // The retired hub's (see below): import { useWalletSummaries } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
 import { formatCurrency } from "../../../lib/format";
-import { ALL_WALLETS, KIND_LABELS, errorText, savingsRate, walletColor } from "../../../lib/wallets";
+import { ALL_WALLETS, KIND_LABELS, currentAlertFindings, errorText, savingsRate, walletColor } from "../../../lib/wallets";
 import type { Wallet } from "../../../models/Wallet";
 // The retired hub's (see below): import type { WalletSummary } from "../../../models/Wallet";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
@@ -67,6 +67,7 @@ export function WalletNode({ id, page: requested, rootTrail, onOpen }: {
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const count = useMovementCount(scope, version);
+  const attention = useAttention(scope, version);
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
 
@@ -112,8 +113,14 @@ export function WalletNode({ id, page: requested, rootTrail, onOpen }: {
 
   const counters = [
     { key: "transactions", label: "transactions", count, onClick: () => onOpen(id, "transactions") },
-    { key: "budgets", label: "budgets", onClick: () => onOpen(id, "budgets") },
-    { key: "alerts", label: "alerts", onClick: () => onOpen(id, "alerts") },
+    {
+      key: "budgets", label: "budgets", count: attention?.budgets ?? null, onClick: () => onOpen(id, "budgets"),
+      attention: attention?.over ? { count: attention.over, label: "over" } : undefined,
+    },
+    {
+      key: "alerts", label: "alerts", count: attention?.rules ?? null, onClick: () => onOpen(id, "alerts"),
+      attention: attention?.found ? { count: attention.found, label: "found" } : undefined,
+    },
     ...(sample ? PREVIEW_WALLET_PAGES.map((p) => ({ key: p, label: WALLET_PAGE_LABELS[p].toLowerCase(), onClick: () => onOpen(id, p) })) : []),
   ];
 
@@ -231,6 +238,35 @@ function useMovementCount(walletUuid: string | null, version: number) {
     return () => { cancelled = true; };
   }, [source, walletUuid, key]);
   return state?.key === key ? state.total : null;
+}
+
+/**
+ * What the header's Budgets and Alerts counters show: how many budgets (across the wallets) and how
+ * many over this month, how many rules (the wallet's and those on every wallet) and what they find
+ * today. null while loading; a read that fails counts nothing rather than failing the page.
+ */
+function useAttention(walletUuid: string | null, version: number) {
+  const { source } = useWallets();
+  const key = `${walletUuid ?? "all"}:${version}`;
+  const [state, setState] = useState<{ key: string; budgets: number; over: number; rules: number; found: number } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([source.budgetMonth().catch(() => null), source.alertRules(walletUuid).catch(() => null)]).then(([month, rules]) => {
+      if (cancelled) return;
+      const budgets = month?.budgets ?? [];
+      // A wallet's page counts only the budgets it spent in.
+      const counted = walletUuid ? budgets.filter((b) => b.wallets.some((w) => w.walletUuid === walletUuid)) : budgets;
+      setState({
+        key,
+        budgets: month ? budgets.length : 0,
+        over: counted.filter((b) => b.status === "over").length,
+        rules: rules?.length ?? 0,
+        found: rules ? currentAlertFindings(rules).filter((f) => !walletUuid || f.walletUuid === walletUuid || f.walletUuid === null).length : 0,
+      });
+    });
+    return () => { cancelled = true; };
+  }, [source, walletUuid, key]);
+  return state?.key === key ? state : null;
 }
 
 function ArchivedNote() {
