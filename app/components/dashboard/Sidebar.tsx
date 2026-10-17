@@ -1,26 +1,25 @@
 "use client";
 
-import { LayoutDashboard, Settings, ChevronRight, Sparkles, Users, Newspaper, Map as MapIcon, PieChart, BookOpen, History } from "lucide-react";
+import { LayoutDashboard, Settings, ChevronRight, Sparkles, Users, Compass, LineChart, Wallet, Building2, History } from "lucide-react";
 import { PreviewBadge } from "../preview/PreviewKit";
 import { useUser } from "../../context/UserContext";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useDashboardEntry } from "../../lib/dashboardHistory";
-import { CLIENTS_SECTION, JOURNAL_SECTION, PLAN_SECTION, WEALTH_SECTION } from "../../lib/dashboardNav";
+import { CLIENTS_SECTION, EXPLORE_SECTION, INVESTMENTS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
 import { clientDisplayName, useClients } from "../../context/ClientsContext";
 import { useClientPortfolios } from "../../hooks/useClientPortfolios";
 import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
 import { useWallets } from "../../context/WalletsContext";
 import { useRealEstate } from "../../context/RealEstateContext";
 import { ALL_WALLETS, KIND_LABELS, walletColor } from "../../lib/wallets";
-import { PLAN_PAGE_LABELS, PREVIEW_PAGES, planPages } from "./PlanSection";
-import { journalRowOf, type JournalView } from "./JournalSection";
+import { exploreRowOf, type ExploreView } from "./ExploreSection";
 import { useJournal } from "../../context/JournalContext";
 import { UserRole, SubscriptionTier } from "../../models/User";
 
 interface SidebarProps {
   activeSection: string;
   setActiveSection: (section: string) => void;
-  // Opens a section on one of its pages (a row under it: a portfolio, Plan's Goals…).
+  // Opens a section on one of its pages (a row under it: a portfolio, a wallet, the News…).
   onOpenPage?: (section: string, view: unknown) => void;
   isOpen?: boolean;
   onClose?: () => void;
@@ -36,12 +35,11 @@ type NavItem = { id: string; label: string; icon: typeof LayoutDashboard; previe
 
 export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = false, onClose, role, subscriptionTier }: SidebarProps) {
   const isAdvisor = role === 'ADVISOR';
-  // The previews of what's coming (real estate, Plan's profile…) are for demo accounts only (see lib/demo).
   const { isDemo } = useUser();
   // An investor's wallets: a demo account's are sample data.
   const { wallets, available: walletsAvailable, sample } = useWallets();
   // Their real estate: a demo account's is sample data too.
-  const { available: realEstateAvailable, properties } = useRealEstate();
+  const { available: realEstateAvailable, properties, sample: realEstateSample } = useRealEstate();
   const { portfolios } = usePortfolio();
   // Which page the open section is on, to mark its row.
   const entry = useDashboardEntry();
@@ -52,11 +50,11 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
   const openClient = isAdvisor && activeSection === CLIENTS_SECTION ? view?.client ?? null : null;
   const { portfolios: clientPortfolios } = useClientPortfolios(openClient);
 
-  // Investor: the sections, and under the open one its pages. Under Wealth, what it's made of:
-  // All portfolios and each real portfolio under it, then the wallets (each one not archived under
-  // them) and the real estate, each only once the user has one (the first is added from Wealth's
-  // root). Without wallets (a backend that
-  // doesn't have them), Wealth opens on All portfolios itself, and only the portfolios are listed.
+  // Investor: the sections, and under the open one its pages. Under Investments, All portfolios and
+  // each real portfolio under it (the only portfolio, while there's one), then Strategies. Under
+  // Wallets and Real estate, all of them and each one (not archived), once there's one: the first
+  // is added from the section's own page. Each of the two only where the user has it (a backend
+  // with wallets, a demo account's sample data).
   const colorOf = portfolioColorMap(portfolios);
   const aggregate = portfolios.find((p) => p.isAggregate);
   const real = portfolios.filter((p) => !p.isVirtual).sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
@@ -68,7 +66,15 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     depth,
     color: p.isAggregate ? undefined : colorOf(p.uuid),
   });
-  const hasRoot = isDemo || walletsAvailable;
+  // Its pages too: a backtest, a published strategy, the form for a new one.
+  const strategiesRow: SubItem = { key: 'strategies', label: 'Strategies', view: { kind: 'strategies', page: 'home' }, active: view?.kind === 'strategies' };
+  const investmentRows: SubItem[] = [
+    ...(aggregate ? [portfolioRow(aggregate, 0)] : []),
+    ...real.map((p) => portfolioRow(p, aggregate ? 1 : 0)),
+    strategiesRow,
+  ];
+
+  const hasWallets = isDemo || walletsAvailable;
   // Two wallets listed under the same name are told apart by their bank (their kind without one).
   const listedWallets = wallets.filter((w) => !w.archived);
   const nameKey = (name: string) => name.trim().toLowerCase();
@@ -76,65 +82,57 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     listedWallets.filter((x) => nameKey(x.name) === nameKey(w.name)).length > 1
       ? `${w.name} – ${w.institution?.trim() || KIND_LABELS[w.kind]}`
       : w.name;
-  const walletRows: SubItem[] = hasRoot ? [
-    ...(wallets.length > 0 ? [
-      { key: ALL_WALLETS, label: 'All wallets', view: { kind: 'wallet', id: ALL_WALLETS, page: 'insights' }, active: view?.kind === 'wallet' && view.id === ALL_WALLETS, preview: sample },
-      ...wallets.map((w, i) => ({ wallet: w, color: walletColor(w, i) })).filter(({ wallet: w }) => !w.archived).map(({ wallet: w, color }) => ({
-        key: w.uuid,
-        label: walletLabel(w),
-        view: { kind: 'wallet', id: w.uuid, page: 'insights' },
-        active: view?.kind === 'wallet' && view.id === w.uuid,
-        depth: 1,
-        color,
-      })),
-    ] : []),
-    ...(realEstateAvailable && properties.length > 0 ? [
-      { key: 'real-estate', label: 'Real estate', view: { kind: 'realEstate', page: 'home' }, active: view?.kind === 'realEstate' && !view.property, preview: sample },
-      ...properties.filter((p) => !p.archived).map((p, i) => ({
-        key: `property:${p.uuid}`,
-        label: p.name,
-        view: { kind: 'realEstate', page: 'property', property: p.uuid },
-        active: view?.kind === 'realEstate' && view.property === p.uuid,
-        depth: 1,
-        color: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length],
-      })),
-    ] : []),
+  const walletRows: SubItem[] = wallets.length > 0 ? [
+    { key: ALL_WALLETS, label: 'All wallets', view: { id: ALL_WALLETS, page: 'insights' }, active: (view?.id ?? ALL_WALLETS) === ALL_WALLETS },
+    ...wallets.map((w, i) => ({ wallet: w, color: walletColor(w, i) })).filter(({ wallet: w }) => !w.archived).map(({ wallet: w, color }) => ({
+      key: w.uuid,
+      label: walletLabel(w),
+      view: { id: w.uuid, page: 'insights' },
+      active: view?.id === w.uuid,
+      depth: 1,
+      color,
+    })),
   ] : [];
-  const wealthRows: SubItem[] = hasRoot
-    ? [...(aggregate ? [portfolioRow(aggregate, 0)] : []), ...real.map((p) => portfolioRow(p, aggregate ? 1 : 0)), ...walletRows]
-    : real.length > 1 ? real.map((p) => portfolioRow(p, 0)) : [];
-  const planRows: SubItem[] = planPages(isDemo).map((page) => ({
-    key: page,
-    label: PLAN_PAGE_LABELS[page],
-    view: { page },
-    // Strategy's form for a new backtest, each backtest and Explore are under Strategy.
-    active: view?.page === page || (page === 'strategy' && (view?.page === 'builder' || view?.page === 'backtest' || view?.page === 'explore')),
-    preview: PREVIEW_PAGES.includes(page),
-  }));
+  const listedProperties = properties.filter((p) => !p.archived);
+  const propertyRows: SubItem[] = listedProperties.length > 0 ? [
+    { key: 'all', label: 'All properties', view: { page: 'home' }, active: !view?.property },
+    ...listedProperties.map((p, i) => ({
+      key: p.uuid,
+      label: p.name,
+      view: { page: 'property', property: p.uuid },
+      active: view?.property === p.uuid,
+      depth: 1,
+      color: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length],
+    })),
+  ] : [];
 
-  // The Journal, for everyone (the written articles where the backend doesn't have it yet); under
-  // it the reader's and the author's pages, and the editors' moderation.
+  // Explore: the articles (the Journal, for everyone: the written articles where the backend
+  // doesn't have it yet) and the News; under them the reader's and the author's pages, and the
+  // editors' moderation.
   const journal = useJournal();
-  const journalRow = activeSection === JOURNAL_SECTION ? journalRowOf(view as JournalView | undefined) : null;
-  const journalRows: SubItem[] = journal.canWrite ? [
-    { key: 'journal', label: 'Articles', view: { page: 'journal' }, active: journalRow === 'journal' },
-    { key: 'saved', label: 'Saved', view: { page: 'saved' }, active: journalRow === 'saved' },
-    { key: 'mine', label: 'Your articles', view: { page: 'mine' }, active: journalRow === 'mine' },
-    ...(journal.editor ? [{ key: 'moderation', label: 'Moderation', view: { page: 'moderation' }, active: journalRow === 'moderation' }] : []),
-  ] : [];
-  const journalItem: NavItem = { id: JOURNAL_SECTION, label: 'Journal', icon: BookOpen, subs: journalRows };
+  const exploreRow = activeSection === EXPLORE_SECTION ? exploreRowOf(view as ExploreView | undefined) : null;
+  const exploreRows: SubItem[] = [
+    { key: 'journal', label: 'Articles', view: { page: 'journal' }, active: exploreRow === 'journal' },
+    { key: 'news', label: 'News', view: { page: 'news' }, active: exploreRow === 'news' },
+    ...(journal.canWrite ? [
+      { key: 'saved', label: 'Saved', view: { page: 'saved' }, active: exploreRow === 'saved' },
+      { key: 'mine', label: 'Your articles', view: { page: 'mine' }, active: exploreRow === 'mine' },
+    ] : []),
+    ...(journal.editor ? [{ key: 'moderation', label: 'Moderation', view: { page: 'moderation' }, active: exploreRow === 'moderation' }] : []),
+  ];
+  const exploreItem: NavItem = { id: EXPLORE_SECTION, label: 'Explore', icon: Compass, subs: exploreRows };
 
   const investorItems: NavItem[] = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
-    { id: WEALTH_SECTION, label: 'Wealth', icon: PieChart, subs: wealthRows },
-    { id: PLAN_SECTION, label: 'Plan', icon: MapIcon, subs: planRows },
-    { id: 'news', label: 'News', icon: Newspaper },
-    journalItem,
+    { id: INVESTMENTS_SECTION, label: 'Investments', icon: LineChart, subs: investmentRows },
+    ...(realEstateAvailable ? [{ id: REAL_ESTATE_SECTION, label: 'Real estate', icon: Building2, preview: realEstateSample, subs: propertyRows }] : []),
+    ...(hasWallets ? [{ id: WALLETS_SECTION, label: 'Wallets', icon: Wallet, preview: sample, subs: walletRows }] : []),
+    exploreItem,
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
   // Each client, and under the open one their portfolios while they have more than one (as an
-  // investor's are under Wealth), each opening that page of the client's Wealth.
+  // investor's are under Investments), each opening that page of the client's investments.
   const clientRealPortfolios = clientPortfolios.filter((p) => !p.isVirtual);
   const clientRows: SubItem[] = [...clients]
     .sort((a, b) => clientDisplayName(a).localeCompare(clientDisplayName(b)))
@@ -156,13 +154,12 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     });
 
   // A client's pages are the investor's, on the client's portfolios (see ClientsSection); the
-  // strategies catalog is under Strategy, as an investor's.
+  // advisor's strategies and the catalog are Strategies, a section of its own.
   const consultantItems: NavItem[] = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: CLIENTS_SECTION, label: 'Clients', icon: Users, subs: clientRows },
-    { id: PLAN_SECTION, label: 'Strategy', icon: History, subs: [] },
-    { id: 'news', label: 'News', icon: Newspaper },
-    journalItem,
+    { id: STRATEGIES_SECTION, label: 'Strategies', icon: History },
+    exploreItem,
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

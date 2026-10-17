@@ -18,7 +18,7 @@ import { Toggle } from "./Toggle";
 const NEW_PORTFOLIO = "__new__";
 
 /**
- * ADOPT STRATEGY DIALOG — a backtest's "Adopt this strategy" (its page, and Plan's Strategy): puts
+ * ADOPT STRATEGY DIALOG — a backtest's "Adopt this strategy" (its page, and Strategies): puts
  * its strategy on a portfolio the user picks — a standard one or All portfolios, never a backtest
  * — or, last in the list, a new one created for it (POST /v1/portfolios, then the adoption). Each
  * target becomes an alert on that portfolio, saying where it stands against its range (see

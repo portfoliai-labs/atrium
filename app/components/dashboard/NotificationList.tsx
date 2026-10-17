@@ -5,8 +5,10 @@ import { CheckCircle2, XCircle, Loader2, Clock, Bell, BellRing, Target, Hourglas
 import type { NotificationResponse } from "../../services/notificationService";
 import { categoryLabel, formatAlertPct, formatRange, WINDOW_LABEL } from "../../lib/alerts";
 import type { AlertWindow } from "../../models/Alert";
-import { WEALTH_SECTION } from "../../lib/dashboardNav";
-import type { WealthView } from "./WealthSection";
+import { INVESTMENTS_SECTION, REAL_ESTATE_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
+import type { InvestmentsView } from "./InvestmentsSection";
+import type { WalletsView } from "./wallets/WalletsSection";
+import type { RealEstateView } from "./realEstate/RealEstateSection";
 import { ALERT_TYPES, OMI_ATTRIBUTION, alertFindingText, findingFromPayload } from "../../lib/realEstate";
 import type { RealEstateAlertType } from "../../models/RealEstate";
 import { formatCurrency } from "../../lib/format";
@@ -338,7 +340,7 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
                 {isRealEstateAlert && onOpenPage && (
                   <button
                     type="button"
-                    onClick={() => onOpenPage(WEALTH_SECTION, { kind: "realEstate", page: "alerts" } satisfies WealthView)}
+                    onClick={() => onOpenPage(REAL_ESTATE_SECTION, { page: "alerts" } satisfies RealEstateView)}
                     className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
                   >
                     View alerts
@@ -347,7 +349,7 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
                 {isWalletAlert && onOpenPage && (
                   <button
                     type="button"
-                    onClick={() => onOpenPage(WEALTH_SECTION, { kind: "wallet", id: ALL_WALLETS, page: "alerts" } satisfies WealthView)}
+                    onClick={() => onOpenPage(WALLETS_SECTION, { id: ALL_WALLETS, page: "alerts" } satisfies WalletsView)}
                     className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
                   >
                     View alerts
@@ -356,7 +358,7 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
                 {isLossesExpiring && onOpenPage && (
                   <button
                     type="button"
-                    onClick={() => onOpenPage(WEALTH_SECTION, { kind: "portfolio", uuid: "", page: "taxes" } satisfies WealthView)}
+                    onClick={() => onOpenPage(INVESTMENTS_SECTION, { kind: "portfolio", uuid: "", page: "taxes" } satisfies InvestmentsView)}
                     className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
                   >
                     View taxes
@@ -365,7 +367,7 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
                 {isStrategyShared && portfolioUuid && onOpenPage && (
                   <button
                     type="button"
-                    onClick={() => onOpenPage(WEALTH_SECTION, { kind: "portfolio", uuid: portfolioUuid, page: "strategy" } satisfies WealthView)}
+                    onClick={() => onOpenPage(INVESTMENTS_SECTION, { kind: "portfolio", uuid: portfolioUuid, page: "strategy" } satisfies InvestmentsView)}
                     className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
                   >
                     View strategy

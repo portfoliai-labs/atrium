@@ -1,25 +1,24 @@
-// components/dashboard/WealthSection.tsx
+// components/dashboard/InvestmentsSection.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight } from "lucide-react";
-import { Bar, BarChart, Cell, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Calculator, ChevronRight, LineChart, ShieldAlert } from "lucide-react";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { portfoliosService } from "../../services/portfoliosService";
 import { transactionService } from "../../services/transactionService";
 import { reportService } from "../../services/reportService";
 import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
-import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
-import { formatCompact, formatCurrency } from "../../lib/format";
+import { portfolioColorMap } from "../../lib/chartColors";
+import { formatCurrency } from "../../lib/format";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
-import { PLAN_SECTION, WEALTH_SECTION, openClientPage, openPlanPage, openPlanToolPage } from "../../lib/dashboardNav";
+import { INVESTMENTS_SECTION, openClientPage, openRealEstatePage, openStrategiesPage } from "../../lib/dashboardNav";
 import { useMyPublications } from "../../hooks/useMyPublications";
 import { publicationService } from "../../services/publicationService";
 import { PublishStrategyDialog } from "./PublishStrategyDialog";
 import { investmentsOf, isBacktest, type Portfolio } from "../../models/Portfolio";
 import type { PortfolioComparisonEntry } from "../../models/PortfolioData";
-import { PerformanceSection, Module, ModuleHead, MODULE_BODY, Figs, Fig, HBars } from "./PerformanceSection";
+import { PerformanceSection, Module, ModuleHead, MODULE_BODY } from "./PerformanceSection";
 import { PageHeader, type PageAction, type PageCounter, type PageFigure } from "./PageHeader";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { FileUploader } from "./FileUploader";
@@ -39,43 +38,30 @@ import { BacktestBanner } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
 import type { SharedStrategy } from "../../models/AdoptedStrategy";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
-import { PreviewBadge } from "../preview/PreviewKit";
-import { useWallets } from "../../context/WalletsContext";
-import { useWalletsOverview } from "../../hooks/useWalletsOverview";
-import { ALL_WALLETS, monthLabel, savingsRate as walletsSavingsRate } from "../../lib/wallets";
-import { WalletNode, type WalletPage } from "./wallets/WalletNode";
-import { WalletFormDialog } from "./wallets/WalletDialogs";
-import { useRealEstate, useRealEstateOverview } from "../../context/RealEstateContext";
-import { RealEstateNode, type RealEstatePage } from "./realEstate/RealEstateNode";
-import { RealEstateTransactionDialog } from "./realEstate/RealEstateTransactionForm";
+import { useRealEstate } from "../../context/RealEstateContext";
 import { TaxesPage } from "./taxes/TaxesPage";
 import { StressTestPage } from "./stress/StressTestPage";
 import { ProjectionPage } from "./projection/ProjectionPage";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
 import { requestSettingsTab } from "./SettingsSection";
+import { StrategiesNode, strategiesViewOf, type BacktestPage, type StrategiesView } from "./StrategiesSection";
 
 // A portfolio's pages: its own (overview), and those its header leads to.
 // "taxes": the investments' (All portfolios', or the only portfolio's), the owner's taxes on them all.
 // "stress": how a past crisis, or shocks picked, would hit it as it is today (a backtest's too).
 // "projection": a Monte Carlo of where it could go as it is: a goal, withdrawals, the safe withdrawal.
-// The investor's own two are Plan's (PortfolioTool): here a client's, a backtest's, and old links.
 // "manualAssets": the user's investments with no market price, valued by hand (the investments').
 export type PortfolioPage = "overview" | "transactions" | "alerts" | "reports" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "stress" | "projection" | "manualAssets";
 
-export type WealthView =
-  // Everything the user owns: investments and wallets. Where there are no wallets to have (a
-  // client's Wealth, a backend without them), Wealth opens straight on the investments.
-  | { kind: "root" }
-  // A portfolio, "All portfolios" (the investments) included. A strategy's backtest is Plan's.
+export type InvestmentsView =
+  // A portfolio, "All portfolios" (the investments) included. A strategy's backtest is Strategies'.
   // `simulation`: on its Strategy page, the advisor's strategy portfolio a shared strategy came
   // from, opened read-only. `compareWith`: on Compare, strategies that aren't the user's compared
-  // beside their portfolios (one from Explore, one an advisor shared).
+  // beside their portfolios (one from the catalog, one an advisor shared).
   | { kind: "portfolio"; uuid: string; page: PortfolioPage; simulation?: string; compareWith?: CompareStrategy[] }
-  // A wallet, or every wallet together (ALL_WALLETS). A demo account's are sample data.
-  | { kind: "wallet"; id: string; page: WalletPage }
-  // The real estate: every property together, or one (`property`, its page or its transactions).
-  // A demo account's are sample data.
-  | { kind: "realEstate"; page: RealEstatePage; property?: string };
+  // Strategies, beside All portfolios: the user's strategies (backtests) and the published ones.
+  // An investor's own, not a client's (an advisor's Strategies is a section of its own).
+  | ({ kind: "strategies" } & StrategiesView);
 
 const NO_SCOPE: Record<string, string> = {};
 const NO_TRAIL: Crumb[] = [];
@@ -94,10 +80,10 @@ const PAGE_LABELS: Record<Exclude<PortfolioPage, "overview">, string> = {
   manualAssets: "Manual assets",
 };
 
-// The fields every view of one Wealth carries, beside its own: a client's (`{ client }`).
-type WealthScope = Record<string, string>;
+// The fields every view of one client's investments carries, beside its own: `{ client }`.
+type InvestmentsScope = Record<string, string>;
 
-const inScope = (view: unknown, scope: WealthScope) =>
+const inScope = (view: unknown, scope: InvestmentsScope) =>
   typeof view === "object" && view !== null && Object.entries(scope).every(([k, v]) => (view as Record<string, unknown>)[k] === v);
 
 // The strategies a history entry compares, those well formed.
@@ -108,20 +94,18 @@ const compareStrategiesOf = (raw: unknown): CompareStrategy[] | undefined => {
 };
 
 /**
- * The page the current history entry was on, read for this account (and this scope). `hasRoot`:
- * Wealth itself is a page, with the wallets under it; `hasRealEstate`: the real estate too.
+ * The page the current history entry was on, read for this account (and this scope).
+ * `hasStrategies`: Strategies, the investor's own.
  */
-function viewFromHistory(hasRealEstate: boolean, hasRoot: boolean, portfolios: Portfolio[], section: string, scope: WealthScope): WealthView {
+function viewFromHistory(hasStrategies: boolean, portfolios: Portfolio[], section: string, scope: InvestmentsScope): InvestmentsView {
   const entry = readDashboardEntry();
   const raw = entry?.section === section && inScope(entry.view, scope) ? entry.view : undefined;
   // A scope's own fields alone (a client opened on no page) are no page.
-  const view = (raw && "kind" in (raw as object) ? raw : undefined) as (WealthView | { kind: string; [k: string]: unknown }) | undefined;
+  const view = (raw && "kind" in (raw as object) ? raw : undefined) as (InvestmentsView | { kind: string; [k: string]: unknown }) | undefined;
   const investments = investmentsOf(portfolios);
-  const top: WealthView = hasRoot ? { kind: "root" } : { kind: "portfolio", uuid: investments?.uuid ?? "", page: "overview" };
+  const top: InvestmentsView = { kind: "portfolio", uuid: investments?.uuid ?? "", page: "overview" };
   if (!view) return top;
   switch (view.kind) {
-    case "root":
-      return top;
     case "portfolio": {
       const v = view as { uuid?: string; page?: string; simulation?: unknown; compareWith?: unknown };
       // A portfolio had tabs (`tab`), then Insights as its first page, before its own page.
@@ -131,14 +115,19 @@ function viewFromHistory(hasRealEstate: boolean, hasRoot: boolean, portfolios: P
       // No portfolio named (""): the investments, on that page (a link from outside, which
       // doesn't know which portfolio stands for them).
       if (v.uuid === "" && investments) return { kind: "portfolio", uuid: investments.uuid, page, ...compare };
-      if (!portfolios.some((p) => p.uuid === v.uuid)) return top;
+      const found = portfolios.find((p) => p.uuid === v.uuid);
+      if (!found) return top;
+      // A backtest is Strategies' (a link to one from before it was).
+      if (isBacktest(found)) {
+        return hasStrategies ? { kind: "strategies", ...strategiesViewOf({ page: "backtest", uuid: found.uuid, sub: page }) } : top;
+      }
       // The taxes are all the investments'.
       if (page === "taxes" && investments && v.uuid !== investments.uuid) return { kind: "portfolio", uuid: investments.uuid, page };
       return page === "strategy" && typeof v.simulation === "string"
         ? { kind: "portfolio", uuid: v.uuid!, page, simulation: v.simulation }
         : { kind: "portfolio", uuid: v.uuid!, page, ...compare };
     }
-    // Investments' own pages before they were the investments' (Manage / Investments / Alerts…).
+    // The investments' own pages before they were the investments' (Manage / Investments / Alerts…).
     case "investments":
     case "transactions":
     case "reports":
@@ -149,52 +138,41 @@ function viewFromHistory(hasRealEstate: boolean, hasRoot: boolean, portfolios: P
       const page = view.kind === "investments" ? "overview" : (view.kind as PortfolioPage);
       return { kind: "portfolio", uuid: investments.uuid, page };
     }
-    case "wallets":
-      return hasRoot ? { kind: "wallet", id: ALL_WALLETS, page: "insights" } : top;
-    case "wallet": {
-      // A wallet that's gone opens every wallet (see WalletNode).
-      const v = view as { id?: string; page?: WalletPage };
-      return hasRoot && typeof v.id === "string" ? { kind: "wallet", id: v.id, page: v.page ?? "insights" } : top;
-    }
-    case "realEstate": {
-      // A property that's gone opens the real estate's own page (see RealEstateNode).
-      const v = view as { page?: RealEstatePage; property?: unknown };
-      if (!hasRealEstate) return top;
-      return typeof v.property === "string"
-        ? { kind: "realEstate", page: v.page ?? "home", property: v.property }
-        : { kind: "realEstate", page: v.page ?? "home" };
-    }
+    // Strategies, and its name when it was Explore.
+    case "strategies":
+    case "explore":
+      return hasStrategies ? { kind: "strategies", ...strategiesViewOf(view) } : top;
     default:
-      // Manage's hub, Strategy and Explore (now Plan's), anything older.
+      // Wealth's own page (it was this section's), Manage's hub, anything older. (The wallets' and the real estate's land on
+      // their sections first, see the dashboard page.)
       return top;
   }
 }
 
 /**
- * WEALTH SECTION (investor; "performance" in the sidebar's ids) — everything the user owns, as
- * pages to go down through, each one the place to act on what it shows. It opens on Wealth itself
- * (WealthRoot: investments and wallets together); a client's Wealth, which has no wallets, on the
- * investments, which are "All portfolios" while they have two or more, otherwise their only portfolio.
+ * INVESTMENTS SECTION (investor; "performance" in the sidebar's ids) — the user's portfolios, as
+ * pages to go down through, each one the place to act on what it shows. It opens on the
+ * investments: "All portfolios" while there are two or more, otherwise the only portfolio.
  *
  * A portfolio's page (PortfolioNode) is its header (value, activity, actions, key figures) over
  * its Insights (PerformanceSection), whose Composition leads down to each portfolio (from All
  * portfolios) or holding. Its activity and its actions open pages of its own, always on that
  * portfolio, so none of them asks which one: Transactions, Alerts and Reports, and on All
- * portfolios Compare and Manage portfolios. A strategy's backtest opens the same page in Plan, under
- * Strategy (a link to one here goes there). The wallets are WalletNode's pages, the real estate
- * RealEstateNode's; a demo account's are sample data.
+ * portfolios Compare and Manage portfolios, and on each its Stress test and Projection (All
+ * portfolios' Taxes too). Beside All portfolios, Strategies (StrategiesNode): the user's
+ * strategies, each a backtest opening the same page as a portfolio's, and the ones advisors publish.
  *
  * Every page is a browser history entry, so back and forward move between them (see
  * lib/dashboardHistory). Opening a portfolio also makes it the selected one (PortfolioContext).
  *
- * An advisor's client's Wealth is the same pages (see ClientsSection): in the Clients section, each
- * view carrying the client (`scope`), under the client's crumbs (`rootTrail`), on that client's
- * portfolios (a PortfolioProvider of theirs), with no previews.
+ * An advisor's client's investments are the same pages (see ClientsSection): in the Clients
+ * section, each view carrying the client (`scope`), under the client's crumbs (`rootTrail`), on
+ * that client's portfolios (a PortfolioProvider of theirs), with no Strategies (the advisor's own).
  */
-export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO_SCOPE, rootTrail: outerTrail = NO_TRAIL, extraActions, onOpenTaxSettings }: {
+export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, scope = NO_SCOPE, rootTrail = NO_TRAIL, extraActions, onOpenTaxSettings }: {
   onNavigate: (section: string) => void;
   section?: string;
-  scope?: WealthScope;
+  scope?: InvestmentsScope;
   rootTrail?: Crumb[];
   // Added to the investments' actions: a client's own (their settings).
   extraActions?: PageAction[];
@@ -202,13 +180,9 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
   onOpenTaxSettings?: () => void;
 }) {
   const { portfolios, selectPortfolio, client } = usePortfolio();
-  const { isDemo: demoAccount } = useUser();
-  const { available: walletsAvailable } = useWallets();
   const { available: realEstateAvailable } = useRealEstate();
-  // Wealth itself, the wallets and the real estate are any investor's own, not a client's.
-  const hasRoot = !client && (demoAccount || walletsAvailable);
-  const hasRealEstate = hasRoot && realEstateAvailable;
-  const [view, setView] = useState<WealthView>(() => viewFromHistory(hasRealEstate, hasRoot, portfolios, section, scope));
+  const hasStrategies = !client;
+  const [view, setView] = useState<InvestmentsView>(() => viewFromHistory(hasStrategies, portfolios, section, scope));
 
   useEffect(() => {
     // Record the page it opened on, so the Sidebar marks it.
@@ -217,7 +191,7 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
     const onPopState = () => {
       const current = readDashboardEntry();
       if (current?.section !== section || !inScope(current.view ?? {}, scope)) return;
-      const next = viewFromHistory(hasRealEstate, hasRoot, portfolios, section, scope);
+      const next = viewFromHistory(hasStrategies, portfolios, section, scope);
       setView((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
     };
     window.addEventListener("popstate", onPopState);
@@ -226,7 +200,7 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const go = (next: WealthView) => {
+  const go = (next: InvestmentsView) => {
     if (next.kind === "portfolio") selectPortfolio(next.uuid);
     pushDashboardEntry({ section, view: { ...scope, ...next } });
     setView(next);
@@ -235,26 +209,9 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
   const openPortfolio = (uuid: string, page: PortfolioPage = "overview") => go({ kind: "portfolio", uuid, page });
 
   const investments = investmentsOf(portfolios);
-  // Wealth itself is a page only where there's more than the investments (the wallets).
-  const rootTrail: Crumb[] = hasRoot ? [{ label: "Wealth", onClick: () => go({ kind: "root" }) }] : outerTrail;
-
-  if (view.kind === "root" && hasRoot) {
-    return <WealthRoot investments={investments} onOpen={go} />;
-  }
-
-  if (view.kind === "wallet" && hasRoot) {
-    return <WalletNode key={view.id} id={view.id} page={view.page} rootTrail={rootTrail} onOpen={(id, page) => go({ kind: "wallet", id, page })} />;
-  }
-
-  if (view.kind === "realEstate" && hasRealEstate) {
-    return (
-      <RealEstateNode
-        page={view.page}
-        property={view.property}
-        rootTrail={rootTrail}
-        onOpen={(page, property) => go(property ? { kind: "realEstate", page, property } : { kind: "realEstate", page })}
-      />
-    );
+  const openStrategies = (next: StrategiesView) => go({ kind: "strategies", ...next });
+  if (view.kind === "strategies" && hasStrategies) {
+    return <StrategiesNode view={strategiesViewOf(view)} trail={rootTrail} onOpen={openStrategies} onOpenPortfolio={openPortfolio} onNavigate={onNavigate} />;
   }
 
   const portfolio = (view.kind === "portfolio" && portfolios.find((p) => p.uuid === view.uuid)) || investments;
@@ -262,9 +219,11 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
   const page = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.page : "overview";
   const simulation = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.simulation : undefined;
   const compareWith = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.compareWith : undefined;
-  // A backtest is a simulation, not something owned: it's Plan's (see BacktestRedirect).
+  // A backtest is a simulation, not something owned: it's Strategies' (a client's have none).
   if (isBacktest(portfolio)) {
-    return <BacktestRedirect uuid={portfolio.uuid} transactions={page === "transactions"} onNavigate={onNavigate} />;
+    if (!hasStrategies) return null;
+    const sub: BacktestPage = page === "transactions" || page === "stress" || page === "projection" ? page : "overview";
+    return <StrategiesNode view={{ page: "backtest", uuid: portfolio.uuid, sub }} trail={rootTrail} onOpen={openStrategies} onOpenPortfolio={openPortfolio} onNavigate={onNavigate} />;
   }
 
   // The pages above it: a portfolio sits under All portfolios.
@@ -286,7 +245,7 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
       compareWith={compareWith}
       onCompareWith={investments ? (strategy) => go({ kind: "portfolio", uuid: investments.uuid, page: "compare", compareWith: [strategy] }) : undefined}
       onOpenSimulation={(uuid) => go({ kind: "portfolio", uuid: portfolio.uuid, page: "strategy", simulation: uuid })}
-      onOpenRealEstate={hasRealEstate ? () => go({ kind: "realEstate", page: "home" }) : undefined}
+      onOpenRealEstate={!client && realEstateAvailable ? () => openRealEstatePage(onNavigate) : undefined}
       onOpenTaxSettings={onOpenTaxSettings ?? (() => {
         requestSettingsTab("preferences");
         onNavigate("settings");
@@ -296,26 +255,13 @@ export function WealthSection({ onNavigate, section = WEALTH_SECTION, scope = NO
   );
 }
 
-/**
- * A link to a backtest in Wealth (from before it moved, from history, from the Dashboard's
- * selected portfolio): opens it in Plan instead, in place of this entry, so back doesn't land
- * here again only to be sent back to Plan.
- */
-function BacktestRedirect({ uuid, transactions, onNavigate }: { uuid: string; transactions: boolean; onNavigate: (section: string) => void }) {
-  useEffect(() => {
-    pushDashboardEntry({ section: PLAN_SECTION, view: { page: "backtest", uuid, sub: transactions ? "transactions" : "overview" } }, true);
-    onNavigate(PLAN_SECTION);
-  }, [uuid, transactions, onNavigate]);
-  return null;
-}
-
 // ── A portfolio's page ────────────────────────────────────────────────────────────────────
 
 const pct = (v: number, digits = 1) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}%`;
 const toneOf = (v: number | null | undefined): "gain" | "loss" | undefined => (v == null || v === 0 ? undefined : v > 0 ? "gain" : "loss");
 
 /** One portfolio's side-by-side figures (GET /v1/portfolios/comparison), for its header. */
-function useComparisonEntry(uuid: string) {
+export function useComparisonEntry(uuid: string) {
   const { client } = usePortfolio();
   const clientUuid = client?.uuid ?? null;
   const [entry, setEntry] = useState<{ uuid: string; value: PortfolioComparisonEntry | null } | null>(null);
@@ -397,18 +343,18 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
 }
 
 /**
- * PORTFOLIO NODE — a portfolio's page in Wealth (a backtest's in Plan, under Strategy), or one of
+ * PORTFOLIO NODE — a portfolio's page in Investments (a backtest's under Strategies), or one of
  * the pages its header leads to. Its header says what it's worth and how it moved, counts its
  * activity (each count opens its page) and holds what can be done with it:
- * - All portfolios: Manage portfolios, Compare, and a new portfolio while it's Wealth's first page
- *   (with a Wealth page above it, that's where one is added). It's read only: its transactions
+ * - All portfolios: Manage portfolios, a new portfolio, Compare. It's read only: its transactions
  *   list every portfolio's, and a new one says which it goes in.
  * - a portfolio: its Transactions, Alerts and Reports, rename, delete (not the default one).
  * - a backtest: adopt its strategy, delete. Its figures are a simulation's (returns and risk over
  *   its run), its transactions generated and read only, and its Insights leave out what a
  *   simulation doesn't have (see PerformanceSection's `backtest`).
- * Under the header, its Insights (PerformanceSection), whose Composition opens each portfolio of
- * All portfolios. A demo account sees everything but can't change anything. An advisor on a
+ * Under the header, what to plan with it (PlanningTools: its Stress test and Projection, the
+ * investments' Taxes; a backtest's are its actions), then its Insights (PerformanceSection), whose
+ * Composition opens each portfolio of All portfolios. A demo account sees everything but can't change anything. An advisor on a
  * client's (PortfolioContext's `client`) can't rename or delete it; its alerts are the advisor's,
  * its asset categories the client's, and its Strategy page says whether the client sees it.
  */
@@ -433,7 +379,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   onOpenRealEstate?: () => void;
   // The investments' Taxes page: where the tax residence is set.
   onOpenTaxSettings?: () => void;
-  // A backtest's page (Plan's): where to go once it's deleted. Strategy by default.
+  // A backtest's page (Strategies'): where to go once it's deleted. Strategies by default.
   onBacktestGone?: () => void;
   onNavigate: (section: string) => void;
 }) {
@@ -452,7 +398,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
     if (investments) onOpen(investments.uuid, "categories");
   };
   const [dialog, setDialog] = useState<"new" | "rename" | "delete" | "adopt" | "publish" | "withdraw" | null>(null);
-  // An advisor's backtest: whether it's in Explore.
+  // An advisor's backtest: whether it's in the catalog.
   const { publications, reload: reloadPublications, canPublish } = useMyPublications();
   const publication = backtest ? publications?.get(portfolio.uuid) : undefined;
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
@@ -462,10 +408,6 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const [visit, setVisit] = useState(0);
 
   const open = (next: PortfolioPage) => onOpen(portfolio.uuid, next);
-  // Projection and Stress test: the investor's are Plan's, opened on this portfolio; a client's
-  // (an advisor's Plan has no client) and a backtest's are its own pages.
-  const openTool = (tool: "projection" | "stress") =>
-    client || backtest ? open(tool) : openPlanToolPage(onNavigate, tool, portfolio.uuid);
   const nodeCrumb: Crumb = {
     label: portfolio.name,
     onClick: () => {
@@ -477,10 +419,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
     },
   };
   const demo = isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
-  // New portfolios (and wallets) are added on Wealth's first page: Wealth itself where it's a page
-  // (an investor's own, with wallets), otherwise the investments.
-  const { available: walletsAvailable } = useWallets();
-  const addsPortfolios = isInvestments && !(!client && (isDemo || walletsAvailable));
+  // New portfolios are added on the investments' page.
+  const addsPortfolios = isInvestments;
 
   // ── What can be done with it ──
   const actions: PageAction[] = backtest
@@ -489,12 +429,12 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
         ...(canPublish ? publication
           ? [
               { label: "Edit the publication", onClick: () => setDialog("publish") },
-              { label: "Withdraw from Explore", onClick: () => { setWithdrawError(null); setDialog("withdraw"); } },
+              { label: "Withdraw from the catalog", onClick: () => { setWithdrawError(null); setDialog("withdraw"); } },
             ]
-          : [{ label: "Publish to Explore", onClick: () => setDialog("publish"), ...(publications === undefined ? { disabled: true } : {}) }]
+          : [{ label: "Publish to the catalog", onClick: () => setDialog("publish"), ...(publications === undefined ? { disabled: true } : {}) }]
           : []),
-        { label: "Stress test", onClick: () => openTool("stress") },
-        { label: "Projection", onClick: () => openTool("projection") },
+        { label: "Stress test", onClick: () => open("stress") },
+        { label: "Projection", onClick: () => open("projection") },
         { label: "Delete backtest", danger: true, onClick: () => setDialog("delete"), ...demo },
       ]
     : portfolio.isAggregate
@@ -503,9 +443,6 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new") }] : []),
           ...(real.length > 1 ? [{ label: "Compare", onClick: () => open("compare") }] : []),
           ...strategyAction,
-          { label: "Taxes", onClick: () => open("taxes") },
-          { label: "Stress test", onClick: () => openTool("stress") },
-          { label: "Projection", onClick: () => openTool("projection") },
           { label: "Asset categories", onClick: () => open("categories") },
           { label: "Manual assets", onClick: () => open("manualAssets") },
           ...extraActions,
@@ -516,14 +453,11 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           { label: "Alerts", onClick: () => open("alerts") },
           ...strategyAction,
           { label: "Reports", onClick: () => open("reports") },
-          { label: "Stress test", onClick: () => openTool("stress") },
-          { label: "Projection", onClick: () => openTool("projection") },
           // The only portfolio stands for the investments: the way to a second one is here, and to
           // the categories of everything held.
           ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new") }] : []),
           ...(real.length > 1 ? [{ label: "Compare", onClick: () => open("compare") }] : []),
           ...(isInvestments ? [
-            { label: "Taxes", onClick: () => open("taxes") },
             { label: "Asset categories", onClick: () => open("categories") },
             { label: "Manual assets", onClick: () => open("manualAssets") },
           ] : []),
@@ -601,7 +535,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
     try {
       const left = await deletePortfolio(portfolio.uuid);
       setDialog(null);
-      if (backtest) (onBacktestGone ?? (() => openPlanPage(onNavigate, "strategy")))();
+      if (backtest) (onBacktestGone ?? (() => openStrategiesPage(onNavigate)))();
       else {
         // From the list as it is now: deleting the second-to-last portfolio takes All portfolios
         // with it, and opening that would select a portfolio that's gone (a blank page).
@@ -649,7 +583,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       )}
       {dialog === "withdraw" && publication && (
         <ConfirmDialog
-          title={`Withdraw "${portfolio.name}" from Explore?`}
+          title={`Withdraw "${portfolio.name}" from the catalog?`}
           description="It leaves the catalog: nobody can read it there any more. The backtest stays yours, to publish again."
           confirmLabel="Withdraw"
           confirming={deleting}
@@ -695,7 +629,12 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           backtest={backtest}
           trail={trail}
           pageLabel={portfolio.name}
-          top={header}
+          top={backtest ? header : (
+            <>
+              {header}
+              <PlanningTools taxes={isInvestments} onOpen={open} />
+            </>
+          )}
           onOpenPortfolio={(uuid) => onOpen(uuid)}
           onNavigate={onNavigate}
           comparison={entry ?? null}
@@ -839,6 +778,42 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   );
 }
 
+/**
+ * PLANNING TOOLS — what a portfolio's page plans with, under its header: its Stress test and
+ * Projection, each its own page, and the investments' Taxes (the owner's, on every portfolio).
+ */
+function PlanningTools({ taxes, onOpen }: { taxes: boolean; onOpen: (page: PortfolioPage) => void }) {
+  const tools: { page: PortfolioPage; icon: typeof Calculator; title: string; text: string }[] = [
+    ...(taxes ? [{ page: "taxes" as const, icon: Calculator, title: "Taxes", text: "The tax on sales and income, year by year, and the losses carried forward." }] : []),
+    { page: "stress", icon: ShieldAlert, title: "Stress test", text: "How a past crisis, or the shocks picked, would hit it as it is today." },
+    { page: "projection", icon: LineChart, title: "Projection", text: "Where it could go from here: a goal, withdrawals, the safe withdrawal." },
+  ];
+  return (
+    <Module>
+      <ModuleHead title="Plan" />
+      <div className={`${MODULE_BODY} grid grid-cols-1 ${tools.length === 3 ? "md:grid-cols-3" : "sm:grid-cols-2"} gap-3`}>
+        {tools.map((t) => (
+          <button
+            key={t.page}
+            type="button"
+            onClick={() => onOpen(t.page)}
+            className="group flex items-start gap-3 p-4 rounded-2xl border border-[#EEE9DD] text-left hover:border-[#C49A3C]/60 hover:bg-[#FBFAF6] transition-colors"
+          >
+            <span className="w-9 h-9 rounded-xl bg-[#F7F5EF] text-[#78716c] flex items-center justify-center shrink-0 group-hover:bg-[#C49A3C]/15 group-hover:text-[#C49A3C] transition-colors">
+              <t.icon className="h-[18px] w-[18px]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14px] font-bold text-[#1c1917]">{t.title}</span>
+              <span className="block mt-0.5 text-xs text-[#78716c] leading-relaxed">{t.text}</span>
+            </span>
+            <ChevronRight className="h-4 w-4 text-[#a8a29e] mt-2.5 shrink-0" />
+          </button>
+        ))}
+      </div>
+    </Module>
+  );
+}
+
 function ReadOnlyNote({ children }: { children: React.ReactNode }) {
   return (
     <p className="rounded-2xl border border-[#C49A3C]/30 bg-[#C49A3C]/10 px-4 py-3 text-[13px] font-semibold text-[#8A6A28]">
@@ -846,290 +821,3 @@ function ReadOnlyNote({ children }: { children: React.ReactNode }) {
     </p>
   );
 }
-
-// ── Wealth itself ────────────────────────────────────────────────────────────────────────────
-
-const WALLETS_COLOR = "#0f766e";
-const INVESTMENTS_COLOR = "#C49A3C";
-const REAL_ESTATE_COLOR = "#eb6834";
-
-/**
- * WEALTH ROOT — everything an investor owns, the top of Wealth: the net worth, the investments
- * (All portfolios), the wallets and the real estate side by side, each opening its page, the
- * wallets' cash flow and what it's all in. New portfolios, wallets and properties are added here, at
- * the top of Wealth (a demo account, read only, can add none). The wallets and the real estate (its equity:
- * the value at the user's share less the mortgages) are added up in the user's reference currency;
- * when that isn't the investments' they're shown but not added to the net worth.
- */
-function WealthRoot({ investments, onOpen }: { investments: Portfolio | undefined; onOpen: (view: WealthView) => void }) {
-  const { isDemo } = useUser();
-  const { sample, changed, wallets: allWallets } = useWallets();
-  const { available: realEstateShown } = useRealEstate();
-  const realEstate = useRealEstateOverview(realEstateShown);
-  const entry = useComparisonEntry(investments?.uuid ?? "");
-  const [dialog, setDialog] = useState<"portfolio" | "wallet" | "property" | null>(null);
-  const overview = useWalletsOverview();
-  const [hovered, setHovered] = useState<string | null>(null);
-  const invested = entry?.value?.marketValue ?? null;
-  const currency = entry?.value?.currency ?? overview?.currency ?? "EUR";
-  const walletCount = overview?.wallets.length ?? 0;
-  const walletsBalance = overview?.balance ?? 0;
-  // The wallets count in the net worth when they're in its currency.
-  const walletsCounted = overview && overview.currency === currency ? walletsBalance : 0;
-  // The real estate's equity, likewise.
-  const realEstateEquity = realEstate?.equity ?? 0;
-  const realEstateCounted = realEstate && realEstate.currency === currency ? realEstateEquity : 0;
-  const total = (invested ?? 0) + walletsCounted + realEstateCounted;
-
-  const months = overview?.months ?? [];
-  const recent = months.slice(-6);
-  const avgSpending = recent.reduce((sum, m) => sum + m.spending, 0) / Math.max(recent.length, 1);
-  const saved = walletsSavingsRate(months.slice(-1));
-  const [breakdown, setBreakdown] = useState<"nav" | "class">("nav");
-  const sampleNote = sample ? " · sample data" : "";
-  const walletsCurrency = overview?.currency ?? currency;
-
-  // Investments & wallets, each opening its page; or what it's all in, by asset class (the
-  // investments' allocation, the wallets as cash), to read only.
-  const navParts: RootPart[] = [
-    ...(investments ? [{
-      key: "investments",
-      label: investments.isAggregate ? investments.name : "Investments",
-      sub: investments.isAggregate ? "Every portfolio together" : investments.name,
-      value: invested ?? 0,
-      color: INVESTMENTS_COLOR,
-      onOpen: () => onOpen({ kind: "portfolio", uuid: investments.uuid, page: "overview" }),
-    }] : []),
-    {
-      key: "wallets",
-      label: "All wallets",
-      sub: walletCount === 0
-        ? "No wallets yet: add your accounts, cards and cash"
-        : `${walletCount} ${walletCount === 1 ? "wallet" : "wallets"}${walletsCounted === 0 && walletsBalance !== 0 ? ` · ${formatCurrency(walletsBalance, walletsCurrency, 0)}, not added in` : ""}${sampleNote}`,
-      value: walletsCounted,
-      color: WALLETS_COLOR,
-      onOpen: () => onOpen({ kind: "wallet", id: ALL_WALLETS, page: "insights" }),
-    },
-    ...(realEstateShown ? [{
-      key: "realEstate",
-      label: "Real estate",
-      sub: !realEstate || realEstate.propertyCount === 0
-        ? realEstate === null ? "Can't be added up right now: an exchange rate is missing" : "No properties yet"
-        : `${realEstate.propertyCount} ${realEstate.propertyCount === 1 ? "property" : "properties"}, equity${realEstateCounted === 0 && realEstateEquity !== 0 ? ` · ${formatCurrency(realEstateEquity, realEstate.currency, 0)}, not added in` : ""}${sampleNote}`,
-      value: realEstateCounted,
-      color: REAL_ESTATE_COLOR,
-      onOpen: () => onOpen({ kind: "realEstate", page: "home" }),
-    }] : []),
-  ];
-  const classParts: RootPart[] = [
-    ...(entry?.allocation ?? []).map((a, i) => ({
-      key: `class:${a.assetClass}`,
-      label: a.assetClass,
-      value: a.marketValue,
-      color: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length],
-    })),
-    ...(walletsCounted > 0 ? [{ key: "class:cash", label: "Cash", sub: `In your wallets${sampleNote}`, value: walletsCounted, color: WALLETS_COLOR }] : []),
-    ...(realEstateCounted > 0 ? [{ key: "class:realEstate", label: "Real estate", sub: `Equity in your properties${sampleNote}`, value: realEstateCounted, color: REAL_ESTATE_COLOR }] : []),
-  ].sort((a, b) => b.value - a.value);
-  // The largest few slices (ROOT_TOP); any others as one "N more" (named in it, to read only).
-  const allParts = breakdown === "nav" ? navParts : classParts;
-  const rest = allParts.slice(ROOT_TOP);
-  const parts: RootPart[] = rest.length > 0
-    ? [
-        ...allParts.slice(0, ROOT_TOP),
-        { key: "more", label: `${rest.length} more`, sub: rest.map((p) => p.label).join(", "), value: rest.reduce((sum, p) => sum + p.value, 0), color: "#d6d3d1" },
-      ]
-    : allParts;
-  // The donut draws what's worth something (a card in debt takes no room); the list shows it all.
-  const slices = parts.filter((p) => p.value > 0);
-  const partsTotal = slices.reduce((sum, p) => sum + p.value, 0);
-  const share = (v: number) => (partsTotal > 0 ? Math.max(0, (v / partsTotal) * 100) : 0);
-  const focus = parts.find((p) => p.key === hovered);
-
-  return (
-    <div className="space-y-[22px] pb-12">
-      <PageHeader
-        eyebrow="Wealth"
-        badge={sample ? <PreviewBadge label="Sample data" /> : undefined}
-        title="Wealth"
-        value={invested === null && entry === undefined ? null : formatCurrency(total, currency, 0)}
-        note={realEstateShown ? "Your investments, wallets and real estate" : "Your investments and your wallets"}
-        actions={[
-          { label: "Add portfolio", primary: true, onClick: () => setDialog("portfolio"), ...(isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {}) },
-          { label: "Add wallet", onClick: () => setDialog("wallet"), ...(isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {}) },
-          ...(realEstateShown ? [{ label: "Add property", onClick: () => setDialog("property"), ...(isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {}) }] : []),
-        ]}
-        figures={[
-          { label: "Net worth", value: formatCurrency(total, currency, 0) },
-          { label: "Invested", value: total > 0 ? `${(((invested ?? 0) / total) * 100).toFixed(0)}%` : "—", sub: invested !== null ? `${formatCurrency(invested, currency, 0)} in portfolios` : undefined },
-          {
-            label: "Liquidity",
-            value: overview?.balance == null ? "—" : formatCurrency(overview.balance, walletsCurrency, 0),
-            sub: avgSpending > 0 && walletsBalance > 0 ? `${(walletsBalance / avgSpending).toFixed(1)} months of spending` : "In your wallets",
-          },
-          { label: "Saved this month", value: saved !== null ? `${saved.toFixed(0)}%` : "—", tone: toneOf(saved) },
-        ]}
-      />
-
-      <Module>
-        <ModuleHead
-          title="Composition"
-          desc="Open a slice or a row to go down a level."
-          right={
-            <div role="group" aria-label="Breakdown" className="flex flex-wrap gap-1.5">
-              {(["nav", "class"] as const).map((b) => (
-                <button
-                  key={b}
-                  type="button"
-                  aria-pressed={b === breakdown}
-                  onClick={() => { setBreakdown(b); setHovered(null); }}
-                  className={`px-2.5 py-1 rounded-full border text-[11.5px] font-semibold transition-colors ${
-                    b === breakdown ? "bg-[#1c1917] border-[#1c1917] text-white" : "border-[#E0DACC] text-[#78716c] hover:text-[#1c1917]"
-                  }`}
-                >
-                  {b === "nav" ? "Investments & wallets" : "By asset class"}
-                </button>
-              ))}
-            </div>
-          }
-        />
-        <div className={`${MODULE_BODY} space-y-3`}>
-          <div className="grid grid-cols-1 md:grid-cols-[210px_minmax(0,1fr)] gap-[26px] items-center">
-            <div className="relative w-full max-w-[210px] aspect-square mx-auto">
-              <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 210, height: 210 }}>
-                <PieChart>
-                  <Pie data={slices.length ? slices : [{ key: "none", label: "", value: 1, color: "#EEE9DD" }]} dataKey="value" nameKey="label" innerRadius="67%" outerRadius="98%" paddingAngle={slices.length > 1 ? 1.4 : 0} stroke="none" isAnimationActive={false} onMouseLeave={() => setHovered(null)}>
-                    {(slices.length ? slices : [{ key: "none", color: "#EEE9DD" } as RootPart]).map((p) => (
-                      <Cell key={p.key} fill={p.color} opacity={hovered && hovered !== p.key ? 0.25 : 1} cursor={p.onOpen ? "pointer" : "default"} onMouseEnter={() => p.key !== "none" && setHovered(p.key)} onClick={p.onOpen} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-[22%] text-center">
-                <span className="text-xl font-bold text-[#1c1917] tabular-nums">
-                  {focus ? `${share(focus.value).toFixed(1)}%` : formatCurrency(partsTotal, currency, 0)}
-                </span>
-                <span className="text-[10.5px] text-[#78716c] truncate max-w-full">{focus ? focus.label : "total"}</span>
-              </div>
-            </div>
-            <ul className="min-w-0">
-              {parts.map((p, i) => {
-                const content = (
-                  <>
-                    <span className="h-2.5 w-2.5 rounded-[3px] shrink-0" style={{ background: p.color }} />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2 font-semibold text-[#1c1917] truncate">{p.label}</span>
-                      {p.sub && <span className="block truncate text-[11.5px] font-medium text-[#78716c]">{p.sub}</span>}
-                    </span>
-                    <span className="shrink-0 font-bold text-[#1c1917] tabular-nums">{formatCurrency(p.value, currency, 0)}</span>
-                    <span className="hidden sm:block shrink-0 min-w-[92px] text-right text-xs text-[#78716c] tabular-nums">{share(p.value).toFixed(1)}%</span>
-                    <span className="w-[18px] shrink-0">{p.onOpen && <ChevronRight className="h-4 w-4 text-[#a8a29e]" />}</span>
-                  </>
-                );
-                const row = `w-full flex items-center gap-3 px-2.5 py-[11px] rounded-[14px] text-left transition-colors ${i < parts.length - 1 ? "border-b border-[#EEE9DD]" : ""} ${hovered === p.key ? "bg-[#F7F5EF]" : ""}`;
-                return (
-                  <li key={p.key} onMouseEnter={() => setHovered(p.key)} onMouseLeave={() => setHovered(null)}>
-                    {p.onOpen ? (
-                      <button type="button" onClick={p.onOpen} className={`${row} hover:bg-[#F7F5EF]`}>{content}</button>
-                    ) : (
-                      <div className={row}>{content}</div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        </div>
-      </Module>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-[22px]">
-        <Module>
-          <ModuleHead
-            title="Cash Flow"
-            desc={`What came into your wallets and what went out, month by month, transfers between them left out.${sample ? " Sample data." : ""}`}
-          />
-          <div className={`${MODULE_BODY} space-y-4`}>
-            {recent.length === 0 ? (
-              <p className="text-[12.5px] text-[#a8a29e]">
-                {overview === undefined ? "Loading…" : walletCount === 0 ? "Add a wallet to see what comes in and goes out." : "Can't be added up right now: an exchange rate is missing."}
-              </p>
-            ) : (
-              <>
-                <Figs>
-                  <Fig label="In · 6 months" value={formatCurrency(recent.reduce((sum, m) => sum + m.income, 0), walletsCurrency, 0)} tone="gain" strong />
-                  <Fig label="Out · 6 months" value={formatCurrency(recent.reduce((sum, m) => sum + m.spending, 0), walletsCurrency, 0)} />
-                  <Fig label="Savings rate" value={rateText(walletsSavingsRate(recent))} />
-                </Figs>
-                <div className="h-[150px]">
-                  <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 400, height: 150 }}>
-                    <BarChart data={recent.map((m) => ({ label: monthLabel(m.month), income: m.income, expenses: -m.spending }))} stackOffset="sign" margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
-                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#a8a29e" }} axisLine={false} tickLine={false} />
-                      <YAxis tickFormatter={(v) => formatCompact(Number(v))} tick={{ fontSize: 10, fill: "#a8a29e" }} axisLine={false} tickLine={false} width={40} />
-                      <Tooltip formatter={(v, name) => [formatCurrency(Math.abs(Number(v)), walletsCurrency, 0), name === "income" ? "In" : "Out"]} contentStyle={{ borderRadius: 12, border: "1px solid #E0DACC", fontSize: 12 }} />
-                      <ReferenceLine y={0} stroke="#a8a29e" />
-                      <Bar dataKey="income" stackId="flow" fill="#1baf7a" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-                      <Bar dataKey="expenses" stackId="flow" fill="#e11d48" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </>
-            )}
-          </div>
-        </Module>
-        <Module>
-          <ModuleHead title="Asset Classes" desc="What your wealth is in, across every portfolio, wallet and property." />
-          <div className={`${MODULE_BODY} space-y-3`}>
-            {entry === undefined ? (
-              <p className="text-[12.5px] text-[#a8a29e]">Loading…</p>
-            ) : classParts.length === 0 ? (
-              <p className="text-[12.5px] text-[#a8a29e]">Nothing held yet.</p>
-            ) : (
-              <HBars
-                max={100}
-                rows={classParts.map((p) => {
-                  const pctOfAll = classTotal(classParts) > 0 ? (p.value / classTotal(classParts)) * 100 : 0;
-                  return { key: p.key, label: p.label, value: pctOfAll, figure: `${pctOfAll.toFixed(0)}%`, color: p.color };
-                })}
-              />
-            )}
-          </div>
-        </Module>
-      </div>
-      {dialog === "portfolio" && <NewPortfolioDialog onClose={() => setDialog(null)} />}
-      {dialog === "property" && (
-        <RealEstateTransactionDialog
-          initialKind="purchase"
-          onClose={() => setDialog(null)}
-          onSaved={(uuid) => { setDialog(null); onOpen({ kind: "realEstate", page: "property", property: uuid }); }}
-        />
-      )}
-      {dialog === "wallet" && (
-        <WalletFormDialog
-          takenColors={allWallets.map((w) => w.color ?? "")}
-          onClose={() => setDialog(null)}
-          onSaved={(created) => {
-            setDialog(null);
-            changed();
-            onOpen({ kind: "wallet", id: created.uuid, page: "insights" });
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-interface RootPart {
-  key: string;
-  label: string;
-  sub?: string;
-  value: number;
-  color: string;
-  onOpen?: () => void;
-}
-
-// Slices on Wealth's donut before the rest are one "N more".
-const ROOT_TOP = 3;
-
-const classTotal = (parts: RootPart[]) => parts.reduce((sum, p) => sum + p.value, 0);
-
-const rateText = (rate: number | null) => (rate === null ? "—" : `${Math.round(rate)}%`);

@@ -16,29 +16,85 @@ import DashboardOverview from "../../components/dashboard/DashboardOverview";
 import AdvisorDashboardOverview from "../../components/dashboard/AdvisorDashboardOverview";
 import { SettingsSection } from "../../components/dashboard/SettingsSection";
 import { NotificationsSection } from "../../components/dashboard/NotificationsSection";
-import { NewsPageSection } from "../../components/dashboard/NewsSection";
-import { WealthSection } from "../../components/dashboard/WealthSection";
-import { PlanSection } from "../../components/dashboard/PlanSection";
-import { JournalSection } from "../../components/dashboard/JournalSection";
+import { InvestmentsSection } from "../../components/dashboard/InvestmentsSection";
+import { StrategiesSection, isStrategiesView, strategiesViewOf } from "../../components/dashboard/StrategiesSection";
+import { ExploreSection, exploreViewFrom, exploreViewOf } from "../../components/dashboard/ExploreSection";
+import { WalletsSection } from "../../components/dashboard/wallets/WalletsSection";
+import { RealEstateSection } from "../../components/dashboard/realEstate/RealEstateSection";
 import { AssetSection } from "../../components/dashboard/AssetSection";
 import { SectionTrailProvider } from "../../components/dashboard/SectionTrail";
 import { Loader2 } from "lucide-react";
 import { DemoBanner } from "../../components/preview/DemoBanner";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
-import { ASSET_SECTION, CLIENTS_SECTION, EXPLORE_SECTION, JOURNAL_SECTION, PLAN_SECTION, WEALTH_SECTION, openPortfolioPage } from "../../lib/dashboardNav";
+import {
+  ASSET_SECTION, CLIENTS_SECTION, EXPLORE_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, PLAN_SECTION,
+  REAL_ESTATE_SECTION, STRATEGIES_SECTION, WALLETS_SECTION, openPortfolioPage,
+} from "../../lib/dashboardNav";
 
 // 'reports' and 'profile' are omitted here on purpose: neither investors nor advisors have a
 // sidebar entry for them anymore (Reports and Profile are hidden for now, Profile's
 // language/currency moved into Settings), so a stale deep link should fall back to overview
 // rather than open them.
-// 'performance' is the investor's Wealth (an advisor's Insights).
-// 'discover' is gone (its News, Journal and Explore are sections, or Plan's, again): kept so a link
-// or history entry to it lands on where its page went, see below.
-const VALID_SECTIONS = ['overview', 'clients', 'upload', 'performance', 'plan', 'news', EXPLORE_SECTION, JOURNAL_SECTION, ASSET_SECTION, 'discover', 'settings', 'notifications'];
-// Sections that became part of another: the Wallets are Wealth's. A link or a history entry to the
-// old one lands on the new. (An investor's Explore is Plan's, see below.)
-const MOVED_SECTIONS: Record<string, string> = { blog: JOURNAL_SECTION, wallets: WEALTH_SECTION };
+// 'performance' is the investor's Investments (once Wealth; an advisor's Insights).
+// Some are gone, kept so a link or history entry to them lands on where their pages went (see
+// relocate, below): 'discover' (its News, Journal and Explore), 'plan' (its Projection and Stress
+// test are each portfolio's, its Strategy is Strategies), the Journal and News (Explore's).
+const VALID_SECTIONS = [
+  'overview', 'clients', 'upload', INVESTMENTS_SECTION, WALLETS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, EXPLORE_SECTION,
+  ASSET_SECTION, 'settings', 'notifications', PLAN_SECTION, NEWS_SECTION, JOURNAL_SECTION, 'discover',
+];
+// Sections that became another, under a new name. A link or a history entry to the old one lands
+// on the new.
+const MOVED_SECTIONS: Record<string, string> = { blog: JOURNAL_SECTION };
 const resolveSection = (section: string | null | undefined) => (section ? MOVED_SECTIONS[section] ?? section : section);
+
+/**
+ * Where a page of a section that's gone (or that's another's for this account) went: the section
+ * and the page to open in place of the entry, or null when it's where it should be.
+ * - Plan: its Projection and Stress test, the portfolio's own (the investments when it named none);
+ *   the rest, Strategies.
+ * - Strategies, and the old Explore's catalog pages: an advisor's own section; an investor's, under
+ *   Investments.
+ * - The Journal and News: Explore's. Discover: Explore's, or Strategies' for its old Explore.
+ * - Wealth's wallets and real estate: their own sections.
+ * - An advisor's Transactions and Insights: each client's own pages (Clients); they have no
+ *   wallets or real estate.
+ */
+function relocate(section: string, raw: unknown, isAdvisor: boolean): { section: string; view: unknown } | null {
+  const view = (typeof raw === "object" && raw !== null ? raw : {}) as { kind?: string; page?: string; portfolio?: unknown };
+  const strategies = (v: unknown) => isAdvisor
+    ? { section: STRATEGIES_SECTION, view: strategiesViewOf(v) }
+    : { section: INVESTMENTS_SECTION, view: { kind: "strategies", ...strategiesViewOf(v) } };
+  switch (section) {
+    case 'upload':
+      return isAdvisor ? { section: CLIENTS_SECTION, view: undefined } : null;
+    case INVESTMENTS_SECTION:
+      if (isAdvisor) return { section: CLIENTS_SECTION, view: undefined };
+      if (view.kind === "wallet") return { section: WALLETS_SECTION, view };
+      if (view.kind === "realEstate") return { section: REAL_ESTATE_SECTION, view };
+      return null;
+    case WALLETS_SECTION:
+    case REAL_ESTATE_SECTION:
+      return isAdvisor ? { section: 'overview', view: undefined } : null;
+    case PLAN_SECTION:
+      if (!isAdvisor && (view.page === "projection" || view.page === "stress")) {
+        return { section: INVESTMENTS_SECTION, view: { kind: "portfolio", uuid: typeof view.portfolio === "string" ? view.portfolio : "", page: view.page } };
+      }
+      return strategies(view);
+    case STRATEGIES_SECTION:
+      return isAdvisor ? null : strategies(view);
+    case EXPLORE_SECTION:
+      return isStrategiesView(view) ? strategies(view) : null;
+    case NEWS_SECTION:
+    case JOURNAL_SECTION:
+      return { section: EXPLORE_SECTION, view: exploreViewFrom(section, view) };
+    case 'discover':
+      if (isAdvisor || view.page === "explore") return strategies(view);
+      return { section: EXPLORE_SECTION, view: view.page === "journal" ? exploreViewOf(view) : { page: "news" } };
+    default:
+      return null;
+  }
+}
 
 /**
  * DashboardPage - Main protected dashboard view.
@@ -69,7 +125,7 @@ function DashboardPageContent() {
 
   // The browser's back and forward buttons move between sections too: each section opened is a
   // history entry, and landing on one shows its section (the section's own pages follow the
-  // same entry, see WealthSection).
+  // same entry, see InvestmentsSection).
   useEffect(() => {
     if (readDashboardEntry()?.section !== activeSection) pushDashboardEntry({ section: activeSection }, true);
     const onPopState = () => {
@@ -108,27 +164,13 @@ function DashboardPageContent() {
 
   const isAdvisor = user?.role === 'ADVISOR';
 
-  // Where an old section's pages went: Discover's (an advisor's was Explore only) and Explore,
-  // under Plan's Strategy, the strategy open in it staying open; an advisor's Transactions and
-  // Insights, each client's own pages now (the Clients section).
+  // Where an old section's page went, in place of its entry (see relocate).
   useEffect(() => {
     if (!user) return;
-    if (isAdvisor && (activeSection === 'upload' || activeSection === 'performance')) {
-      pushDashboardEntry({ section: CLIENTS_SECTION }, true);
-      setActiveSection(CLIENTS_SECTION);
-      return;
-    }
-    const isExplore = activeSection === EXPLORE_SECTION;
-    if (activeSection !== 'discover' && !isExplore) return;
-    const view = readDashboardEntry()?.view as { page?: string; publicationId?: string; slug?: string } | undefined;
-    const page = isExplore || isAdvisor ? 'explore' : view?.page;
-    const publicationId = typeof view?.publicationId === 'string' ? view.publicationId : undefined;
-    const [section, next]: [string, unknown] =
-      page === 'explore'
-        ? [PLAN_SECTION, { page: 'explore', ...(publicationId ? { publicationId } : {}) }]
-        : page === 'journal' ? [JOURNAL_SECTION, view] : ['news', undefined];
-    pushDashboardEntry({ section, view: next }, true);
-    setActiveSection(section);
+    const moved = relocate(activeSection, readDashboardEntry()?.view, isAdvisor);
+    if (!moved) return;
+    pushDashboardEntry({ section: moved.section, view: moved.view }, true);
+    setActiveSection(moved.section);
   }, [user, isAdvisor, activeSection]);
 
   // An investor's transactions live in each portfolio's page now, so a link to the old
@@ -162,25 +204,30 @@ function DashboardPageContent() {
         return isAdvisor ? null : <FileUploader />;
       case 'reports':
         return isAdvisor ? <AdvisorDashboardOverview onNavigate={navigate} /> : <ReportsList portfolioUuid={portfolio!.uuid} />;
-      case 'performance':
-        // An advisor's Insights are each client's portfolio's, see above.
-        return isAdvisor ? null : <WealthSection key={sectionVisit} onNavigate={navigate} />;
-      case 'plan':
-        // An advisor's is Strategy only: their backtests, to adopt on clients' portfolios or publish.
-        return <PlanSection key={sectionVisit} onNavigate={navigate} />;
-      case 'news':
-        return <NewsPageSection />;
+      case INVESTMENTS_SECTION:
+        // An advisor's Insights are each client's portfolio's (see relocate).
+        return isAdvisor ? null : <InvestmentsSection key={sectionVisit} onNavigate={navigate} />;
+      case WALLETS_SECTION:
+        return isAdvisor ? null : <WalletsSection key={sectionVisit} />;
+      case REAL_ESTATE_SECTION:
+        return isAdvisor ? null : <RealEstateSection key={sectionVisit} />;
+      case STRATEGIES_SECTION:
+        // An advisor's: their strategies, to adopt on clients' portfolios or publish, and the
+        // catalog. An investor's is Investments', where it lands (see relocate).
+        return isAdvisor ? <StrategiesSection key={sectionVisit} onNavigate={navigate} /> : null;
       case EXPLORE_SECTION:
-        // Until it lands on Plan's, see above.
-        return null;
+        return <ExploreSection key={sectionVisit} />;
+      case PLAN_SECTION:
+      case NEWS_SECTION:
       case JOURNAL_SECTION:
-        return <JournalSection key={sectionVisit} />;
+        // Until it lands where its pages went (see relocate).
+        return null;
       case ASSET_SECTION:
         // The investor's position in the portfolio selected, when they hold it there; an advisor
         // has none of their own to read it in.
         return <AssetSection portfolioUuid={isAdvisor ? undefined : portfolio?.uuid} />;
       case 'discover':
-        // Until it lands where its page went, see above.
+        // Until it lands where its page went (see relocate).
         return null;
       case 'profile':
         return isAdvisor ? <AdvisorProfileSection /> : <ProfileSection />;

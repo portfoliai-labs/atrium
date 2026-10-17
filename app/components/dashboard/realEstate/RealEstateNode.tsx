@@ -37,7 +37,7 @@ const pct = (v: number, digits = 1) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Mat
 const toneOf = (v: number | null | undefined): "gain" | "loss" | undefined => (v == null || v === 0 ? undefined : v > 0 ? "gain" : "loss");
 
 /**
- * REAL ESTATE NODE — the real estate in Wealth, built like All wallets' page. Its own page: a
+ * REAL ESTATE NODE — the real estate section's pages, built like All wallets' page. Its own page: a
  * header with what the properties are worth at the user's share, how that stands against what was
  * put in, and the year's figures (equity, debt, rent, cash flow), its activity (Transactions,
  * Insights) and the way to add to it; under it the value since the first purchase against what was

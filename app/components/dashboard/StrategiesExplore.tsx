@@ -38,7 +38,7 @@ const byline = (s: PublishedStrategy) => `By ${s.authorName ?? "an advisor"} · 
 
 // ── The disclaimer ────────────────────────────────────────────────────────────────────────
 
-/** What every figure in the catalog is, and isn't: on Explore and on each strategy's page. */
+/** What every figure in the catalog is, and isn't: on Strategies and on each strategy's page. */
 function SimulationDisclaimer() {
   return (
     <div className="flex items-start gap-3 rounded-2xl border border-dashed border-sky-300 bg-sky-50/70 px-4 py-3.5">
@@ -113,7 +113,7 @@ function cardFigures(s: PublishedStrategy, horizon: FilterHorizon | null): Horiz
   return null;
 }
 
-// ── Explore: the list ─────────────────────────────────────────────────────────────────────
+// ── The catalog: the list ─────────────────────────────────────────────────────────────────
 
 interface Filters {
   horizon: FilterHorizon | null;
@@ -130,31 +130,17 @@ const positive = (v: string) => {
 };
 
 /**
- * STRATEGIES EXPLORE — the strategies catalog (GET /v1/explore/strategies): strategy portfolios
- * advisors published, for every user to read. Newest first by default, with no horizon; picking a
+ * STRATEGIES CATALOG — the strategies catalog (GET /v1/explore/strategies): strategy portfolios
+ * advisors published, for every user to read, as a part of Strategies' page (see StrategiesSection).
+ * Newest first by default, with no horizon; picking a
  * horizon (1, 3, 5 or 10 years) shows each strategy's figures over it and lets the user filter by
  * volatility and drawdown and sort by a figure, which the backend only does on a horizon, so the
  * filters stay off without one. Every figure is a simulation, gross of its author's costs (shown next
  * to them), labelled so,
  * under a disclaimer; nothing here is matched to the viewer, and nothing can be copied or adopted.
- * A strategy opens its page (StrategyDetail).
+ * A strategy opens its page (PublishedStrategyPage).
  */
-export function StrategiesExplore({ trail, publicationId, onOpen, onCompare, onNavigate }: {
-  trail: Crumb[];
-  // The strategy open, if any.
-  publicationId?: string;
-  onOpen: (publicationId: string | null) => void;
-  // Opens Wealth's Compare on these strategies, beside the user's portfolios.
-  onCompare?: (strategies: CompareStrategy[]) => void;
-  onNavigate?: (section: string) => void;
-}) {
-  if (publicationId) {
-    return <StrategyDetail publicationId={publicationId} trail={[...trail, { label: "Explore", onClick: () => onOpen(null) }]} onCompare={onCompare} onNavigate={onNavigate} />;
-  }
-  return <StrategiesList trail={trail} onOpen={onOpen} />;
-}
-
-function StrategiesList({ trail, onOpen }: { trail: Crumb[]; onOpen: (publicationId: string) => void }) {
+export function StrategiesCatalog({ onOpen }: { onOpen: (publicationId: string) => void }) {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   // The figure filters as last sent: they follow the inputs once typing stops.
   const [applied, setApplied] = useState({ maxVolatilityPct: "", maxDrawdownPct: "" });
@@ -209,10 +195,7 @@ function StrategiesList({ trail, onOpen }: { trail: Crumb[]; onOpen: (publicatio
   const to = Math.min(total, (page + 1) * PAGE_SIZE);
 
   return (
-    <div className="space-y-6 pb-12">
-      <Breadcrumb trail={trail} current="Explore" />
-      {/* Titled as Strategy, Projection and Stress test are. */}
-      <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Explore strategies</h1>
+    <div className="space-y-6">
       <SimulationDisclaimer />
 
       <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-6 space-y-4">
@@ -303,7 +286,6 @@ function StrategiesList({ trail, onOpen }: { trail: Crumb[]; onOpen: (publicatio
           </div>
         </>
       )}
-
     </div>
   );
 }
@@ -412,13 +394,13 @@ function PageButton({ label, disabled, onClick, children }: { label: string; dis
 const HORIZON_ORDER = [...FILTER_HORIZONS, "inception"] as const;
 
 /**
- * STRATEGY DETAIL — one strategy of the catalog (GET /v1/explore/strategies/{id}): what it holds,
+ * PUBLISHED STRATEGY PAGE — one strategy of the catalog (GET /v1/explore/strategies/{id}): what it holds,
  * how it rebalances, its author's costs (in their currency, the figures gross of them), the period
  * it's simulated over, every horizon's figures (the whole history's too; total return as on the
  * Insights, annualized as in the list) and how it went through the past crises its history covers, then its
  * portfolio's Insights (ReadOnlySimulation), all simulated. Read only: no way to copy or adopt it.
  */
-function StrategyDetail({ publicationId, trail, onCompare, onNavigate }: {
+export function PublishedStrategyPage({ publicationId, trail, onCompare, onNavigate }: {
   publicationId: string;
   trail: Crumb[];
   onCompare?: (strategies: CompareStrategy[]) => void;

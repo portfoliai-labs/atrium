@@ -62,7 +62,7 @@ const formatDate = (iso: string) =>
  * have their channels changed, never edited or deleted (the backend answers 409).
  *
  * Every alert-rule route is nested under a portfolio, so the rules are those of `portfolios`.
- * Without `clientName` they're the investor's own (a portfolio's Alerts page in Wealth, All
+ * Without `clientName` they're the investor's own (a portfolio's Alerts page in Investments, All
  * portfolios' passing itself and every portfolio): with two or more, each portfolio gets a card
  * of its own, with its rules and its own
  * "New alert", whose form opens in that card. With `clientName` they're an advisor's rules on

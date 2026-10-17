@@ -1,10 +1,9 @@
-// components/dashboard/JournalSection.tsx
+// components/dashboard/ExploreSection.tsx
 "use client";
 
-import { useEffect, useState } from "react";
 import { useJournal } from "../../context/JournalContext";
-import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
-import { JOURNAL_SECTION } from "../../lib/dashboardNav";
+import { useSectionView } from "../../lib/dashboardHistory";
+import { EXPLORE_SECTION, JOURNAL_SECTION, NEWS_SECTION } from "../../lib/dashboardNav";
 import type { ArticleCategory } from "../../models/Journal";
 import { Spinner } from "./journal/JournalKit";
 import { ArticleList } from "./journal/ArticleList";
@@ -14,8 +13,9 @@ import { MyArticles } from "./journal/MyArticles";
 import { SavedArticles } from "./journal/SavedArticles";
 import { MyReports } from "./journal/MyReports";
 import { ModerationCases, ModerationCasePage } from "./journal/Moderation";
+import { NewsPageSection } from "./NewsSection";
 
-const SECTION = JOURNAL_SECTION;
+const SECTION = EXPLORE_SECTION;
 
 /** What the articles' list is narrowed to; kept in its history entry, so going back finds it. */
 export interface JournalFilters {
@@ -27,10 +27,11 @@ export interface JournalFilters {
 }
 
 /**
- * The Journal's pages, as its history entries hold them. `journal` with a `slug` is an article's
- * entry from before the Journal had pages of its own.
+ * Explore's pages, as its history entries hold them: the News, and the Journal's. `journal` with a
+ * `slug` is an article's entry from before the Journal had pages of its own.
  */
-export type JournalView =
+export type ExploreView =
+  | { page: "news" }
   | { page: "journal"; filters?: JournalFilters; slug?: string }
   | { page: "article"; slug: string }
   | { page: "saved" }
@@ -41,19 +42,36 @@ export type JournalView =
   | { page: "moderation" }
   | { page: "case"; uuid: string };
 
-const LIST: JournalView = { page: "journal" };
+const LIST: ExploreView = { page: "journal" };
+const NEWS: ExploreView = { page: "news" };
 
-function viewFromHistory(): JournalView {
-  const entry = readDashboardEntry();
-  const view = entry?.section === SECTION ? (entry.view as JournalView | undefined) : undefined;
-  if (!view?.page) return LIST;
+// The pages a history entry can hold.
+const PAGES = ["news", "journal", "article", "saved", "reports", "mine", "write", "moderation", "case"];
+
+/**
+ * Explore's page for a history entry's view: one of its own, the articles when it's none (or a
+ * page of the strategies catalog that was Explore's, which lands on Strategies first, see the
+ * dashboard page).
+ */
+export function exploreViewOf(raw: unknown): ExploreView {
+  const view = (typeof raw === "object" && raw !== null ? raw : {}) as ExploreView;
+  if (!PAGES.includes(view.page)) return LIST;
   if (view.page === "journal" && view.slug) return { page: "article", slug: view.slug };
   return view;
 }
 
+/**
+ * Where a page of a section that's gone lands in Explore: the Journal's own, the News' its page
+ * (see the dashboard page).
+ */
+export const exploreViewFrom = (section: string, view: unknown): ExploreView =>
+  section === NEWS_SECTION ? NEWS : section === JOURNAL_SECTION ? exploreViewOf(view) : LIST;
+
 /** The Sidebar row a page is under (see Sidebar). */
-export function journalRowOf(view: JournalView | undefined): "journal" | "saved" | "mine" | "moderation" {
+export function exploreRowOf(view: ExploreView | undefined): "news" | "journal" | "saved" | "mine" | "moderation" {
   switch (view?.page) {
+    case "news":
+      return "news";
     case "saved":
     case "reports":
       return "saved";
@@ -69,34 +87,30 @@ export function journalRowOf(view: JournalView | undefined): "journal" | "saved"
 }
 
 /**
- * JOURNAL — articles on investing by PortfoliAI's editors, advisors and users (acta, through
+ * EXPLORE — what there is to read: the News, today's market headlines (NewsPageSection), and the
+ * Journal, with a switch between the two on top of their pages.
+ *
+ * The Journal: articles on investing by PortfoliAI's editors, advisors and users (acta, through
  * ianus' /v1/journal): the latest, searchable and narrowed by category, author or instrument;
  * each article; the reader's saved articles and reports; the author's own articles and their
  * editor; the editors' moderation. On a backend without the Journal everyone reads the
  * platform's own articles written in the code (see JournalContext). Each page is a history
  * entry, so the browser's back button walks through them (see lib/dashboardHistory).
  */
-export function JournalSection() {
+export function ExploreSection() {
   const { mode, canWrite, editor } = useJournal();
-  const [view, setView] = useState<JournalView>(viewFromHistory);
-
-  useEffect(() => {
-    const onPopState = () => {
-      if (readDashboardEntry()?.section === SECTION) setView(viewFromHistory());
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
-  /** Moves to `next`: a new history entry, or (`replace`) in place of this one. */
-  const go = (next: JournalView, replace = false) => {
-    pushDashboardEntry({ section: SECTION, view: next }, replace);
-    setView(next);
-    if (!replace) window.scrollTo({ top: 0 });
-  };
+  const [view, go] = useSectionView(SECTION, exploreViewOf);
   const openArticle = (slug: string) => go({ page: "article", slug });
   const openEditor = (uuid?: string) => go(uuid ? { page: "write", uuid } : { page: "write" });
 
+  if (view.page === "news") {
+    return (
+      <>
+        <ExploreTabs page="news" onGo={go} />
+        <NewsPageSection />
+      </>
+    );
+  }
   if (mode === "loading") return <Spinner />;
 
   // The reader's and the author's pages are the API's only, and moderation the editors'.
@@ -139,11 +153,39 @@ export function JournalSection() {
       return <ModerationCasePage key={page.uuid} uuid={page.uuid} onBack={() => go({ page: "moderation" })} />;
     default:
       return (
-        <ArticleList
-          filters={page.page === "journal" ? page.filters ?? {} : {}}
-          onFilters={(filters) => go({ page: "journal", filters }, true)}
-          onOpen={openArticle}
-        />
+        <>
+          <ExploreTabs page="journal" onGo={go} />
+          <ArticleList
+            filters={page.page === "journal" ? page.filters ?? {} : {}}
+            onFilters={(filters) => go({ page: "journal", filters }, true)}
+            onOpen={openArticle}
+          />
+        </>
       );
   }
+}
+
+/** The switch between Explore's two lists, on top of each: the articles and the News. */
+function ExploreTabs({ page, onGo }: { page: "journal" | "news"; onGo: (view: ExploreView) => void }) {
+  const tabs = [
+    { view: LIST, label: "Articles" },
+    { view: NEWS, label: "News" },
+  ];
+  return (
+    <nav aria-label="Explore" className="flex gap-2 mb-6">
+      {tabs.map((t) => (
+        <button
+          key={t.view.page}
+          type="button"
+          onClick={() => t.view.page !== page && onGo(t.view)}
+          aria-current={t.view.page === page ? "page" : undefined}
+          className={`min-h-9 px-4 rounded-full text-[13px] font-bold transition-colors ${
+            t.view.page === page ? "bg-[#1c1917] text-white" : "bg-white border border-[#E0DACC] text-[#78716c] hover:text-[#1c1917]"
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </nav>
+  );
 }

@@ -11,7 +11,7 @@ import {
   DISCLOSURE_TITLE, EDITORS_NOTICE, NOT_ADVICE_NOTICE, REASON_LABELS, authorName, dateLabel, isArticleNotFound, journalErrorText,
 } from "../../../lib/journal";
 import { serif } from "../../preview/PreviewKit";
-import type { JournalFilters } from "../JournalSection";
+import type { JournalFilters } from "../ExploreSection";
 import { ArticleBody, ArticleFigure } from "./ArticleBody";
 import { AuthorBadge, BackLink, EmptyState, ErrorState, Meta, Spinner } from "./JournalKit";
 import { ReportDialog } from "./ReportDialog";

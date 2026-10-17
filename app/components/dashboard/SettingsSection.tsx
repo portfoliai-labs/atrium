@@ -504,7 +504,7 @@ export function SettingsSection() {
                 </div>
               </div>
 
-              {/* An investor's taxes are computed by their residence's regime (see Wealth's Taxes). */}
+              {/* An investor's taxes are computed by their residence's regime (see the investments' Taxes). */}
               {user?.role !== "ADVISOR" && (
                 <div className="space-y-2">
                   <label htmlFor="tax-residence" className="text-[10px] font-bold uppercase tracking-wider text-[#78716c] ml-1">Tax residence</label>

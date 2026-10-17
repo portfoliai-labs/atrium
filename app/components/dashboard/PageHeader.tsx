@@ -41,7 +41,7 @@ export interface PageFigure {
 const VISIBLE_ACTIONS = 3;
 
 /**
- * PAGE HEADER — the top of a page in Wealth (Wealth itself, All portfolios, a portfolio): what it
+ * PAGE HEADER — the top of a page in Investments, Wallets or Real estate (All portfolios, a portfolio…): what it
  * is, its value and how it moved, its activity as counters that open its Transactions, Alerts and
  * Reports pages, its actions (the first few as buttons, the rest under More), and a row of key
  * figures, each leading down to the module it comes from. The actions always act on this page's

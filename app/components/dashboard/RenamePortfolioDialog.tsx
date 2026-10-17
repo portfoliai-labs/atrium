@@ -8,7 +8,7 @@ import { usePortfolio } from "../../context/PortfolioContext";
 import type { Portfolio } from "../../models/Portfolio";
 
 /**
- * RENAME PORTFOLIO DIALOG — a portfolio page's "Rename" (see WealthSection): the name in a small
+ * RENAME PORTFOLIO DIALOG — a portfolio page's "Rename" (see InvestmentsSection): the name in a small
  * dialog, in the same shell as NewPortfolioDialog. The backend trims it and takes 1-80 characters;
  * a name another of the user's portfolios has is a 409, shown under the field.
  */

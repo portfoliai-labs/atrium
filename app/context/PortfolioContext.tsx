@@ -15,9 +15,9 @@ const LAST_SELECTED_KEY = "last_selected_portfolio_uuid";
  * dashboard's provider), or, with `client`, one of an advisor's clients' (a provider around that
  * client's pages, see ClientsSection), so the investor's pages work on it unchanged.
  *
- * An advisor's own are their strategies' backtests (Plan's Strategy) and the default portfolio
+ * An advisor's own are their strategies' backtests (Strategies) and the default portfolio
  * every account has, which no page shows. A client's leave out the client's own backtests (they're
- * the client's Plan, not something the advisor manages), are created through the advisor's route,
+ * the client's Strategies, not something the advisor manages), are created through the advisor's route,
  * and can't be renamed or deleted by the advisor (`canManage`), nor take a backtest.
  */
 interface PortfolioContextType {

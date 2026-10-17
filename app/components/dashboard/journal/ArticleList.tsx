@@ -6,7 +6,7 @@ import { Search, X } from "lucide-react";
 import { useJournal } from "../../../context/JournalContext";
 import { CATEGORIES, CATEGORY_LABELS, QUERY_MAX } from "../../../lib/journal";
 import type { ArticleCategory } from "../../../models/Journal";
-import type { JournalFilters } from "../JournalSection";
+import type { JournalFilters } from "../ExploreSection";
 import { ArticleCard, EmptyState, ErrorState, JournalHeader, LeadCard, LoadMore, PAGE_SIZE, Spinner, usePaged } from "./JournalKit";
 import { TopArticles } from "./TopArticles";
 
