@@ -12,7 +12,7 @@ import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
 import { portfolioColorMap } from "../../lib/chartColors";
 import { formatCurrency } from "../../lib/format";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
-import { INVESTMENTS_SECTION, openClientPage, openStrategiesPage } from "../../lib/dashboardNav";
+import { INVESTMENTS_SECTION, openClientPage, openProfilePreferences, openStrategiesPage } from "../../lib/dashboardNav";
 import { useMyPublications } from "../../hooks/useMyPublications";
 import { publicationService } from "../../services/publicationService";
 import { PublishStrategyDialog } from "./PublishStrategyDialog";
@@ -42,7 +42,7 @@ import { TaxesPage } from "./taxes/TaxesPage";
 import { StressTestPage } from "./stress/StressTestPage";
 import { ProjectionPage } from "./projection/ProjectionPage";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
-import { openAssetSettings, requestSettingsTab } from "./SettingsSection";
+import { openAssetSettings } from "./SettingsSection";
 import { StrategiesNode, strategiesViewOf, type BacktestPage, type StrategiesView } from "./StrategiesSection";
 
 // A portfolio's pages: its own (overview), and those its header leads to.
@@ -177,7 +177,7 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
   rootTrail?: Crumb[];
   // Added to the investments' actions: a client's own (their settings).
   extraActions?: PageAction[];
-  // Where the Taxes page sets the tax residence: the user's Settings unless said (a client's settings).
+  // Where the Taxes page sets the tax residence: the user's Profile unless said (a client's settings).
   onOpenTaxSettings?: () => void;
   // Where the asset categories and manual assets are: the user's Settings unless said (a client's settings).
   onOpenAssetSettings?: () => void;
@@ -251,10 +251,7 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
       compareWith={compareWith}
       onCompareWith={investments ? (strategy) => go({ kind: "portfolio", uuid: investments.uuid, page: "compare", compareWith: [strategy] }) : undefined}
       onOpenSimulation={(uuid) => go({ kind: "portfolio", uuid: portfolio.uuid, page: "strategy", simulation: uuid })}
-      onOpenTaxSettings={onOpenTaxSettings ?? (() => {
-        requestSettingsTab("preferences");
-        onNavigate("settings");
-      })}
+      onOpenTaxSettings={onOpenTaxSettings ?? (() => openProfilePreferences(onNavigate))}
       onOpenAssetSettings={onOpenAssetSettings}
       onOpenStrategies={hasStrategies ? () => openStrategies({ page: "home" }) : undefined}
       onNavigate={onNavigate}

@@ -91,6 +91,7 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
 
   const actions: PageAction[] = [
     { label: "Add transaction", primary: true, onClick: () => setDialog("transaction"), ...(property.soldOn ? { disabled: true, title: "Sold: it takes no new transactions" } : locked) },
+    { label: "Reports", onClick: onOpenReports },
     { label: "Add valuation", onClick: () => setDialog("valuation"), ...locked },
     { label: "Add mortgage", onClick: () => setDialog("mortgage"), ...locked },
     { label: "Edit property", onClick: () => setDialog("edit"), ...locked },

@@ -96,6 +96,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   const actions: PageAction[] = wallet
     ? [
         { label: "Add movement", primary: true, onClick: () => setDialog("movement"), ...locked },
+        { label: "Reports", onClick: () => onOpen(id, "reports") },
         { label: "Import statement", onClick: () => setDialog("import"), ...locked },
         ...(active.length > 1 ? [{ label: "Transfer", onClick: () => setDialog("transfer"), ...locked }] : []),
         { label: "Edit wallet", onClick: () => setDialog("edit"), ...locked },
@@ -117,7 +118,8 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
       key: "alerts", label: "alerts", count: attention?.rules ?? null, onClick: () => onOpen(id, "alerts"),
       attention: attention?.found ? { count: attention.found, label: "found" } : undefined,
     },
-    { key: "reports", label: "reports", count: null, onClick: () => onOpen(id, "reports") },
+    // A report is one wallet's: its Reports are on its own page only.
+    ...(wallet ? [{ key: "reports", label: "reports", count: null, onClick: () => onOpen(id, "reports") }] : []),
   ];
 
   const currency = wallet?.currency ?? summary?.currency ?? "EUR";

@@ -29,17 +29,24 @@ interface InvestorPolicyDialogProps {
   status: IpsSaveStatus;
   update: StepProps["update"];
   onClose: () => void;
+  // In the page (Profile's), not a dialog: no backdrop, no closing, the page scrolls it.
+  inline?: boolean;
+}
+
+/** The Investor Policy, in the page: Profile's (see InvestorPolicyDialog). */
+export function InvestorPolicyEditor(props: Omit<InvestorPolicyDialogProps, "onClose" | "inline">) {
+  return <InvestorPolicyDialog {...props} onClose={() => {}} inline />;
 }
 
 /**
- * INVESTOR POLICY — the Investor Policy Statement, built one step at a time in a dialog opened
- * from Profile: objectives, risk, constraints, allocation, guidelines, monitoring and what the
+ * INVESTOR POLICY — the Investor Policy Statement, built one step at a time, in a dialog or in
+ * the page (`inline`, Profile's): objectives, risk, constraints, allocation, guidelines, monitoring and what the
  * investor looks for in an advisor, then a
  * review that reads it back as a document. The policy and its saving belong to the caller (the
  * Profile page also shows its progress); every change is saved as it is made, so closing the
  * dialog at any point loses nothing.
  */
-export function InvestorPolicyDialog({ policy, status, update, onClose }: InvestorPolicyDialogProps) {
+export function InvestorPolicyDialog({ policy, status, update, onClose, inline = false }: InvestorPolicyDialogProps) {
   const { user } = useUser();
   const [view, setView] = useState<ViewId>("objectives");
   const panelRef = useRef<HTMLDivElement>(null);
@@ -50,6 +57,7 @@ export function InvestorPolicyDialog({ policy, status, update, onClose }: Invest
   useEffect(() => { onCloseRef.current = onClose; });
 
   useEffect(() => {
+    if (inline) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCloseRef.current();
     };
@@ -62,7 +70,7 @@ export function InvestorPolicyDialog({ policy, status, update, onClose }: Invest
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, []);
+  }, [inline]);
 
   const currency = user?.currency || "USD";
   const riskTolerance = user?.risk_tolerance ? RISK_LABELS[user.risk_tolerance] ?? null : null;
@@ -72,23 +80,20 @@ export function InvestorPolicyDialog({ policy, status, update, onClose }: Invest
 
   const goTo = (id: ViewId) => {
     setView(id);
-    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    // In the page, back to the top of the policy; in the dialog, of its content.
+    if (inline) panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    else scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const stepProps: StepProps = { policy, update, currency };
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-100 flex items-center justify-center bg-[#1c1917]/40 backdrop-blur-sm sm:p-4"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
+  const panel = (
       <div
         ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ips-dialog-title"
-        tabIndex={-1}
-        className="bg-white w-full h-full sm:h-[min(52rem,calc(100dvh-2rem))] sm:max-w-5xl sm:rounded-4xl sm:border border-[rgba(196,154,60,0.2)] shadow-2xl flex flex-col overflow-hidden outline-none animate-in zoom-in-95 duration-200"
+        {...(inline ? { "aria-labelledby": "ips-dialog-title" } : { role: "dialog", "aria-modal": true, "aria-labelledby": "ips-dialog-title", tabIndex: -1 })}
+        className={inline
+          ? "bg-white w-full rounded-4xl border border-[rgba(196,154,60,0.2)] shadow-sm flex flex-col overflow-hidden scroll-mt-24"
+          : "bg-white w-full h-full sm:h-[min(52rem,calc(100dvh-2rem))] sm:max-w-5xl sm:rounded-4xl sm:border border-[rgba(196,154,60,0.2)] shadow-2xl flex flex-col overflow-hidden outline-none animate-in zoom-in-95 duration-200"}
       >
         <header className="flex items-center justify-between gap-4 px-5 md:px-8 py-4 md:py-5 border-b border-[rgba(196,154,60,0.15)]">
           <div className="flex items-center gap-3 min-w-0">
@@ -108,14 +113,16 @@ export function InvestorPolicyDialog({ policy, status, update, onClose }: Invest
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <SaveIndicator status={status} savedAt={policy.savedAt} />
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="p-2 text-[#a8a29e] hover:text-[#1c1917] hover:bg-[#F7F5EF] rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {!inline && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="p-2 text-[#a8a29e] hover:text-[#1c1917] hover:bg-[#F7F5EF] rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </header>
 
@@ -168,7 +175,7 @@ export function InvestorPolicyDialog({ policy, status, update, onClose }: Invest
             </ol>
           </nav>
 
-          <div ref={scrollRef} className="flex-1 min-w-0 min-h-0 overflow-y-auto p-5 md:p-8 space-y-8">
+          <div ref={scrollRef} className={`flex-1 min-w-0 min-h-0 p-5 md:p-8 space-y-8 ${inline ? "" : "overflow-y-auto"}`}>
             <div className="border-b border-[rgba(196,154,60,0.15)] pb-5">
               <p className="text-[10px] font-bold uppercase tracking-wider text-[#C49A3C]">
                 Step {index + 1} of {VIEWS.length}
@@ -212,6 +219,9 @@ export function InvestorPolicyDialog({ policy, status, update, onClose }: Invest
             >
               {VIEWS[index + 1].id === "review" ? "Review policy" : "Next"} <ArrowRight className="w-4 h-4" />
             </button>
+          ) : inline ? (
+            // Saved as it's filled in: nothing to close in the page.
+            <span />
           ) : (
             <button
               type="button"
@@ -223,6 +233,15 @@ export function InvestorPolicyDialog({ policy, status, update, onClose }: Invest
           )}
         </footer>
       </div>
+  );
+  if (inline) return panel;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-100 flex items-center justify-center bg-[#1c1917]/40 backdrop-blur-sm sm:p-4"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {panel}
     </div>,
     document.body,
   );

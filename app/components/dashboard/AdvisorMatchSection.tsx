@@ -28,7 +28,8 @@ const STATUS_LABELS: Record<AdvisorRequestStatus, string> = {
  * consent to share the policy. One request is pending at a time; the advisor accepts or declines,
  * and an unanswered request expires after a week.
  */
-export function AdvisorMatchSection({ onNavigate }: { onNavigate: (section: string) => void }) {
+// `onOpenPolicy`: where the Investment Policy is filled in (Profile's).
+export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<AdvisorMatch[]>([]);
   const [needsPolicy, setNeedsPolicy] = useState(false);
@@ -146,10 +147,10 @@ export function AdvisorMatchSection({ onNavigate }: { onNavigate: (section: stri
             </p>
           </div>
           <button
-            onClick={() => onNavigate("profile")}
+            onClick={onOpenPolicy}
             className="flex items-center gap-2 bg-[#1c1917] text-white px-5 py-3 rounded-2xl text-sm font-semibold hover:bg-[#292524] transition-colors shrink-0"
           >
-            <ClipboardList className="w-4 h-4" /> Open my Profile
+            <ClipboardList className="w-4 h-4" /> Fill it in
           </button>
         </div>
       ) : (
