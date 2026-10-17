@@ -193,6 +193,12 @@ export function AcceptanceScreen({ documents, onAccepted }: { documents: LegalDo
  */
 export function LegalGate({ children }: { children: React.ReactNode }) {
   const { user, loading: userLoading, needsLegalAcceptance, logout } = useUser();
+  // A primitive to depend on instead of `user` itself: `user` is a new object on every
+  // fetch (including a silent one, e.g. after a Profile save), which would otherwise re-run
+  // the effect below on every such refresh — re-hitting /legal/pending and, worse, dropping
+  // `checking` back to true, which tears down and rebuilds the whole gated page (losing
+  // scroll position, open menus, an on-screen "saved" toast, anything local to it).
+  const userId = user?.uuid ?? null;
   const [pending, setPending] = useState<LegalDocument[] | null>(null);
   const [checking, setChecking] = useState(true);
   const [checkError, setCheckError] = useState<ApiError | Error | null>(null);
@@ -227,7 +233,7 @@ export function LegalGate({ children }: { children: React.ReactNode }) {
       // anything, otherwise we'd race UserContext's own fetch.
       return;
     }
-    if (!user && !needsLegalAcceptance) {
+    if (!userId && !needsLegalAcceptance) {
       // No profile yet: brand-new account still going through onboarding.
       // Nothing to check against server-side yet — let onboarding render.
       setChecking(false);
@@ -238,7 +244,7 @@ export function LegalGate({ children }: { children: React.ReactNode }) {
     // that legal acceptance is required — either way /legal/pending is safe
     // (and necessary) to call now.
     checkPending();
-  }, [user, userLoading, needsLegalAcceptance, checkPending]);
+  }, [userId, userLoading, needsLegalAcceptance, checkPending]);
 
   if (checking) {
     return (
