@@ -16,7 +16,7 @@ type StoredPolicy = Omit<InvestorPolicy, "objectives"> & {
 export const ipsService = {
   // GET /users/investor-policy — null while the user never saved one: the empty policy then.
   async getPolicy(): Promise<InvestorPolicy> {
-    const stored = await apiFetch<StoredPolicy | null>("/users/investor-policy");
+    const stored = await apiFetch<StoredPolicy | null>("/v1/users/investor-policy");
     const policy = mergeWithDefaults(stored as Partial<InvestorPolicy> | null);
     const goals = (stored?.objectives.goals ?? []).map((g) => ({ ...g, id: crypto.randomUUID() }));
     return { ...policy, objectives: { ...policy.objectives, goals } };
@@ -38,7 +38,7 @@ export const ipsService = {
       monitoring: policy.monitoring,
       advisorPreferences: policy.advisorPreferences,
     };
-    const saved = await apiFetch<StoredPolicy>("/users/investor-policy", {
+    const saved = await apiFetch<StoredPolicy>("/v1/users/investor-policy", {
       method: "PUT",
       body: JSON.stringify(body),
     });

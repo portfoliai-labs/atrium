@@ -39,12 +39,12 @@ export const advisorService = {
 
   // GET /advisor/statement — null while never saved.
   async getAdvisorStatement(): Promise<AdvisorStatement | null> {
-    return apiFetch<AdvisorStatement | null>('/advisor/statement');
+    return apiFetch<AdvisorStatement | null>('/v1/advisor/statement');
   },
 
   // PUT /advisor/statement — the whole statement; another register number puts it back to be verified.
   async saveAdvisorStatement(payload: AdvisorStatementPayload): Promise<AdvisorStatement> {
-    return apiFetch<AdvisorStatement>('/advisor/statement', {
+    return apiFetch<AdvisorStatement>('/v1/advisor/statement', {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
