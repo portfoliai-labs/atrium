@@ -10,8 +10,8 @@ export interface Crumb {
 }
 
 /**
- * BREADCRUMB — where a page sits in its section: "Wealth › All portfolios › Long-term ETF ›
- * Performance", "Plan › Strategy"… Drawn at the top of the page, each step above the current one
+ * BREADCRUMB — where a page sits in its section: "All portfolios › Long-term ETF ›
+ * Performance", "Strategies › a backtest"… Drawn at the top of the page, each step above the current one
  * a way back to it (the browser's back button goes up a level too, see lib/dashboardHistory), with
  * the page's own action (`right`: a month's report link, "New backtest") at the top right. Also
  * published to SectionTrail, for anything outside the page that follows where it is.

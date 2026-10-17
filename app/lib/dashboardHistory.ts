@@ -2,7 +2,7 @@
 //
 // DASHBOARD HISTORY — lets the browser's back and forward buttons move through the dashboard,
 // which is one URL whose pages are all component state: the section open (dashboard page), the
-// page inside a section that has pages of its own (WealthSection, PlanSection…) and, on a
+// page inside a section that has pages of its own (InvestmentsSection, WalletsSection…) and, on a
 // portfolio's Insights, the detail view or month open over it (PerformanceSection). Each history
 // entry carries where the dashboard was, under its own key next to Next.js's (Next copies its
 // keys into every pushState / replaceState, so a popstate never reloads the page); each of those
@@ -19,8 +19,8 @@ export type DashboardOverlay = "explore" | "month";
 
 export interface DashboardEntry {
   section: string;
-  // The page inside the section, for a section that has pages of its own (WealthSection's
-  // WealthView).
+  // The page inside the section, for a section that has pages of its own (InvestmentsSection's
+  // InvestmentsView).
   view?: unknown;
   overlay?: DashboardOverlay;
 }
@@ -60,4 +60,39 @@ export function useDashboardEntry(): DashboardEntry | null {
     };
   }, []);
   return entry;
+}
+
+/**
+ * A section's page, kept in its history entry: the one the entry holds (read by `parse`, which
+ * also takes an entry with none, or one from an older shape), recorded as it opens so the Sidebar
+ * marks it, and followed on back / forward. `open` moves to another page: a new entry, or
+ * (`replace`) in place of this one.
+ */
+export function useSectionView<V>(section: string, parse: (raw: unknown) => V): [V, (next: V, replace?: boolean) => void] {
+  const read = () => {
+    const entry = readDashboardEntry();
+    return parse(entry?.section === section ? entry.view : undefined);
+  };
+  const [view, setView] = useState<V>(read);
+
+  useEffect(() => {
+    const entry = readDashboardEntry();
+    if (entry?.section === section && JSON.stringify(entry.view) !== JSON.stringify(view)) {
+      pushDashboardEntry({ section, view }, true);
+    }
+    const onPopState = () => {
+      if (readDashboardEntry()?.section === section) setView(read());
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+    // Once: `parse` is the section's own, the same for the whole visit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const open = (next: V, replace = false) => {
+    pushDashboardEntry({ section, view: next }, replace);
+    setView(next);
+    if (!replace) window.scrollTo({ top: 0 });
+  };
+  return [view, open];
 }

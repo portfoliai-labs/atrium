@@ -50,8 +50,7 @@ const TDR = "py-2.5 pl-4 text-right tabular-nums align-top whitespace-nowrap";
  * comes from (its own prices, its category's stand-in index, the shock, or nothing: kept flat),
  * and the cash by currency. A simulation: nothing is recorded.
  */
-// `picker`: above the scenarios, the portfolio it runs on (Plan's).
-export function StressTestPage({ portfolioUuid, trail, eyebrow, picker }: { portfolioUuid: string; trail: Crumb[]; eyebrow?: string; picker?: React.ReactNode }) {
+export function StressTestPage({ portfolioUuid, trail, eyebrow }: { portfolioUuid: string; trail: Crumb[]; eyebrow?: string }) {
   return (
     <div className="space-y-6 pb-12">
       <Breadcrumb trail={trail} current="Stress test" />
@@ -63,16 +62,16 @@ export function StressTestPage({ portfolioUuid, trail, eyebrow, picker }: { port
           How a past crisis, or the shocks you pick, would hit the portfolio as it is today. A simulation on past prices: nothing is recorded, and it says nothing of what comes next.
         </p>
       </div>
-      <StressTestPanel portfolioUuid={portfolioUuid} picker={picker} />
+      <StressTestPanel portfolioUuid={portfolioUuid} />
     </div>
   );
 }
 
 /**
- * The scenario on the left (the portfolio first, when `picker` is given), its impact on the right:
+ * The scenario on the left, its impact on the right:
  * wide screens fill with the answer. Stacked on narrow ones.
  */
-export function StressTestPanel({ portfolioUuid, picker }: { portfolioUuid: string; picker?: React.ReactNode }) {
+export function StressTestPanel({ portfolioUuid }: { portfolioUuid: string }) {
   const [choice, setChoice] = useState<Choice>("global_financial");
   const [draft, setDraft] = useState<Draft>({ categories: [{ key: "equity", text: "-30" }], currencies: [] });
   // The custom shocks last run: they run again only when asked.
@@ -111,7 +110,6 @@ export function StressTestPanel({ portfolioUuid, picker }: { portfolioUuid: stri
         <Module>
           <ModuleHead title="Scenario" />
           <div className={`${MODULE_BODY} space-y-4`}>
-            {picker}
             <div role="radiogroup" aria-label="Scenario" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2.5">
               {STRESS_CRISES.map((c) => (
                 <ScenarioCard key={c.crisis} selected={choice === c.crisis} onSelect={() => setChoice(c.crisis)} title={c.label} sub={`${dateLabel(c.startDate)} – ${dateLabel(c.endDate)}`} detail={c.detail} />

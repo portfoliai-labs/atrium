@@ -29,7 +29,7 @@ const PAGE_LABELS: Record<RealEstatePreviewPage, string> = {
 /**
  * REAL ESTATE PAGES (preview) — the real estate's pages the API doesn't have yet, a demo account's
  * only, opened from the real estate's own page (dashboard/realEstate/RealEstateNode): Reports.
- * `trail` leads up to Wealth; "Real estate" is added to it. Everything comes from
+ * `trail` leads up to the real estate's section; "Real estate" is added to it. Everything comes from
  * lib/mock/realEstate.
  */
 export function RealEstatePortfolio({

@@ -24,6 +24,7 @@ import { useWallets } from "../../context/WalletsContext";
 import { useRealEstateNetWorth, type RealEstateNetWorth } from "../../hooks/useRealEstateNetWorth";
 import { useRealEstate } from "../../context/RealEstateContext";
 import { PreviewBadge } from "../preview/PreviewKit";
+import { WealthBreakdown } from "./WealthBreakdown";
 
 // One portfolio's GET /v1/portfolios/{p}/overview: null snapshot = no data yet (no transactions,
 // or the aggregate's first build hasn't landed), `failed` = the request itself errored.
@@ -37,9 +38,9 @@ type SnapshotState =
  * on top (every portfolio's market value, from the aggregate "All portfolios" or the only
  * portfolio, plus the wallets' balance and the real estate's equity; a demo account's wallets and
  * properties are sample data, see lib/mock), with the portfolios, the wallets and the properties
- * under it, as totals and one by one; then every
- * portfolio's alerts and the article of the day. Headline figures only: the rest lives under
- * Manage, which the summaries open. The overview endpoint never mixes history
+ * under it, as totals and one by one; the wallets' cash flow and what it's all in by asset class
+ * (WealthBreakdown); then every portfolio's alerts and the article of the day. Headline figures
+ * only: the rest lives in Investments, Wallets and Real estate, which the summaries open. The overview endpoint never mixes history
  * with fresh data (no isStale).
  */
 export default function DashboardOverview({ onNavigate }: { onNavigate?: (section: string) => void } = {}) {
@@ -87,7 +88,7 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
     if (onNavigate && target) openPortfolioPage(onNavigate, target.uuid, "alerts");
   };
 
-  // A portfolio opens on its page in Wealth, or on its Transactions to add some.
+  // A portfolio opens on its page in Investments, or on its Transactions to add some.
   const openPortfolio = (uuid: string, section: string) => {
     selectPortfolio(uuid);
     if (!onNavigate) return;
@@ -142,6 +143,9 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
         />
       )}
 
+      {/* CASH FLOW & ASSET CLASSES — the wallets' last months, and what it's all in. */}
+      {!noDataAtAll && headlineState.status === "ready" && <WealthBreakdown investmentsUuid={headline.uuid} />}
+
       {/* ALERTS — every portfolio's, aggregate included, as one list sorted by urgency. */}
       {!noDataAtAll && (
         <AlertsModule
@@ -182,8 +186,8 @@ function ErrorBanner({ message }: { message: string }) {
  * group is. Under it, one column per group: its total, a line about it (the portfolios' unrealized
  * P&L, the wallets' money in and out this month, the properties' value, debt and loan-to-value),
  * then a row for each portfolio, wallet or property — its share of the net worth, its value and how
- * it's doing — in the same shade as its piece of the bar. A column's head opens its page in Wealth
- * (All portfolios, Wallets, Real estate), a row that portfolio's, wallet's or property's page.
+ * it's doing — in the same shade as its piece of the bar. A column's head opens its section
+ * (Investments' All portfolios, Wallets, Real estate), a row that portfolio's, wallet's or property's page.
  *
  * The portfolios' total is the aggregate's (recomputed from every portfolio's transactions
  * combined) or the only portfolio's; each row is that portfolio's own overview. A strategy's
@@ -395,7 +399,7 @@ const GOLD = "#C49A3C";
 const TEAL = "#0f766e";
 const GOLD_SHADES = ["#8A6A28", "#C49A3C", "#E0BE72", "#A8813A", "#EDD5A2", "#6B5220"];
 const TEAL_SHADES = ["#0b5750", "#0f766e", "#2ea99b", "#79cbbf", "#134e4a"];
-// Wealth's real estate colour.
+// The real estate's colour.
 const ORANGE = "#eb6834";
 const ORANGE_SHADES = ["#b9471b", "#eb6834", "#f4a27d", "#d4561f", "#f8c7ae", "#8f3614"];
 const shadeOf = (shades: string[], i: number) => shades[i % shades.length];

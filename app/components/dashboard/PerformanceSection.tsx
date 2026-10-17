@@ -86,9 +86,9 @@ export function PerformanceSection({
   // (see Breadcrumb). Without it (an advisor's view of a client, which has its own header) the
   // trail starts at "Insights".
   trail?: Crumb[];
-  // This page's own step in the trail: the portfolio's name on its page in Wealth.
+  // This page's own step in the trail: the portfolio's name on its page in Investments.
   pageLabel?: string;
-  // Drawn above the modules (the portfolio page's header, see WealthSection), and hidden with
+  // Drawn above the modules (the portfolio page's header, see InvestmentsSection), and hidden with
   // them while a detail view or a month is open.
   top?: React.ReactNode;
   // Opens one of the aggregate's portfolios, from its Composition.

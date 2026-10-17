@@ -1,7 +1,7 @@
 // components/dashboard/StrategiesExplore.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { AlertCircle, ArrowUpRight, ChevronLeft, ChevronRight, Info, Loader2, Telescope } from "lucide-react";
 import { publicationService } from "../../services/publicationService";
 import { ApiError } from "../../services/apiClient";
@@ -38,7 +38,7 @@ const byline = (s: PublishedStrategy) => `By ${s.authorName ?? "an advisor"} · 
 
 // ── The disclaimer ────────────────────────────────────────────────────────────────────────
 
-/** What every figure in the catalog is, and isn't: on Explore and on each strategy's page. */
+/** What every figure in the catalog is, and isn't: on Strategies and on each strategy's page. */
 function SimulationDisclaimer() {
   return (
     <div className="flex items-start gap-3 rounded-2xl border border-dashed border-sky-300 bg-sky-50/70 px-4 py-3.5">
@@ -113,7 +113,7 @@ function cardFigures(s: PublishedStrategy, horizon: FilterHorizon | null): Horiz
   return null;
 }
 
-// ── Explore: the list ─────────────────────────────────────────────────────────────────────
+// ── The catalog: the list ─────────────────────────────────────────────────────────────────
 
 interface Filters {
   horizon: FilterHorizon | null;
@@ -130,31 +130,26 @@ const positive = (v: string) => {
 };
 
 /**
- * STRATEGIES EXPLORE — the strategies catalog (GET /v1/explore/strategies): strategy portfolios
- * advisors published, for every user to read. Newest first by default, with no horizon; picking a
+ * STRATEGIES CATALOG — Strategies' list (see StrategiesSection): the user's own strategies (`own`,
+ * their backtests, as cards made by the page) and the catalog (GET /v1/explore/strategies),
+ * strategy portfolios advisors published, for every user to read, in one grid. "All" lists the
+ * user's first, then the published ones (an advisor's own published ones are theirs, not listed
+ * again: `ownUuids`); "Yours" only theirs (`emptyOwn` when there are none).
+ * The published ones are newest first by default, with no horizon; picking a
  * horizon (1, 3, 5 or 10 years) shows each strategy's figures over it and lets the user filter by
  * volatility and drawdown and sort by a figure, which the backend only does on a horizon, so the
  * filters stay off without one. Every figure is a simulation, gross of its author's costs (shown next
  * to them), labelled so,
  * under a disclaimer; nothing here is matched to the viewer, and nothing can be copied or adopted.
- * A strategy opens its page (StrategyDetail).
+ * A strategy opens its page (PublishedStrategyPage).
  */
-export function StrategiesExplore({ trail, publicationId, onOpen, onCompare, onNavigate }: {
-  trail: Crumb[];
-  // The strategy open, if any.
-  publicationId?: string;
-  onOpen: (publicationId: string | null) => void;
-  // Opens Wealth's Compare on these strategies, beside the user's portfolios.
-  onCompare?: (strategies: CompareStrategy[]) => void;
-  onNavigate?: (section: string) => void;
+export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen }: {
+  own: { key: string; card: React.ReactNode }[];
+  ownUuids: string[];
+  emptyOwn: React.ReactNode;
+  onOpen: (publicationId: string) => void;
 }) {
-  if (publicationId) {
-    return <StrategyDetail publicationId={publicationId} trail={[...trail, { label: "Explore", onClick: () => onOpen(null) }]} onCompare={onCompare} onNavigate={onNavigate} />;
-  }
-  return <StrategiesList trail={trail} onOpen={onOpen} />;
-}
-
-function StrategiesList({ trail, onOpen }: { trail: Crumb[]; onOpen: (publicationId: string) => void }) {
+  const [show, setShow] = useState<"all" | "own">("all");
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   // The figure filters as last sent: they follow the inputs once typing stops.
   const [applied, setApplied] = useState({ maxVolatilityPct: "", maxDrawdownPct: "" });
@@ -208,102 +203,136 @@ function StrategiesList({ trail, onOpen }: { trail: Crumb[]; onOpen: (publicatio
   const from = total === 0 ? 0 : page * PAGE_SIZE + 1;
   const to = Math.min(total, (page + 1) * PAGE_SIZE);
 
+  const published = (shown?.strategies ?? []).filter((x) => !ownUuids.includes(x.portfolioUuid));
+  // The user's own lead the first page of All.
+  const leading = show === "own" || page === 0 ? own : [];
+  const ownCard = (o: (typeof own)[number]) => <Fragment key={o.key}>{o.card}</Fragment>;
+  const cards = show === "own" ? own.map(ownCard) : [
+    ...leading.map(ownCard),
+    ...published.map((x) => <StrategyCard key={x.publicationId} strategy={x} horizon={filters.horizon} onOpen={() => onOpen(x.publicationId)} />),
+  ];
+
   return (
-    <div className="space-y-6 pb-12">
-      <Breadcrumb trail={trail} current="Explore" />
-      {/* Titled as Strategy, Projection and Stress test are. */}
-      <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Explore strategies</h1>
+    <div className="space-y-6">
       <SimulationDisclaimer />
 
       <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-6 space-y-4">
         <div>
-          <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Figures over</span>
+          <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Show</span>
           <div className="flex flex-wrap gap-2">
-            {[null, ...FILTER_HORIZONS].map((h) => (
+            {([["all", "All strategies"], ["own", `Yours · ${own.length}`]] as const).map(([id, label]) => (
               <button
-                key={h ?? "any"}
+                key={id}
                 type="button"
-                onClick={() => setHorizon(h)}
-                aria-pressed={filters.horizon === h}
+                onClick={() => setShow(id)}
+                aria-pressed={show === id}
                 className={`min-h-9 px-3.5 rounded-full text-[13px] font-bold transition-colors ${
-                  filters.horizon === h ? "bg-[#1c1917] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  show === id ? "bg-[#1c1917] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
-                {h ? `Last ${HORIZON_LABELS[h]}` : "Any period"}
+                {label}
               </button>
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <FilterField
-            label="Volatility at most"
-            suffix="%"
-            value={filters.maxVolatilityPct}
-            disabled={!filters.horizon}
-            onChange={(v) => setFilters((f) => ({ ...f, maxVolatilityPct: v }))}
-          />
-          <FilterField
-            label="Worst drop no deeper than"
-            suffix="−%"
-            value={filters.maxDrawdownPct}
-            disabled={!filters.horizon}
-            onChange={(v) => setFilters((f) => ({ ...f, maxDrawdownPct: v }))}
-          />
-          <label className="block">
-            <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Sort by</span>
-            <select
-              value={filters.horizon ? filters.sort : "newest"}
-              onChange={(e) => { setFilters((f) => ({ ...f, sort: e.target.value as CatalogSort })); setPage(0); }}
-              className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-slate-900 text-sm font-semibold outline-none focus:border-[#C49A3C]/60"
-            >
-              {(Object.keys(SORT_LABELS) as CatalogSort[]).map((s) => (
-                <option key={s} value={s} disabled={isFigureSort(s) && !filters.horizon}>{SORT_LABELS[s]}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {!filters.horizon && (
-          <p className="text-[11px] text-slate-500">Pick a period to filter or sort by the figures: they&apos;re compared over the same years.</p>
+        {show === "all" && (
+          <>
+            <div>
+              <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Figures over</span>
+              <div className="flex flex-wrap gap-2">
+                {[null, ...FILTER_HORIZONS].map((h) => (
+                  <button
+                    key={h ?? "any"}
+                    type="button"
+                    onClick={() => setHorizon(h)}
+                    aria-pressed={filters.horizon === h}
+                    className={`min-h-9 px-3.5 rounded-full text-[13px] font-bold transition-colors ${
+                      filters.horizon === h ? "bg-[#1c1917] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {h ? `Last ${HORIZON_LABELS[h]}` : "Any period"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <FilterField
+                label="Volatility at most"
+                suffix="%"
+                value={filters.maxVolatilityPct}
+                disabled={!filters.horizon}
+                onChange={(v) => setFilters((f) => ({ ...f, maxVolatilityPct: v }))}
+              />
+              <FilterField
+                label="Worst drop no deeper than"
+                suffix="−%"
+                value={filters.maxDrawdownPct}
+                disabled={!filters.horizon}
+                onChange={(v) => setFilters((f) => ({ ...f, maxDrawdownPct: v }))}
+              />
+              <label className="block">
+                <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Sort by</span>
+                <select
+                  value={filters.horizon ? filters.sort : "newest"}
+                  onChange={(e) => { setFilters((f) => ({ ...f, sort: e.target.value as CatalogSort })); setPage(0); }}
+                  className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-slate-900 text-sm font-semibold outline-none focus:border-[#C49A3C]/60"
+                >
+                  {(Object.keys(SORT_LABELS) as CatalogSort[]).map((x) => (
+                    <option key={x} value={x} disabled={isFigureSort(x) && !filters.horizon}>{SORT_LABELS[x]}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              {filters.horizon
+                ? own.length > 0 ? "The figures filter and sort the published strategies; yours stay first." : null
+                : "Pick a period to filter or sort by the figures: they're compared over the same years."}
+            </p>
+          </>
         )}
       </section>
 
-      {current?.error ? (
+      {show === "all" && current?.error && (
         <p className="flex items-center gap-2 text-sm font-semibold text-rose-600"><AlertCircle className="h-4 w-4" /> {current.error}</p>
-      ) : !shown ? (
+      )}
+      {show === "own" && own.length === 0 ? (
+        emptyOwn
+      ) : show === "all" && !shown && !current?.error ? (
         <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-[#C49A3C]" /></div>
-      ) : shown.strategies.length === 0 ? (
-        <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white px-6 py-10 flex flex-col items-center text-center gap-2">
-          <Telescope className="h-6 w-6 text-slate-400" />
-          <p className="text-sm font-black text-slate-900">
-            {filters.horizon ? "No strategy matches these filters" : "No strategies published yet"}
-          </p>
-          {filters.horizon && (
-            <p className="text-xs text-slate-500 max-w-md">
-              Only strategies whose history covers the whole period are listed. Try a shorter period or looser limits.
+      ) : cards.length === 0 ? (
+        current?.error ? null : (
+          <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white px-6 py-10 flex flex-col items-center text-center gap-2">
+            <Telescope className="h-6 w-6 text-slate-400" />
+            <p className="text-sm font-black text-slate-900">
+              {filters.horizon ? "No strategy matches these filters" : "No strategies yet"}
             </p>
-          )}
-        </div>
+            {filters.horizon && (
+              <p className="text-xs text-slate-500 max-w-md">
+                Only strategies whose history covers the whole period are listed. Try a shorter period or looser limits.
+              </p>
+            )}
+          </div>
+        )
       ) : (
         <>
-          <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
-            {shown.strategies.map((s) => (
-              <StrategyCard key={s.publicationId} strategy={s} horizon={filters.horizon} onOpen={() => onOpen(s.publicationId)} />
-            ))}
+          <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-opacity ${show === "all" && loading ? "opacity-60" : ""}`}>
+            {cards}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-xs font-semibold text-slate-500 tabular-nums">{from}–{to} of {total}</span>
-            <span className="flex items-center gap-2">
-              <PageButton label="Previous page" disabled={page === 0 || loading} onClick={() => setPage((p) => p - 1)}>
-                <ChevronLeft className="h-4 w-4" />
-              </PageButton>
-              <PageButton label="Next page" disabled={to >= total || loading} onClick={() => setPage((p) => p + 1)}>
-                <ChevronRight className="h-4 w-4" />
-              </PageButton>
-            </span>
-          </div>
+          {show === "all" && total > PAGE_SIZE && (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-slate-500 tabular-nums">Published: {from}–{to} of {total}</span>
+              <span className="flex items-center gap-2">
+                <PageButton label="Previous page" disabled={page === 0 || loading} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </PageButton>
+                <PageButton label="Next page" disabled={to >= total || loading} onClick={() => setPage((p) => p + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </PageButton>
+              </span>
+            </div>
+          )}
         </>
       )}
-
     </div>
   );
 }
@@ -412,13 +441,13 @@ function PageButton({ label, disabled, onClick, children }: { label: string; dis
 const HORIZON_ORDER = [...FILTER_HORIZONS, "inception"] as const;
 
 /**
- * STRATEGY DETAIL — one strategy of the catalog (GET /v1/explore/strategies/{id}): what it holds,
+ * PUBLISHED STRATEGY PAGE — one strategy of the catalog (GET /v1/explore/strategies/{id}): what it holds,
  * how it rebalances, its author's costs (in their currency, the figures gross of them), the period
  * it's simulated over, every horizon's figures (the whole history's too; total return as on the
  * Insights, annualized as in the list) and how it went through the past crises its history covers, then its
  * portfolio's Insights (ReadOnlySimulation), all simulated. Read only: no way to copy or adopt it.
  */
-function StrategyDetail({ publicationId, trail, onCompare, onNavigate }: {
+export function PublishedStrategyPage({ publicationId, trail, onCompare, onNavigate }: {
   publicationId: string;
   trail: Crumb[];
   onCompare?: (strategies: CompareStrategy[]) => void;

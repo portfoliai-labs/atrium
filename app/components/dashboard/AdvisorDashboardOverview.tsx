@@ -8,7 +8,7 @@ import { clientDisplayName, useClients } from "../../context/ClientsContext";
 import { useClientAlertRules } from "../../hooks/useAlertRules";
 import { useClientsFigures, totalsByCurrency } from "../../hooks/useClientsFigures";
 import { alertFigures, alertState, alertUrgency, describeAlert, type AlertTone } from "../../lib/alerts";
-import { CLIENTS_SECTION, openBacktestPage, openClientPage, openPlanPage } from "../../lib/dashboardNav";
+import { CLIENTS_SECTION, openBacktestPage, openClientPage, openStrategiesPage } from "../../lib/dashboardNav";
 import { formatCurrency } from "../../lib/format";
 import { isBacktest } from "../../models/Portfolio";
 import { PageHeader } from "./PageHeader";
@@ -55,8 +55,8 @@ function EmptyRow({ icon, title, text, action }: { icon: React.ReactNode; title:
 /**
  * ADVISOR DASHBOARD — the advisor's day at a glance: what their clients' investments add up to,
  * the alerts on them that need a look (triggered first, then the closest to their threshold, each
- * opening that portfolio's Alerts page in the client's Wealth), their clients by what they hold,
- * and their own strategies (Plan's Strategy). The alerts refresh every minute: the backend checks
+ * opening that portfolio's Alerts page in the client's investments), their clients by what they hold,
+ * and their own strategies (Strategies). The alerts refresh every minute: the backend checks
  * the rules about every 5 minutes.
  */
 export default function AdvisorDashboardOverview({ onNavigate }: { onNavigate: (section: string) => void }) {
@@ -90,7 +90,7 @@ export default function AdvisorDashboardOverview({ onNavigate }: { onNavigate: (
         note={clients.length > 0 ? `Your ${clients.length} ${clients.length === 1 ? "client's" : "clients'"} investments together` : "Add your first client to get started"}
         actions={[
           { label: "Clients", primary: true, plus: false, onClick: () => onNavigate(CLIENTS_SECTION) },
-          { label: "New strategy", onClick: () => openPlanPage(onNavigate, "strategy") },
+          { label: "New strategy", onClick: () => openStrategiesPage(onNavigate, { page: "builder" }) },
         ]}
         figures={[
           { label: "Clients", value: String(clients.length) },
@@ -219,14 +219,14 @@ export default function AdvisorDashboardOverview({ onNavigate }: { onNavigate: (
           <ModuleHead
             title="Your strategies"
             icon={<History className="w-3.5 h-3.5 text-[#78716c]" />}
-            right={strategies.length > 0 ? <LinkButton onClick={() => openPlanPage(onNavigate, "strategy")}>Strategy</LinkButton> : undefined}
+            right={strategies.length > 0 ? <LinkButton onClick={() => openStrategiesPage(onNavigate)}>Strategies</LinkButton> : undefined}
           />
           {strategies.length === 0 ? (
             <EmptyRow
               icon={<History className="w-5 h-5" />}
               title="No strategies yet"
-              text="Backtest a strategy, adopt it on a client's portfolio and share it with them, or publish it to Explore."
-              action={<LinkButton onClick={() => openPlanPage(onNavigate, "strategy")}>New strategy</LinkButton>}
+              text="Backtest a strategy, adopt it on a client's portfolio and share it with them, or publish it to the catalog."
+              action={<LinkButton onClick={() => openStrategiesPage(onNavigate, { page: "builder" })}>New strategy</LinkButton>}
             />
           ) : (
             <ul className="divide-y divide-[#EEE9DD] border-t border-[#EEE9DD]">

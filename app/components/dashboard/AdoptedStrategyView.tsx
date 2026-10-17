@@ -7,7 +7,7 @@ import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { adoptionService } from "../../services/adoptionService";
 import { alertService } from "../../services/alertService";
-import { openBacktestPage, openPlanPage } from "../../lib/dashboardNav";
+import { openBacktestPage, openStrategiesPage } from "../../lib/dashboardNav";
 import { formatAlertPct, formatRange } from "../../lib/alerts";
 import { exchangeLabel } from "../../models/Listing";
 import { targetLabel, type StrategyTarget } from "../../models/Strategy";
@@ -42,7 +42,7 @@ interface Draft {
  * orders that would take it back to the strategy (RebalancingOrdersPanel), as suggestions: nothing
  * is recorded. "Refine ranges" changes the targets' weights, drops targets and sets the band (PUT),
  * previewing the ranges that come out; changed rules start again with no reading. "Remove" takes
- * the adoption away with its alerts (DELETE). Without one, the way to adopt one is Plan's Strategy.
+ * the adoption away with its alerts (DELETE). Without one, the way to adopt one is Strategies.
  * Above it, read-only, the strategies the user's advisor shared for the portfolio
  * (SharedStrategyPanel); with one of those and no adoption of their own, the way to adopt is left
  * out. A demo account sees it but can't change it.
@@ -142,7 +142,7 @@ export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimul
           <p className="text-xs text-slate-500 max-w-md">
             {client
               ? `Adopt one of your backtests on ${client.name}'s ${portfolio.name}: each of its targets becomes a range, and an alert tells you where the portfolio stands against it. Share it to let ${client.name} read it.`
-              : "Backtest a strategy in Plan, then adopt it here: each of its targets becomes a range, and an alert says where the portfolio stands against it."}
+              : "Backtest a strategy in Strategies, then adopt it here: each of its targets becomes a range, and an alert says where the portfolio stands against it."}
           </p>
           <span className="mt-2 flex flex-wrap justify-center gap-2">
             {client && ownBacktests.length > 0 && (
@@ -156,12 +156,12 @@ export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimul
             )}
             <button
               type="button"
-              onClick={() => openPlanPage(onNavigate, "strategy")}
+              onClick={() => openStrategiesPage(onNavigate)}
               className={`flex items-center gap-1.5 min-h-10 px-4 rounded-xl text-xs font-bold transition-colors ${
                 client && ownBacktests.length > 0 ? "border border-slate-200 text-slate-700 hover:border-slate-300" : "bg-[#1c1917] text-white hover:bg-[#C49A3C]"
               }`}
             >
-              {client && ownBacktests.length === 0 ? "Backtest a strategy" : "Go to Strategy"} <ArrowUpRight className="h-3.5 w-3.5" />
+              {client && ownBacktests.length === 0 ? "Backtest a strategy" : "Go to Strategies"} <ArrowUpRight className="h-3.5 w-3.5" />
             </button>
           </span>
         </div>}

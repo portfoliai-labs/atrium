@@ -19,7 +19,7 @@ import type { Client, ClientCreatePayload, ClientProfileUpdatePayload } from "..
 import type { ClientAlertRuleResponse } from "../../models/Alert";
 import { PageHeader, type PageAction } from "./PageHeader";
 import { Module, ModuleHead } from "./PerformanceSection";
-import { WealthSection } from "./WealthSection";
+import { InvestmentsSection } from "./InvestmentsSection";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { TONE_STYLES } from "./AlertGauge";
 
@@ -55,8 +55,8 @@ export function ClientAvatar({ client, size = "md" }: { client: Client; size?: "
 /**
  * CLIENTS SECTION (advisor) — the advisor's clients, and each one's page. The list says what each
  * client's investments are worth, how they've done and how their alerts stand, and adds or removes
- * clients. A client's page is their Wealth, the investor's own pages on the client's portfolios (a
- * PortfolioProvider of theirs, see WealthSection): their investments, each portfolio's Insights,
+ * clients. A client's page is their investments, the investor's own pages on the client's portfolios (a
+ * PortfolioProvider of theirs, see InvestmentsSection): their investments, each portfolio's Insights,
  * Transactions, Alerts (the advisor's), Strategy (adopted from the advisor's backtests, shared or
  * not) and Asset categories, plus the client's settings. The client is in each page's history
  * entry (`{ client, ...wealthView }`), so back and forward, and the Sidebar's rows, follow it.
@@ -255,7 +255,7 @@ function ClientRow({ client, figures, rules, onOpen, onRemove }: {
 // ── A client's page ───────────────────────────────────────────────────────────────────────
 
 /**
- * A client's Wealth, on their portfolios: the investor's pages (WealthSection) in this section,
+ * A client's investments, on their portfolios: the investor's pages (InvestmentsSection) in this section,
  * under Clients › the client, with the client's settings and removal among their investments'
  * actions.
  */
@@ -290,7 +290,7 @@ function ClientWealth({ client, onBack, onNavigate }: { client: Client; onBack: 
 
   return (
     <>
-      <WealthSection
+      <InvestmentsSection
         onNavigate={onNavigate}
         section={SECTION}
         scope={scope}

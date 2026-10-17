@@ -91,8 +91,7 @@ function requestOf(question: Question, forms: Forms): { request: ProjectionReque
  * spelled out under them. Inputs are in today's money, balances nominal: the page says so. Under 12
  * months of returns the backend refuses, and the page says why and when to come back.
  */
-// `picker`: the form's first field, the portfolio it runs on (Plan's).
-export function ProjectionPage({ portfolioUuid, trail, eyebrow, picker }: { portfolioUuid: string; trail: Crumb[]; eyebrow?: string; picker?: React.ReactNode }) {
+export function ProjectionPage({ portfolioUuid, trail, eyebrow }: { portfolioUuid: string; trail: Crumb[]; eyebrow?: string }) {
   const [question, setQuestion] = useState<Question>("goal");
   const [forms, setForms] = useState<Forms>(INITIAL_FORMS);
   // By portfolio and question (`${portfolioUuid}:${question}`): another portfolio picked keeps the form.
@@ -150,7 +149,6 @@ export function ProjectionPage({ portfolioUuid, trail, eyebrow, picker }: { port
           <Module>
             <ModuleHead title="Question" />
             <div className={`${MODULE_BODY} space-y-5`}>
-              {picker}
               <div role="tablist" aria-label="Question" className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-2.5">
                 {QUESTIONS.map((q) => (
                   <button

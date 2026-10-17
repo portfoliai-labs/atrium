@@ -12,7 +12,7 @@ import type { Portfolio } from "../../models/Portfolio";
 /**
  * PUBLISH STRATEGY — an advisor's backtest into the strategies catalog (POST
  * /v1/advisor/publications), with a description of their own; published already, it changes the
- * description. Everyone reads it in Explore: its allocation, its rules, its costs and its
+ * description. Everyone reads it in the catalog (Strategies): its allocation, its rules, its costs and its
  * simulated figures, labelled so, under the catalog's disclaimer, never matched to anyone. The
  * backend refuses one whose backtest hasn't run yet (409).
  */
@@ -51,12 +51,12 @@ export function PublishStrategyDialog({ backtest, published, onClose, onPublishe
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-sky-50 rounded-xl shrink-0"><Telescope className="h-5 w-5 text-sky-700" /></div>
           <div className="min-w-0">
-            <h3 className="text-lg font-black text-slate-900">{published ? "Edit the publication" : "Publish to Explore"}</h3>
+            <h3 className="text-lg font-black text-slate-900">{published ? "Edit the publication" : "Publish to the catalog"}</h3>
             <p className="text-xs text-slate-500 truncate">{backtest.name}</p>
           </div>
         </div>
         <p className="text-[13px] text-slate-600 leading-relaxed">
-          Everyone on PortfoliAI can read it in Explore, under your name: its allocation, its rebalancing, your trading costs
+          Everyone on PortfoliAI can read it in the strategies catalog, under your name: its allocation, its rebalancing, your trading costs
           and its simulated figures, labelled as simulated. It isn&apos;t matched to anyone, and nobody can copy or adopt it.
         </p>
         <label className="block">

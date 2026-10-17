@@ -23,7 +23,7 @@ export const MAX_COMPARED = 4;
 
 // The real estate's column: picked like a portfolio, by this id in the selection.
 export const REAL_ESTATE_COLUMN = "real-estate";
-// Wealth's real estate colour.
+// The real estate's colour.
 const REAL_ESTATE_COLOR = "#eb6834";
 
 /** The real estate as a column of Compare: its value and what went into it, all of it real estate. */
@@ -59,7 +59,7 @@ const STALE_POLL_INTERVAL_MS = 15_000;
 const STALE_TIMEOUT_MS = 5 * 60_000;
 
 /**
- * COMPARISON VIEW — Wealth's Compare (see PortfoliosCompare): every candidate (`candidates`: the
+ * COMPARISON VIEW — the investments' Compare (see PortfoliosCompare): every candidate (`candidates`: the
  * user's portfolios) as a card on top (CompareCards), picked or not with a click, up
  * to MAX_COMPARED; the picked ones side
  * by side under them (GET /v1/portfolios/comparison): a module per subject (CompareMetrics), the cumulative
@@ -67,7 +67,7 @@ const STALE_TIMEOUT_MS = 5 * 60_000;
  * (portfolioColorMap), so changing the selection never repaints the others. Columns follow the
  * portfolio list's order, not the order they were picked in, so they don't shuffle.
  *
- * Strategies that aren't the user's (`strategies`: one from Explore, or the simulation a strategy
+ * Strategies that aren't the user's (`strategies`: one from the catalog, or the simulation a strategy
  * their advisor shared came from) are compared beside them: picked for as long as they're there,
  * after the user's portfolios, each a card with a cross to take it out and a colour past theirs.
  * They count towards MAX_COMPARED, so they leave fewer of the user's picks; with none of those,
@@ -75,7 +75,7 @@ const STALE_TIMEOUT_MS = 5 * 60_000;
  * readable (withdrawn, no longer shared: 403, 404) is said, with the way to take it out.
  *
  * Where the investor's real estate is theirs to see (`onOpenRealEstate`), it's offered too, as a
- * last card and column (in Wealth's orange): filled where it means something (value, debt, equity,
+ * last card and column (in the real estate's orange): filled where it means something (value, debt, equity,
  * rents, 100% real estate), "—" for returns, risk and the benchmark, and never a row's best.
  */
 export function ComparisonView({
