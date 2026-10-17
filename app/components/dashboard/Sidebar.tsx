@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, FileText, Settings, Receipt, ChevronRight, Sparkles, Users, User2Icon } from "lucide-react";
+import { LayoutDashboard, FileText, Settings, Receipt, ChevronRight, Sparkles, Users, User2Icon, Handshake, Inbox } from "lucide-react";
 import { UserRole, SubscriptionTier } from "../../models/User";
 
 interface SidebarProps {
@@ -17,6 +17,7 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'upload', label: 'Transactions', icon: Receipt },
     { id: 'reports', label: 'Reports Archive', icon: FileText },
+    { id: 'advisor', label: 'Find an advisor', icon: Handshake },
     { id: 'profile', label: 'Profile', icon: User2Icon },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -24,6 +25,7 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
   const consultantItems = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'clients', label: 'Clients', icon: Users },
+    { id: 'requests', label: 'Requests', icon: Inbox },
     { id: 'upload', label: 'Transactions', icon: Receipt },
     { id: 'reports', label: 'Reports Archive', icon: FileText },
     { id: 'profile', label: 'Profile', icon: User2Icon },
