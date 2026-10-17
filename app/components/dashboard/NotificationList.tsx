@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, XCircle, Loader2, Clock, Bell } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Clock, Bell, MessagesSquare } from "lucide-react";
 import type { NotificationResponse } from "../../services/notificationService";
 
 interface NotificationListProps {
@@ -43,6 +43,15 @@ const DEFAULT_STATUS_CONFIG = {
   label: "Notification",
   icon: <Bell className="w-5 h-5 text-[#C49A3C] shrink-0" />,
   pill: "bg-[#F7F5EF] text-[#78716c] border-[rgba(196,154,60,0.25)]",
+};
+
+// New chat messages in one of the user's conversations (type MESSAGE_RECEIVED), one per
+// conversation until they read it in Messages. Payload: conversation_uuid, message_uuid,
+// sender_uuid.
+const MESSAGE_RECEIVED_CONFIG = {
+  label: "Messages",
+  icon: <MessagesSquare className="w-5 h-5 text-[#C49A3C] shrink-0" />,
+  pill: "bg-[#C49A3C]/10 text-[#8A6A28] border-[#C49A3C]/30",
 };
 
 function getJobStatus(n: NotificationResponse) {
@@ -92,7 +101,8 @@ export function NotificationList({ notifications, isLoading }: NotificationListP
   return (
     <ul className="divide-y divide-[rgba(196,154,60,0.1)]">
       {notifications.map((n) => {
-        const cfg = getJobStatus(n);
+        const isMessage = n.type === "MESSAGE_RECEIVED";
+        const cfg = isMessage ? MESSAGE_RECEIVED_CONFIG : getJobStatus(n);
         const jobId = getJobId(n);
         const isUnread = n.read_at === null;
 
@@ -110,12 +120,15 @@ export function NotificationList({ notifications, isLoading }: NotificationListP
                   {isUnread && (
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#C49A3C] shrink-0" />
                   )}
-                  Report job
+                  {isMessage ? "New message" : "Report job"}
                 </span>
                 <span className="text-[10px] text-[#a8a29e] shrink-0">
                   {formatDate(n.created_at)}
                 </span>
               </div>
+              {isMessage && (
+                <p className="text-[11px] text-[#78716c] mb-2">You have new messages: read them in Messages.</p>
+              )}
               {jobId && (
                 <p className="text-[11px] text-[#78716c] truncate mb-2">
                   ID: {jobId}
