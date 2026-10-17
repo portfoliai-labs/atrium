@@ -381,32 +381,21 @@ export interface StatementImportResult {
 }
 
 // A wallet's report (scriba's, on arca's figures): one wallet's month or year, or all of them.
-export type WalletReportKind = "MONTHLY" | "YEARLY";
-
 export interface WalletReport {
   documentId: string;
-  // The wallet it's about; null: all of them.
-  walletUuid: string | null;
-  // What the download and tag routes name it by: the wallet's uuid, or "all".
-  subject: string;
-  kind: WalletReportKind;
+  // The wallet it's about: what the download and tag routes name it by.
+  walletUuid: string;
   name: string;
   size: number;
   tags: string[];
-  periodStart: string | null;
-  periodEnd: string | null;
   generatedByUuid: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
+// A wallet's full report: its whole history, from its opening to today.
 export interface WalletReportRequest {
   name: string;
-  kind: WalletReportKind;
-  // Unset: all of the caller's wallets.
-  walletUuid?: string;
-  year: number;
-  // 1-12, for MONTHLY only.
-  month?: number;
+  walletUuid: string;
   force?: boolean;
 }

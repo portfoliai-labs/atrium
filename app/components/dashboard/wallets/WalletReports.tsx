@@ -8,35 +8,30 @@ import { ReportFileTile } from "../ReportFileTile";
 import { GenerateReportDialog } from "../GenerateReportDialog";
 import { saveReportFile } from "../ReportsList";
 import { useWallets } from "../../../context/WalletsContext";
-import { ALL_WALLETS, errorText, walletColor } from "../../../lib/wallets";
+import { errorText, walletColor } from "../../../lib/wallets";
 import { walletService } from "../../../services/walletService";
 import { ApiError } from "../../../services/apiClient";
-import type { WalletReport, WalletReportKind, WalletReportRequest } from "../../../models/Wallet";
+import type { WalletReport, WalletReportRequest } from "../../../models/Wallet";
 
-const KINDS: Record<WalletReportKind, { cover: "periodic" | "full"; label: string; description: string }> = {
-  MONTHLY: { cover: "periodic", label: "Monthly statement", description: "A month: what came in, what went out, every movement, the budgets." },
-  YEARLY: { cover: "full", label: "Yearly summary", description: "A year: its months, spending by category against the year before, what repeats." },
+// A wallet has one report: its full one, over its whole history.
+const FULL_REPORT = {
+  id: "FULL",
+  cover: "full" as const,
+  label: "Full report",
+  description: "The wallet's whole history: its balance, year by year, where the money went, what repeats.",
+  available: true,
 };
-const ALL_COLOR = "#1c1917";
+// A deleted wallet's reports, until they go with it.
+const NO_WALLET_COLOR = "#1c1917";
 
 type RequestState = { kind: "idle" } | { kind: "sending" } | { kind: "queued" } | { kind: "conflict"; request: WalletReportRequest } | { kind: "error"; message: string };
 
-const monthName = (year: number, month: number) =>
-  new Date(year, month - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-
-/** Last month, as YYYY-MM: the statement most often asked for. */
-function lastMonth(): string {
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
 /**
- * WALLET REPORTS — the wallets' Reports page (WalletNode): every wallet's reports and those on
- * all of them, as files (ReportFileTile), newest first; on one wallet's page, that wallet's only.
- * One search by file, wallet, kind or tag; tags are saved. "Generate report" opens
- * GenerateReportDialog: a monthly statement or a yearly summary, of a wallet or all of them, for a
- * month or a year. The report is made in the background: a notification says when it's ready.
+ * WALLET REPORTS — the wallets' Reports page (WalletNode): every wallet's reports as files
+ * (ReportFileTile), newest first; on one wallet's page, that wallet's only. One search by file,
+ * wallet or tag; tags are saved. "Generate report" opens GenerateReportDialog: a wallet's full
+ * report, its whole history (on All wallets, the wallet is picked there). The report is made in
+ * the background: a notification says when it's ready.
  */
 export function WalletReports({ walletUuid, readOnly }: { walletUuid?: string; readOnly: boolean }) {
   const { wallets } = useWallets();
@@ -46,8 +41,6 @@ export function WalletReports({ walletUuid, readOnly }: { walletUuid?: string; r
   const [downloading, setDownloading] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [state, setState] = useState<RequestState>({ kind: "idle" });
-  const [month, setMonth] = useState(lastMonth);
-  const [year, setYear] = useState(new Date().getFullYear() - 1);
 
   const load = useCallback(() => {
     walletService.reports()
@@ -63,18 +56,18 @@ export function WalletReports({ walletUuid, readOnly }: { walletUuid?: string; r
     return () => clearTimeout(timer);
   }, [state]);
 
-  const walletOf = (uuid: string | null) => (uuid ? wallets.find((w) => w.uuid === uuid) : undefined);
-  const nameOf = (r: WalletReport) => (r.walletUuid ? walletOf(r.walletUuid)?.name ?? "A deleted wallet" : "All wallets");
+  const walletOf = (uuid: string) => wallets.find((w) => w.uuid === uuid);
+  const nameOf = (r: WalletReport) => walletOf(r.walletUuid)?.name ?? "A deleted wallet";
   const colorOf = (r: WalletReport) => {
     const index = wallets.findIndex((w) => w.uuid === r.walletUuid);
-    return index < 0 ? ALL_COLOR : walletColor(wallets[index], index);
+    return index < 0 ? NO_WALLET_COLOR : walletColor(wallets[index], index);
   };
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (files ?? [])
       .filter((f) => !walletUuid || f.walletUuid === walletUuid)
-      .filter((f) => !q || [f.name, nameOf(f), KINDS[f.kind].label, ...f.tags].join(" ").toLowerCase().includes(q))
+      .filter((f) => !q || [f.name, nameOf(f), ...f.tags].join(" ").toLowerCase().includes(q))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files, query, walletUuid, wallets]);
@@ -82,7 +75,7 @@ export function WalletReports({ walletUuid, readOnly }: { walletUuid?: string; r
   const download = async (file: WalletReport) => {
     setDownloading(file.documentId);
     try {
-      const { url } = await walletService.reportDownloadUrl(file.subject, file.documentId);
+      const { url } = await walletService.reportDownloadUrl(file.walletUuid, file.documentId);
       await saveReportFile(url, file.name);
     } catch (err) {
       alert(errorText(err, "Download failed"));
@@ -93,7 +86,7 @@ export function WalletReports({ walletUuid, readOnly }: { walletUuid?: string; r
   const setTags = (id: string, tags: string[]) => setFiles((prev) => prev && prev.map((f) => (f.documentId === id ? { ...f, tags } : f)));
   const addTag = async (file: WalletReport, tag: string) => {
     try {
-      await walletService.addReportTag(file.subject, file.documentId, tag);
+      await walletService.addReportTag(file.walletUuid, file.documentId, tag);
       setTags(file.documentId, [...file.tags, tag]);
     } catch (err) {
       alert(errorText(err, "Error adding tag"));
@@ -101,7 +94,7 @@ export function WalletReports({ walletUuid, readOnly }: { walletUuid?: string; r
   };
   const removeTag = async (file: WalletReport, tag: string) => {
     try {
-      await walletService.removeReportTag(file.subject, file.documentId, tag);
+      await walletService.removeReportTag(file.walletUuid, file.documentId, tag);
       setTags(file.documentId, file.tags.filter((t) => t !== tag));
     } catch (err) {
       alert(errorText(err, "Error removing tag"));
@@ -118,26 +111,17 @@ export function WalletReports({ walletUuid, readOnly }: { walletUuid?: string; r
       else setState({ kind: "error", message: errorText(err, "Couldn't generate the report.") });
     }
   };
-  const generate = (kind: WalletReportKind, targetId: string) => {
+  const generate = (targetId: string) => {
     setGenerating(false);
-    const target = targetId === ALL_WALLETS ? "All wallets" : walletOf(targetId)?.name ?? "Wallet";
-    const [y, m] = month.split("-").map(Number);
-    void send({
-      kind,
-      walletUuid: targetId === ALL_WALLETS ? undefined : targetId,
-      year: kind === "MONTHLY" ? y : year,
-      month: kind === "MONTHLY" ? m : undefined,
-      name: kind === "MONTHLY" ? `${target} — ${monthName(y, m)} statement` : `${target} — ${year} summary`,
-    });
+    const target = walletOf(targetId)?.name ?? "Wallet";
+    const today = new Date().toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" });
+    void send({ walletUuid: targetId, name: `${target} — full report, ${today}` });
   };
 
-  const active = wallets.filter((w) => !w.archived);
-  const targets = [
-    ...(walletUuid ? [] : [{ id: ALL_WALLETS, name: "All wallets", color: ALL_COLOR }]),
-    ...active.map((w, i) => ({ id: w.uuid, name: w.name, color: walletColor(w, i) })).filter((t) => !walletUuid || t.id === walletUuid),
-  ];
-  const thisYear = new Date().getFullYear();
-  const years = Array.from({ length: 6 }, (_, i) => thisYear - i);
+  const targets = wallets
+    .map((w, i) => ({ id: w.uuid, name: w.name, color: walletColor(w, i), archived: w.archived }))
+    .filter((t) => !t.archived && (!walletUuid || t.id === walletUuid))
+    .map(({ id, name, color }) => ({ id, name, color }));
 
   return (
     <>
@@ -176,7 +160,7 @@ export function WalletReports({ walletUuid, readOnly }: { walletUuid?: string; r
         <div className="flex flex-col items-center justify-center py-20 px-4 text-center bg-white border border-dashed border-slate-300 rounded-4xl">
           <FileText className="h-12 w-12 text-slate-300 mb-4" />
           <h3 className="text-lg font-bold text-slate-700">No reports yet</h3>
-          <p className="text-sm text-slate-500 mt-1">Generate a monthly statement or a yearly summary as a PDF.</p>
+          <p className="text-sm text-slate-500 mt-1">Generate a wallet&apos;s full report, its whole history, as a PDF.</p>
         </div>
       ) : (
         <>
@@ -191,13 +175,13 @@ export function WalletReports({ walletUuid, readOnly }: { walletUuid?: string; r
                 <ReportFileTile
                   key={f.documentId}
                   name={f.name}
-                  cover={KINDS[f.kind].cover}
-                  kindLabel={KINDS[f.kind].label}
+                  cover={FULL_REPORT.cover}
+                  kindLabel={FULL_REPORT.label}
                   ownerName={nameOf(f)}
                   color={colorOf(f)}
                   createdAt={f.createdAt}
                   tags={f.tags}
-                  href={`/reports/wallets/${f.subject}/${f.documentId}`}
+                  href={`/reports/wallets/${f.walletUuid}/${f.documentId}`}
                   downloading={downloading === f.documentId}
                   readOnly={readOnly}
                   onDownload={() => download(f)}
@@ -212,46 +196,12 @@ export function WalletReports({ walletUuid, readOnly }: { walletUuid?: string; r
 
       {generating && (
         <GenerateReportDialog
-          kinds={(Object.keys(KINDS) as WalletReportKind[]).map((id) => ({ id, available: true, ...KINDS[id] }))}
+          kinds={[FULL_REPORT]}
           targets={targets}
           targetLabel="Wallet"
           readOnly={readOnly}
-          period={(kind) => kind === "MONTHLY"
-            ? {
-              ready: /^\d{4}-\d{2}$/.test(month),
-              picker: (
-                <input
-                  type="month"
-                  value={month}
-                  max={`${thisYear}-${String(new Date().getMonth() + 1).padStart(2, "0")}`}
-                  onChange={(e) => setMonth(e.target.value)}
-                  aria-label="Month"
-                  className="h-11 px-4 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:border-[#C49A3C]/50"
-                />
-              ),
-            }
-            : {
-              ready: true,
-              picker: (
-                <div className="flex flex-wrap gap-2">
-                  {years.map((y) => (
-                    <button
-                      key={y}
-                      type="button"
-                      onClick={() => setYear(y)}
-                      aria-pressed={y === year}
-                      className={`px-4 py-2.5 rounded-xl border text-sm font-bold transition-colors ${
-                        y === year ? "bg-[#1c1917] border-[#1c1917] text-white" : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-                      }`}
-                    >
-                      {y}{y === thisYear && " (so far)"}
-                    </button>
-                  ))}
-                </div>
-              ),
-            }}
           onClose={() => setGenerating(false)}
-          onGenerate={(kind, target) => generate(kind as WalletReportKind, target.id)}
+          onGenerate={(_, target) => generate(target.id)}
         />
       )}
 

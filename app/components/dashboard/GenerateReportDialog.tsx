@@ -1,7 +1,7 @@
 // components/dashboard/GenerateReportDialog.tsx
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, FileText, X } from "lucide-react";
 import { PreviewBadge } from "../preview/PreviewKit";
@@ -31,18 +31,13 @@ export interface GenerateTarget {
  * only one). `onGenerate` gets the choice; the page sends it and shows how it went. `readOnly`
  * (a demo account, or a preview): everything can be picked, but "Generate" stays off, saying why.
  */
-export function GenerateReportDialog({
-  kinds, targets, targetLabel, readOnly = false, readOnlyTitle = DEMO_DISABLED_TITLE, period, onGenerate, onClose,
-}: {
+export function GenerateReportDialog({ kinds, targets, targetLabel, readOnly = false, readOnlyTitle = DEMO_DISABLED_TITLE, onGenerate, onClose }: {
   kinds: GenerateKindOption[];
   targets: GenerateTarget[];
   // "Portfolio", "Wallet".
   targetLabel: string;
   readOnly?: boolean;
   readOnlyTitle?: string;
-  // A third step for the kinds that cover a period (Wallets'): its picker for the kind picked,
-  // and whether a period is chosen.
-  period?: (kindId: string) => { picker: ReactNode; ready: boolean } | null;
   onGenerate: (kindId: string, target: GenerateTarget) => void;
   onClose: () => void;
 }) {
@@ -50,8 +45,7 @@ export function GenerateReportDialog({
   const [targetId, setTargetId] = useState(targets.length === 1 ? targets[0].id : "");
   const picked = kinds.find((k) => k.id === kind);
   const target = targets.find((t) => t.id === targetId);
-  const periodStep = period?.(kind) ?? null;
-  const ready = !!picked?.available && !!target && (periodStep?.ready ?? true);
+  const ready = !!picked?.available && !!target;
 
   return createPortal(
     <div className="fixed inset-0 z-100 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={onClose}>
@@ -134,14 +128,6 @@ export function GenerateReportDialog({
             })}
           </div>
         </fieldset>
-
-        {/* 3. Which period, for the kinds that cover one. */}
-        {periodStep && (
-          <fieldset>
-            <legend className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">3 · Period</legend>
-            {periodStep.picker}
-          </fieldset>
-        )}
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-5 border-t border-slate-100">
           <p className="text-xs font-semibold text-slate-500">

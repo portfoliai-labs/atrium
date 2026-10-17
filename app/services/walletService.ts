@@ -209,29 +209,28 @@ export const walletService = {
     return apiFetchForm<StatementImportResult>(`/v1/wallets/${walletUuid}/import/commit`, form);
   },
 
-  // GET /v1/wallets/reports — every wallet's reports and those on all of them, newest first.
+  // GET /v1/wallets/reports — every wallet's reports (archived ones' too), newest first.
   async reports(): Promise<WalletReport[]> {
     return apiFetch<WalletReport[]>(`/v1/wallets/reports`);
   },
 
-  // POST /v1/wallets/reports — queues a monthly statement or a yearly summary (needs the plan's
+  // POST /v1/wallets/reports — queues a wallet's full report, its whole history (needs the plan's
   // reports); its outcome arrives as a notification. 409 while another of the same wallet's is in
   // progress, unless `force`.
   async requestReport(payload: WalletReportRequest): Promise<{ jobId: string }> {
     return apiFetch<{ jobId: string }>(`/v1/wallets/reports`, { method: "POST", body: JSON.stringify(payload) });
   },
 
-  // GET /v1/wallets/reports/{subject}/{d}/download — an hour's link to the file. `subject`: the
-  // report's (a wallet's uuid, or "all").
-  async reportDownloadUrl(subject: string, documentId: string): Promise<{ url: string }> {
-    return apiFetch<{ url: string }>(`/v1/wallets/reports/${subject}/${documentId}/download`);
+  // GET /v1/wallets/reports/{walletUuid}/{d}/download — an hour's link to the file.
+  async reportDownloadUrl(walletUuid: string, documentId: string): Promise<{ url: string }> {
+    return apiFetch<{ url: string }>(`/v1/wallets/reports/${walletUuid}/${documentId}/download`);
   },
 
-  async addReportTag(subject: string, documentId: string, name: string): Promise<void> {
-    await apiFetch(`/v1/wallets/reports/${subject}/${documentId}/tags`, { method: "POST", body: JSON.stringify({ name }) });
+  async addReportTag(walletUuid: string, documentId: string, name: string): Promise<void> {
+    await apiFetch(`/v1/wallets/reports/${walletUuid}/${documentId}/tags`, { method: "POST", body: JSON.stringify({ name }) });
   },
 
-  async removeReportTag(subject: string, documentId: string, name: string): Promise<void> {
-    await apiFetch(`/v1/wallets/reports/${subject}/${documentId}/tags/${encodeURIComponent(name)}`, { method: "DELETE" });
+  async removeReportTag(walletUuid: string, documentId: string, name: string): Promise<void> {
+    await apiFetch(`/v1/wallets/reports/${walletUuid}/${documentId}/tags/${encodeURIComponent(name)}`, { method: "DELETE" });
   },
 };
