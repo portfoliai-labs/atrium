@@ -21,6 +21,8 @@ import { PageHeader, type PageAction } from "./PageHeader";
 import { Module, ModuleHead } from "./PerformanceSection";
 import { InvestmentsSection } from "./InvestmentsSection";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
+import { ManualAssetsEditor } from "./ManualAssetsEditor";
 import { TONE_STYLES } from "./AlertGauge";
 
 const SECTION = CLIENTS_SECTION;
@@ -273,6 +275,12 @@ function ClientWealth({ client, onBack, onNavigate }: { client: Client; onBack: 
   const { loading, portfolios } = usePortfolio();
   const { updated, removed } = useClients();
   const [dialog, setDialog] = useState<"settings" | "remove" | null>(null);
+  // The Client settings tab it opens on.
+  const [settingsTab, setSettingsTab] = useState<ClientSettingsTab>("profile");
+  const openSettings = (tab: ClientSettingsTab) => {
+    setSettingsTab(tab);
+    setDialog("settings");
+  };
   const scope = useMemo(() => ({ client: client.uuid }), [client.uuid]);
   const trail = useMemo(() => [{ label: "Clients", onClick: onBack }], [onBack]);
 
@@ -284,7 +292,7 @@ function ClientWealth({ client, onBack, onNavigate }: { client: Client; onBack: 
   }
 
   const extraActions: PageAction[] = [
-    { label: "Client settings", onClick: () => setDialog("settings") },
+    { label: "Client settings", onClick: () => openSettings("profile") },
     { label: "Remove client", danger: true, onClick: () => setDialog("remove") },
   ];
 
@@ -296,11 +304,13 @@ function ClientWealth({ client, onBack, onNavigate }: { client: Client; onBack: 
         scope={scope}
         rootTrail={trail}
         extraActions={extraActions}
-        onOpenTaxSettings={() => setDialog("settings")}
+        onOpenTaxSettings={() => openSettings("profile")}
+        onOpenAssetSettings={() => openSettings("assets")}
       />
       {dialog === "settings" && (
         <ClientSettingsDialog
           client={client}
+          initialTab={settingsTab}
           onClose={() => setDialog(null)}
           onSaved={(next) => {
             updated(next);
@@ -338,11 +348,13 @@ function Field({ label, required, children }: { label: string; required?: boolea
   );
 }
 
-function DialogShell({ icon, title, subtitle, busy, onClose, children }: {
+function DialogShell({ icon, title, subtitle, busy, wide, onClose, children }: {
   icon: React.ReactNode;
   title: string;
   subtitle?: string;
   busy?: boolean;
+  // Room for a list (a client's assets), not just a form.
+  wide?: boolean;
   onClose: () => void;
   children: React.ReactNode;
 }) {
@@ -352,7 +364,7 @@ function DialogShell({ icon, title, subtitle, busy, onClose, children }: {
       <div
         role="dialog"
         aria-modal="true"
-        className="bg-white rounded-4xl shadow-2xl border border-slate-200 max-w-lg w-full p-6 md:p-8 space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar animate-in zoom-in-95 duration-200"
+        className={`bg-white rounded-4xl shadow-2xl border border-slate-200 ${wide ? "max-w-3xl" : "max-w-lg"} w-full p-6 md:p-8 space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar animate-in zoom-in-95 duration-200`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
@@ -518,12 +530,25 @@ function AddClientDialog({ onClose, onCreated }: { onClose: () => void; onCreate
   );
 }
 
+type ClientSettingsTab = "profile" | "assets";
+const CLIENT_SETTINGS_TABS: { id: ClientSettingsTab; label: string }[] = [
+  { id: "profile", label: "Profile" },
+  { id: "assets", label: "Assets" },
+];
+
 /**
- * CLIENT SETTINGS — a client's language, portfolio currency and tax residence. Changing the
- * currency makes the backend recompute the client's whole history in it; the residence picks the
- * regime their taxes are computed by (see their investments' Taxes page).
+ * CLIENT SETTINGS — a client's language, portfolio currency and tax residence (Profile), and their
+ * asset categories and manual assets (Assets), each saved as it's changed. Changing the currency
+ * makes the backend recompute the client's whole history in it; the residence picks the regime
+ * their taxes are computed by (see their investments' Taxes page).
  */
-function ClientSettingsDialog({ client, onClose, onSaved }: { client: Client; onClose: () => void; onSaved: (client: Client) => void }) {
+function ClientSettingsDialog({ client, initialTab = "profile", onClose, onSaved }: {
+  client: Client;
+  initialTab?: ClientSettingsTab;
+  onClose: () => void;
+  onSaved: (client: Client) => void;
+}) {
+  const [tab, setTab] = useState<ClientSettingsTab>(initialTab);
   const [form, setForm] = useState({ currency: client.currency ?? "EUR", language: client.language ?? "it", taxResidence: client.tax_residence ?? "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -555,7 +580,38 @@ function ClientSettingsDialog({ client, onClose, onSaved }: { client: Client; on
   };
 
   return (
-    <DialogShell icon={<Settings2 className="h-5 w-5" />} title="Client settings" subtitle={`${clientDisplayName(client)} · ${client.email}`} busy={busy} onClose={onClose}>
+    <DialogShell icon={<Settings2 className="h-5 w-5" />} title="Client settings" subtitle={`${clientDisplayName(client)} · ${client.email}`} busy={busy} wide={tab === "assets"} onClose={onClose}>
+      <div className="inline-flex gap-1 p-1 bg-white rounded-full border border-[rgba(196,154,60,0.2)]">
+        {CLIENT_SETTINGS_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            disabled={busy}
+            className={`px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-colors disabled:opacity-50 ${
+              t.id === tab ? "bg-[#1c1917] text-white" : "text-[#78716c] hover:text-[#1c1917]"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "assets" ? (
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500 leading-relaxed">
+              The category each of {clientDisplayName(client)}&apos;s securities counts in, across all their portfolios: alerts on a category, and adopting a strategy by category, weigh a portfolio by it. A category you pick is theirs too, everywhere, until it&apos;s restored.
+            </p>
+            <AssetCategoriesEditor clientUuid={client.uuid} />
+          </div>
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500 leading-relaxed">
+              {clientDisplayName(client)}&apos;s investments with no market price — unlisted shares, private equity, a loan, physical gold — valued by hand. Each one is picked in a transaction like a security, and counts in the portfolios that hold it by its valuations.
+            </p>
+            <ManualAssetsEditor clientUuid={client.uuid} />
+          </div>
+        </div>
+      ) : (
       <div className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Language">
@@ -586,6 +642,7 @@ function ClientSettingsDialog({ client, onClose, onSaved }: { client: Client; on
         {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
         <DialogButtons busy={busy} disabled={!dirty} label="Save" onCancel={onClose} onConfirm={save} />
       </div>
+      )}
     </DialogShell>
   );
 }

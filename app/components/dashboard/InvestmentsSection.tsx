@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Calculator, ChevronRight, LineChart, ShieldAlert } from "lucide-react";
+import { Calculator, ChevronRight, History, LineChart, ShieldAlert } from "lucide-react";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { portfoliosService } from "../../services/portfoliosService";
@@ -12,7 +12,7 @@ import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
 import { portfolioColorMap } from "../../lib/chartColors";
 import { formatCurrency } from "../../lib/format";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
-import { INVESTMENTS_SECTION, openClientPage, openRealEstatePage, openStrategiesPage } from "../../lib/dashboardNav";
+import { INVESTMENTS_SECTION, openClientPage, openStrategiesPage } from "../../lib/dashboardNav";
 import { useMyPublications } from "../../hooks/useMyPublications";
 import { publicationService } from "../../services/publicationService";
 import { PublishStrategyDialog } from "./PublishStrategyDialog";
@@ -38,19 +38,20 @@ import { BacktestBanner } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
 import type { SharedStrategy } from "../../models/AdoptedStrategy";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
-import { useRealEstate } from "../../context/RealEstateContext";
 import { TaxesPage } from "./taxes/TaxesPage";
 import { StressTestPage } from "./stress/StressTestPage";
 import { ProjectionPage } from "./projection/ProjectionPage";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
-import { requestSettingsTab } from "./SettingsSection";
+import { openAssetSettings, requestSettingsTab } from "./SettingsSection";
 import { StrategiesNode, strategiesViewOf, type BacktestPage, type StrategiesView } from "./StrategiesSection";
 
 // A portfolio's pages: its own (overview), and those its header leads to.
 // "taxes": the investments' (All portfolios', or the only portfolio's), the owner's taxes on them all.
 // "stress": how a past crisis, or shocks picked, would hit it as it is today (a backtest's too).
 // "projection": a Monte Carlo of where it could go as it is: a goal, withdrawals, the safe withdrawal.
-// "manualAssets": the user's investments with no market price, valued by hand (the investments').
+// "manualAssets": the investments with no market price, valued by hand (the investments'). Both it and
+// "categories" are reached from links (an old history entry, adopting on a client): their buttons are
+// in Settings (the user's) and Client settings (a client's).
 export type PortfolioPage = "overview" | "transactions" | "alerts" | "reports" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "stress" | "projection" | "manualAssets";
 
 export type InvestmentsView =
@@ -169,7 +170,7 @@ function viewFromHistory(hasStrategies: boolean, portfolios: Portfolio[], sectio
  * section, each view carrying the client (`scope`), under the client's crumbs (`rootTrail`), on
  * that client's portfolios (a PortfolioProvider of theirs), with no Strategies (the advisor's own).
  */
-export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, scope = NO_SCOPE, rootTrail = NO_TRAIL, extraActions, onOpenTaxSettings }: {
+export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, scope = NO_SCOPE, rootTrail = NO_TRAIL, extraActions, onOpenTaxSettings, onOpenAssetSettings }: {
   onNavigate: (section: string) => void;
   section?: string;
   scope?: InvestmentsScope;
@@ -178,9 +179,10 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
   extraActions?: PageAction[];
   // Where the Taxes page sets the tax residence: the user's Settings unless said (a client's settings).
   onOpenTaxSettings?: () => void;
+  // Where the asset categories and manual assets are: the user's Settings unless said (a client's settings).
+  onOpenAssetSettings?: () => void;
 }) {
   const { portfolios, selectPortfolio, client } = usePortfolio();
-  const { available: realEstateAvailable } = useRealEstate();
   const hasStrategies = !client;
   const [view, setView] = useState<InvestmentsView>(() => viewFromHistory(hasStrategies, portfolios, section, scope));
 
@@ -210,8 +212,12 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
 
   const investments = investmentsOf(portfolios);
   const openStrategies = (next: StrategiesView) => go({ kind: "strategies", ...next });
+  // Strategies are opened from Plan, on the investments' pages: they sit under the investments.
+  const strategiesTrail: Crumb[] = investments
+    ? [...rootTrail, { label: investments.name, onClick: () => openPortfolio(investments.uuid) }]
+    : rootTrail;
   if (view.kind === "strategies" && hasStrategies) {
-    return <StrategiesNode view={strategiesViewOf(view)} trail={rootTrail} onOpen={openStrategies} onOpenPortfolio={openPortfolio} onNavigate={onNavigate} />;
+    return <StrategiesNode view={strategiesViewOf(view)} trail={strategiesTrail} onOpen={openStrategies} onOpenPortfolio={openPortfolio} onNavigate={onNavigate} />;
   }
 
   const portfolio = (view.kind === "portfolio" && portfolios.find((p) => p.uuid === view.uuid)) || investments;
@@ -223,7 +229,7 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
   if (isBacktest(portfolio)) {
     if (!hasStrategies) return null;
     const sub: BacktestPage = page === "transactions" || page === "stress" || page === "projection" ? page : "overview";
-    return <StrategiesNode view={{ page: "backtest", uuid: portfolio.uuid, sub }} trail={rootTrail} onOpen={openStrategies} onOpenPortfolio={openPortfolio} onNavigate={onNavigate} />;
+    return <StrategiesNode view={{ page: "backtest", uuid: portfolio.uuid, sub }} trail={strategiesTrail} onOpen={openStrategies} onOpenPortfolio={openPortfolio} onNavigate={onNavigate} />;
   }
 
   // The pages above it: a portfolio sits under All portfolios.
@@ -245,11 +251,12 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
       compareWith={compareWith}
       onCompareWith={investments ? (strategy) => go({ kind: "portfolio", uuid: investments.uuid, page: "compare", compareWith: [strategy] }) : undefined}
       onOpenSimulation={(uuid) => go({ kind: "portfolio", uuid: portfolio.uuid, page: "strategy", simulation: uuid })}
-      onOpenRealEstate={!client && realEstateAvailable ? () => openRealEstatePage(onNavigate) : undefined}
       onOpenTaxSettings={onOpenTaxSettings ?? (() => {
         requestSettingsTab("preferences");
         onNavigate("settings");
       })}
+      onOpenAssetSettings={onOpenAssetSettings}
+      onOpenStrategies={hasStrategies ? () => openStrategies({ page: "home" }) : undefined}
       onNavigate={onNavigate}
     />
   );
@@ -346,7 +353,7 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  * PORTFOLIO NODE — a portfolio's page in Investments (a backtest's under Strategies), or one of
  * the pages its header leads to. Its header says what it's worth and how it moved, counts its
  * activity (each count opens its page) and holds what can be done with it:
- * - All portfolios: Manage portfolios, a new portfolio, Compare. It's read only: its transactions
+ * - All portfolios: Manage portfolios (a new one is made there), Alerts, Compare. It's read only: its transactions
  *   list every portfolio's, and a new one says which it goes in.
  * - a portfolio: its Transactions, Alerts and Reports, rename, delete (not the default one).
  * - a backtest: adopt its strategy, delete. Its figures are a simulation's (returns and risk over
@@ -358,7 +365,7 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  * client's (PortfolioContext's `client`) can't rename or delete it; its alerts are the advisor's,
  * its asset categories the client's, and its Strategy page says whether the client sees it.
  */
-export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, compareWith, onCompareWith, onOpenSimulation, onOpenRealEstate, onOpenTaxSettings, onBacktestGone, onNavigate }: {
+export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, compareWith, onCompareWith, onOpenSimulation, onOpenTaxSettings, onOpenAssetSettings, onOpenStrategies, onBacktestGone, onNavigate }: {
   portfolio: Portfolio;
   page: PortfolioPage;
   trail: Crumb[];
@@ -375,10 +382,11 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   // and the way to open one.
   simulation?: string;
   onOpenSimulation?: (uuid: string) => void;
-  // The investor's real estate, where it's theirs to see: Compare then offers it as a column.
-  onOpenRealEstate?: () => void;
   // The investments' Taxes page: where the tax residence is set.
   onOpenTaxSettings?: () => void;
+  onOpenAssetSettings?: () => void;
+  // Strategies, from Plan (the user's own investments; a client's have none).
+  onOpenStrategies?: () => void;
   // A backtest's page (Strategies'): where to go once it's deleted. Strategies by default.
   onBacktestGone?: () => void;
   onNavigate: (section: string) => void;
@@ -393,10 +401,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const { hasAdoption, shared, reload: reloadAdoption } = useHasAdoption(portfolio);
   // An advisor reaches a client's portfolio's Strategy page with or without one: it's where theirs is adopted.
   const strategyAction: PageAction[] = hasAdoption || shared.length > 0 || client ? [{ label: "Strategy", onClick: () => open("strategy") }] : [];
-  const openCategories = () => {
-    const investments = investmentsOf(portfolios);
-    if (investments) onOpen(investments.uuid, "categories");
-  };
+  // In the user's Settings (Assets), or where it's opened from says (a client's settings).
+  const openCategories = onOpenAssetSettings ?? (() => openAssetSettings(onNavigate));
   const [dialog, setDialog] = useState<"new" | "rename" | "delete" | "adopt" | "publish" | "withdraw" | null>(null);
   // An advisor's backtest: whether it's in the catalog.
   const { publications, reload: reloadPublications, canPublish } = useMyPublications();
@@ -439,12 +445,11 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       ]
     : portfolio.isAggregate
       ? [
+          // Manage portfolios is also where a new one is made.
           { label: "Manage portfolios", primary: true, onClick: () => open("portfolios") },
-          ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new") }] : []),
+          { label: "Alerts", onClick: () => open("alerts") },
           ...(real.length > 1 ? [{ label: "Compare", onClick: () => open("compare") }] : []),
           ...strategyAction,
-          { label: "Asset categories", onClick: () => open("categories") },
-          { label: "Manual assets", onClick: () => open("manualAssets") },
           ...extraActions,
         ]
       : [
@@ -453,14 +458,9 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           { label: "Alerts", onClick: () => open("alerts") },
           ...strategyAction,
           { label: "Reports", onClick: () => open("reports") },
-          // The only portfolio stands for the investments: the way to a second one is here, and to
-          // the categories of everything held.
+          // The only portfolio stands for the investments: the way to a second one is here.
           ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new") }] : []),
           ...(real.length > 1 ? [{ label: "Compare", onClick: () => open("compare") }] : []),
-          ...(isInvestments ? [
-            { label: "Asset categories", onClick: () => open("categories") },
-            { label: "Manual assets", onClick: () => open("manualAssets") },
-          ] : []),
           ...extraActions,
           ...(canManage ? [
             { label: "Rename", onClick: () => setDialog("rename"), ...demo },
@@ -632,7 +632,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           top={backtest ? header : (
             <>
               {header}
-              <PlanningTools taxes={isInvestments} onOpen={open} />
+              <PlanningTools taxes={isInvestments} onOpen={open} onOpenStrategies={onOpenStrategies} />
             </>
           )}
           onOpenPortfolio={(uuid) => onOpen(uuid)}
@@ -653,7 +653,6 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
         trail={pageTrail}
         compareWith={compareWith}
         onOpen={(uuid) => onOpen(uuid)}
-        onOpenRealEstate={onOpenRealEstate}
       />
     );
   }
@@ -780,23 +779,26 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
 
 /**
  * PLANNING TOOLS — what a portfolio's page plans with, under its header: its Stress test and
- * Projection, each its own page, and the investments' Taxes (the owner's, on every portfolio).
+ * Projection, each its own page, the investments' Taxes (the owner's, on every portfolio), and
+ * Strategies (the user's backtests and the published ones; not on a client's).
  */
-function PlanningTools({ taxes, onOpen }: { taxes: boolean; onOpen: (page: PortfolioPage) => void }) {
-  const tools: { page: PortfolioPage; icon: typeof Calculator; title: string; text: string }[] = [
-    ...(taxes ? [{ page: "taxes" as const, icon: Calculator, title: "Taxes", text: "The tax on sales and income, year by year, and the losses carried forward." }] : []),
-    { page: "stress", icon: ShieldAlert, title: "Stress test", text: "How a past crisis, or the shocks picked, would hit it as it is today." },
-    { page: "projection", icon: LineChart, title: "Projection", text: "Where it could go from here: a goal, withdrawals, the safe withdrawal." },
+function PlanningTools({ taxes, onOpen, onOpenStrategies }: { taxes: boolean; onOpen: (page: PortfolioPage) => void; onOpenStrategies?: () => void }) {
+  const tools: { key: string; onClick: () => void; icon: typeof Calculator; title: string; text: string }[] = [
+    ...(taxes ? [{ key: "taxes", onClick: () => onOpen("taxes"), icon: Calculator, title: "Taxes", text: "The tax on sales and income, year by year, and the losses carried forward." }] : []),
+    { key: "stress", onClick: () => onOpen("stress"), icon: ShieldAlert, title: "Stress test", text: "How a past crisis, or the shocks picked, would hit it as it is today." },
+    { key: "projection", onClick: () => onOpen("projection"), icon: LineChart, title: "Projection", text: "Where it could go from here: a goal, withdrawals, the safe withdrawal." },
+    ...(onOpenStrategies ? [{ key: "strategies", onClick: onOpenStrategies, icon: History, title: "Strategies", text: "Your strategies tested on the past, and the ones advisors publish." }] : []),
   ];
+  const columns = tools.length === 4 ? "sm:grid-cols-2 xl:grid-cols-4" : tools.length === 3 ? "md:grid-cols-3" : "sm:grid-cols-2";
   return (
     <Module>
       <ModuleHead title="Plan" />
-      <div className={`${MODULE_BODY} grid grid-cols-1 ${tools.length === 3 ? "md:grid-cols-3" : "sm:grid-cols-2"} gap-3`}>
+      <div className={`${MODULE_BODY} grid grid-cols-1 ${columns} gap-3`}>
         {tools.map((t) => (
           <button
-            key={t.page}
+            key={t.key}
             type="button"
-            onClick={() => onOpen(t.page)}
+            onClick={t.onClick}
             className="group flex items-start gap-3 p-4 rounded-2xl border border-[#EEE9DD] text-left hover:border-[#C49A3C]/60 hover:bg-[#FBFAF6] transition-colors"
           >
             <span className="w-9 h-9 rounded-xl bg-[#F7F5EF] text-[#78716c] flex items-center justify-center shrink-0 group-hover:bg-[#C49A3C]/15 group-hover:text-[#C49A3C] transition-colors">

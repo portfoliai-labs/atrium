@@ -51,7 +51,8 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
   const { portfolios: clientPortfolios } = useClientPortfolios(openClient);
 
   // Investor: the sections, and under the open one its pages. Under Investments, All portfolios and
-  // each real portfolio under it (the only portfolio, while there's one), then Strategies. Under
+  // each real portfolio under it (the only portfolio, while there's one); Strategies are opened from
+  // its pages' Plan. Under
   // Wallets and Real estate, all of them and each one (not archived), once there's one: the first
   // is added from the section's own page. Each of the two only where the user has it (a backend
   // with wallets, a demo account's sample data).
@@ -66,12 +67,9 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     depth,
     color: p.isAggregate ? undefined : colorOf(p.uuid),
   });
-  // Its pages too: a backtest, a published strategy, the form for a new one.
-  const strategiesRow: SubItem = { key: 'strategies', label: 'Strategies', view: { kind: 'strategies', page: 'home' }, active: view?.kind === 'strategies' };
   const investmentRows: SubItem[] = [
     ...(aggregate ? [portfolioRow(aggregate, 0)] : []),
     ...real.map((p) => portfolioRow(p, aggregate ? 1 : 0)),
-    strategiesRow,
   ];
 
   const hasWallets = isDemo || walletsAvailable;
