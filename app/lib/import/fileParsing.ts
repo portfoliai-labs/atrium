@@ -34,15 +34,51 @@ function toRawRows(headers: string[], dataRows: string[][]): RawRow[] {
   });
 }
 
+// Italian broker exports commonly use ";". Same candidates, sample and rule as nucleo's reader
+// (nucleo/parsers/broker_file.py), so the file previewed here is the file the server commits.
+const CSV_DELIMITERS = [",", ";", "\t", "|"];
+const CSV_DELIMITER_SAMPLE_LINES = 50;
+
+// The candidate that splits the sampled lines into the same number of fields (more than one)
+// most consistently; ties go to more fields, then to the candidates' order. "," if none splits.
+// Papa's own guess is thrown off by a title line above the header: it took "," for a ";" file
+// whose decimal commas then split every amount.
+export function guessDelimiter(text: string): string {
+  const lines = text.split(/\r\n|\n|\r/).filter((line) => line.trim() !== "").slice(0, CSV_DELIMITER_SAMPLE_LINES);
+  let best = ",";
+  let bestShare = 0;
+  let bestWidth = 0;
+  for (const delimiter of CSV_DELIMITERS) {
+    const rows = Papa.parse<string[]>(lines.join("\n"), { header: false, delimiter }).data;
+    if (rows.length === 0) continue;
+    const counts = new Map<number, number>();
+    for (const row of rows) counts.set(row.length, (counts.get(row.length) ?? 0) + 1);
+    let width = 0;
+    let linesAtWidth = 0;
+    for (const [w, c] of counts) {
+      if (c > linesAtWidth) {
+        width = w;
+        linesAtWidth = c;
+      }
+    }
+    if (width < 2) continue;
+    const share = linesAtWidth / rows.length;
+    if (share > bestShare || (share === bestShare && width > bestWidth)) {
+      best = delimiter;
+      bestShare = share;
+      bestWidth = width;
+    }
+  }
+  return best;
+}
+
 async function parseCsvLike(file: File): Promise<string[][]> {
   const buffer = await file.arrayBuffer();
   const text = decodeCsvBuffer(buffer);
   const result = Papa.parse<string[]>(text, {
     header: false,
     skipEmptyLines: "greedy",
-    // Italian broker exports commonly use ";" — Papa picks whichever of these best
-    // explains the file's rows rather than defaulting to ",".
-    delimitersToGuess: [",", ";", "\t", "|"],
+    delimiter: guessDelimiter(text),
   });
   return result.data;
 }
