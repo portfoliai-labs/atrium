@@ -18,7 +18,8 @@ import { SettingsSection } from "../../components/dashboard/SettingsSection";
 import { NotificationsSection } from "../../components/dashboard/NotificationsSection";
 import { InvestmentsSection } from "../../components/dashboard/InvestmentsSection";
 import { StrategiesSection, isStrategiesView, strategiesViewOf } from "../../components/dashboard/StrategiesSection";
-import { ExploreSection, exploreViewFrom, exploreViewOf } from "../../components/dashboard/ExploreSection";
+import { JournalSection } from "../../components/dashboard/JournalSection";
+import { NewsPageSection } from "../../components/dashboard/NewsSection";
 import { WalletsSection } from "../../components/dashboard/wallets/WalletsSection";
 import { RealEstateSection } from "../../components/dashboard/realEstate/RealEstateSection";
 import { AssetSection } from "../../components/dashboard/AssetSection";
@@ -38,10 +39,11 @@ import {
 // 'performance' is the investor's Investments (once Wealth; an advisor's Insights).
 // Some are gone, kept so a link or history entry to them lands on where their pages went (see
 // relocate, below): 'discover' (its News, Journal and Explore), 'plan' (its Projection and Stress
-// test are each portfolio's, its Strategy is Strategies), the Journal and News (Explore's).
+// test are each portfolio's, its Strategy is Strategies), 'explore' (the strategies catalog, once,
+// then the Journal and News together).
 const VALID_SECTIONS = [
-  'overview', 'clients', 'upload', INVESTMENTS_SECTION, WALLETS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, EXPLORE_SECTION,
-  ASSET_SECTION, 'settings', 'notifications', PLAN_SECTION, NEWS_SECTION, JOURNAL_SECTION, 'discover',
+  'overview', 'clients', 'upload', INVESTMENTS_SECTION, WALLETS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, JOURNAL_SECTION,
+  NEWS_SECTION, ASSET_SECTION, 'settings', 'notifications', PLAN_SECTION, EXPLORE_SECTION, 'discover',
 ];
 // Sections that became another, under a new name. A link or a history entry to the old one lands
 // on the new.
@@ -55,7 +57,8 @@ const resolveSection = (section: string | null | undefined) => (section ? MOVED_
  *   the rest, Strategies.
  * - Strategies, and the old Explore's catalog pages: an advisor's own section; an investor's, under
  *   Investments.
- * - The Journal and News: Explore's. Discover: Explore's, or Strategies' for its old Explore.
+ * - Explore: Strategies for its catalog's pages, the Journal or the News for theirs. Discover: the
+ *   Journal or the News, or Strategies for its old Explore.
  * - Wealth's wallets and real estate: their own sections.
  * - An advisor's Transactions and Insights: each client's own pages (Clients); they have no
  *   wallets or real estate.
@@ -84,13 +87,11 @@ function relocate(section: string, raw: unknown, isAdvisor: boolean): { section:
     case STRATEGIES_SECTION:
       return isAdvisor ? null : strategies(view);
     case EXPLORE_SECTION:
-      return isStrategiesView(view) ? strategies(view) : null;
-    case NEWS_SECTION:
-    case JOURNAL_SECTION:
-      return { section: EXPLORE_SECTION, view: exploreViewFrom(section, view) };
+      if (isStrategiesView(view)) return strategies(view);
+      return view.page === "news" ? { section: NEWS_SECTION, view: undefined } : { section: JOURNAL_SECTION, view: raw };
     case 'discover':
       if (isAdvisor || view.page === "explore") return strategies(view);
-      return { section: EXPLORE_SECTION, view: view.page === "journal" ? exploreViewOf(view) : { page: "news" } };
+      return view.page === "journal" ? { section: JOURNAL_SECTION, view: raw } : { section: NEWS_SECTION, view: undefined };
     default:
       return null;
   }
@@ -215,11 +216,12 @@ function DashboardPageContent() {
         // An advisor's: their strategies, to adopt on clients' portfolios or publish, and the
         // catalog. An investor's is Investments', where it lands (see relocate).
         return isAdvisor ? <StrategiesSection key={sectionVisit} onNavigate={navigate} /> : null;
-      case EXPLORE_SECTION:
-        return <ExploreSection key={sectionVisit} />;
-      case PLAN_SECTION:
-      case NEWS_SECTION:
       case JOURNAL_SECTION:
+        return <JournalSection key={sectionVisit} />;
+      case NEWS_SECTION:
+        return <NewsPageSection />;
+      case PLAN_SECTION:
+      case EXPLORE_SECTION:
         // Until it lands where its pages went (see relocate).
         return null;
       case ASSET_SECTION:

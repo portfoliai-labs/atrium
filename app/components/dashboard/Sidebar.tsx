@@ -1,25 +1,25 @@
 "use client";
 
-import { LayoutDashboard, Settings, ChevronRight, Sparkles, Users, Compass, LineChart, Wallet, Building2, History } from "lucide-react";
+import { LayoutDashboard, Settings, ChevronRight, Sparkles, Users, Newspaper, BookOpen, LineChart, Wallet, Building2, History } from "lucide-react";
 import { PreviewBadge } from "../preview/PreviewKit";
 import { useUser } from "../../context/UserContext";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useDashboardEntry } from "../../lib/dashboardHistory";
-import { CLIENTS_SECTION, EXPLORE_SECTION, INVESTMENTS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
+import { CLIENTS_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
 import { clientDisplayName, useClients } from "../../context/ClientsContext";
 import { useClientPortfolios } from "../../hooks/useClientPortfolios";
 import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
 import { useWallets } from "../../context/WalletsContext";
 import { useRealEstate } from "../../context/RealEstateContext";
 import { ALL_WALLETS, KIND_LABELS, walletColor } from "../../lib/wallets";
-import { exploreRowOf, type ExploreView } from "./ExploreSection";
+import { journalRowOf, type JournalView } from "./JournalSection";
 import { useJournal } from "../../context/JournalContext";
 import { UserRole, SubscriptionTier } from "../../models/User";
 
 interface SidebarProps {
   activeSection: string;
   setActiveSection: (section: string) => void;
-  // Opens a section on one of its pages (a row under it: a portfolio, a wallet, the News…).
+  // Opens a section on one of its pages (a row under it: a portfolio, a wallet, Saved articles…).
   onOpenPage?: (section: string, view: unknown) => void;
   isOpen?: boolean;
   onClose?: () => void;
@@ -106,28 +106,26 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     })),
   ] : [];
 
-  // Explore: the articles (the Journal, for everyone: the written articles where the backend
-  // doesn't have it yet) and the News; under them the reader's and the author's pages, and the
-  // editors' moderation.
+  // The Journal, for everyone (the written articles where the backend doesn't have it yet); under
+  // it the reader's and the author's pages, and the editors' moderation.
   const journal = useJournal();
-  const exploreRow = activeSection === EXPLORE_SECTION ? exploreRowOf(view as ExploreView | undefined) : null;
-  const exploreRows: SubItem[] = [
-    { key: 'journal', label: 'Articles', view: { page: 'journal' }, active: exploreRow === 'journal' },
-    { key: 'news', label: 'News', view: { page: 'news' }, active: exploreRow === 'news' },
-    ...(journal.canWrite ? [
-      { key: 'saved', label: 'Saved', view: { page: 'saved' }, active: exploreRow === 'saved' },
-      { key: 'mine', label: 'Your articles', view: { page: 'mine' }, active: exploreRow === 'mine' },
-    ] : []),
-    ...(journal.editor ? [{ key: 'moderation', label: 'Moderation', view: { page: 'moderation' }, active: exploreRow === 'moderation' }] : []),
-  ];
-  const exploreItem: NavItem = { id: EXPLORE_SECTION, label: 'Explore', icon: Compass, subs: exploreRows };
+  const journalRow = activeSection === JOURNAL_SECTION ? journalRowOf(view as JournalView | undefined) : null;
+  const journalRows: SubItem[] = journal.canWrite ? [
+    { key: 'journal', label: 'Articles', view: { page: 'journal' }, active: journalRow === 'journal' },
+    { key: 'saved', label: 'Saved', view: { page: 'saved' }, active: journalRow === 'saved' },
+    { key: 'mine', label: 'Your articles', view: { page: 'mine' }, active: journalRow === 'mine' },
+    ...(journal.editor ? [{ key: 'moderation', label: 'Moderation', view: { page: 'moderation' }, active: journalRow === 'moderation' }] : []),
+  ] : [];
+  const journalItem: NavItem = { id: JOURNAL_SECTION, label: 'Journal', icon: BookOpen, subs: journalRows };
+  const newsItem: NavItem = { id: NEWS_SECTION, label: 'News', icon: Newspaper };
 
   const investorItems: NavItem[] = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: INVESTMENTS_SECTION, label: 'Investments', icon: LineChart, subs: investmentRows },
     ...(realEstateAvailable ? [{ id: REAL_ESTATE_SECTION, label: 'Real estate', icon: Building2, preview: realEstateSample, subs: propertyRows }] : []),
     ...(hasWallets ? [{ id: WALLETS_SECTION, label: 'Wallets', icon: Wallet, preview: sample, subs: walletRows }] : []),
-    exploreItem,
+    journalItem,
+    newsItem,
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -159,7 +157,8 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: CLIENTS_SECTION, label: 'Clients', icon: Users, subs: clientRows },
     { id: STRATEGIES_SECTION, label: 'Strategies', icon: History },
-    exploreItem,
+    journalItem,
+    newsItem,
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

@@ -9,7 +9,6 @@
 import { pushDashboardEntry } from "./dashboardHistory";
 import type { InvestmentsView, PortfolioPage } from "../components/dashboard/InvestmentsSection";
 import type { StrategiesView } from "../components/dashboard/StrategiesSection";
-import type { ExploreView } from "../components/dashboard/ExploreSection";
 import type { WalletPage } from "../components/dashboard/wallets/WalletNode";
 import type { WalletsView } from "../components/dashboard/wallets/WalletsSection";
 import type { RealEstateView } from "../components/dashboard/realEstate/RealEstateSection";
@@ -24,16 +23,15 @@ export const REAL_ESTATE_SECTION = "realEstate";
 // advisor's own section; an investor's is Investments', beside All portfolios, where a link to
 // this one lands.
 export const STRATEGIES_SECTION = "strategies";
-// Explore: the News and the Journal's articles, with each reader's and author's pages (see
-// ExploreSection). Before, the strategies catalog's id: a link to one of its pages lands on
-// Strategies (see the dashboard page).
-export const EXPLORE_SECTION = "explore";
+// The Journal: its articles, and each reader's and author's pages (see JournalSection).
+export const JOURNAL_SECTION = "journal";
+// Today's market headlines (see NewsSection).
+export const NEWS_SECTION = "news";
 // Sections that are gone, kept so old links and history entries land where their pages went (see
 // the dashboard page): Plan's (Projection and Stress test, each portfolio's own now; Strategy,
-// Strategies), the Journal and News (Explore's).
+// Strategies) and Explore's (the strategies catalog, once; then the Journal and News together).
 export const PLAN_SECTION = "plan";
-export const JOURNAL_SECTION = "journal";
-export const NEWS_SECTION = "news";
+export const EXPLORE_SECTION = "explore";
 // An advisor's clients: the list, and each client's investments (see ClientsSection).
 export const CLIENTS_SECTION = "clients";
 // A security's page, opened from the top bar's search (see AssetSection).
@@ -77,10 +75,6 @@ export const openStrategiesPage = (onNavigate: Navigate, view: StrategiesView = 
 /** A backtest's page, under Strategies. */
 export const openBacktestPage = (onNavigate: Navigate, portfolioUuid: string) =>
   openStrategiesPage(onNavigate, { page: "backtest", uuid: portfolioUuid, sub: "overview" });
-
-/** Explore, on one of its pages: the articles unless said. */
-export const openExplorePage = (onNavigate: Navigate, view: ExploreView = { page: "journal" }) =>
-  openSectionView(onNavigate, EXPLORE_SECTION, view);
 
 /**
  * Compare (on the investments, see PortfolioNode), from outside Investments: the user's
