@@ -1,6 +1,8 @@
 // services/advisorService.ts
 import type {
   AdvisorProfile,
+  AdvisorStatement,
+  AdvisorStatementPayload,
   AdvisorProfileUpdatePayload,
   Client,
   ClientCreatePayload,
@@ -32,6 +34,19 @@ export const advisorService = {
   async deleteAdvisorLogo(): Promise<void> {
     return apiFetch<void>('/advisor/profile/logo', {
       method: 'DELETE',
+    });
+  },
+
+  // GET /advisor/statement — null while never saved.
+  async getAdvisorStatement(): Promise<AdvisorStatement | null> {
+    return apiFetch<AdvisorStatement | null>('/advisor/statement');
+  },
+
+  // PUT /advisor/statement — the whole statement; another register number puts it back to be verified.
+  async saveAdvisorStatement(payload: AdvisorStatementPayload): Promise<AdvisorStatement> {
+    return apiFetch<AdvisorStatement>('/advisor/statement', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     });
   },
 
