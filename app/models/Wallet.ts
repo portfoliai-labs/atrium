@@ -379,3 +379,23 @@ export interface StatementImportResult {
   firstBookedOn: string | null;
   lastBookedOn: string | null;
 }
+
+// A wallet's report (scriba's, on arca's figures): one wallet's month or year, or all of them.
+export interface WalletReport {
+  documentId: string;
+  // The wallet it's about: what the download and tag routes name it by.
+  walletUuid: string;
+  name: string;
+  size: number;
+  tags: string[];
+  generatedByUuid: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// A wallet's full report: its whole history, from its opening to today.
+export interface WalletReportRequest {
+  name: string;
+  walletUuid: string;
+  force?: boolean;
+}

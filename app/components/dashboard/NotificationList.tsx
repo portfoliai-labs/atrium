@@ -78,6 +78,11 @@ function getPortfolioUuid(n: NotificationResponse): string | undefined {
   return n.payload?.portfolio_uuid as string | undefined;
 }
 
+// A wallet's report's: the wallet's uuid.
+function getWalletUuid(n: NotificationResponse): string | undefined {
+  return n.payload?.wallet_uuid as string | undefined;
+}
+
 function getErrorMessage(n: NotificationResponse): string | undefined {
   return n.payload?.error_message as string | undefined;
 }
@@ -285,6 +290,9 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
         const documentId = getDocumentId(n);
         // A losses notice's portfolios are its losses' (a broker's), not one it's about.
         const portfolioUuid = isLossesExpiring ? undefined : getPortfolioUuid(n);
+        const walletUuid = getWalletUuid(n);
+        const reportHref = documentId && (walletUuid ? `/reports/wallets/${walletUuid}/${documentId}`
+          : portfolioUuid ? `/reports/${portfolioUuid}/${documentId}` : undefined);
         const errorMessage = getErrorMessage(n);
         const reportName = getReportName(n);
         const isUnread = n.read_at === null;
@@ -328,9 +336,9 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
                 >
                   {cfg.label}
                 </span>
-                {documentId && portfolioUuid && (
+                {reportHref && (
                   <Link
-                    href={`/reports/${portfolioUuid}/${documentId}`}
+                    href={reportHref}
                     target="_blank"
                     className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
                   >
