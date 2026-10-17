@@ -24,18 +24,36 @@ const VIEWS: { id: ViewId; label: string; description: string }[] = [
 
 const RISK_LABELS: Record<string, string> = { low: "Conservative", medium: "Moderate", high: "Aggressive" };
 
+/** The profile's general risk tolerance, worded for display (e.g. "Moderate"). */
+export const riskToleranceLabel = (riskTolerance: string | null | undefined) =>
+  riskTolerance ? RISK_LABELS[riskTolerance] ?? null : null;
+
+/** One step's form (not the review): the guided policy's, and each of Profile's cards' Edit. */
+export function PolicyStepForm({ step, riskTolerance, ...stepProps }: StepProps & { step: IpsStepId; riskTolerance: string | null }) {
+  switch (step) {
+    case "objectives": return <ObjectivesStep {...stepProps} />;
+    case "risk": return <RiskStep {...stepProps} riskTolerance={riskTolerance} />;
+    case "constraints": return <ConstraintsStep {...stepProps} />;
+    case "allocation": return <AllocationStep {...stepProps} />;
+    case "guidelines": return <GuidelinesStep {...stepProps} />;
+    case "monitoring": return <MonitoringStep {...stepProps} />;
+    case "advisor": return <AdvisorStep {...stepProps} />;
+  }
+}
+
 interface InvestorPolicyDialogProps {
   policy: InvestorPolicy;
   status: IpsSaveStatus;
   update: StepProps["update"];
   onClose: () => void;
-  // In the page (Profile's), not a dialog: no backdrop, no closing, the page scrolls it.
-  inline?: boolean;
+  // In the page (Profile's), not a dialog: no backdrop, the page scrolls it, and closing (Done,
+  // on the review) only where `onClose` leads somewhere.
+  inline?: boolean | "closable";
 }
 
-/** The Investor Policy, in the page: Profile's (see InvestorPolicyDialog). */
-export function InvestorPolicyEditor(props: Omit<InvestorPolicyDialogProps, "onClose" | "inline">) {
-  return <InvestorPolicyDialog {...props} onClose={() => {}} inline />;
+/** The Investor Policy, guided step by step in the page: Profile's first setup (see InvestorPolicyDialog). */
+export function InvestorPolicyEditor({ onDone, ...props }: Omit<InvestorPolicyDialogProps, "onClose" | "inline"> & { onDone?: () => void }) {
+  return <InvestorPolicyDialog {...props} onClose={onDone ?? (() => {})} inline={onDone ? "closable" : true} />;
 }
 
 /**
@@ -73,7 +91,7 @@ export function InvestorPolicyDialog({ policy, status, update, onClose, inline =
   }, [inline]);
 
   const currency = user?.currency || "USD";
-  const riskTolerance = user?.risk_tolerance ? RISK_LABELS[user.risk_tolerance] ?? null : null;
+  const riskTolerance = riskToleranceLabel(user?.risk_tolerance);
   const index = VIEWS.findIndex((v) => v.id === view);
   const current = VIEWS[index];
   const completed = completedSteps(policy).length;
@@ -113,11 +131,11 @@ export function InvestorPolicyDialog({ policy, status, update, onClose, inline =
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <SaveIndicator status={status} savedAt={policy.savedAt} />
-            {!inline && (
+            {inline !== true && (
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="Close"
+                aria-label={inline ? "Back to Profile" : "Close"}
                 className="p-2 text-[#a8a29e] hover:text-[#1c1917] hover:bg-[#F7F5EF] rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -189,16 +207,9 @@ export function InvestorPolicyDialog({ policy, status, update, onClose, inline =
               <p className="text-sm text-[#78716c] font-medium mt-1">{current.description}</p>
             </div>
 
-            {view === "objectives" && <ObjectivesStep {...stepProps} />}
-            {view === "risk" && <RiskStep {...stepProps} riskTolerance={riskTolerance} />}
-            {view === "constraints" && <ConstraintsStep {...stepProps} />}
-            {view === "allocation" && <AllocationStep {...stepProps} />}
-            {view === "guidelines" && <GuidelinesStep {...stepProps} />}
-            {view === "monitoring" && <MonitoringStep {...stepProps} />}
-            {view === "advisor" && <AdvisorStep {...stepProps} />}
-            {view === "review" && (
-              <PolicySummary {...stepProps} riskTolerance={riskTolerance} onGoToStep={goTo} />
-            )}
+            {view === "review"
+              ? <PolicySummary {...stepProps} riskTolerance={riskTolerance} onGoToStep={goTo} />
+              : <PolicyStepForm {...stepProps} step={view} riskTolerance={riskTolerance} />}
           </div>
         </div>
 
@@ -219,7 +230,7 @@ export function InvestorPolicyDialog({ policy, status, update, onClose, inline =
             >
               {VIEWS[index + 1].id === "review" ? "Review policy" : "Next"} <ArrowRight className="w-4 h-4" />
             </button>
-          ) : inline ? (
+          ) : inline === true ? (
             // Saved as it's filled in: nothing to close in the page.
             <span />
           ) : (
@@ -247,7 +258,7 @@ export function InvestorPolicyDialog({ policy, status, update, onClose, inline =
   );
 }
 
-function SaveIndicator({ status, savedAt }: { status: IpsSaveStatus; savedAt: string | null }) {
+export function SaveIndicator({ status, savedAt }: { status: IpsSaveStatus; savedAt: string | null }) {
   // On narrow screens only the icon shows; the text is for anyone with room.
   const text = "hidden sm:inline";
   return (
