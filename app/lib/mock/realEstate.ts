@@ -343,26 +343,6 @@ export const REAL_ESTATE_TRANSACTIONS: RealEstateTransaction[] = (() => {
   return out.sort((a, b) => b.date.localeCompare(a.date));
 })();
 
-// ── Reports ─────────────────────────────────────────────────────────────────────
-
-export interface RealEstateReport {
-  id: string;
-  title: string;
-  detail: string;
-  date: string;
-  kind: "Quarterly" | "Tax" | "Valuation" | "Short-term";
-}
-
-export const REAL_ESTATE_REPORTS: RealEstateReport[] = [
-  { id: "r1", title: "Q3 2026 portfolio report", detail: "Values against their zones, rents collected, mortgage balances", date: "2026-09-30", kind: "Quarterly" },
-  { id: "r2", title: "Santo Stefano studio — short-stay review", detail: "Occupancy, nightly rates and payouts against the long-lease alternative", date: "2026-09-15", kind: "Short-term" },
-  { id: "r3", title: "Q2 2026 portfolio report", detail: "Values against their zones, rents collected, mortgage balances", date: "2026-06-30", kind: "Quarterly" },
-  { id: "r4", title: "IMU 2026 — first instalment", detail: "Property tax due per property, with the cadastral values used", date: "2026-06-10", kind: "Tax" },
-  { id: "r5", title: "2025 rental income summary", detail: "Rents by property, flat tax (cedolare secca) and deductible costs, for the tax return", date: "2026-04-20", kind: "Tax" },
-  { id: "r6", title: "Q1 2026 portfolio report", detail: "Values against their zones, rents collected, mortgage balances", date: "2026-03-31", kind: "Quarterly" },
-  { id: "r7", title: "Annual valuation 2025", detail: "Each property's estimated value from its zone index and comparable sales", date: "2026-01-15", kind: "Valuation" },
-];
-
 // ── The same portfolio in the API's shapes (demoRealEstateSource) ───────────────────────────
 
 // The sample's today.

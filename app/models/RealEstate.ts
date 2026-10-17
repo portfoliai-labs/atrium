@@ -1054,3 +1054,21 @@ export interface MarketTrend {
   rentChangeYearPct: number | null;
 }
 
+
+export interface PropertyReport {
+  documentId: string;
+  // The property it's about: what the download and tag routes name it by.
+  propertyUuid: string;
+  name: string;
+  size: number;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// A property's full report: its whole history, from its acquisition to today.
+export interface PropertyReportRequest {
+  name: string;
+  propertyUuid: string;
+  force?: boolean;
+}

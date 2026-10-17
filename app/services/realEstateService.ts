@@ -8,7 +8,7 @@ import type {
   PropertyTax, SaleSimulationRequest, MovementLinkProposal,
   RealEstateAlertRule, RealEstateAlertRuleInput, RealEstateAlertRuleUpdateRequest,
   PrepaymentSimulation, PrepaymentSimulationRequest, RefinancingSimulation, RefinancingSimulationRequest,
-  MarketZone, PropertyMarket,
+  MarketZone, PropertyMarket, PropertyReport, PropertyReportRequest,
 } from "../models/RealEstate";
 import { apiFetch } from "./apiClient";
 
@@ -316,5 +316,30 @@ export const realEstateService = {
     for (const c of codes ?? []) params.append("code", c);
     if (limit !== undefined) params.set("limit", String(limit));
     return apiFetch<Municipality[]>(`${BASE}/municipalities?${params}`);
+  },
+
+  // GET /v1/real-estate/reports — every property's reports (archived ones' too), newest first.
+  async reports(): Promise<PropertyReport[]> {
+    return apiFetch<PropertyReport[]>(`${BASE}/reports`);
+  },
+
+  // POST /v1/real-estate/reports — queues a property's full report, its whole history; its outcome
+  // arrives as a notification. 409 while another of the same property's is in progress, unless
+  // `force`.
+  async requestReport(payload: PropertyReportRequest): Promise<{ jobId: string }> {
+    return apiFetch<{ jobId: string }>(`${BASE}/reports`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // GET /v1/real-estate/reports/{propertyUuid}/{d}/download — an hour's link to the file.
+  async reportDownloadUrl(propertyUuid: string, documentId: string): Promise<{ url: string }> {
+    return apiFetch<{ url: string }>(`${BASE}/reports/${propertyUuid}/${documentId}/download`);
+  },
+
+  async addReportTag(propertyUuid: string, documentId: string, name: string): Promise<void> {
+    await apiFetch(`${BASE}/reports/${propertyUuid}/${documentId}/tags`, { method: "POST", body: JSON.stringify({ name }) });
+  },
+
+  async removeReportTag(propertyUuid: string, documentId: string, name: string): Promise<void> {
+    await apiFetch(`${BASE}/reports/${propertyUuid}/${documentId}/tags/${encodeURIComponent(name)}`, { method: "DELETE" });
   },
 };

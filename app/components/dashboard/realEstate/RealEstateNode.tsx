@@ -14,17 +14,15 @@ import { Breadcrumb, type Crumb } from "../Breadcrumb";
 import { PageHeader, type PageAction, type PageCounter, type PageFigure } from "../PageHeader";
 import { Fig, Figs, MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { PreviewBadge } from "../../preview/PreviewKit";
-import { RealEstatePortfolio, type RealEstatePreviewPage } from "../../preview/RealEstatePortfolio";
 import { RealEstateTransactionDialog, type RealEstateEntryKind } from "./RealEstateTransactionForm";
 import { ALL_PROPERTIES, RealEstateTransactions } from "./RealEstateTransactions";
 import { RealEstateInsights } from "./RealEstateInsights";
 import { PropertyPage } from "./PropertyPage";
 import { RealEstateAlerts, alertsCounter, useAlertRules } from "./RealEstateAlerts";
+import { RealEstateReports } from "./RealEstateReports";
 
-// The real estate's pages: its own, a property's, and those its header leads to. Reports aren't
-// in the API yet: a demo account's preview (components/preview/RealEstatePortfolio).
-export type RealEstatePage = "home" | "property" | "insights" | "transactions" | "alerts" | RealEstatePreviewPage;
-const PREVIEW_PAGES: RealEstatePreviewPage[] = ["reports"];
+// The real estate's pages: its own, a property's, and those its header leads to.
+export type RealEstatePage = "home" | "property" | "insights" | "transactions" | "alerts" | "reports";
 
 const VALUE_COLOR = "#C49A3C";
 
@@ -46,8 +44,8 @@ const toneOf = (v: number | null | undefined): "gain" | "loss" | undefined => (v
  * reference currency (the overview's); a property whose currency can't be converted today is
  * listed in its own but takes no share. New properties and their transactions are added from one
  * form (RealEstateTransactionForm): a property comes with its Purchase. Transactions can be every
- * property's or one's (`property`), and so can the Alerts (RealEstateAlerts). A demo account's are
- * sample data, read only, and it also has Reports, a preview. A property that's gone (deleted, an old link) opens the real
+ * property's or one's (`property`), and so can the Alerts (RealEstateAlerts). The Reports (RealEstateReports) are
+ * every property's or one's too. A demo account's are sample data, read only. A property that's gone (deleted, an old link) opens the real
  * estate's own page.
  */
 export function RealEstateNode({ page: requested, property: propertyUuid, rootTrail, onOpen }: {
@@ -58,9 +56,7 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
 }) {
   const { properties, loading, error, sample, source, version } = useRealEstate();
   const property = propertyUuid ? properties.find((p) => p.uuid === propertyUuid) : undefined;
-  const page: RealEstatePage = (!sample && PREVIEW_PAGES.includes(requested as RealEstatePreviewPage)) || (requested === "property" && !property)
-    ? "home"
-    : requested;
+  const page: RealEstatePage = requested === "property" && !property ? "home" : requested;
   const active = useMemo(() => properties.filter((p) => !p.archived), [properties]);
   const archived = useMemo(() => properties.filter((p) => p.archived), [properties]);
   const overview = useRealEstateOverview(!loading);
@@ -94,6 +90,7 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
         trail={trail}
         onOpenTransactions={() => onOpen("transactions", property.uuid)}
         onOpenAlerts={() => onOpen("alerts", property.uuid)}
+        onOpenReports={() => onOpen("reports", property.uuid)}
         onGone={() => onOpen("home")}
       />
     );
@@ -132,7 +129,13 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
   }
 
   if (page === "reports") {
-    return <RealEstatePortfolio trail={rootTrail} page={page} onOpenHome={() => onOpen("home")} />;
+    const scoped = property ? [...trail, { label: property.name, onClick: () => onOpen("property", property.uuid) }] : trail;
+    return (
+      <div className="space-y-6 pb-12">
+        <Breadcrumb trail={scoped} current="Reports" />
+        <RealEstateReports key={property?.uuid ?? ALL_PROPERTIES} propertyUuid={property?.uuid} readOnly={sample} />
+      </div>
+    );
   }
 
   const money = (v: number) => formatCurrency(v, currency, 0);
@@ -150,7 +153,7 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
     { key: "insights", label: "insights", onClick: () => onOpen("insights") },
     // None while the API has no alerts.
     ...(alertRules === null ? [] : [alertsCounter(alertRules, () => onOpen("alerts"))]),
-    ...(sample ? PREVIEW_PAGES.map((p) => ({ key: p, label: p, onClick: () => onOpen(p) })) : []),
+    { key: "reports", label: "reports", onClick: () => onOpen("reports") },
   ];
 
   return (
