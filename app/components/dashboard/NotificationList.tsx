@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2, XCircle, Loader2, Clock, Bell, BellRing, Target, Hourglass } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Clock, Bell, BellRing, Target, Hourglass, MessagesSquare } from "lucide-react";
 import type { NotificationResponse } from "../../services/notificationService";
 import { categoryLabel, formatAlertPct, formatRange, WINDOW_LABEL } from "../../lib/alerts";
 import type { AlertWindow } from "../../models/Alert";
@@ -235,6 +235,17 @@ function getLossesExpiringSummary(n: NotificationResponse): { title: string; det
   };
 }
 
+// New chat messages in one of the user's conversations (type MESSAGE_RECEIVED), one per
+// conversation until they read it in Messages. Payload: conversation_uuid, message_uuid,
+// sender_uuid. It links to Messages.
+const MESSAGE_RECEIVED_CONFIG = {
+  label: "Messages",
+  icon: <MessagesSquare className="w-5 h-5 text-[#C49A3C] shrink-0" />,
+  pill: "bg-[#C49A3C]/10 text-[#8A6A28] border-[#C49A3C]/30",
+};
+
+const MESSAGE_RECEIVED_SUMMARY = { title: "New message", detail: "You have new messages: read them in Messages." };
+
 function formatDate(iso: string): string {
   const date = new Date(iso);
   const diffMs = Date.now() - date.getTime();
@@ -278,8 +289,10 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
         const isRealEstateAlert = n.type === "REAL_ESTATE_ALERT";
         const isWalletAlert = n.type === "WALLET_ALERT";
         const isLossesExpiring = n.type === "LOSSES_EXPIRING";
-        const cfg = isAlert || isRealEstateAlert || isWalletAlert ? ALERT_CONFIG : isStrategyFailed ? STATUS_CONFIG.FAILED : isStrategyShared ? STRATEGY_SHARED_CONFIG : isLossesExpiring ? LOSSES_EXPIRING_CONFIG : getJobStatus(n);
-        const summary = isAlert ? getAlertSummary(n)
+        const isMessage = n.type === "MESSAGE_RECEIVED";
+        const cfg = isMessage ? MESSAGE_RECEIVED_CONFIG : isAlert || isRealEstateAlert || isWalletAlert ? ALERT_CONFIG : isStrategyFailed ? STATUS_CONFIG.FAILED : isStrategyShared ? STRATEGY_SHARED_CONFIG : isLossesExpiring ? LOSSES_EXPIRING_CONFIG : getJobStatus(n);
+        const summary = isMessage ? MESSAGE_RECEIVED_SUMMARY
+          : isAlert ? getAlertSummary(n)
           : isRealEstateAlert ? getRealEstateAlertSummary(n)
           : isWalletAlert ? getWalletAlertSummary(n)
           : isLossesExpiring ? getLossesExpiringSummary(n)
@@ -344,6 +357,15 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
                   >
                     View report
                   </Link>
+                )}
+                {isMessage && onOpenPage && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPage("messages", undefined)}
+                    className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
+                  >
+                    Open messages
+                  </button>
                 )}
                 {isRealEstateAlert && onOpenPage && (
                   <button
