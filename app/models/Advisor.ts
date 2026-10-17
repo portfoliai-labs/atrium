@@ -1,4 +1,5 @@
 // models/Advisor.ts
+import type { IpsAdvisoryTopic, IpsFeeModel, IpsMeetingMode } from "./InvestorPolicy";
 // Aligned with backend DTOs in app/api/dto/routes_advisor.py
 
 // Matches UserRoles enum from backend (app/domain/models/core/user.py)
@@ -77,6 +78,29 @@ interface ClientLookupResponse {
   role: UserRole | null;
 }
 
+// The advisor's statement (GET/PUT /advisor/statement): what they offer, in the words of the
+// investor policy's advisor preferences, and their OCF register number. An empty list matches
+// nothing: an advisor says what they do.
+interface AdvisorStatementPayload {
+  languages: string[];
+  meetingModes: IpsMeetingMode[];
+  city: string;
+  feeModels: IpsFeeModel[];
+  topics: IpsAdvisoryTopic[];
+  // The smallest wealth of a client they take on, in EUR; null: any.
+  minClientWealth: number | null;
+  // Only an advisor taking on new clients is suggested to investors.
+  acceptingClients: boolean;
+  bio: string;
+  registerNumber: string;
+}
+
+interface AdvisorStatement extends AdvisorStatementPayload {
+  updatedAt: string;
+  // Null until the platform's staff verify the register number; another number resets it.
+  verifiedAt: string | null;
+}
+
 export { UserRole };
 export type {
   AdvisorProfile,
@@ -85,4 +109,6 @@ export type {
   ClientCreatePayload,
   ClientProfileUpdatePayload,
   ClientLookupResponse,
+  AdvisorStatementPayload,
+  AdvisorStatement,
 };
