@@ -36,6 +36,11 @@ export const EXPLORE_SECTION = "explore";
 export const CLIENTS_SECTION = "clients";
 // A security's page, opened from the top bar's search (see AssetSection).
 export const ASSET_SECTION = "asset";
+// Profile: the user's preferences (language, currency, tax residence), once Settings' tab, an
+// investor's Investment Policy, and Find an advisor under it, once a section of its own (see
+// MyProfileSection). Not "profile",
+// the old investor profile's.
+export const PROFILE_SECTION = "myProfile";
 
 type Navigate = (section: string) => void;
 
@@ -45,6 +50,10 @@ export function openSectionView(onNavigate: Navigate, section: string, view: unk
   onNavigate(section);
   pushDashboardEntry({ section, view }, window.history.state !== before);
 }
+
+/** Profile, where the language, the currency and the tax residence are set. */
+export const openProfilePreferences = (onNavigate: Navigate) =>
+  openSectionView(onNavigate, PROFILE_SECTION, { page: "home" });
 
 export const openInvestmentsView = (onNavigate: Navigate, view: InvestmentsView) =>
   openSectionView(onNavigate, INVESTMENTS_SECTION, view);

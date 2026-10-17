@@ -1,11 +1,11 @@
 "use client";
 
-import { LayoutDashboard, Settings, ChevronRight, Sparkles, Users, Newspaper, BookOpen, LineChart, Wallet, Building2, History, Handshake, Inbox, MessagesSquare } from "lucide-react";
+import { LayoutDashboard, Settings, ChevronRight, Sparkles, Users, Newspaper, BookOpen, LineChart, Wallet, Building2, History, Inbox, UserRound, MessagesSquare } from "lucide-react";
 import { PreviewBadge } from "../preview/PreviewKit";
 import { useUser } from "../../context/UserContext";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useDashboardEntry } from "../../lib/dashboardHistory";
-import { CLIENTS_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
+import { CLIENTS_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, PROFILE_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
 import { clientDisplayName, useClients } from "../../context/ClientsContext";
 import { useClientPortfolios } from "../../hooks/useClientPortfolios";
 import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
@@ -122,10 +122,10 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     { id: INVESTMENTS_SECTION, label: 'Investments', icon: LineChart, subs: investmentRows },
     ...(realEstateAvailable ? [{ id: REAL_ESTATE_SECTION, label: 'Real estate', icon: Building2, preview: realEstateSample, subs: propertyRows }] : []),
     ...(hasWallets ? [{ id: WALLETS_SECTION, label: 'Wallets', icon: Wallet, preview: sample, subs: walletRows }] : []),
-    { id: 'advisor', label: 'Find an advisor', icon: Handshake },
     { id: 'messages', label: 'Messages', icon: MessagesSquare },
     journalItem,
     newsItem,
+    { id: PROFILE_SECTION, label: 'Profile', icon: UserRound },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -161,6 +161,7 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     { id: STRATEGIES_SECTION, label: 'Strategies', icon: History },
     journalItem,
     newsItem,
+    { id: PROFILE_SECTION, label: 'Profile', icon: UserRound },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

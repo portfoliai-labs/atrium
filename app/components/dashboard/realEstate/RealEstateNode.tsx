@@ -148,12 +148,12 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
   ] : [];
   // One way in for everything: a purchase adds a property, anything else is one of theirs.
   const actions: PageAction[] = [{ label: "Add transaction", primary: true, onClick: addEntry }];
+  // No reports: a report is one property's, on its own page.
   const counters: PageCounter[] = [
     { key: "transactions", label: "transactions", count, onClick: () => onOpen("transactions") },
     { key: "insights", label: "insights", onClick: () => onOpen("insights") },
     // None while the API has no alerts.
     ...(alertRules === null ? [] : [alertsCounter(alertRules, () => onOpen("alerts"))]),
-    { key: "reports", label: "reports", onClick: () => onOpen("reports") },
   ];
 
   return (

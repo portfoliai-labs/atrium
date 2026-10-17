@@ -69,8 +69,9 @@ export function PageHeader({
   return (
     <div className="space-y-[22px]">
       {notice}
-      <div className="flex flex-wrap items-end justify-between gap-5">
-        <div className="min-w-0 flex flex-col gap-2">
+      {/* The actions keep to the right: beside a long title or note from lg, under it otherwise. */}
+      <div className="flex flex-wrap lg:flex-nowrap items-end justify-between gap-5">
+        <div className="min-w-0 lg:flex-1 flex flex-col gap-2">
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">
             {eyebrow}
             {badge}
@@ -115,7 +116,7 @@ export function PageHeader({
           )}
         </div>
         {actions.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="ml-auto shrink-0 flex flex-wrap items-center justify-end gap-2">
             {shown.map((a) => <ActionButton key={a.label} action={a} />)}
             {more.length > 0 && <MoreMenu actions={more} />}
           </div>
