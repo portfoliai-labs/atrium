@@ -12,6 +12,8 @@ import { ProfileSection } from "../../components/dashboard/ProfileSection";
 import { AdvisorProfileSection } from "../../components/dashboard/AdvisorProfileSection";
 import { ReportsList } from "../../components/dashboard/ReportsList";
 import { ClientsSection } from "../../components/dashboard/ClientsSection";
+import { AdvisorMatchSection } from "../../components/dashboard/AdvisorMatchSection";
+import { AdvisorRequestsSection } from "../../components/dashboard/AdvisorRequestsSection";
 import DashboardOverview from "../../components/dashboard/DashboardOverview";
 import AdvisorDashboardOverview from "../../components/dashboard/AdvisorDashboardOverview";
 import { SettingsSection } from "../../components/dashboard/SettingsSection";
@@ -34,7 +36,7 @@ import { ASSET_SECTION, CLIENTS_SECTION, EXPLORE_SECTION, JOURNAL_SECTION, PLAN_
 // 'performance' is the investor's Wealth (an advisor's Insights).
 // 'discover' is gone (its News, Journal and Explore are sections, or Plan's, again): kept so a link
 // or history entry to it lands on where its page went, see below.
-const VALID_SECTIONS = ['overview', 'clients', 'upload', 'performance', 'plan', 'news', EXPLORE_SECTION, JOURNAL_SECTION, ASSET_SECTION, 'discover', 'settings', 'notifications'];
+const VALID_SECTIONS = ['overview', 'clients', 'requests', 'advisor', 'upload', 'performance', 'plan', 'news', EXPLORE_SECTION, JOURNAL_SECTION, ASSET_SECTION, 'discover', 'settings', 'notifications'];
 // Sections that became part of another: the Wallets are Wealth's. A link or a history entry to the
 // old one lands on the new. (An investor's Explore is Plan's, see below.)
 const MOVED_SECTIONS: Record<string, string> = { blog: JOURNAL_SECTION, wallets: WEALTH_SECTION };
@@ -156,6 +158,10 @@ function DashboardPageContent() {
           : <DashboardOverview onNavigate={navigate} />;
       case 'clients':
         return isAdvisor ? <ClientsSection key={sectionVisit} onNavigate={navigate} /> : <DashboardOverview onNavigate={navigate} />;
+      case 'requests':
+        return isAdvisor ? <AdvisorRequestsSection /> : null;
+      case 'advisor':
+        return isAdvisor ? null : <AdvisorMatchSection onNavigate={navigate} />;
       case 'upload':
         // Every portfolio at once: the list filters by portfolio, and new rows say where they go.
         // An advisor's is each client's portfolio's, see above.

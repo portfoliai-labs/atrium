@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, Settings, ChevronRight, Sparkles, Users, Newspaper, Map as MapIcon, PieChart, BookOpen, History } from "lucide-react";
+import { LayoutDashboard, Settings, ChevronRight, Sparkles, Users, Newspaper, Map as MapIcon, PieChart, BookOpen, History, Handshake, Inbox } from "lucide-react";
 import { PreviewBadge } from "../preview/PreviewKit";
 import { useUser } from "../../context/UserContext";
 import { usePortfolio } from "../../context/PortfolioContext";
@@ -128,6 +128,7 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: WEALTH_SECTION, label: 'Wealth', icon: PieChart, subs: wealthRows },
     { id: PLAN_SECTION, label: 'Plan', icon: MapIcon, subs: planRows },
+    { id: 'advisor', label: 'Find an advisor', icon: Handshake },
     { id: 'news', label: 'News', icon: Newspaper },
     journalItem,
     { id: 'settings', label: 'Settings', icon: Settings },
@@ -160,6 +161,7 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
   const consultantItems: NavItem[] = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: CLIENTS_SECTION, label: 'Clients', icon: Users, subs: clientRows },
+    { id: 'requests', label: 'Requests', icon: Inbox },
     { id: PLAN_SECTION, label: 'Strategy', icon: History, subs: [] },
     { id: 'news', label: 'News', icon: Newspaper },
     journalItem,
