@@ -19,18 +19,15 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { WalletsComposition } from "./WalletsComposition";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { PreviewBadge } from "../../preview/PreviewKit";
-import { WalletReports } from "../../preview/WalletPages";
 import { WalletAlerts } from "./WalletAlerts";
 import { WalletBudgets } from "./WalletBudgets";
 import { MovementDialog, TransferDialog, WalletFormDialog } from "./WalletDialogs";
 import { WalletImportDialog } from "./WalletImportDialog";
 import { WalletInsights } from "./WalletInsights";
+import { WalletReports } from "./WalletReports";
 import { WalletTransactions } from "./WalletTransactions";
 
 export type WalletPage = "insights" | "transactions" | "budgets" | "reports" | "alerts";
-
-// What the API doesn't have yet: a demo account's previews (components/preview/WalletPages).
-export const PREVIEW_WALLET_PAGES: WalletPage[] = ["reports"];
 
 export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
   insights: "Insights", transactions: "Transactions", budgets: "Budgets", reports: "Reports", alerts: "Alerts",
@@ -45,11 +42,11 @@ type Dialog = "new" | "edit" | "movement" | "import" | "transfer" | "archive" | 
  * page, All wallets standing to its wallets as All portfolios to its portfolios: a header with its
  * balance, its activity (each count opening its page), what can be done with it and its year in
  * figures; under it, on All wallets, its Composition, a row per wallet going down to that wallet
- * (the archived ones listed after it), then the Insights. Its Transactions, Budgets and Alerts are pages of their own; a demo
- * account's also has Reports, a preview on sample data. A wallet that's gone (deleted, or from an old link) opens all
+ * (the archived ones listed after it), then the Insights. Its Transactions, Budgets, Reports and Alerts are pages of
+ * their own. A wallet that's gone (deleted, or from an old link) opens all
  * of them. Archived wallets are read only, and so is everything for a demo account.
  */
-export function WalletNode({ id, page: requested, rootTrail, onOpen }: {
+export function WalletNode({ id, page, rootTrail, onOpen }: {
   id: string;
   page: WalletPage;
   rootTrail: Crumb[];
@@ -59,7 +56,6 @@ export function WalletNode({ id, page: requested, rootTrail, onOpen }: {
   const wallet = id === ALL_WALLETS ? undefined : wallets.find((w) => w.uuid === id);
   const all = !wallet;
   const scope = wallet?.uuid ?? null;
-  const page = !sample && PREVIEW_WALLET_PAGES.includes(requested) ? "insights" : requested;
   const summary = useWalletSummary(scope, !loading);
   const active = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
   const archivedWallets = useMemo(() => wallets.map((w, i) => ({ wallet: w, color: walletColor(w, i) })).filter(({ wallet: w }) => w.archived), [wallets]);
@@ -121,7 +117,7 @@ export function WalletNode({ id, page: requested, rootTrail, onOpen }: {
       key: "alerts", label: "alerts", count: attention?.rules ?? null, onClick: () => onOpen(id, "alerts"),
       attention: attention?.found ? { count: attention.found, label: "found" } : undefined,
     },
-    ...(sample ? PREVIEW_WALLET_PAGES.map((p) => ({ key: p, label: WALLET_PAGE_LABELS[p].toLowerCase(), onClick: () => onOpen(id, p) })) : []),
+    { key: "reports", label: "reports", count: null, onClick: () => onOpen(id, "reports") },
   ];
 
   const currency = wallet?.currency ?? summary?.currency ?? "EUR";
@@ -193,7 +189,7 @@ export function WalletNode({ id, page: requested, rootTrail, onOpen }: {
         {wallet?.archived && <ArchivedNote />}
         {page === "transactions" && <WalletTransactions key={scopeKey} initial={scopeKey} readOnly={sample} />}
         {page === "budgets" && <WalletBudgets scope={scope} onManage={() => onOpen(ALL_WALLETS, "budgets")} />}
-        {page === "reports" && <WalletReports />}
+        {page === "reports" && <WalletReports key={scopeKey} walletUuid={wallet?.uuid} readOnly={sample} />}
         {page === "alerts" && <WalletAlerts scope={scope} />}
         {dialogs}
       </div>

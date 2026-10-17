@@ -3,7 +3,7 @@ import type {
   AnalyzeStatementRequest, Budget, BudgetInput, BudgetMonth, CategoryMonths, Merchants, Observations, RecurringPayments, Movement, MovementCategory, MovementFilters, MovementInput, MovementList,
   MovementUpdateRequest, StatementColumnMapping, StatementColumnMappingResponse, StatementImportResult,
   Transfer, TransferCreateRequest, Wallet, WalletAlertRule, WalletAlertRuleCreateRequest, WalletAlertRuleUpdateRequest,
-  WalletCreateRequest, WalletSummary, WalletUpdateRequest,
+  WalletCreateRequest, WalletReport, WalletReportRequest, WalletSummary, WalletUpdateRequest,
 } from "../models/Wallet";
 import { apiFetch, apiFetchForm } from "./apiClient";
 
@@ -207,5 +207,31 @@ export const walletService = {
     form.append("file", file);
     form.append("mapping", JSON.stringify(mapping));
     return apiFetchForm<StatementImportResult>(`/v1/wallets/${walletUuid}/import/commit`, form);
+  },
+
+  // GET /v1/wallets/reports — every wallet's reports and those on all of them, newest first.
+  async reports(): Promise<WalletReport[]> {
+    return apiFetch<WalletReport[]>(`/v1/wallets/reports`);
+  },
+
+  // POST /v1/wallets/reports — queues a monthly statement or a yearly summary (needs the plan's
+  // reports); its outcome arrives as a notification. 409 while another of the same wallet's is in
+  // progress, unless `force`.
+  async requestReport(payload: WalletReportRequest): Promise<{ jobId: string }> {
+    return apiFetch<{ jobId: string }>(`/v1/wallets/reports`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // GET /v1/wallets/reports/{subject}/{d}/download — an hour's link to the file. `subject`: the
+  // report's (a wallet's uuid, or "all").
+  async reportDownloadUrl(subject: string, documentId: string): Promise<{ url: string }> {
+    return apiFetch<{ url: string }>(`/v1/wallets/reports/${subject}/${documentId}/download`);
+  },
+
+  async addReportTag(subject: string, documentId: string, name: string): Promise<void> {
+    await apiFetch(`/v1/wallets/reports/${subject}/${documentId}/tags`, { method: "POST", body: JSON.stringify({ name }) });
+  },
+
+  async removeReportTag(subject: string, documentId: string, name: string): Promise<void> {
+    await apiFetch(`/v1/wallets/reports/${subject}/${documentId}/tags/${encodeURIComponent(name)}`, { method: "DELETE" });
   },
 };

@@ -73,6 +73,11 @@ export type ReportsViewMode = "list" | "grouped";
  */
 export async function downloadReportFile(portfolioUuid: string, docId: string, fileName: string) {
   const { url } = await reportService.downloadReport(portfolioUuid, docId);
+  await saveReportFile(url, fileName);
+}
+
+/** The file at a download link, saved as `fileName` (.pdf). */
+export async function saveReportFile(url: string, fileName: string) {
   if (!url) throw new Error("Invalid URL received from server");
 
   const response = await fetch(url);
