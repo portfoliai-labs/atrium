@@ -3,11 +3,19 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Building2, Palette, Award, Save, Loader2, CheckCircle2, AlertCircle,
-  ImagePlus, Trash2, Briefcase
+  ImagePlus, Trash2, Briefcase, BadgeCheck, Handshake, Clock,
 } from "lucide-react";
 import { advisorService } from "../../services/advisorService";
+import { FEE_OPTIONS, LANGUAGE_OPTIONS, MEETING_OPTIONS, TOPIC_OPTIONS } from "../../lib/ips";
+import type { AdvisorStatement, AdvisorStatementPayload } from "../../models/Advisor";
+import { ChipSelect, Field, FieldGroup, NumberInput, TextArea, TextInput, YesNo } from "./ips/fields";
 
 const DEFAULT_BRAND_COLOR = "#C49A3C";
+
+const EMPTY_STATEMENT: AdvisorStatementPayload = {
+  languages: [], meetingModes: [], city: "", feeModels: [], topics: [], minClientWealth: null,
+  acceptingClients: false, bio: "", registerNumber: "",
+};
 
 export function AdvisorProfileSection() {
   const [loading, setLoading] = useState(true);
@@ -24,6 +32,22 @@ export function AdvisorProfileSection() {
     brand_color: DEFAULT_BRAND_COLOR,
   });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  // What the advisor offers (investors are matched on it) and their OCF register number.
+  const [statement, setStatement] = useState<AdvisorStatementPayload>(EMPTY_STATEMENT);
+  const [verifiedAt, setVerifiedAt] = useState<string | null>(null);
+  const [savedRegisterNumber, setSavedRegisterNumber] = useState("");
+  const setOffer = (patch: Partial<AdvisorStatementPayload>) => setStatement((s) => ({ ...s, ...patch }));
+
+  const applyStatement = (saved: AdvisorStatement | null) => {
+    if (!saved) return;
+    setStatement({
+      languages: saved.languages, meetingModes: saved.meetingModes, city: saved.city, feeModels: saved.feeModels,
+      topics: saved.topics, minClientWealth: saved.minClientWealth, acceptingClients: saved.acceptingClients,
+      bio: saved.bio, registerNumber: saved.registerNumber,
+    });
+    setVerifiedAt(saved.verifiedAt);
+    setSavedRegisterNumber(saved.registerNumber);
+  };
 
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
@@ -44,7 +68,7 @@ export function AdvisorProfileSection() {
   useEffect(() => {
     (async () => {
       try {
-        await loadProfile();
+        await Promise.all([loadProfile(), advisorService.getAdvisorStatement().then(applyStatement)]);
       } catch (err) {
         console.error(err);
       } finally {
@@ -64,6 +88,7 @@ export function AdvisorProfileSection() {
         aum: null,
         brand_color: formData.brand_color || null,
       });
+      applyStatement(await advisorService.saveAdvisorStatement(statement));
       showMessage("success", "Profile updated successfully");
     } catch (err) {
       console.error("Update error:", err);
@@ -253,6 +278,62 @@ export function AdvisorProfileSection() {
             </div>
           </div>
         </div>
+        {/* Verification */}
+        <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-4xl border border-[rgba(196,154,60,0.2)] shadow-sm space-y-6">
+          <SectionHeader icon={<BadgeCheck className="w-5 h-5" />} title="Verification" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-end">
+            <Field label="OCF register number" hint="Your number on the albo unico dei consulenti finanziari. We check it before suggesting you to investors.">
+              <TextInput value={statement.registerNumber} onChange={(registerNumber) => setOffer({ registerNumber })} placeholder="e.g. 12345" />
+            </Field>
+            <VerificationBadge
+              verifiedAt={statement.registerNumber.trim() === savedRegisterNumber.trim() ? verifiedAt : null}
+              hasNumber={statement.registerNumber.trim() !== ""}
+            />
+          </div>
+        </div>
+
+        {/* What you offer */}
+        <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-4xl border border-[rgba(196,154,60,0.2)] shadow-sm space-y-8">
+          <SectionHeader icon={<Handshake className="w-5 h-5" />} title="What you offer" />
+
+          <FieldGroup label="Taking on new clients" hint="Only then are you suggested to investors looking for an advisor.">
+            <YesNo value={statement.acceptingClients} onChange={(v) => setOffer({ acceptingClients: v === true })} />
+          </FieldGroup>
+
+          <FieldGroup label="Languages" hint="The languages you advise in.">
+            <ChipSelect options={LANGUAGE_OPTIONS} selected={statement.languages} onChange={(languages) => setOffer({ languages })} />
+          </FieldGroup>
+
+          <FieldGroup label="How you meet clients">
+            <ChipSelect options={MEETING_OPTIONS} selected={statement.meetingModes} onChange={(meetingModes) => setOffer({ meetingModes })} />
+          </FieldGroup>
+
+          {statement.meetingModes.includes("in_person") && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Field label="City" hint="Where you meet clients in person.">
+                <TextInput value={statement.city} onChange={(city) => setOffer({ city })} placeholder="e.g. Milano" />
+              </Field>
+            </div>
+          )}
+
+          <FieldGroup label="How you are paid">
+            <ChipSelect options={FEE_OPTIONS} selected={statement.feeModels} onChange={(feeModels) => setOffer({ feeModels })} />
+          </FieldGroup>
+
+          <FieldGroup label="Topics" hint="What you help with, beyond the portfolio.">
+            <ChipSelect options={TOPIC_OPTIONS} selected={statement.topics} onChange={(topics) => setOffer({ topics })} />
+          </FieldGroup>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Field label="Smallest client wealth" hint="Leave empty if you take on any client.">
+              <NumberInput value={statement.minClientWealth} onChange={(minClientWealth) => setOffer({ minClientWealth })} placeholder="0" suffix="EUR" />
+            </Field>
+          </div>
+
+          <Field label="About you" hint="Who you are and how you work: what investors read when you are suggested to them.">
+            <TextArea value={statement.bio} onChange={(bio) => setOffer({ bio })} maxLength={3000} />
+          </Field>
+        </div>
       </div>
 
       {message && (
@@ -276,5 +357,21 @@ function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }
       <div className="p-2.5 bg-[#F7F5EF] text-[#C49A3C] rounded-xl">{icon}</div>
       <span className="font-bold text-sm text-[#1c1917]">{title}</span>
     </div>
+  );
+}
+
+function VerificationBadge({ verifiedAt, hasNumber }: { verifiedAt: string | null; hasNumber: boolean }) {
+  if (verifiedAt) {
+    return (
+      <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700 bg-emerald-50 rounded-2xl px-4 py-3.5">
+        <BadgeCheck className="w-4 h-4" /> Verified on {new Date(verifiedAt).toLocaleDateString()}
+      </p>
+    );
+  }
+  return (
+    <p className="flex items-center gap-2 text-sm font-semibold text-[#78716c] bg-[#F7F5EF] rounded-2xl px-4 py-3.5">
+      <Clock className="w-4 h-4" />
+      {hasNumber ? "To be verified: we will check your number on the register" : "Add your register number to be verified"}
+    </p>
   );
 }

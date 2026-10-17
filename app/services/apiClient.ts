@@ -4,10 +4,16 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  // The refusal's kind (ianus' `error_type`, e.g. "InvestorPolicyRequiredError") and its body,
+  // which may carry what the refusal names (e.g. `request_uuid`).
+  errorType?: string;
+  body: Record<string, unknown>;
+  constructor(status: number, message: string, errorType?: string, body: Record<string, unknown> = {}) {
     super(message);
     this.status = status;
     this.name = 'ApiError';
+    this.errorType = errorType;
+    this.body = body;
   }
 }
 
@@ -39,7 +45,7 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
   // Handle other errors
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, errorData.detail || `Error ${response.status}`);
+    throw new ApiError(response.status, errorData.detail || `Error ${response.status}`, errorData.error_type, errorData);
   }
 
   if (response.status === 204) return undefined as T;
