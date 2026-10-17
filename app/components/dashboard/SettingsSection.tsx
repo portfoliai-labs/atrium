@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Script from "next/script";
-import { Crown, AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, FlaskConical, User as UserIcon, Trash2, Globe, ChevronDown, Banknote, Mail, Lock } from "lucide-react";
+import { Crown, AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, FlaskConical, User as UserIcon, Trash2, Globe, ChevronDown, Banknote, Mail, Lock, Shapes } from "lucide-react";
 import { userService } from "../../services/userService";
 import { supabase } from "../../lib/supabaseClient";
 import type { SubscriptionResponse, NotificationPreferences } from "../../models/User";
@@ -11,6 +11,8 @@ import { DeleteAccountModal } from "./DeleteAccountModal";
 import { Toggle } from "./Toggle";
 import { useUser } from "../../context/UserContext";
 import { TAX_REGIME_COUNTRIES, residenceOptions } from "../../lib/taxes";
+import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
+import { ManualAssetsEditor } from "./ManualAssetsEditor";
 
 // Tally form used for tester applications: https://tally.so/r/QKWeYg
 const TESTER_APPLICATION_FORM_ID = "QKWeYg";
@@ -58,6 +60,7 @@ const TABS = [
   { id: "subscription", label: "Subscription", icon: Crown },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "preferences", label: "Preferences", icon: Globe },
+  { id: "assets", label: "Assets", icon: Shapes },
   { id: "account", label: "Account", icon: UserIcon },
 ] as const;
 
@@ -68,6 +71,11 @@ type TabId = (typeof TABS)[number]["id"];
 let requestedTab: TabId | null = null;
 export const requestSettingsTab = (tab: TabId) => {
   requestedTab = tab;
+};
+// The user's asset categories and manual assets, under Assets.
+export const openAssetSettings = (onNavigate: (section: string) => void) => {
+  requestSettingsTab("assets");
+  onNavigate("settings");
 };
 
 const LANGUAGES = [
@@ -690,6 +698,24 @@ export function SettingsSection() {
       )}
 
       </fieldset>
+
+      {/* Outside the fieldset: a demo account can still open each row (the editors lock their own changes). */}
+      {activeTab === "assets" && (
+        <div className="space-y-8">
+          <div className="space-y-4">
+            <p className="text-[13px] text-[#78716c] leading-relaxed max-w-3xl">
+              The category each of your securities counts in, across all your portfolios: alerts on a category, and adopting a strategy by category, weigh a portfolio by it. Each one comes with a suggestion; a category you pick replaces it everywhere, until you restore it.
+            </p>
+            <AssetCategoriesEditor />
+          </div>
+          <div className="space-y-4">
+            <p className="text-[13px] text-[#78716c] leading-relaxed max-w-3xl">
+              Your investments with no market price — unlisted shares, private equity, a loan, physical gold — valued by hand. Each one is picked in a transaction like a security, and counts in the portfolios that hold it by its valuations.
+            </p>
+            <ManualAssetsEditor />
+          </div>
+        </div>
+      )}
 
       {message && (
         <div className={`fixed bottom-6 md:bottom-8 left-1/2 -translate-x-1/2 px-6 md:px-8 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-4 z-50 ${message.type === 'success' ? 'bg-[#1c1917] text-white' : 'bg-rose-500 text-white'}`}>

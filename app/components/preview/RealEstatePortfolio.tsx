@@ -6,50 +6,18 @@ import {
   BarChart, Bar, LineChart, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ReferenceLine, ReferenceDot, Legend, CartesianGrid, ComposedChart,
 } from "recharts";
-import { Building2, Download, FileSearch, FileText, Home, MapPin, Sparkles } from "lucide-react";
-import { Breadcrumb, type Crumb } from "../dashboard/Breadcrumb";
+import { Building2, FileSearch, Home, MapPin, Sparkles } from "lucide-react";
 import { formatCompact, formatCurrency } from "../../lib/format";
 import { CATEGORICAL_PALETTE } from "../../lib/chartColors";
 import {
-  PROPERTIES, ZONES, QUARTERS, REAL_ESTATE_REPORTS, zoneById, zoneMarketTrend, zoneNow, zoneYoY, zoneGrossYield,
+  PROPERTIES, ZONES, QUARTERS, zoneById, zoneMarketTrend, zoneNow, zoneYoY, zoneGrossYield,
   propertyValue, shortTermAnalysis,
-  type Property, type RealEstateReport,
+  type Property,
 } from "../../lib/mock/realEstate";
-import { AXIS_TICK, ComingSoonButton, Panel, Pills, PreviewBadge, PreviewBanner, Stat, TOOLTIP_STYLE, formatPct, serif } from "./PreviewKit";
+import { AXIS_TICK, Panel, Pills, PreviewBadge, PreviewBanner, Stat, TOOLTIP_STYLE, formatPct, serif } from "./PreviewKit";
 
 const eur = (v: number) => formatCurrency(v, "EUR", 0);
 const GOLD = "#C49A3C";
-
-export type RealEstatePreviewPage = "reports";
-
-const PAGE_LABELS: Record<RealEstatePreviewPage, string> = {
-  reports: "Reports",
-};
-
-/**
- * REAL ESTATE PAGES (preview) — the real estate's pages the API doesn't have yet, a demo account's
- * only, opened from the real estate's own page (dashboard/realEstate/RealEstateNode): Reports.
- * `trail` leads up to the real estate's section; "Real estate" is added to it. Everything comes from
- * lib/mock/realEstate.
- */
-export function RealEstatePortfolio({
-  trail, page, onOpenHome,
-}: { trail: Crumb[]; page: RealEstatePreviewPage; onOpenHome: () => void }) {
-  const pageTrail = [...trail, { label: "Real estate", onClick: onOpenHome }];
-  return (
-    <div className="space-y-6 pb-12">
-      <Breadcrumb trail={pageTrail} current={PAGE_LABELS[page]} right={pageAction(page)} />
-      {page === "reports" && <RealEstateReports />}
-    </div>
-  );
-}
-
-function pageAction(page: RealEstatePreviewPage) {
-  switch (page) {
-    case "reports":
-      return <ComingSoonButton icon={<FileText className="h-3.5 w-3.5" />}>Generate report</ComingSoonButton>;
-  }
-}
 
 /**
  * REAL ESTATE MARKET (preview) — under a demo account's real estate Insights: for the sample
@@ -254,44 +222,6 @@ function ShortTermRental({ property }: { property: Property }) {
         </div>
       )}
     </Panel>
-  );
-}
-
-const REPORT_STYLE: Record<RealEstateReport["kind"], string> = {
-  Quarterly: "bg-blue-50 text-blue-700",
-  Tax: "bg-amber-50 text-amber-700",
-  Valuation: "bg-emerald-50 text-emerald-700",
-  "Short-term": "bg-violet-50 text-violet-700",
-};
-
-function RealEstateReports() {
-  return (
-    <>
-      <PreviewBanner feature="Real estate reports" />
-      <Panel title="Reports" subtitle="Made every quarter, plus valuations and tax summaries when they fall due.">
-        <ul className="divide-y divide-slate-100">
-          {REAL_ESTATE_REPORTS.map((r) => (
-            <li key={r.id} className="px-6 md:px-7 py-4 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="w-10 h-10 rounded-xl bg-[#C49A3C]/10 text-[#C49A3C] flex items-center justify-center shrink-0"><FileText className="h-4 w-4" /></span>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-black text-slate-900 truncate">
-                    {r.title}
-                    <span className={`ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider align-middle ${REPORT_STYLE[r.kind]}`}>{r.kind}</span>
-                  </p>
-                  <p className="text-[11px] font-semibold text-slate-400 truncate">
-                    {new Date(r.date).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })} · {r.detail}
-                  </p>
-                </div>
-              </div>
-              <button type="button" disabled title="Coming soon" className="p-2.5 rounded-xl border border-slate-200 text-slate-300 cursor-not-allowed shrink-0">
-                <Download className="h-4 w-4" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Panel>
-    </>
   );
 }
 

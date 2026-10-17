@@ -83,6 +83,11 @@ function getWalletUuid(n: NotificationResponse): string | undefined {
   return n.payload?.wallet_uuid as string | undefined;
 }
 
+// A property's report's: the property's uuid.
+function getPropertyUuid(n: NotificationResponse): string | undefined {
+  return n.payload?.property_uuid as string | undefined;
+}
+
 function getErrorMessage(n: NotificationResponse): string | undefined {
   return n.payload?.error_message as string | undefined;
 }
@@ -304,7 +309,9 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
         // A losses notice's portfolios are its losses' (a broker's), not one it's about.
         const portfolioUuid = isLossesExpiring ? undefined : getPortfolioUuid(n);
         const walletUuid = getWalletUuid(n);
+        const propertyUuid = getPropertyUuid(n);
         const reportHref = documentId && (walletUuid ? `/reports/wallets/${walletUuid}/${documentId}`
+          : propertyUuid ? `/reports/properties/${propertyUuid}/${documentId}`
           : portfolioUuid ? `/reports/${portfolioUuid}/${documentId}` : undefined);
         const errorMessage = getErrorMessage(n);
         const reportName = getReportName(n);

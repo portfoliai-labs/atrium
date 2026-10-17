@@ -12,13 +12,14 @@ import { publicationService } from "../../services/publicationService";
 import { PublishStrategyDialog } from "./PublishStrategyDialog";
 import type { PublishedStrategy } from "../../models/PublishedStrategy";
 import { PortfolioNode, type PortfolioPage } from "./InvestmentsSection";
-import { investmentsOf, isBacktest, type Portfolio } from "../../models/Portfolio";
+import { isBacktest, type Portfolio } from "../../models/Portfolio";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { StrategyBuilder } from "./StrategyBuilder";
 import { StrategiesCatalog, PublishedStrategyPage } from "./StrategiesExplore";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AdoptStrategyDialog } from "./AdoptStrategyDialog";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
+import { openAssetSettings } from "./SettingsSection";
 
 // Strategies' pages: "home", the user's strategies (their backtests) and the catalog of the
 // published ones; "builder", the form for a new backtest; "backtest", one backtest's page (`uuid`,
@@ -350,8 +351,7 @@ function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpe
             setAdopting(null);
             // A client's: on their investments, whichever portfolio stands for them.
             if (clientUuid) return openClientPage(onNavigate, clientUuid, { kind: "portfolio", uuid: "", page: "categories" });
-            const investments = investmentsOf(portfolios);
-            if (investments) onOpenPortfolio(investments.uuid, "categories");
+            openAssetSettings(onNavigate);
           }}
         />
       )}

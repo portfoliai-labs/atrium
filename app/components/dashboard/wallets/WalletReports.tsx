@@ -24,7 +24,9 @@ const FULL_REPORT = {
 // A deleted wallet's reports, until they go with it.
 const NO_WALLET_COLOR = "#1c1917";
 
-type RequestState = { kind: "idle" } | { kind: "sending" } | { kind: "queued" } | { kind: "conflict"; request: WalletReportRequest } | { kind: "error"; message: string };
+// How a report's request went (a wallet's or a property's, RealEstateReports'): its toast's.
+export type ReportRequestState<R> = { kind: "idle" } | { kind: "sending" } | { kind: "queued" } | { kind: "conflict"; request: R } | { kind: "error"; message: string };
+type RequestState = ReportRequestState<WalletReportRequest>;
 
 /**
  * WALLET REPORTS — the wallets' Reports page (WalletNode): every wallet's reports as files
@@ -206,8 +208,9 @@ export function WalletReports({ walletUuid, readOnly }: { walletUuid?: string; r
       )}
 
       {state.kind !== "idle" && (
-        <WalletReportToast
+        <ReportRequestToast
           state={state}
+          subject="wallet"
           onForce={() => state.kind === "conflict" && send({ ...state.request, force: true })}
           onClose={() => { setState({ kind: "idle" }); load(); }}
         />
@@ -216,8 +219,13 @@ export function WalletReports({ walletUuid, readOnly }: { walletUuid?: string; r
   );
 }
 
-/** How a request went, bottom-centred as Investments' report toast. */
-function WalletReportToast({ state, onForce, onClose }: { state: Exclude<RequestState, { kind: "idle" }>; onForce: () => void; onClose: () => void }) {
+/** How a request went, bottom-centred as Investments' report toast; `subject` is what it's about. */
+export function ReportRequestToast<R>({ state, subject, onForce, onClose }: {
+  state: Exclude<ReportRequestState<R>, { kind: "idle" }>;
+  subject: string;
+  onForce: () => void;
+  onClose: () => void;
+}) {
   const isError = state.kind === "error";
   const title = state.kind === "sending" ? "Requesting your report…"
     : state.kind === "queued" ? "Report on its way"
@@ -225,7 +233,7 @@ function WalletReportToast({ state, onForce, onClose }: { state: Exclude<Request
         : "Couldn't generate the report";
   const body = state.kind === "sending" ? "Hang on a moment."
     : state.kind === "queued" ? "You'll get a notification when it's ready, and you'll find it here."
-      : state.kind === "conflict" ? "One is still being generated for this wallet. Wait for it, or start a new one anyway."
+      : state.kind === "conflict" ? `One is still being generated for this ${subject}. Wait for it, or start a new one anyway.`
         : state.message;
   return createPortal(
     <div
