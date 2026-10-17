@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, Settings, ChevronRight, Sparkles, Users, Newspaper, BookOpen, LineChart, Wallet, Building2, History, Handshake, Inbox } from "lucide-react";
+import { LayoutDashboard, Settings, ChevronRight, Sparkles, Users, Newspaper, BookOpen, LineChart, Wallet, Building2, History, Handshake, Inbox, MessagesSquare } from "lucide-react";
 import { PreviewBadge } from "../preview/PreviewKit";
 import { useUser } from "../../context/UserContext";
 import { usePortfolio } from "../../context/PortfolioContext";
@@ -125,6 +125,7 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     ...(realEstateAvailable ? [{ id: REAL_ESTATE_SECTION, label: 'Real estate', icon: Building2, preview: realEstateSample, subs: propertyRows }] : []),
     ...(hasWallets ? [{ id: WALLETS_SECTION, label: 'Wallets', icon: Wallet, preview: sample, subs: walletRows }] : []),
     { id: 'advisor', label: 'Find an advisor', icon: Handshake },
+    { id: 'messages', label: 'Messages', icon: MessagesSquare },
     journalItem,
     newsItem,
     { id: 'settings', label: 'Settings', icon: Settings },
@@ -158,6 +159,7 @@ export function Sidebar({ activeSection, setActiveSection, onOpenPage, isOpen = 
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: CLIENTS_SECTION, label: 'Clients', icon: Users, subs: clientRows },
     { id: 'requests', label: 'Requests', icon: Inbox },
+    { id: 'messages', label: 'Messages', icon: MessagesSquare },
     { id: STRATEGIES_SECTION, label: 'Strategies', icon: History },
     journalItem,
     newsItem,

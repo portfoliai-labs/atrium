@@ -14,6 +14,7 @@ import { ReportsList } from "../../components/dashboard/ReportsList";
 import { ClientsSection } from "../../components/dashboard/ClientsSection";
 import { AdvisorMatchSection } from "../../components/dashboard/AdvisorMatchSection";
 import { AdvisorRequestsSection } from "../../components/dashboard/AdvisorRequestsSection";
+import { MessagesSection } from "../../components/dashboard/MessagesSection";
 import DashboardOverview from "../../components/dashboard/DashboardOverview";
 import AdvisorDashboardOverview from "../../components/dashboard/AdvisorDashboardOverview";
 import { SettingsSection } from "../../components/dashboard/SettingsSection";
@@ -44,7 +45,7 @@ import {
 // test are each portfolio's, its Strategy is Strategies), 'explore' (the strategies catalog, once,
 // then the Journal and News together).
 const VALID_SECTIONS = [
-  'overview', 'clients', 'requests', 'advisor', 'upload', INVESTMENTS_SECTION, WALLETS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, JOURNAL_SECTION,
+  'overview', 'clients', 'requests', 'advisor', 'messages', 'upload', INVESTMENTS_SECTION, WALLETS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, JOURNAL_SECTION,
   NEWS_SECTION, ASSET_SECTION, 'settings', 'notifications', PLAN_SECTION, EXPLORE_SECTION, 'discover',
 ];
 // Sections that became another, under a new name. A link or a history entry to the old one lands
@@ -205,6 +206,8 @@ function DashboardPageContent() {
         return isAdvisor ? <AdvisorRequestsSection /> : null;
       case 'advisor':
         return isAdvisor ? null : <AdvisorMatchSection onNavigate={navigate} />;
+      case 'messages':
+        return <MessagesSection />;
       case 'upload':
         // Every portfolio at once: the list filters by portfolio, and new rows say where they go.
         // An advisor's is each client's portfolio's, see above.
