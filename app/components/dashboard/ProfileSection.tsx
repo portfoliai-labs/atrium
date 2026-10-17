@@ -119,7 +119,7 @@ export function ProfileSection() {
                 ? "Loading…"
                 : done === IPS_STEPS.length
                 ? "Complete · review or edit"
-                : done === 0 && !policy.updated_at
+                : done === 0 && policy.version === null
                 ? "Not started · set it up"
                 : `${done} of ${IPS_STEPS.length} steps · continue`}
             </span>

@@ -2,8 +2,8 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import {
-  DROP_REACTION_OPTIONS, EXCLUSION_SUGGESTIONS, GOAL_LIMIT, INCOME_STABILITY_OPTIONS, INSTRUMENT_OPTIONS,
-  LIQUIDITY_OPTIONS, PURPOSE_OPTIONS, REBALANCE_OPTIONS, REVIEW_OPTIONS,
+  DROP_REACTION_OPTIONS, EXCLUSION_SUGGESTIONS, FEE_OPTIONS, GOAL_LIMIT, INCOME_STABILITY_OPTIONS, INSTRUMENT_OPTIONS,
+  LANGUAGE_OPTIONS, LIQUIDITY_OPTIONS, MEETING_OPTIONS, PURPOSE_OPTIONS, REBALANCE_OPTIONS, REVIEW_OPTIONS, TOPIC_OPTIONS,
 } from "../../../lib/ips";
 import type { InvestorPolicy, IpsGoal } from "../../../models/InvestorPolicy";
 import {
@@ -137,9 +137,6 @@ export function ConstraintsStep({ policy, update }: StepProps) {
         <Field label="Time horizon" hint="Years until you expect to start drawing on the money.">
           <NumberInput value={c.timeHorizonYears} onChange={(timeHorizonYears) => set({ timeHorizonYears })} placeholder="20" suffix="years" max={100} />
         </Field>
-        <Field label="Tax residence" hint="Where you are taxed on investment income.">
-          <TextInput value={c.taxResidence} onChange={(taxResidence) => set({ taxResidence })} placeholder="e.g. Italy" />
-        </Field>
       </div>
 
       <FieldGroup label="Liquidity need" hint="How quickly you might need to turn investments into cash.">
@@ -150,7 +147,7 @@ export function ConstraintsStep({ policy, update }: StepProps) {
         <Field label="Liquidity notes" hint="Planned withdrawals or big expenses ahead.">
           <TextArea value={c.liquidityNotes} onChange={(liquidityNotes) => set({ liquidityNotes })} placeholder="e.g. School fees in 2028" />
         </Field>
-        <Field label="Tax notes" hint="Wrappers, allowances or rules that shape what you buy.">
+        <Field label="Tax notes" hint="Wrappers, allowances or rules that shape what you buy. Your tax residence is part of your profile.">
           <TextArea value={c.taxNotes} onChange={(taxNotes) => set({ taxNotes })} placeholder="e.g. Capital gains taxed at 26%" />
         </Field>
       </div>
@@ -221,6 +218,40 @@ export function MonitoringStep({ policy, update }: StepProps) {
       <Field label="Review triggers" hint="Events that call for a review outside the schedule.">
         <TextArea value={m.reviewTriggers} onChange={(reviewTriggers) => set({ reviewTriggers })} placeholder="e.g. Change of job, a new child, a fall of more than 15%" />
       </Field>
+    </div>
+  );
+}
+
+export function AdvisorStep({ policy, update }: StepProps) {
+  const a = policy.advisorPreferences;
+  const set = (patch: Partial<typeof a>) =>
+    update((p) => ({ ...p, advisorPreferences: { ...p.advisorPreferences, ...patch } }));
+
+  return (
+    <div className="space-y-8">
+      <FieldGroup label="Languages" hint="The languages you would like to speak with your advisor in.">
+        <ChipSelect options={LANGUAGE_OPTIONS} selected={a.languages} onChange={(languages) => set({ languages })} />
+      </FieldGroup>
+
+      <FieldGroup label="How would you like to meet?" hint="Select one or both.">
+        <ChipSelect options={MEETING_OPTIONS} selected={a.meetingModes} onChange={(meetingModes) => set({ meetingModes })} />
+      </FieldGroup>
+
+      {a.meetingModes.includes("in_person") && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Field label="City" hint="Where you would meet in person.">
+            <TextInput value={a.city} onChange={(city) => set({ city })} placeholder="e.g. Milano" />
+          </Field>
+        </div>
+      )}
+
+      <FieldGroup label="How the advisor is paid" hint="Leave empty if you have no preference.">
+        <ChipSelect options={FEE_OPTIONS} selected={a.feeModels} onChange={(feeModels) => set({ feeModels })} />
+      </FieldGroup>
+
+      <FieldGroup label="Topics" hint="What you would like help with, beyond the portfolio. Optional.">
+        <ChipSelect options={TOPIC_OPTIONS} selected={a.topics} onChange={(topics) => set({ topics })} />
+      </FieldGroup>
     </div>
   );
 }

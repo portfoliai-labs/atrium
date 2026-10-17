@@ -1,32 +1,47 @@
 // services/ipsService.ts
 import type { InvestorPolicy } from "../models/InvestorPolicy";
-import { emptyPolicy, mergeWithDefaults } from "../lib/ips";
+import { mergeWithDefaults } from "../lib/ips";
+import { apiFetch } from "./apiClient";
 
-// The backend has no endpoint for the investor policy yet, so it is kept in this browser, one
-// entry per user. Everything goes through this object and stays async, so moving to an API
-// (GET / PUT on the user's policy) means changing only this file: the policy then follows the
-// user across devices instead of staying on this one.
-const storageKey = (userUuid: string) => `investor_policy:${userUuid}`;
+// What ianus serves: the policy without the form's goal ids.
+type StoredPolicy = Omit<InvestorPolicy, "objectives"> & {
+  objectives: Omit<InvestorPolicy["objectives"], "goals"> & {
+    goals: Omit<InvestorPolicy["objectives"]["goals"][number], "id">[];
+  };
+};
 
+// The caller's investor policy, kept by civis: each save that changes it is a new version, and
+// deleting the account deletes them all. The goals' ids are only the form's (a key per row):
+// given on load, left out on save.
 export const ipsService = {
-  async getPolicy(userUuid: string): Promise<InvestorPolicy> {
-    try {
-      const raw = localStorage.getItem(storageKey(userUuid));
-      return raw ? mergeWithDefaults(JSON.parse(raw)) : emptyPolicy();
-    } catch {
-      // Unreadable or corrupted entry: start over rather than block the page.
-      return emptyPolicy();
-    }
+  // GET /users/investor-policy — null while the user never saved one: the empty policy then.
+  async getPolicy(): Promise<InvestorPolicy> {
+    const stored = await apiFetch<StoredPolicy | null>("/users/investor-policy");
+    const policy = mergeWithDefaults(stored as Partial<InvestorPolicy> | null);
+    const goals = (stored?.objectives.goals ?? []).map((g) => ({ ...g, id: crypto.randomUUID() }));
+    return { ...policy, objectives: { ...policy.objectives, goals } };
   },
 
-  async savePolicy(userUuid: string, policy: InvestorPolicy): Promise<InvestorPolicy> {
-    const saved = { ...policy, updated_at: new Date().toISOString() };
-    localStorage.setItem(storageKey(userUuid), JSON.stringify(saved));
-    return saved;
-  },
-
-  // Called when the account is deleted, so nothing of it is left behind in the browser.
-  clearPolicy(userUuid: string): void {
-    localStorage.removeItem(storageKey(userUuid));
+  // PUT /users/investor-policy — the whole policy; answers the version it is saved as.
+  async savePolicy(policy: InvestorPolicy): Promise<Pick<InvestorPolicy, "version" | "savedAt">> {
+    const body = {
+      objectives: {
+        ...policy.objectives,
+        goals: policy.objectives.goals.map((g) => ({
+          description: g.description, targetAmount: g.targetAmount, targetYear: g.targetYear,
+        })),
+      },
+      risk: policy.risk,
+      constraints: policy.constraints,
+      allocation: policy.allocation,
+      guidelines: policy.guidelines,
+      monitoring: policy.monitoring,
+      advisorPreferences: policy.advisorPreferences,
+    };
+    const saved = await apiFetch<StoredPolicy>("/users/investor-policy", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+    return { version: saved.version, savedAt: saved.savedAt };
   },
 };

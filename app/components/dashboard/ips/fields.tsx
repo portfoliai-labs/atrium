@@ -166,32 +166,33 @@ export function ChoiceCards<T extends string>({
 }
 
 /** Pick any number of the given options. */
-export function ChipSelect({
+export function ChipSelect<T extends string>({
   options, selected, onChange,
 }: {
-  options: string[];
-  selected: string[];
-  onChange: (selected: string[]) => void;
+  options: Option<T>[];
+  selected: T[];
+  onChange: (selected: T[]) => void;
 }) {
-  const toggle = (o: string) =>
+  const toggle = (o: T) =>
     onChange(selected.includes(o) ? selected.filter((s) => s !== o) : [...selected, o]);
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((o) => {
-        const on = selected.includes(o);
+        const on = selected.includes(o.value);
         return (
           <button
-            key={o}
+            key={o.value}
             type="button"
             aria-pressed={on}
-            onClick={() => toggle(o)}
+            title={o.hint}
+            onClick={() => toggle(o.value)}
             className={`px-4 py-2 rounded-full border text-[13px] font-semibold transition-all ${
               on
                 ? "border-[#1c1917] bg-[#1c1917] text-white"
                 : "border-[rgba(196,154,60,0.3)] bg-white text-[#44403c] hover:border-[#C49A3C]"
             }`}
           >
-            {o}
+            {o.label}
           </button>
         );
       })}
@@ -199,7 +200,6 @@ export function ChipSelect({
   );
 }
 
-/** A free list of short entries, with suggestions to add in one click. */
 export function TagList({
   values, onChange, suggestions = [], placeholder, limit = 20,
 }: {

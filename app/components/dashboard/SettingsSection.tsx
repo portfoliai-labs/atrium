@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import Script from "next/script";
 import { Crown, Infinity as InfinityIcon, FileText, AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, FlaskConical, User as UserIcon, Trash2 } from "lucide-react";
 import { userService } from "../../services/userService";
-import { ipsService } from "../../services/ipsService";
 import type { SubscriptionResponse, UserMetrics, NotificationPreferences } from "../../models/User";
 import SubscriptionSection from "./SubscriptionSection";
 import { DeleteAccountModal } from "./DeleteAccountModal";
@@ -151,7 +150,6 @@ export function SettingsSection() {
 
   const handleDeleteAccount = async () => {
     await userService.deleteAccount();
-    if (user) ipsService.clearPolicy(user.uuid);
     logout();
   };
 

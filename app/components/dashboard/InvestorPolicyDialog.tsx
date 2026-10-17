@@ -12,7 +12,7 @@ import type { InvestorPolicy, IpsStepId } from "../../models/InvestorPolicy";
 import { AllocationStep } from "./ips/AllocationStep";
 import { PolicySummary } from "./ips/PolicySummary";
 import {
-  ConstraintsStep, GuidelinesStep, MonitoringStep, ObjectivesStep, RiskStep, type StepProps,
+  AdvisorStep, ConstraintsStep, GuidelinesStep, MonitoringStep, ObjectivesStep, RiskStep, type StepProps,
 } from "./ips/steps";
 
 type ViewId = IpsStepId | "review";
@@ -33,7 +33,8 @@ interface InvestorPolicyDialogProps {
 
 /**
  * INVESTOR POLICY — the Investor Policy Statement, built one step at a time in a dialog opened
- * from Profile: objectives, risk, constraints, allocation, guidelines and monitoring, then a
+ * from Profile: objectives, risk, constraints, allocation, guidelines, monitoring and what the
+ * investor looks for in an advisor, then a
  * review that reads it back as a document. The policy and its saving belong to the caller (the
  * Profile page also shows its progress); every change is saved as it is made, so closing the
  * dialog at any point loses nothing.
@@ -106,7 +107,7 @@ export function InvestorPolicyDialog({ policy, status, update, onClose }: Invest
             </div>
           </div>
           <div className="flex items-center gap-3 shrink-0">
-            <SaveIndicator status={status} savedAt={policy.updated_at} />
+            <SaveIndicator status={status} savedAt={policy.savedAt} />
             <button
               type="button"
               onClick={onClose}
@@ -133,7 +134,7 @@ export function InvestorPolicyDialog({ policy, status, update, onClose }: Invest
               </div>
             </div>
 
-            <ol className="grid grid-cols-7 lg:grid-cols-1 gap-1">
+            <ol className="grid grid-cols-8 lg:grid-cols-1 gap-1">
               {VIEWS.map((v, i) => {
                 const active = v.id === view;
                 const complete = v.id !== "review" && stepIssues(v.id, policy).length === 0;
@@ -187,6 +188,7 @@ export function InvestorPolicyDialog({ policy, status, update, onClose }: Invest
             {view === "allocation" && <AllocationStep {...stepProps} />}
             {view === "guidelines" && <GuidelinesStep {...stepProps} />}
             {view === "monitoring" && <MonitoringStep {...stepProps} />}
+            {view === "advisor" && <AdvisorStep {...stepProps} />}
             {view === "review" && (
               <PolicySummary {...stepProps} riskTolerance={riskTolerance} onGoToStep={goTo} />
             )}
@@ -232,9 +234,9 @@ function SaveIndicator({ status, savedAt }: { status: IpsSaveStatus; savedAt: st
   return (
     <p className="flex items-center gap-1.5 text-xs font-semibold text-[#78716c] min-h-5" aria-live="polite">
       {status === "saving" && (<><Loader2 className="w-3.5 h-3.5 animate-spin" /> <span className={text}>Saving…</span></>)}
-      {status === "saved" && (<><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> <span className={text}>Saved on this device</span></>)}
+      {status === "saved" && (<><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> <span className={text}>Saved</span></>)}
       {status === "error" && (<><AlertCircle className="w-3.5 h-3.5 text-rose-500" /> <span className={text}>Couldn&apos;t save your changes</span></>)}
-      {status === "idle" && savedAt && (<><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> <span className={text}>Saved on this device</span></>)}
+      {status === "idle" && savedAt && (<><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> <span className={text}>Saved</span></>)}
     </p>
   );
 }

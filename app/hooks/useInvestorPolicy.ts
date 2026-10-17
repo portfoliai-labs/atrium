@@ -11,8 +11,8 @@ const SAVE_DELAY_MS = 500;
 
 /**
  * The user's investor policy, saved as they fill it in: every change is written after a short
- * pause, and anything still pending is written when the component unmounts (switching Profile
- * tab), so no step is ever lost. `policy` is null until the first load.
+ * pause, and anything still pending is written when the component unmounts, so no step is ever
+ * lost. `policy` is null until the first load (or while it fails: `status` is then "error").
  */
 export function useInvestorPolicy(userUuid: string | undefined) {
   const [policy, setPolicy] = useState<InvestorPolicy | null>(null);
@@ -23,10 +23,13 @@ export function useInvestorPolicy(userUuid: string | undefined) {
   useEffect(() => {
     if (!userUuid) return;
     let cancelled = false;
-    ipsService.getPolicy(userUuid).then((loaded) => {
+    ipsService.getPolicy().then((loaded) => {
       if (cancelled) return;
       latest.current = loaded;
       setPolicy(loaded);
+    }).catch((err) => {
+      console.error("Failed to load the investor policy:", err);
+      if (!cancelled) setStatus("error");
     });
     return () => { cancelled = true; };
   }, [userUuid]);
@@ -35,7 +38,10 @@ export function useInvestorPolicy(userUuid: string | undefined) {
     if (!userUuid || !latest.current) return;
     setStatus("saving");
     try {
-      await ipsService.savePolicy(userUuid, latest.current);
+      const saved = await ipsService.savePolicy(latest.current);
+      // Only the version: edits made while the request was out stay, and are saved next.
+      latest.current = { ...latest.current, ...saved };
+      setPolicy(latest.current);
       setStatus("saved");
     } catch (err) {
       console.error("Failed to save the investor policy:", err);
@@ -58,7 +64,7 @@ export function useInvestorPolicy(userUuid: string | undefined) {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
-      if (userUuid && latest.current) ipsService.savePolicy(userUuid, latest.current).catch(() => {});
+      if (userUuid && latest.current) ipsService.savePolicy(latest.current).catch(() => {});
     }
   }, [userUuid]);
 

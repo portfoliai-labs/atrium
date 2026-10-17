@@ -2,8 +2,8 @@
 // Definitions, completion rules and the written-out document for the Investor Policy Statement.
 import { CATEGORICAL_PALETTE } from "./chartColors";
 import type {
-  AssetClassId, InvestorPolicy, IpsDropReaction, IpsIncomeStability, IpsLiquidityNeed,
-  IpsPurpose, IpsRebalanceMethod, IpsReviewFrequency, IpsStepId,
+  AssetClassId, InvestorPolicy, IpsAdvisoryTopic, IpsDropReaction, IpsFeeModel, IpsIncomeStability, IpsInstrument,
+  IpsLiquidityNeed, IpsMeetingMode, IpsPurpose, IpsRebalanceMethod, IpsReviewFrequency, IpsStepId,
 } from "../models/InvestorPolicy";
 
 export const IPS_STEPS: { id: IpsStepId; label: string; description: string }[] = [
@@ -13,6 +13,7 @@ export const IPS_STEPS: { id: IpsStepId; label: string; description: string }[] 
   { id: "allocation", label: "Allocation", description: "The target mix across asset classes." },
   { id: "guidelines", label: "Guidelines", description: "What you will and won't invest in." },
   { id: "monitoring", label: "Monitoring", description: "How and when the policy is reviewed and the portfolio rebalanced." },
+  { id: "advisor", label: "Your advisor", description: "What you look for in an advisor: the advisors we suggest are matched on it." },
 ];
 
 export interface Option<T extends string> {
@@ -62,9 +63,46 @@ export const REBALANCE_OPTIONS: Option<IpsRebalanceMethod>[] = [
   { value: "both", label: "Both", hint: "At each review, if a class is outside its band." },
 ];
 
-export const INSTRUMENT_OPTIONS = [
-  "Individual stocks", "ETFs", "Mutual funds", "Government bonds", "Corporate bonds",
-  "Real estate funds", "Options & derivatives", "Crypto", "Private / alternative funds",
+export const INSTRUMENT_OPTIONS: Option<IpsInstrument>[] = [
+  { value: "stocks", label: "Individual stocks" },
+  { value: "etfs", label: "ETFs" },
+  { value: "mutual_funds", label: "Mutual funds" },
+  { value: "government_bonds", label: "Government bonds" },
+  { value: "corporate_bonds", label: "Corporate bonds" },
+  { value: "real_estate_funds", label: "Real estate funds" },
+  { value: "derivatives", label: "Options & derivatives" },
+  { value: "crypto", label: "Crypto" },
+  { value: "alternatives", label: "Private / alternative funds" },
+];
+
+// The languages an advisor may speak with you in: locale codes, as civis stores them.
+export const LANGUAGE_OPTIONS: Option<string>[] = [
+  { value: "it", label: "Italian" },
+  { value: "en", label: "English" },
+  { value: "de", label: "German" },
+  { value: "fr", label: "French" },
+  { value: "es", label: "Spanish" },
+];
+
+export const MEETING_OPTIONS: Option<IpsMeetingMode>[] = [
+  { value: "remote", label: "Remotely", hint: "Video calls and messages." },
+  { value: "in_person", label: "In person", hint: "Meetings at the advisor's office or yours." },
+];
+
+export const FEE_OPTIONS: Option<IpsFeeModel>[] = [
+  { value: "fee_only", label: "Fee only", hint: "You pay the advisor; no commissions from the products sold." },
+  { value: "commission", label: "Commissions", hint: "Paid by the product providers, on what you buy." },
+  { value: "mixed", label: "Both", hint: "A fee and commissions." },
+];
+
+export const TOPIC_OPTIONS: Option<IpsAdvisoryTopic>[] = [
+  { value: "retirement", label: "Retirement" },
+  { value: "tax_planning", label: "Tax planning" },
+  { value: "estate_planning", label: "Succession & estate" },
+  { value: "real_estate", label: "Real estate" },
+  { value: "sustainable_investing", label: "Sustainable investing" },
+  { value: "insurance", label: "Insurance" },
+  { value: "business_owners", label: "Business owners" },
 ];
 
 export const EXCLUSION_SUGGESTIONS = ["Tobacco", "Weapons", "Fossil fuels", "Gambling", "Adult entertainment"];
@@ -96,17 +134,19 @@ export function emptyPolicy(): InvestorPolicy {
   return {
     objectives: { purpose: null, goals: [], targetReturnPct: null, annualIncomeNeed: null, monthlyContribution: null },
     risk: { maxDrawdownPct: null, dropReaction: null, incomeStability: null, emergencyFundMonths: null },
-    constraints: { timeHorizonYears: null, liquidityNeed: null, liquidityNotes: "", taxResidence: "", taxNotes: "", otherConstraints: "" },
+    constraints: { timeHorizonYears: null, liquidityNeed: null, liquidityNotes: "", taxNotes: "", otherConstraints: "" },
     allocation: {
       targets: { equities: null, bonds: null, cash: null, real_estate: null, commodities: null, crypto_other: null },
     },
     guidelines: { allowedInstruments: [], leverageAllowed: null, maxPositionPct: null, exclusions: [] },
     monitoring: { reviewFrequency: null, rebalanceMethod: null, rebalanceBandPct: null, benchmark: "", reviewTriggers: "" },
-    updated_at: null,
+    advisorPreferences: { languages: [], meetingModes: [], city: "", feeModels: [], topics: [] },
+    version: null,
+    savedAt: null,
   };
 }
 
-/** Stored policies may predate a field: fill whatever is missing from the empty policy, section by section. */
+/** What the API serves may lack a field (an asset class without a target, a newer field): fill it from the empty policy, section by section. */
 export function mergeWithDefaults(stored: Partial<InvestorPolicy> | null | undefined): InvestorPolicy {
   const base = emptyPolicy();
   if (!stored || typeof stored !== "object") return base;
@@ -117,7 +157,9 @@ export function mergeWithDefaults(stored: Partial<InvestorPolicy> | null | undef
     allocation: { targets: { ...base.allocation.targets, ...stored.allocation?.targets } },
     guidelines: { ...base.guidelines, ...stored.guidelines },
     monitoring: { ...base.monitoring, ...stored.monitoring },
-    updated_at: stored.updated_at ?? null,
+    advisorPreferences: { ...base.advisorPreferences, ...stored.advisorPreferences },
+    version: stored.version ?? null,
+    savedAt: stored.savedAt ?? null,
   };
 }
 
@@ -161,6 +203,13 @@ export function stepIssues(step: IpsStepId, p: InvestorPolicy): string[] {
         issues.push("Set the drift band that triggers a rebalance");
       }
       break;
+    case "advisor":
+      if (p.advisorPreferences.languages.length === 0) issues.push("Choose at least one language");
+      if (p.advisorPreferences.meetingModes.length === 0) issues.push("Say how you would like to meet");
+      else if (p.advisorPreferences.meetingModes.includes("in_person") && !p.advisorPreferences.city.trim()) {
+        issues.push("Say the city where you would meet in person");
+      }
+      break;
   }
   return issues;
 }
@@ -185,6 +234,16 @@ function text(value: string): string {
 
 function list(values: string[]): string {
   return values.length ? values.join(", ") : NOT_SET;
+}
+
+function labels<T extends string>(options: Option<T>[], values: T[]): string[] {
+  return values.map((v) => optionLabel(options, v) ?? v);
+}
+
+const ANY = "No preference";
+
+function anyOf(values: string[]): string {
+  return values.length ? values.join(", ") : ANY;
 }
 
 export interface PolicySection {
@@ -247,7 +306,6 @@ export function policySections(p: InvestorPolicy, ctx: PolicyContext): PolicySec
         row("Time horizon", p.constraints.timeHorizonYears === null ? NOT_SET : `${p.constraints.timeHorizonYears} years`),
         row("Liquidity need", optionLabel(LIQUIDITY_OPTIONS, p.constraints.liquidityNeed) ?? NOT_SET),
         ...(p.constraints.liquidityNotes.trim() ? [row("Liquidity notes", p.constraints.liquidityNotes.trim())] : []),
-        row("Tax residence", text(p.constraints.taxResidence)),
         ...(p.constraints.taxNotes.trim() ? [row("Tax notes", p.constraints.taxNotes.trim())] : []),
         ...(p.constraints.otherConstraints.trim() ? [row("Other constraints", p.constraints.otherConstraints.trim())] : []),
       ],
@@ -261,7 +319,7 @@ export function policySections(p: InvestorPolicy, ctx: PolicyContext): PolicySec
       id: "guidelines",
       title: "Investment guidelines",
       rows: [
-        row("Allowed instruments", list(p.guidelines.allowedInstruments)),
+        row("Allowed instruments", list(labels(INSTRUMENT_OPTIONS, p.guidelines.allowedInstruments))),
         row("Leverage", p.guidelines.leverageAllowed === null ? NOT_SET : p.guidelines.leverageAllowed ? "Allowed" : "Not allowed"),
         row("Largest single position", pct(p.guidelines.maxPositionPct)),
         row("Exclusions", list(p.guidelines.exclusions)),
@@ -276,6 +334,17 @@ export function policySections(p: InvestorPolicy, ctx: PolicyContext): PolicySec
         ...(p.monitoring.rebalanceMethod !== "calendar" ? [row("Drift band", band === null ? NOT_SET : `±${band} percentage points`)] : []),
         row("Benchmark", text(p.monitoring.benchmark)),
         ...(p.monitoring.reviewTriggers.trim() ? [row("Review triggers", p.monitoring.reviewTriggers.trim())] : []),
+      ],
+    },
+    {
+      id: "advisor",
+      title: "Your advisor",
+      rows: [
+        row("Languages", list(labels(LANGUAGE_OPTIONS, p.advisorPreferences.languages))),
+        row("Meetings", list(labels(MEETING_OPTIONS, p.advisorPreferences.meetingModes))),
+        ...(p.advisorPreferences.city.trim() ? [row("City", p.advisorPreferences.city.trim())] : []),
+        row("Fees", anyOf(labels(FEE_OPTIONS, p.advisorPreferences.feeModels))),
+        row("Topics", anyOf(labels(TOPIC_OPTIONS, p.advisorPreferences.topics))),
       ],
     },
   ];
