@@ -18,7 +18,7 @@ const dateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { m
  * (GET /v1/assets/{asset}/news, by the same listing id or ticker as the page): each article's
  * outlet, day and title, opening it on its site. Searched while asked (a few seconds), so it
  * loads on its own, after the page. A fund nobody writes about (most UCITS ETFs) has none, and
- * says so; an error leaves the module out.
+ * — like an error — leaves the module out.
  */
 export function AssetNewsModule({ asset, name }: { asset: string; name: string }) {
   const [state, setState] = useState<{ asset: string; items: NewsItem[] | null } | null>(null);
@@ -32,7 +32,7 @@ export function AssetNewsModule({ asset, name }: { asset: string; name: string }
   }, [asset]);
 
   const current = state?.asset === asset ? state : undefined;
-  if (current && current.items === null) return null;
+  if (current && (current.items === null || current.items.length === 0)) return null;
   // undefined while it's being searched.
   const items = current?.items ?? undefined;
 
@@ -44,8 +44,6 @@ export function AssetNewsModule({ asset, name }: { asset: string; name: string }
           <p className="flex items-center gap-2 text-[12.5px] text-[#a8a29e]">
             <Loader2 className="h-3.5 w-3.5 animate-spin text-[#C49A3C]" /> Looking for news…
           </p>
-        ) : items.length === 0 ? (
-          <p className="text-[12.5px] text-[#a8a29e]">No news about {name} in the last {NEWS_DAYS} days.</p>
         ) : (
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             {items.map((item, i) => {

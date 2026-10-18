@@ -2109,16 +2109,23 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
       {isBondClass(data.assetClass) && <BondRatesModule isin={data.isin} name={data.name} currency={data.quoteCurrency} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-[22px]">
-        {position.data && <PositionPanel position={position.data} />}
+        {/* Profile and Key facts side by side; the position below, next to the fund's breakdowns. */}
         <Module>
           <ModuleHead title="Profile" desc="What the asset is and where it trades." />
-          <Figs className={MODULE_BODY}>
-            {facts.map((f) => <Fig key={f.label} label={f.label} value={f.value} />)}
-          </Figs>
+          {/* One fact a row, its value on the right: a market's or an industry's name wraps, not cut. */}
+          <dl className={MODULE_BODY}>
+            {facts.map((f) => (
+              <div key={f.label} className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-4 py-2.5 border-b border-[#EEE9DD] last:border-b-0">
+                <dt className="text-[12.5px] text-[#78716c]">{f.label}</dt>
+                <dd className="text-right text-[13.5px] font-bold text-[#1c1917] break-words">{f.value}</dd>
+              </div>
+            ))}
+          </dl>
         </Module>
         <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
         <AssetNewsModule asset={asset} name={data.name} />
         <AssetArticlesModule instrumentId={data.listing?.instrumentId ?? null} ticker={data.ticker} isin={data.isin} />
+        {position.data && <PositionPanel position={position.data} />}
         {data.sectorWeightings.length > 1 && (
           <Module>
             <ModuleHead title="By Sector" desc="Where the fund's companies operate, by weight." />

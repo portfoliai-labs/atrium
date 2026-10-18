@@ -67,7 +67,7 @@ export function InstrumentProfileModule({ profile, listing }: { profile: Instrum
   const anyInReview = sources.some((s) => s.inReview);
 
   return (
-    <Module className="md:col-span-2">
+    <Module>
       <ModuleHead title="Key facts" desc="What the instrument is, each value with where it comes from." />
       <div className={`${MODULE_BODY} space-y-5`}>
         {facts.length > 0 && <FactGrid facts={facts} />}
@@ -146,9 +146,11 @@ function indexProfileFacts(index: NonNullable<InstrumentProfile["index"]>): Prof
   return facts.filter((f): f is ProfileFact => !!f);
 }
 
+// One fact a row, as the Profile beside it: the label on the left, the value (wrapping, not cut)
+// with its badges and its source under it on the right.
 function FactGrid({ facts }: { facts: ProfileFact[] }) {
   return (
-    <dl className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-x-5 gap-y-3.5">
+    <dl>
       {facts.map((f) => <FactCell key={f.key} fact={f} />)}
     </dl>
   );
@@ -159,20 +161,22 @@ function FactCell({ fact }: { fact: ProfileFact }) {
   const { source } = fact;
   const provisional = !!source?.inReview;
   return (
-    <div className="flex flex-col gap-[3px] min-w-0 border-t border-[#EEE9DD] pt-2.5">
-      <dt className="text-[11px] text-[#78716c] truncate">{fact.label}</dt>
-      <dd className="flex flex-wrap items-center gap-1.5 min-w-0">
-        <span className={`text-[15px] font-bold tracking-[-0.01em] min-w-0 truncate ${provisional ? "text-[#78716c] underline decoration-dashed decoration-[#C49A3C]/60 underline-offset-4" : "text-[#1c1917]"}`}>
-          {fact.href ? (
-            <a href={fact.href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
-              {fact.value}<ExternalLink className="h-3 w-3 shrink-0" />
-            </a>
-          ) : fact.value}
+    <div className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-4 py-2.5 border-b border-[#EEE9DD] last:border-b-0">
+      <dt className="text-[12.5px] text-[#78716c]">{fact.label}</dt>
+      <dd className="flex flex-col items-end gap-0.5 min-w-0 text-right">
+        <span className="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
+          <span className={`text-[13.5px] font-bold break-words min-w-0 ${provisional ? "text-[#78716c] underline decoration-dashed decoration-[#C49A3C]/60 underline-offset-4" : "text-[#1c1917]"}`}>
+            {fact.href ? (
+              <a href={fact.href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
+                {fact.value}<ExternalLink className="h-3 w-3 shrink-0" />
+              </a>
+            ) : fact.value}
+          </span>
+          {source?.ai && <AiBadge />}
+          {provisional && <ProvisionalBadge />}
         </span>
-        {source?.ai && <AiBadge />}
-        {provisional && <ProvisionalBadge />}
+        {source && <span className="text-[11px] text-[#a8a29e] min-w-0"><SourceCitation source={source} /></span>}
       </dd>
-      {source && <dd className="text-[11px] text-[#a8a29e] min-w-0"><SourceCitation source={source} /></dd>}
     </div>
   );
 }
