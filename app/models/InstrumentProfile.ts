@@ -10,12 +10,13 @@ import type { StrategyCategory } from "./Strategy";
 // acknowledged; isin: the fund's ISIN (its domicile); price_provider: the market-data provider;
 // registry: a crypto asset is one; users_votes: the users' consensus on the category; sec_filing:
 // a company's annual report on the SEC's EDGAR (a 10-K, a foreign company's 20-F), to be cited;
+// esef_report: an EU company's annual financial report in ESEF (from filings.xbrl.org), cited;
 // wikipedia: a company's English Wikipedia article (its revision linked), CC BY-SA 4.0, to be
 // attributed with its licence; curation: a curator's decision, above every source. "unknown" for
 // one this page doesn't know yet.
 type ProfileSource =
   | "issuer_kid" | "index_methodology" | "esma_firds" | "isin" | "price_provider" | "registry" | "users_votes"
-  | "sec_filing" | "wikipedia" | "curation" | "unknown";
+  | "sec_filing" | "esef_report" | "wikipedia" | "curation" | "unknown";
 
 interface ProfileSourceRef {
   source: ProfileSource;
@@ -108,7 +109,8 @@ interface InstrumentProfile {
   employees: number | null;
   website: string | null;
   // A company's: what it does, in English. A paragraph an AI model summarised from its latest
-  // annual report filed with the SEC (sources.description: sec_filing, the report linked), else its
+  // annual report (sources.description: sec_filing, its report to the SEC; or esef_report, an EU
+  // company's ESEF report, asOf the end of the year it reports on; the report linked), else its
   // Wikipedia article's lead as written, paragraphs separated by blank lines (wikipedia).
   description: string | null;
   sources: Partial<Record<
@@ -127,6 +129,7 @@ const PROFILE_SOURCE_LABELS: Record<ProfileSource, string> = {
   registry: "Crypto registry",
   users_votes: "Users' consensus",
   sec_filing: "Annual report (SEC)",
+  esef_report: "Annual report (ESEF)",
   wikipedia: "Wikipedia",
   curation: "Reviewed by Atrium",
   unknown: "Other source",
