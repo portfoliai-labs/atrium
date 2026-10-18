@@ -17,6 +17,7 @@ import { MessagesSection } from "../../components/dashboard/MessagesSection";
 import DashboardOverview from "../../components/dashboard/DashboardOverview";
 import AdvisorDashboardOverview from "../../components/dashboard/AdvisorDashboardOverview";
 import { SettingsSection } from "../../components/dashboard/SettingsSection";
+import { SubscriptionPage } from "../../components/dashboard/SubscriptionPage";
 import { MyProfileSection } from "../../components/dashboard/MyProfileSection";
 import { NotificationsSection } from "../../components/dashboard/NotificationsSection";
 import { InvestmentsSection } from "../../components/dashboard/InvestmentsSection";
@@ -32,7 +33,7 @@ import { DemoBanner } from "../../components/preview/DemoBanner";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
 import {
   ASSET_SECTION, CLIENTS_SECTION, EXPLORE_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, PLAN_SECTION,
-  PROFILE_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, WALLETS_SECTION, DashboardPageContext, openPortfolioPage,
+  PROFILE_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, WALLETS_SECTION, SUBSCRIPTION_SECTION, DashboardPageContext, openPortfolioPage,
 } from "../../lib/dashboardNav";
 
 // 'reports' and 'profile' are omitted here on purpose: neither investors nor advisors have a
@@ -46,7 +47,7 @@ import {
 // then the Journal and News together).
 const VALID_SECTIONS = [
   'overview', 'clients', 'requests', 'advisor', 'messages', 'upload', INVESTMENTS_SECTION, WALLETS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, JOURNAL_SECTION,
-  NEWS_SECTION, ASSET_SECTION, PROFILE_SECTION, 'settings', 'notifications', PLAN_SECTION, EXPLORE_SECTION, 'discover',
+  NEWS_SECTION, ASSET_SECTION, PROFILE_SECTION, SUBSCRIPTION_SECTION, 'settings', 'notifications', PLAN_SECTION, EXPLORE_SECTION, 'discover',
 ];
 // Sections that became another, under a new name. A link or a history entry to the old one lands
 // on the new.
@@ -250,6 +251,8 @@ function DashboardPageContent() {
         return isAdvisor ? <AdvisorProfileSection /> : <ProfileSection />;
       case 'settings':
         return <SettingsSection />;
+      case SUBSCRIPTION_SECTION:
+        return <SubscriptionPage />;
       case 'notifications':
         return <NotificationsSection onOpenPage={openPage} />;
       default:

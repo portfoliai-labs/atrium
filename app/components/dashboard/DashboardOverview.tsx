@@ -38,8 +38,8 @@ type SnapshotState =
  * on top (every portfolio's market value, from the aggregate "All portfolios" or the only
  * portfolio, plus the wallets' balance and the real estate's equity; a demo account's wallets and
  * properties are sample data, see lib/mock), with the portfolios, the wallets and the properties
- * under it, as totals and one by one; the wallets' cash flow and what it's all in by asset class
- * (WealthBreakdown); then every portfolio's alerts and the article of the day. Headline figures
+ * under it as totals; the wallets' cash flow (WealthBreakdown); then every portfolio's alerts and
+ * the article of the day. Headline figures
  * only: the rest lives in Investments, Wallets and Real estate, which the summaries open. The overview endpoint never mixes history
  * with fresh data (no isStale).
  */
@@ -135,16 +135,13 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
           wallets={wallets}
           realEstate={realEstate}
           onOpenPortfolios={onNavigate && investments ? () => openPortfolioPage(onNavigate, investments.uuid) : undefined}
-          onOpenPortfolio={onNavigate ? (uuid) => openPortfolio(uuid, "performance") : undefined}
           onOpenWallets={onNavigate ? () => openWalletPage(onNavigate, "all") : undefined}
-          onOpenWallet={onNavigate ? (id) => openWalletPage(onNavigate, id) : undefined}
           onOpenRealEstate={onNavigate ? () => openRealEstatePage(onNavigate) : undefined}
-          onOpenProperty={onNavigate ? (id) => openRealEstatePage(onNavigate, id) : undefined}
         />
       )}
 
-      {/* CASH FLOW & ASSET CLASSES — the wallets' last months, and what it's all in. */}
-      {!noDataAtAll && headlineState.status === "ready" && <WealthBreakdown investmentsUuid={headline.uuid} />}
+      {/* CASH FLOW — the wallets' last months. */}
+      {!noDataAtAll && headlineState.status === "ready" && <WealthBreakdown />}
 
       {/* ALERTS — every portfolio's, aggregate included, as one list sorted by urgency. */}
       {!noDataAtAll && (
@@ -184,13 +181,12 @@ function ErrorBanner({ message }: { message: string }) {
  * wallet and property, each in a shade of its group's colour (gold for investments, teal for wallets,
  * orange for real estate) so the bar reads both ways: what each is, and how much of the whole each
  * group is. Under it, one column per group: its total, a line about it (the portfolios' unrealized
- * P&L, the wallets' money in and out this month, the properties' value, debt and loan-to-value),
- * then a row for each portfolio, wallet or property — its share of the net worth, its value and how
- * it's doing — in the same shade as its piece of the bar. A column's head opens its section
- * (Investments' All portfolios, Wallets, Real estate), a row that portfolio's, wallet's or property's page.
+ * P&L, the wallets' money in and out this month, the properties' debt and how their equity moved this month),
+ * opening its section (Investments' All portfolios, Wallets, Real estate), where each portfolio,
+ * wallet and property is. The bar's pieces say which each is on hovering.
  *
  * The portfolios' total is the aggregate's (recomputed from every portfolio's transactions
- * combined) or the only portfolio's; each row is that portfolio's own overview. A strategy's
+ * combined) or the only portfolio's; each portfolio's piece of the bar is its own overview. A strategy's
  * backtest is simulated money: never here. The wallets come added up in the user's reference
  * currency (see useWalletsOverview); if that isn't the portfolios' they're shown but not added in,
  * and a wallet in another currency than that has no piece of its own in the bar. A wallet in debt
@@ -203,7 +199,7 @@ function ErrorBanner({ message }: { message: string }) {
  */
 function NetWorthModule({
   portfolio, snapshot, members, snapshots, wallets, realEstate,
-  onOpenPortfolios, onOpenPortfolio, onOpenWallets, onOpenWallet, onOpenRealEstate, onOpenProperty,
+  onOpenPortfolios, onOpenWallets, onOpenRealEstate,
 }: {
   portfolio: Portfolio;
   // null: nothing computed yet (the aggregate's first build, or a portfolio with no data).
@@ -214,13 +210,12 @@ function NetWorthModule({
   wallets: WalletsOverview | null;
   realEstate: RealEstateNetWorth | null;
   onOpenPortfolios?: () => void;
-  onOpenPortfolio?: (uuid: string) => void;
   onOpenWallets?: () => void;
-  onOpenWallet?: (id: string) => void;
   onOpenRealEstate?: () => void;
-  onOpenProperty?: (id: string) => void;
 }) {
   const moves = useRecentMoves(portfolio.uuid);
+  // The bar's piece under the pointer: its name, kind, value and share over it.
+  const [hovered, setHovered] = useState<string | null>(null);
   const { sample } = useWallets();
   const { sample: realEstateSample } = useRealEstate();
   const currency = snapshot?.currency ?? wallets?.currency ?? realEstate?.overview?.currency ?? "EUR";
@@ -249,13 +244,22 @@ function NetWorthModule({
   const allIn = portfolioRows.length > 0 && portfolioRows.every((r) => r.state.status === "ready");
   const segments = [
     ...(allIn
-      ? portfolioRows.filter((r) => r.own && r.own.currency === currency).map((r) => ({ key: r.portfolio.uuid, label: r.portfolio.name, value: r.own!.totalMarketValue, color: r.shade }))
-      : [{ key: "investments", label: "Investments", value: investments, color: GOLD }]),
+      ? portfolioRows.filter((r) => r.own && r.own.currency === currency).map((r) => ({ key: r.portfolio.uuid, label: r.portfolio.name, kind: "Portfolio", value: r.own!.totalMarketValue, color: r.shade }))
+      : [{ key: "investments", label: "Investments", kind: "Your portfolios", value: investments, color: GOLD }]),
     ...(walletsCounted !== 0
-      ? walletRows.filter((r) => r.wallet.currency === currency).map((r) => ({ key: r.wallet.id, label: r.wallet.name, value: r.wallet.balance, color: r.shade }))
+      ? walletRows.filter((r) => r.wallet.currency === currency).map((r) => ({ key: r.wallet.id, label: r.wallet.name, kind: "Wallet", value: r.wallet.balance, color: r.shade }))
       : []),
-    ...propertyRows.filter((r) => r.counted !== null).map((r) => ({ key: r.property.id, label: r.property.name, value: r.counted!, color: r.shade })),
+    ...propertyRows.filter((r) => r.counted !== null).map((r) => ({ key: r.property.id, label: r.property.name, kind: "Property, equity", value: r.counted!, color: r.shade })),
   ].filter((s) => s.value > 0);
+  // Where each piece starts and ends along the bar, in percent: the hovered one's label sits over its middle.
+  let start = 0;
+  const pieces = segments.map((s) => {
+    const width = shareOf(s.value);
+    const piece = { ...s, width, center: start + width / 2 };
+    start += width;
+    return piece;
+  });
+  const focus = pieces.find((p) => p.key === hovered) ?? null;
   // The groups counted in the total, for the bar's legend: shown once there are two.
   const groups = [
     { key: "investments", label: "Investments", value: investments, color: GOLD },
@@ -289,10 +293,39 @@ function NetWorthModule({
 
         {segments.length > 0 && (
           <div className="space-y-2.5">
-            <div className="flex h-3 gap-0.5 rounded-full overflow-hidden">
-              {segments.map((s) => (
-                <div key={s.key} title={`${s.label} · ${shareOf(s.value).toFixed(0)}%`} className="h-full first:rounded-l-full last:rounded-r-full" style={{ width: `${shareOf(s.value)}%`, background: s.color }} />
-              ))}
+            <div className="relative">
+              {focus && (
+                <div
+                  role="tooltip"
+                  className="absolute bottom-full mb-2.5 -translate-x-1/2 z-10 pointer-events-none whitespace-nowrap rounded-xl bg-[#1c1917] px-3 py-2 text-white shadow-lg"
+                  // Kept inside the card near either end.
+                  style={{ left: `clamp(5rem, ${focus.center}%, calc(100% - 5rem))` }}
+                >
+                  <p className="flex items-center gap-1.5 text-[12.5px] font-bold">
+                    <span className="h-2 w-2 rounded-full shrink-0" style={{ background: focus.color }} />
+                    {focus.label}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-stone-400 tabular-nums">
+                    {focus.kind} · {formatCurrency(focus.value, currency, 0)} · {focus.width.toFixed(1)}%
+                  </p>
+                </div>
+              )}
+              {/* A taller strip than the bar takes the pointer, so a thin piece is easy to land on. */}
+              <div className="flex h-5 items-center gap-0.5" onMouseLeave={() => setHovered(null)}>
+                {pieces.map((p, i) => (
+                  <div
+                    key={p.key}
+                    onMouseEnter={() => setHovered(p.key)}
+                    className="h-full flex items-center cursor-default"
+                    style={{ width: `${p.width}%` }}
+                  >
+                    <div
+                      className={`w-full rounded-[3px] transition-all ${i === 0 ? "rounded-l-full" : ""} ${i === pieces.length - 1 ? "rounded-r-full" : ""} ${hovered === p.key ? "h-4" : "h-3"} ${hovered && hovered !== p.key ? "opacity-35" : ""}`}
+                      style={{ background: p.color }}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
             {groups.length > 1 && (
               <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs font-bold text-slate-600">
@@ -315,19 +348,7 @@ function NetWorthModule({
             : "No transactions yet: add some to see what your portfolio is worth."}
           summary={snapshot && <><Delta amount={snapshot.totalUnrealizedPnl} pct={pnlPct} currency={snapshot.currency} /> unrealized</>}
           onOpen={onOpenPortfolios}
-        >
-          {portfolioRows.map(({ portfolio: p, state, own, shade }) => (
-            <GroupRow
-              key={p.uuid}
-              color={shade}
-              name={p.name}
-              share={own && own.currency === currency ? shareOf(own.totalMarketValue) : null}
-              value={own ? formatCurrency(own.totalMarketValue, own.currency, 0) : state.status === "loading" ? "…" : "—"}
-              delta={own ? <Delta amount={null} pct={unrealizedPct(own)} currency={own.currency} /> : null}
-              onOpen={onOpenPortfolio ? () => onOpenPortfolio(p.uuid) : undefined}
-            />
-          ))}
-        </GroupColumn>
+        />
         {wallets && (
           <GroupColumn
             title="Wallets"
@@ -342,20 +363,7 @@ function NetWorthModule({
               </>
             }
             onOpen={onOpenWallets}
-          >
-            {walletRows.map(({ wallet: w, shade }) => (
-              <GroupRow
-                key={w.id}
-                color={shade}
-                name={w.name}
-                share={walletsCounted !== 0 && w.currency === currency ? shareOf(w.balance) : null}
-                value={formatCurrency(w.balance, w.currency, 0)}
-                negative={w.balance < 0}
-                delta={<Delta amount={w.net} pct={null} currency={w.currency} />}
-                onOpen={onOpenWallet ? () => onOpenWallet(w.id) : undefined}
-              />
-            ))}
-          </GroupColumn>
+          />
         )}
         {realEstate && (
           <GroupColumn
@@ -365,28 +373,13 @@ function NetWorthModule({
             value={reOverview ? formatCurrency(reOverview.equity, reOverview.currency, 0) : "—"}
             summary={reOverview ? (
               <>
-                Equity{realEstateCounted === 0 && reOverview.equity !== 0 && ", not added in"}
-                <span className="text-slate-300"> · </span>
-                {formatCurrency(reOverview.value, reOverview.currency, 0)} value, {formatCurrency(reOverview.residualDebt, reOverview.currency, 0)} debt
-                {reOverview.loanToValuePct !== null && <>, LTV {reOverview.loanToValuePct.toFixed(0)}%</>}
+                {formatCurrency(reOverview.residualDebt, reOverview.currency, 0)} debt
                 {realEstate.monthChange !== null && <><span className="text-slate-300"> · </span><Delta amount={realEstate.monthChange} pct={null} currency={reOverview.currency} /> this month</>}
+                {realEstateCounted === 0 && reOverview.equity !== 0 && <><span className="text-slate-300"> · </span>not added in</>}
               </>
             ) : "Can't be added up right now: an exchange rate is missing"}
             onOpen={onOpenRealEstate}
-          >
-            {propertyRows.map(({ property: p, shade, counted }) => (
-              <GroupRow
-                key={p.id}
-                color={shade}
-                name={p.name}
-                share={counted === null ? null : shareOf(counted)}
-                value={formatCurrency(p.equity, p.currency, 0)}
-                negative={p.equity < 0}
-                delta={p.loanToValuePct === null ? null : <span className="font-bold text-slate-400 tabular-nums">LTV {p.loanToValuePct.toFixed(0)}%</span>}
-                onOpen={onOpenProperty ? () => onOpenProperty(p.id) : undefined}
-              />
-            ))}
-          </GroupColumn>
+          />
         )}
       </div>
     </Module>
@@ -434,11 +427,11 @@ function Delta({ amount, pct, currency }: { amount: number | null; pct: number |
 }
 
 /**
- * GROUP COLUMN — one kind of asset under the net worth: its head (name, total, a line about it,
- * opening its page in Wealth), then its rows. `value` null: nothing to show yet, `pending` says why.
+ * GROUP COLUMN — one kind of asset under the net worth: its name, total and a line about it,
+ * opening its section. `value` null: nothing to show yet, `pending` says why.
  */
 function GroupColumn({
-  title, color, badge, value, pending, summary, onOpen, children,
+  title, color, badge, value, pending, summary, onOpen,
 }: {
   title: string;
   color: string;
@@ -447,7 +440,6 @@ function GroupColumn({
   pending?: string;
   summary?: React.ReactNode;
   onOpen?: () => void;
-  children: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col">
@@ -474,45 +466,7 @@ function GroupColumn({
           </>
         )}
       </button>
-      <ul className="@container px-3 md:px-4 pb-3 border-t border-slate-100 pt-1.5">{children}</ul>
     </div>
-  );
-}
-
-/**
- * One portfolio, wallet or property in its column: name, share of the net worth, value, how it's
- * doing. In a narrow column (three groups side by side) the name keeps the room: how it's doing
- * goes under the value, and the share (in the bar's tooltip too) is left out.
- */
-function GroupRow({
-  color, name, share, value, negative = false, delta, onOpen,
-}: {
-  color: string;
-  name: string;
-  // Its share of the whole net worth, in percent; null when it isn't counted in it.
-  share: number | null;
-  value: string;
-  negative?: boolean;
-  delta: React.ReactNode;
-  onOpen?: () => void;
-}) {
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        disabled={!onOpen}
-        className="w-full grid grid-cols-[minmax(0,1fr)_auto] @md:grid-cols-[minmax(0,1fr)_2.75rem_6.5rem_5.5rem] items-center gap-x-2 gap-y-0.5 rounded-xl px-3 py-2.5 text-left enabled:hover:bg-slate-50 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40"
-      >
-        <span className="flex items-center gap-2.5 min-w-0">
-          <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: color }} />
-          <span className="text-[13px] font-bold text-slate-800 truncate">{name}</span>
-        </span>
-        <span className="hidden @md:block text-[11px] font-bold text-slate-400 tabular-nums text-right">{share === null ? "" : `${share.toFixed(0)}%`}</span>
-        <span className={`text-[13px] font-black tabular-nums text-right ${negative ? "text-rose-600" : "text-slate-900"}`}>{value}</span>
-        <span className="col-start-2 @md:col-start-auto text-[11px] text-right truncate">{delta}</span>
-      </button>
-    </li>
   );
 }
 

@@ -42,6 +42,8 @@ export const ASSET_SECTION = "asset";
 // MyProfileSection). Not "profile",
 // the old investor profile's.
 export const PROFILE_SECTION = "myProfile";
+// The user's plan and the plans to move to (see SubscriptionPage), once Settings' first tab.
+export const SUBSCRIPTION_SECTION = "subscription";
 
 type Navigate = (section: string) => void;
 

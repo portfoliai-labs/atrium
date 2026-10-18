@@ -9,7 +9,7 @@ import { NotificationPanel } from "./NotificationPanel";
 import { AccountMenu } from "./AccountMenu";
 import { TopbarSearch } from "./TopbarSearch";
 import type { AssetView } from "./AssetSection";
-import { ASSET_SECTION } from "../../lib/dashboardNav";
+import { ASSET_SECTION, SUBSCRIPTION_SECTION } from "../../lib/dashboardNav";
 import { userService } from "../../services/userService";
 import { BetaBadge } from "../common/BetaBadge";
 import type { SubscriptionTier, SubscriptionResponse } from "../../models/User";
@@ -196,10 +196,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
               onNavigate={onNavigate}
               onManage={onNavigate ? () => {
                 setIsSubscriptionOpen(false);
-                onNavigate("settings");
-                if (typeof window !== "undefined") {
-                  window.location.hash = "pricing";
-                }
+                onNavigate(SUBSCRIPTION_SECTION);
               } : undefined}
             />
           )}
