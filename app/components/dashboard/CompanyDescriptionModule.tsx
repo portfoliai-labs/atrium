@@ -14,10 +14,11 @@ const dayLabel = (iso: string) =>
 
 /**
  * COMPANY DESCRIPTION MODULE — what a company does, on its asset page (AssetExplore): a paragraph
- * an AI model summarised from its latest annual report filed with the SEC (a 10-K, a foreign
- * company's 20-F), marked as the AI's, the report linked and the SEC named as the source; else
- * its English Wikipedia article's lead as written, attributed as its licence asks (the article's
- * revision, its authors, CC BY-SA 4.0). Nothing for an asset census has no description of.
+ * an AI model summarised from its latest annual report (filed with the SEC, a 10-K or a foreign
+ * company's 20-F, the SEC named as the source; or an EU company's ESEF report), marked as the AI's,
+ * the report linked; else its English Wikipedia article's lead as written, attributed as its
+ * licence asks (the article's revision, its authors, CC BY-SA 4.0). Nothing for an asset census
+ * has no description of.
  */
 export function CompanyDescriptionModule({ profile }: { profile: InstrumentProfile | null }) {
   if (!profile?.description) return null;
