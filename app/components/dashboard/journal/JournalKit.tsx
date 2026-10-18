@@ -6,8 +6,9 @@ import { ArrowLeft, ArrowUpRight, Clock, HandHeart, Loader2, MessageCircle } fro
 import type { ArticleAuthor, ArticleStatus, ArticleSummary, Page } from "../../../models/Journal";
 import { CATEGORY_LABELS, STATUS_LABELS, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
 import { serif } from "../../preview/PreviewKit";
+import { JournalMenu } from "./JournalMenu";
 
-/** A Journal page's head: the eyebrow, its title, a line under it, and its actions. */
+/** A Journal page's head: the eyebrow, its title, a line under it, its actions and the Journal's menu. */
 export function JournalHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: React.ReactNode }) {
   return (
     <header className="flex flex-wrap items-end justify-between gap-4">
@@ -16,7 +17,10 @@ export function JournalHeader({ title, subtitle, actions }: { title: string; sub
         <h1 className="text-3xl md:text-4xl font-black text-slate-900" style={serif}>{title}</h1>
         {subtitle && <p className="text-[13px] text-slate-500 mt-1.5 leading-relaxed max-w-xl">{subtitle}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        {actions}
+        <JournalMenu />
+      </div>
     </header>
   );
 }
@@ -81,8 +85,8 @@ function CardByline({ article, dark = false }: { article: ArticleSummary; dark?:
 
 const coverUrl = (article: ArticleSummary) => article.cover?.file?.url ?? null;
 
-/** The newest article: dark and full width, the way into the page. */
-export function LeadCard({ article, onOpen }: { article: ArticleSummary; onOpen: () => void }) {
+/** The list's lead (today's most applauded, or the newest): dark and full width, the way into the page; `badge` says why it leads. */
+export function LeadCard({ article, onOpen, badge }: { article: ArticleSummary; onOpen: () => void; badge?: React.ReactNode }) {
   const cover = coverUrl(article);
   return (
     <button
@@ -93,6 +97,9 @@ export function LeadCard({ article, onOpen }: { article: ArticleSummary; onOpen:
       <div className="absolute -top-16 -right-16 w-56 h-56 bg-[#C49A3C]/10 blur-3xl rounded-full" />
       <div className="relative flex-1 flex items-start justify-between gap-6 p-6 md:p-9">
         <div className="max-w-2xl">
+          {badge && (
+            <span className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-[#C49A3C]/15 px-3 py-1 text-xs font-bold text-[#E2C27A]">{badge}</span>
+          )}
           <Meta article={article} dark />
           <h2 className="text-2xl md:text-3xl font-black text-white mt-3 leading-tight" style={serif}>{article.title}</h2>
           {article.dek && <p className="text-sm md:text-[15px] text-stone-400 mt-3 leading-relaxed">{article.dek}</p>}

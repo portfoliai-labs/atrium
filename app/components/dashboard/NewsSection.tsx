@@ -8,9 +8,12 @@ import {
 } from "lucide-react";
 import { useNews, useDailyArticle } from "../../hooks/useNews";
 import type { NewsItem, DailyArticle } from "../../models/News";
+import { PageHeader } from "./PageHeader";
+
+const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 
 /**
- * NEWS SECTION — today's headlines as the sidebar's News page (NewsPageSection), and the
+ * NEWS SECTION — today's headlines as the sidebar's News page (NewsPageSection), a card each, and the
  * article of the day (DailyArticleModule), which lives on the investor Dashboard instead. Each
  * card shows the backend's `imageUrl` when the story has one; otherwise (or if that URL fails
  * to load) it falls back to a stylized placeholder derived from the story's own topic/title
@@ -32,7 +35,7 @@ const PLACEHOLDER_THEMES: { gradient: string; icon: typeof Newspaper }[] = [
   { gradient: "linear-gradient(135deg, #7c3aed 0%, #4c1d95 100%)", icon: Coins },
 ];
 
-// The News page shows every story at once as a grid, so this is a roomier cap than a
+// The News page shows every story at once, a card each, so this is a roomier cap than a
 // one-at-a-time carousel would need.
 const INSIGHTS_NEWS_LIMIT = 10;
 
@@ -71,9 +74,9 @@ function ModuleHead({ eyebrow, title, desc, right }: { eyebrow: string; title: s
 }
 
 /**
- * NEWS CARD — grid variant used by NewsModule. Clickable (opens the article in a new tab)
- * only when the backend supplied a url; otherwise renders as a plain, non-interactive card
- * rather than a dead link.
+ * NEWS CARD — one story, a card of its own on the News page. Clickable (opens the article in a
+ * new tab) only when the backend supplied a url; otherwise renders as a plain, non-interactive
+ * card rather than a dead link.
  */
 function NewsCard({ item }: { item: NewsItem }) {
   const theme = themeFor(item.topic || item.title);
@@ -88,7 +91,7 @@ function NewsCard({ item }: { item: NewsItem }) {
   const inner = (
     <>
       <div
-        className="h-28 flex items-center justify-center relative shrink-0 overflow-hidden"
+        className="h-40 flex items-center justify-center relative shrink-0 overflow-hidden"
         style={showImage ? undefined : { backgroundImage: theme.gradient }}
       >
         {showImage ? (
@@ -100,82 +103,70 @@ function NewsCard({ item }: { item: NewsItem }) {
             className="absolute inset-0 h-full w-full object-cover"
           />
         ) : (
-          <Icon className="h-9 w-9 text-white/85" />
+          <Icon className="h-10 w-10 text-white/85" />
         )}
-        <span className="absolute top-2.5 left-2.5 text-[9px] font-black uppercase tracking-wider text-white px-2 py-1 rounded-full bg-black/25 backdrop-blur-sm">
+        <span className="absolute top-3 left-3 text-[10px] font-black uppercase tracking-wider text-white px-2.5 py-1 rounded-full bg-black/30 backdrop-blur-sm">
           {item.topic}
         </span>
-        {clickable && <ExternalLink className="absolute top-2.5 right-2.5 h-3.5 w-3.5 text-white/70" />}
       </div>
-      <div className="p-4 flex flex-col gap-1.5 flex-1">
-        <h3 className="text-sm font-bold text-slate-900 leading-snug line-clamp-2">{item.title}</h3>
-        {item.description && <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{item.description}</p>}
-        <div className="flex items-center justify-between gap-2 pt-1.5 mt-auto">
-          <span className="text-[11px] font-semibold text-slate-400 truncate">{item.source ?? "—"}</span>
-          {published && <span className="text-[11px] text-slate-400 shrink-0">{published}</span>}
-        </div>
+      <div className="p-5 md:p-6 flex flex-col gap-2.5 flex-1">
+        <p className="flex items-center gap-2 text-[11px] font-semibold text-slate-400">
+          <span className="font-bold text-slate-500 truncate">{item.source ?? "—"}</span>
+          {published && <><span>·</span><span className="shrink-0">{published}</span></>}
+        </p>
+        <h3 className="text-lg font-black text-slate-900 leading-snug line-clamp-3" style={serif}>{item.title}</h3>
+        {item.description && <p className="text-[13px] text-slate-500 leading-relaxed line-clamp-3">{item.description}</p>}
+        {clickable && (
+          <span className="mt-auto pt-2 flex items-center gap-1 text-xs font-bold text-slate-400 group-hover:text-[#C49A3C] transition-colors">
+            Read on {item.source ?? "the source"} <ExternalLink className="h-3.5 w-3.5" />
+          </span>
+        )}
       </div>
     </>
   );
 
-  const className = "flex flex-col h-full rounded-2xl border border-slate-200 bg-white overflow-hidden hover:shadow-md hover:border-slate-300 transition-all";
+  const className = "group flex flex-col h-full rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden transition-all";
 
   return clickable ? (
-    <a href={item.url!} target="_blank" rel="noreferrer" className={className}>{inner}</a>
+    <a href={item.url!} target="_blank" rel="noreferrer" className={`${className} hover:border-[#C49A3C]/50 hover:shadow-md outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/60`}>{inner}</a>
   ) : (
     <div className={className}>{inner}</div>
   );
 }
 
-function NewsGridBody({ items }: { items: NewsItem[] }) {
-  if (items.length === 0) {
-    return <p className="text-sm text-slate-400 p-6 md:p-7">No news for this period.</p>;
-  }
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-6 md:p-7 pt-5">
-      {items.map((item, i) => <NewsCard key={item.url ?? `${item.title}-${i}`} item={item} />)}
-    </div>
-  );
-}
-
 /**
- * NEWS PAGE SECTION — the sidebar's own "News" tab: today's headlines as a full page rather
- * than a small supplementary module. Used to live embedded in Today's overview and in each
- * month's detail page as NewsModule; both call sites are gone now (a news-shaped page of its
- * own reads better than the same grid repeated across Insights), so this replaces it outright
- * rather than sitting alongside an unused twin. Unlike the module it replaces, this needs a
- * real empty state — a lone supplementary module on a busier page can just disappear on a
- * newsless day, but a page someone navigated to on purpose can't render nothing with no
- * explanation.
+ * NEWS PAGE SECTION — the sidebar's own "News" tab: today's headlines as a full page, with a
+ * title like the other pages' and each story a card of its own in a grid. A page someone
+ * navigated to on purpose can't render nothing, so a newsless day says so.
  */
 export function NewsPageSection() {
   const { items, loading, error, notFound } = useNews(undefined, undefined, INSIGHTS_NEWS_LIMIT);
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-500">
-      <Module>
-        <ModuleHead eyebrow="Market News" title="Today's Headlines" desc="Market news published today." />
-        {loading ? (
-          <div className="flex h-40 items-center justify-center">
-            <Loader2 className="animate-spin h-6 w-6 text-[#C49A3C]" />
+      <PageHeader eyebrow="Market news" title="Today's headlines" note="Market news published today, from the sources we follow." />
+      {loading ? (
+        <div className="flex h-40 items-center justify-center">
+          <Loader2 className="animate-spin h-6 w-6 text-[#C49A3C]" />
+        </div>
+      ) : error ? (
+        <div className="flex items-center gap-3 text-rose-600">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <p className="text-sm font-bold">{error}</p>
+        </div>
+      ) : notFound || items.length === 0 ? (
+        <div className="py-14 flex flex-col items-center justify-center text-center px-6">
+          <div className="p-4 bg-white border border-slate-200 rounded-2xl mb-3">
+            <Newspaper className="h-6 w-6 text-slate-300" />
           </div>
-        ) : error ? (
-          <div className="p-6 md:p-7 flex items-center gap-3 text-rose-600">
-            <AlertCircle className="h-5 w-5 shrink-0" />
-            <p className="text-sm font-bold">{error}</p>
-          </div>
-        ) : notFound || items.length === 0 ? (
-          <div className="py-14 flex flex-col items-center justify-center text-center px-6">
-            <div className="p-4 bg-slate-50 rounded-2xl mb-3">
-              <Newspaper className="h-6 w-6 text-slate-300" />
-            </div>
-            <p className="text-slate-600 font-semibold">No news today</p>
-            <p className="text-slate-400 text-sm mt-1">Check back later for new market headlines.</p>
-          </div>
-        ) : (
-          <NewsGridBody items={items} />
-        )}
-      </Module>
+          <p className="text-slate-600 font-semibold">No news today</p>
+          <p className="text-slate-400 text-sm mt-1">Check back later for new market headlines.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {items.map((item, i) => <NewsCard key={item.url ?? `${item.title}-${i}`} item={item} />)}
+        </div>
+      )}
     </div>
   );
 }

@@ -13,7 +13,7 @@ import {
 import { serif } from "../../preview/PreviewKit";
 import type { JournalFilters } from "../JournalSection";
 import { ArticleBody, ArticleFigure } from "./ArticleBody";
-import { AuthorBadge, BackLink, EmptyState, ErrorState, Meta, Spinner } from "./JournalKit";
+import { AuthorBadge, EmptyState, ErrorState, Meta, Spinner } from "./JournalKit";
 import { ReportDialog } from "./ReportDialog";
 import { ArticleComments } from "./ArticleComments";
 
@@ -22,18 +22,20 @@ import { ArticleComments } from "./ArticleComments";
  * the notices it comes with (an editor's: education only; anyone else's: their own opinion, not
  * advice, and an advisor's interests in the instruments). `onAuthor` / `onInstrument` narrow the
  * list to them; `actions` sit under the title. The editor's preview and the editors' cases show
- * an article the same way.
+ * an article the same way, on a card beside their own panels; the reader's page (`bare`) on the
+ * page's background.
  */
-export function ArticleDocument({ article, actions, onAuthor, onInstrument }: {
+export function ArticleDocument({ article, actions, onAuthor, onInstrument, bare = false }: {
   article: Article;
   actions?: React.ReactNode;
   onAuthor?: () => void;
   onInstrument?: (instrument: ArticleInstrument) => void;
+  bare?: boolean;
 }) {
   const byEditors = article.author.kind === "editor";
   const name = authorName(article.author);
   return (
-    <article className="bg-white rounded-3xl border border-slate-200 shadow-sm px-6 py-8 md:px-14 md:py-12">
+    <article className={bare ? "pt-4 md:pt-6" : "bg-white rounded-3xl border border-slate-200 shadow-sm px-6 py-8 md:px-14 md:py-12"}>
       <div className="max-w-2xl mx-auto">
         <Meta article={article} />
         <h1 className="text-3xl md:text-4xl font-black text-slate-900 mt-3 leading-tight" style={serif}>{article.title || "Untitled"}</h1>
@@ -108,11 +110,11 @@ export function HiddenNotice({ article }: { article: Article }) {
 
 /**
  * ARTICLE — one article by its slug, as the reader's page: applauding it (once, not one's own),
- * saving it, reporting it, its comments, and, the author's own, a way to its editor.
+ * saving it, reporting it, its comments, and, the author's own, a way to its editor. Nothing on
+ * it leads back: the browser's back button does.
  */
-export function ArticleReader({ slug, onBack, onEdit, onFilter }: {
+export function ArticleReader({ slug, onEdit, onFilter }: {
   slug: string;
-  onBack: () => void;
   onEdit: (uuid: string) => void;
   onFilter: (filters: JournalFilters) => void;
 }) {
@@ -134,18 +136,16 @@ export function ArticleReader({ slug, onBack, onEdit, onFilter }: {
     return () => { cancelled = true; };
   }, [source, slug, attempt]);
 
-  const back = <BackLink label="Journal" onClick={onBack} />;
   if (error) {
     return (
       <div className="pb-12 space-y-5">
-        {back}
         {error.missing
           ? <EmptyState>This article isn&apos;t available: it may have been unpublished or removed.</EmptyState>
           : <ErrorState message={error.message} onRetry={() => setAttempt((n) => n + 1)} />}
       </div>
     );
   }
-  if (!article) return <div className="pb-12 space-y-5">{back}<Spinner /></div>;
+  if (!article) return <div className="pb-12"><Spinner /></div>;
 
   const own = !!user && article.author.userUuid === user.uuid;
 
@@ -225,12 +225,12 @@ export function ArticleReader({ slug, onBack, onEdit, onFilter }: {
   const authorUuid = author.kind !== "editor" ? author.userUuid : null;
   return (
     <div className="pb-12 space-y-5">
-      {back}
       {own && <HiddenNotice article={article} />}
       {saveError && <p className="text-xs font-medium text-rose-600">{saveError}</p>}
       <ArticleDocument
         article={article}
         actions={actions}
+        bare
         onAuthor={authorUuid ? () => onFilter({ author: { uuid: authorUuid, name: authorName(author) } }) : undefined}
         onInstrument={(i) => onFilter({ instrument: { ticker: i.ticker, isin: i.isin, instrumentId: i.instrumentId } })}
       />

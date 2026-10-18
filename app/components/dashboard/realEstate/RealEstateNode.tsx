@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Archive, ChevronRight, Loader2, Plus } from "lucide-react";
-import { Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useRealEstate, useRealEstateOverview, useRealEstateSummary } from "../../../context/RealEstateContext";
 import { CATEGORICAL_PALETTE } from "../../../lib/chartColors";
 import { formatCompact, formatCurrency } from "../../../lib/format";
@@ -12,7 +12,8 @@ import { dayLabel, monthLabel, today } from "../../../lib/wallets";
 import type { Property, PropertyUse, TaxList } from "../../../models/RealEstate";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
 import { PageHeader, type PageAction, type PageCounter, type PageFigure } from "../PageHeader";
-import { Fig, Figs, MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
+import { Fig, Figs, HBars, MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
+import { DonutList, type DonutItem } from "../DonutList";
 import { PreviewBadge } from "../../preview/PreviewKit";
 import { RealEstateTransactionDialog, type RealEstateEntryKind } from "./RealEstateTransactionForm";
 import { ALL_PROPERTIES, RealEstateTransactions } from "./RealEstateTransactions";
@@ -179,10 +180,13 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
       ) : (
         <>
           <ValueModule summary={summary} />
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-6">
-            <PropertiesComposition properties={active} currency={currency} onOpen={(uuid) => onOpen("property", uuid)} />
-            <CashFlowModule summary={summary} />
-          </div>
+          <PropertiesComposition properties={active} currency={currency} onOpen={(uuid) => onOpen("property", uuid)} />
+          {new Set(active.map((p) => p.use)).size > 1 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-6">
+              <UseComposition properties={active} currency={currency} />
+              <CashFlowModule summary={summary} />
+            </div>
+          ) : <CashFlowModule summary={summary} />}
           <TaxesModule properties={active} onOpen={(uuid) => onOpen("property", uuid)} />
         </>
       )}
@@ -369,139 +373,62 @@ export function CashFlowModule({ summary }: { summary: Summary }) {
   );
 }
 
-interface Item {
-  key: string;
-  label: string;
-  sub: string;
-  value: number;
-  currency: string;
-  // Counted in the donut and the shares: in the total's currency, and worth something.
-  counted: boolean;
-  color: string;
-  onOpen?: () => void;
-}
+/** The properties (not archived), each at the user's share: in the reference currency where it could be converted today (figures.reference), otherwise in its own and out of the shares. */
+const valuedProperties = (properties: Property[], currency: string) => properties.map((p, i) => {
+  const ref = p.figures.reference;
+  const inTotal = ref?.currency === currency ? ref.valueAtShare : p.currency === currency ? p.figures.valueAtShare : null;
+  return { p, color: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length], inTotal };
+});
 
 /**
- * The properties (not archived) on a donut and in a list, by property or by use, each at the user's
- * share: in the reference currency where it could be converted today (figures.reference), otherwise
- * in its own and out of the shares.
+ * The properties on a donut and in a list, each with its value and share, a slice or a row
+ * opening its page: fixed on the real estate's page, the way to each property's (as All
+ * portfolios' Portfolios and All wallets' Wallets).
  */
 function PropertiesComposition({ properties, currency, onOpen }: { properties: Property[]; currency: string; onOpen: (uuid: string) => void }) {
-  const [breakdown, setBreakdown] = useState<"property" | "use">("property");
-  const [hovered, setHovered] = useState<string | null>(null);
-
-  const items = useMemo((): Item[] => {
-    const valued = properties.map((p, i) => {
-      const ref = p.figures.reference;
-      const inTotal = ref?.currency === currency ? ref.valueAtShare : p.currency === currency ? p.figures.valueAtShare : null;
-      return { p, color: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length], inTotal };
-    });
-    if (breakdown === "use") {
-      const uses = [...new Set(valued.map(({ p }) => p.use))];
-      return uses.map((use) => {
-        const own = valued.filter(({ p, inTotal }) => p.use === use && inTotal !== null);
-        const value = own.reduce((s, { inTotal }) => s + inTotal!, 0);
-        const count = valued.filter(({ p }) => p.use === use).length;
-        return { key: use, label: PROPERTY_USE_LABELS[use], sub: `${count} ${count === 1 ? "property" : "properties"}`, value, currency, counted: value > 0, color: USE_COLORS[use] };
-      });
-    }
-    return valued.map(({ p, color, inTotal }) => ({
-      key: p.uuid,
-      label: p.name,
-      sub: [PROPERTY_KIND_LABELS[p.kind], p.address.locality, p.soldOn ? "Sold" : PROPERTY_USE_LABELS[p.use], inTotal === null ? `in ${p.currency}, not in the total` : null].filter(Boolean).join(" · "),
-      value: inTotal ?? p.figures.valueAtShare,
-      currency: inTotal === null ? p.currency : currency,
-      counted: inTotal !== null && inTotal > 0,
-      color,
-      onOpen: () => onOpen(p.uuid),
-    }));
-  }, [breakdown, properties, currency, onOpen]);
-  const sorted = [...items].sort((a, b) => Number(b.counted) - Number(a.counted) || b.value - a.value);
-  const slices = sorted.filter((i) => i.counted);
-  const total = slices.reduce((s, i) => s + i.value, 0);
-  const share = (i: Item) => (i.counted && total > 0 ? (i.value / total) * 100 : null);
-  const focus = sorted.find((i) => i.key === hovered);
+  const items = useMemo((): DonutItem[] => valuedProperties(properties, currency).map(({ p, color, inTotal }) => ({
+    key: p.uuid,
+    label: p.name,
+    sub: [PROPERTY_KIND_LABELS[p.kind], p.address.locality, p.soldOn ? "Sold" : PROPERTY_USE_LABELS[p.use], inTotal === null ? `in ${p.currency}, not in the total` : null].filter(Boolean).join(" · "),
+    value: inTotal ?? p.figures.valueAtShare,
+    currency: inTotal === null ? p.currency : currency,
+    counted: inTotal !== null && inTotal > 0,
+    color,
+    onOpen: () => onOpen(p.uuid),
+  })), [properties, currency, onOpen]);
 
   return (
     <Module>
-      <ModuleHead
-        title="Composition"
-        desc={breakdown === "property" ? "Your properties' value at your share. Open one for its page." : "Your properties' value at your share, by what they're used for."}
-        right={
-          <div role="group" aria-label="Breakdown" className="flex flex-wrap gap-1.5">
-            {(["property", "use"] as const).map((b) => (
-              <button
-                key={b}
-                type="button"
-                aria-pressed={b === breakdown}
-                onClick={() => { setBreakdown(b); setHovered(null); }}
-                className={`px-2.5 py-1 rounded-full border text-[11.5px] font-semibold transition-colors ${
-                  b === breakdown ? "bg-[#1c1917] border-[#1c1917] text-white" : "border-[#E0DACC] text-[#78716c] hover:text-[#1c1917]"
-                }`}
-              >
-                {b === "property" ? "By property" : "By use"}
-              </button>
-            ))}
-          </div>
-        }
-      />
+      <ModuleHead title="Properties" desc="Your properties' value at your share. Open one for its page." />
+      <div className={MODULE_BODY}><DonutList items={items} currency={currency} /></div>
+    </Module>
+  );
+}
+
+/** The properties' value at the user's share by what they're used for, to read; none with a single use. */
+function UseComposition({ properties, currency }: { properties: Property[]; currency: string }) {
+  const valued = valuedProperties(properties, currency);
+  const uses = [...new Set(valued.map(({ p }) => p.use))].map((use) => {
+    const count = valued.filter(({ p }) => p.use === use).length;
+    const value = valued.filter(({ p, inTotal }) => p.use === use && inTotal !== null).reduce((s, { inTotal }) => s + inTotal!, 0);
+    return { use, count, value };
+  });
+  const total = uses.reduce((s, u) => s + Math.max(u.value, 0), 0);
+  if (uses.length < 2) return null;
+  return (
+    <Module>
+      <ModuleHead title="By use" desc={`Your properties' value at your share in ${currency}, by what they're used for.`} />
       <div className={MODULE_BODY}>
-        <div className="grid grid-cols-1 md:grid-cols-[170px_minmax(0,1fr)] gap-[22px] items-center">
-          <div className="relative w-full max-w-[170px] aspect-square mx-auto">
-            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 170, height: 170 }}>
-              <PieChart>
-                <Pie
-                  data={slices.length ? slices : [{ key: "none", label: "", value: 1, color: "#EEE9DD" }]}
-                  dataKey="value"
-                  nameKey="label"
-                  innerRadius="67%"
-                  outerRadius="98%"
-                  paddingAngle={slices.length > 1 ? 1.4 : 0}
-                  stroke="none"
-                  isAnimationActive={false}
-                  onMouseLeave={() => setHovered(null)}
-                >
-                  {(slices.length ? slices : [{ key: "none", color: "#EEE9DD" } as Item]).map((i) => (
-                    <Cell key={i.key} fill={i.color} opacity={hovered && hovered !== i.key ? 0.25 : 1} cursor={i.onOpen ? "pointer" : "default"} onMouseEnter={() => i.key !== "none" && setHovered(i.key)} onClick={i.onOpen} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-[20%] text-center">
-              <span className="text-lg font-bold text-[#1c1917] tabular-nums">
-                {focus && share(focus) !== null ? `${share(focus)!.toFixed(1)}%` : formatCompact(total)}
-              </span>
-              <span className="text-[10.5px] text-[#78716c] truncate max-w-full">{focus ? focus.label : "total"}</span>
-            </div>
-          </div>
-          <ul className="min-w-0">
-            {sorted.map((i, index) => {
-              const s = share(i);
-              const content = (
-                <>
-                  <span className="h-2.5 w-2.5 rounded-[3px] shrink-0" style={{ background: i.color }} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-[#1c1917]">{i.label}</span>
-                    <span className="block truncate text-[11.5px] font-medium text-[#78716c]">{i.sub}</span>
-                  </span>
-                  <span className="shrink-0 pl-2 text-right font-bold tabular-nums text-[#1c1917]">{formatCurrency(i.value, i.currency, 0)}</span>
-                  <span className="hidden sm:block shrink-0 min-w-[56px] text-right text-xs text-[#78716c] tabular-nums">{s === null ? "—" : `${s.toFixed(1)}%`}</span>
-                  <span className="w-[18px] shrink-0">{i.onOpen && <ChevronRight className="h-4 w-4 text-[#a8a29e]" />}</span>
-                </>
-              );
-              const row = `w-full flex items-center gap-3 px-2.5 py-[11px] rounded-[14px] text-left transition-colors ${index < sorted.length - 1 ? "border-b border-[#EEE9DD]" : ""} ${hovered === i.key ? "bg-[#F7F5EF]" : ""}`;
-              return (
-                <li key={i.key} onMouseEnter={() => setHovered(i.key)} onMouseLeave={() => setHovered(null)}>
-                  {i.onOpen ? (
-                    <button type="button" onClick={i.onOpen} className={`${row} hover:bg-[#F7F5EF] outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40`}>{content}</button>
-                  ) : (
-                    <div className={row}>{content}</div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+        <HBars
+          rows={uses.map((u) => ({
+            key: u.use,
+            label: PROPERTY_USE_LABELS[u.use],
+            value: total > 0 ? (Math.max(u.value, 0) / total) * 100 : 0,
+            figure: formatCompact(u.value),
+            color: USE_COLORS[u.use],
+            title: `${PROPERTY_USE_LABELS[u.use]} · ${u.count} ${u.count === 1 ? "property" : "properties"} · ${formatCurrency(u.value, currency, 0)}`,
+          }))}
+        />
       </div>
     </Module>
   );

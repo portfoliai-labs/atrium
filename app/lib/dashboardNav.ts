@@ -1,11 +1,12 @@
 // lib/dashboardNav.ts
 //
 // DASHBOARD NAVIGATION — opening a section on one of its own pages from elsewhere in the dashboard
-// (the Dashboard's cards, Strategies opening a backtest, the Sidebar's rows under a section).
+// (the Dashboard's cards, Strategies opening a backtest, a notification's link).
 // The page is recorded in the history entry (see lib/dashboardHistory), which the section reads
 // when it mounts. One entry for the whole move: the one `onNavigate` may have just pushed for the
 // section is replaced by the page.
 
+import { createContext, useContext } from "react";
 import { pushDashboardEntry } from "./dashboardHistory";
 import type { InvestmentsView, PortfolioPage } from "../components/dashboard/InvestmentsSection";
 import type { StrategiesView } from "../components/dashboard/StrategiesSection";
@@ -43,6 +44,14 @@ export const ASSET_SECTION = "asset";
 export const PROFILE_SECTION = "myProfile";
 
 type Navigate = (section: string) => void;
+
+/**
+ * Opens a section on one of its pages, from anywhere under the dashboard page (which provides it):
+ * for a page deep inside another section (a Journal article from an asset's page), where no
+ * `onNavigate` is passed down. Null outside the dashboard.
+ */
+export const DashboardPageContext = createContext<((section: string, view: unknown) => void) | null>(null);
+export const useOpenDashboardPage = () => useContext(DashboardPageContext);
 
 /** Opens `section` on `view`, one history entry for the move. */
 export function openSectionView(onNavigate: Navigate, section: string, view: unknown) {

@@ -36,16 +36,16 @@ export function Breadcrumb({ trail, current, right }: { trail: Crumb[]; current:
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 min-w-0 text-xs font-semibold text-[#78716c]">
+      <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 min-w-0 text-[11px] font-bold uppercase tracking-[0.1em] text-[#C49A3C]">
         {trail.map((c, i) => (
           <Fragment key={`${i}:${c.label}`}>
-            <button type="button" onClick={c.onClick} className="rounded hover:text-[#8A6A28] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40">
+            <button type="button" onClick={c.onClick} className="rounded uppercase hover:text-[#8A6A28] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40">
               {c.label}
             </button>
-            <ChevronRight className="h-3 w-3 text-[#a8a29e] shrink-0" aria-hidden />
+            <ChevronRight className="h-3 w-3 text-[#C49A3C]/60 shrink-0" aria-hidden />
           </Fragment>
         ))}
-        <span aria-current="page" className="text-[#1c1917] truncate">{current}</span>
+        <span aria-current="page" className="truncate">{current}</span>
       </nav>
       {right}
     </div>
