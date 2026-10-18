@@ -1,6 +1,5 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
 import { useDashboardEntry } from "../../lib/dashboardHistory";
 import { ASSET_SECTION } from "../../lib/dashboardNav";
 import type { Listing } from "../../models/Listing";
@@ -25,16 +24,5 @@ export function AssetSection({ portfolioUuid }: { portfolioUuid?: string }) {
     return <p className="py-16 text-center text-sm font-semibold text-[#78716c]">Search for a security from the top bar.</p>;
   }
 
-  return (
-    <div className="space-y-6">
-      <button
-        type="button"
-        onClick={() => window.history.back()}
-        className="flex items-center gap-1.5 text-xs font-bold text-[#78716c] hover:text-[#C49A3C] transition-colors"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" /> Back
-      </button>
-      <AssetExplore key={view.listingId} asset={view.listingId} assetId={view.instrumentId} portfolioUuid={portfolioUuid} revision={0} />
-    </div>
-  );
+  return <AssetExplore key={view.listingId} asset={view.listingId} assetId={view.instrumentId} portfolioUuid={portfolioUuid} revision={0} />;
 }
