@@ -20,6 +20,7 @@ import { WalletsComposition } from "./WalletsComposition";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { PreviewBadge } from "../../preview/PreviewKit";
 import { WalletAlerts } from "./WalletAlerts";
+import { WalletBanks } from "./WalletBanks";
 import { WalletBudgets } from "./WalletBudgets";
 import { MovementDialog, TransferDialog, WalletFormDialog } from "./WalletDialogs";
 import { WalletImportDialog } from "./WalletImportDialog";
@@ -27,10 +28,10 @@ import { WalletInsights } from "./WalletInsights";
 import { WalletReports } from "./WalletReports";
 import { WalletTransactions } from "./WalletTransactions";
 
-export type WalletPage = "insights" | "transactions" | "budgets" | "reports" | "alerts";
+export type WalletPage = "insights" | "transactions" | "budgets" | "reports" | "alerts" | "banks";
 
 export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
-  insights: "Insights", transactions: "Transactions", budgets: "Budgets", reports: "Reports", alerts: "Alerts",
+  insights: "Insights", transactions: "Transactions", budgets: "Budgets", reports: "Reports", alerts: "Alerts", banks: "Banks",
 };
 
 const ARCHIVED_TITLE = "An archived wallet is read only";
@@ -43,7 +44,7 @@ type Dialog = "new" | "edit" | "movement" | "import" | "transfer" | "archive" | 
  * balance, its activity (each count opening its page), what can be done with it and its year in
  * figures; under it, on All wallets, its Composition, a row per wallet going down to that wallet
  * (the archived ones listed after it), then the Insights. Its Transactions, Budgets, Reports and Alerts are pages of
- * their own. A wallet that's gone (deleted, or from an old link) opens all
+ * their own, and All wallets' Banks (the banks connected through open banking). A wallet that's gone (deleted, or from an old link) opens all
  * of them. Archived wallets are read only, and so is everything for a demo account.
  */
 export function WalletNode({ id, page, rootTrail, onOpen }: {
@@ -105,6 +106,8 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
       ]
     : [
         { label: "Add wallet", primary: true, onClick: () => setDialog("new"), ...sampleLock },
+        // Its page lists the banks connected, a demo account's sample one included.
+        { label: "Connect a bank", onClick: () => onOpen(ALL_WALLETS, "banks") },
         ...(active.length > 1 ? [{ label: "Transfer", onClick: () => setDialog("transfer"), ...sampleLock }] : []),
       ];
 
@@ -193,6 +196,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         {page === "budgets" && <WalletBudgets scope={scope} onManage={() => onOpen(ALL_WALLETS, "budgets")} />}
         {page === "reports" && <WalletReports key={scopeKey} walletUuid={wallet?.uuid} readOnly={sample} />}
         {page === "alerts" && <WalletAlerts scope={scope} />}
+        {page === "banks" && <WalletBanks />}
         {dialogs}
       </div>
     );
