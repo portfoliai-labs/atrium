@@ -14,9 +14,10 @@ export interface Crumb {
  * Performance", "Strategies › a backtest"… Drawn at the top of the page, each step above the current one
  * a way back to it (the browser's back button goes up a level too, see lib/dashboardHistory), with
  * the page's own action (`right`: a month's report link, "New backtest") at the top right. Also
- * published to SectionTrail, for anything outside the page that follows where it is.
+ * published to SectionTrail, for anything outside the page that follows where it is; `hidden`
+ * only publishes it, for a page that draws no trail of its own.
  */
-export function Breadcrumb({ trail, current, right }: { trail: Crumb[]; current: string; right?: React.ReactNode }) {
+export function Breadcrumb({ trail, current, right, hidden = false }: { trail: Crumb[]; current: string; right?: React.ReactNode; hidden?: boolean }) {
   const { setTrail } = useSectionTrail();
 
   // Published by label, not by the crumbs themselves: their handlers are new on every render,
@@ -31,6 +32,7 @@ export function Breadcrumb({ trail, current, right }: { trail: Crumb[]; current:
     return () => setTrail(null);
   }, [labelsKey, current, setTrail]);
 
+  if (hidden) return null;
   // A section's first page has nothing above it: only its action, if any.
   if (trail.length === 0) return right ? <div className="flex justify-end">{right}</div> : null;
 

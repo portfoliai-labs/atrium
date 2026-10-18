@@ -7,6 +7,8 @@ import { ArrowUp, ArrowDown } from "lucide-react";
 export interface ExploreHeader {
   title: string;
   onClose: () => void;
+  // A page with a header of its own (a holding's): the page draws no breadcrumb above it.
+  noTrail?: boolean;
 }
 
 /**
@@ -24,7 +26,7 @@ export const ExploreHostContext = createContext<{ slot: HTMLElement | null; show
  * data (a stale document that finishes rebuilding updates it too), and the page underneath is
  * only hidden, not unmounted: going back lands where the user left off. Esc goes back too.
  */
-export function ExploreView({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function ExploreView({ title, onClose, noTrail = false, children }: { title: string; onClose: () => void; noTrail?: boolean; children: React.ReactNode }) {
   const host = useContext(ExploreHostContext);
 
   // Callers pass an inline arrow, so keep the latest one in a ref rather than re-announcing
@@ -37,7 +39,7 @@ export function ExploreView({ title, onClose, children }: { title: string; onClo
   const show = host?.show;
   useEffect(() => {
     if (!show) return;
-    show({ title, onClose: () => onCloseRef.current() });
+    show({ title, onClose: () => onCloseRef.current(), noTrail });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCloseRef.current();
     };
@@ -46,7 +48,7 @@ export function ExploreView({ title, onClose, children }: { title: string; onClo
       window.removeEventListener("keydown", onKey);
       show(null);
     };
-  }, [show, title]);
+  }, [show, title, noTrail]);
 
   if (!host?.slot) return null;
   return createPortal(children, host.slot);

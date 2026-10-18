@@ -213,7 +213,7 @@ export function PerformanceSection({
           right={<ViewReportLink portfolioUuid={portfolioUuid} documentId={month.data?.reportDocumentId ?? null} />}
         />
       ) : explore ? (
-        <Breadcrumb trail={[...above, insightsCrumb(explore.onClose)]} current={explore.title} />
+        <Breadcrumb trail={[...above, insightsCrumb(explore.onClose)]} current={explore.title} hidden={explore.noTrail} />
       ) : trail && !(trailInTop && top) ? (
         <Breadcrumb trail={trail} current={pageLabel} />
       ) : null}
@@ -552,7 +552,7 @@ export function InfoTip({ text, children }: { text: string; children: React.Reac
         <div
           role="tooltip"
           style={{ position: "fixed", left: tip.left, top: tip.top, bottom: tip.bottom, width: INFO_TIP_WIDTH }}
-          className="z-120 pointer-events-none rounded-xl bg-slate-900 px-3.5 py-3 text-xs font-medium leading-relaxed text-white shadow-xl"
+          className="z-120 pointer-events-none whitespace-pre-line rounded-xl bg-slate-900 px-3.5 py-3 text-xs font-medium leading-relaxed text-white shadow-xl"
         >
           {text}
         </div>,
@@ -1709,7 +1709,7 @@ function HoldingsExplorer({
         </ExploreView>
       )}
       {exploringAsset && assetKeyOf(exploringAsset) && (
-        <ExploreView title={exploringAsset.ticker ?? exploringAsset.name} onClose={() => setExploringAsset(null)}>
+        <ExploreView title={exploringAsset.ticker ?? exploringAsset.name} onClose={() => setExploringAsset(null)} noTrail>
           <AssetExplore asset={assetKeyOf(exploringAsset)!} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={slot.revision} />
         </ExploreView>
       )}
@@ -2041,12 +2041,6 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
         value={held ? formatCurrency(held.marketValue, posCurrency, 0) : last !== undefined ? formatCurrency(last, unit, 2) : undefined}
         change={held ? { text: `${formatPct(held.roiPct)} since first buy`, tone: toneOfValue(held.roiPct) } : null}
         note={data.listing ? listingLine(data.listing) : data.ticker}
-        figures={held ? [
-          { label: "Position", value: formatCurrency(held.marketValue, posCurrency, 0), sub: `${formatQuantity(held.quantity)} ${data.assetClass === "Crypto" ? data.ticker : "shares"}` },
-          { label: "Return", value: formatPct(held.roiPct), sub: "Since first buy", tone: toneOfValue(held.roiPct) },
-          { label: "In portfolio", value: `${held.weightPct.toFixed(1)}%`, sub: "Of its value" },
-          { label: "Unrealized P&L", value: formatSignedCurrency(held.unrealizedPnl, posCurrency), sub: `On ${formatCurrency(held.costBasis, posCurrency, 0)} invested`, tone: toneOfValue(held.unrealizedPnl) },
-        ] : []}
       />
 
       <Module>
@@ -2110,7 +2104,9 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
       {isBondClass(data.assetClass) && <BondRatesModule isin={data.isin} name={data.name} currency={data.quoteCurrency} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-[22px]">
-        {/* Profile and Key facts side by side; the position below, next to the fund's breakdowns. */}
+        {/* Your position beside the Profile; then Key facts beside a fund's Index or a company's
+            description, sharing the row however many there are. */}
+        {position.data && <PositionPanel position={position.data} />}
         <Module>
           <ModuleHead title="Profile" desc="What the asset is and where it trades." />
           {/* One fact a row, its value on the right: a market's or an industry's name wraps, not cut. */}
@@ -2123,11 +2119,12 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
             ))}
           </dl>
         </Module>
-        <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
-        <CompanyDescriptionModule profile={data.profile ?? null} />
+        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-none xl:grid-flow-col xl:auto-cols-fr gap-[22px] empty:hidden">
+          <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
+          <CompanyDescriptionModule profile={data.profile ?? null} />
+        </div>
         <AssetNewsModule asset={asset} name={data.name} />
         <AssetArticlesModule instrumentId={data.listing?.instrumentId ?? null} ticker={data.ticker} isin={data.isin} />
-        {position.data && <PositionPanel position={position.data} />}
         {data.sectorWeightings.length > 1 && (
           <Module>
             <ModuleHead title="By Sector" desc="Where the fund's companies operate, by weight." />
@@ -2187,6 +2184,7 @@ function PositionPanel({ position }: { position: PositionResponse }) {
             <Fig label="Avg. cost" value={formatCurrency(holding.avgCost, currency, 2)} />
             <Fig label="Price" value={formatCurrency(holding.currentPrice, holding.currency, 2)} />
             <Fig label="Invested" value={formatCurrency(holding.costBasis, currency, 0)} />
+            <Fig label="In portfolio" value={`${holding.weightPct.toFixed(1)}%`} sub="Of its value" />
           </>
         )}
         {sold && <Fig label="Realized from sales" value={formatSignedCurrency(realized.realizedTradingPnl, currency)} tone={toneOfValue(realized.realizedTradingPnl)} />}
@@ -3835,7 +3833,7 @@ function PortfoliosModule({ slot, holdings, sector, region, overlapping, currenc
         </ExploreView>
       )}
       {exploringAsset && assetKeyOf(exploringAsset) && (
-        <ExploreView title={exploringAsset.ticker ?? exploringAsset.name} onClose={() => setExploringAsset(null)}>
+        <ExploreView title={exploringAsset.ticker ?? exploringAsset.name} onClose={() => setExploringAsset(null)} noTrail>
           <AssetExplore asset={assetKeyOf(exploringAsset)!} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={holdings.revision} />
         </ExploreView>
       )}
