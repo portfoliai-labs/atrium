@@ -1,7 +1,6 @@
 "use client";
 
 import { LayoutDashboard, ChevronRight, Sparkles, Users, Newspaper, BookOpen, LineChart, Wallet, Building2, History, Inbox } from "lucide-react";
-import { PreviewBadge } from "../preview/PreviewKit";
 import { useUser } from "../../context/UserContext";
 import { CLIENTS_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, SUBSCRIPTION_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
 import { useWallets } from "../../context/WalletsContext";
@@ -17,8 +16,7 @@ interface SidebarProps {
   subscriptionTier?: SubscriptionTier | null;
 }
 
-// `preview`: a feature shown on sample data, not available yet (see components/preview).
-type NavItem = { id: string; label: string; icon: typeof LayoutDashboard; preview?: boolean };
+type NavItem = { id: string; label: string; icon: typeof LayoutDashboard };
 
 /**
  * SIDEBAR — the dashboard's sections, one row each. Nothing under them: a section's own pages
@@ -28,10 +26,8 @@ type NavItem = { id: string; label: string; icon: typeof LayoutDashboard; previe
 export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClose, role, subscriptionTier }: SidebarProps) {
   const isAdvisor = role === 'ADVISOR';
   const { isDemo } = useUser();
-  // An investor's wallets: a demo account's are sample data.
-  const { available: walletsAvailable, sample } = useWallets();
-  // Their real estate: a demo account's is sample data too.
-  const { available: realEstateAvailable, sample: realEstateSample } = useRealEstate();
+  const { available: walletsAvailable } = useWallets();
+  const { available: realEstateAvailable } = useRealEstate();
   // Wallets and Real estate only where the user has them (a backend with them, a demo account's
   // sample data).
   const hasWallets = isDemo || walletsAvailable;
@@ -42,8 +38,8 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
   const investorItems: NavItem[] = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: INVESTMENTS_SECTION, label: 'Investments', icon: LineChart },
-    ...(realEstateAvailable ? [{ id: REAL_ESTATE_SECTION, label: 'Real estate', icon: Building2, preview: realEstateSample }] : []),
-    ...(hasWallets ? [{ id: WALLETS_SECTION, label: 'Wallets', icon: Wallet, preview: sample }] : []),
+    ...(realEstateAvailable ? [{ id: REAL_ESTATE_SECTION, label: 'Real estate', icon: Building2 }] : []),
+    ...(hasWallets ? [{ id: WALLETS_SECTION, label: 'Wallets', icon: Wallet }] : []),
     journalItem,
     newsItem,
   ];
@@ -79,7 +75,6 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
         <div className="flex items-center gap-3">
           <item.icon className={`h-5 w-5 transition-transform duration-200 ${isActive ? "" : "group-hover:scale-110"}`} />
           <span className="text-sm">{item.label}</span>
-          {item.preview && <PreviewBadge dark />}
         </div>
         {isActive && <ChevronRight className="h-4 w-4 opacity-50" />}
       </button>
