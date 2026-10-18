@@ -30,7 +30,7 @@ const signedPct = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(
 const plainPct = (v: number) => `${v.toFixed(1)}%`;
 const fig = (v: number | null, format: (v: number) => string) => (v == null ? "—" : format(v));
 
-/** The author's trading costs, in a line: shown next to the figures, which are gross of them. */
+/** The author's trading costs, in a line: shown next to the figures, which are net of them. */
 const costsLine = (c: StrategyCosts, currency: string) =>
   `${c.commissionPct}% commission · ${formatCurrency(c.fixedFee, currency, 2)} fixed fee per trade · ${c.spreadPct}% spread`;
 
@@ -47,8 +47,8 @@ function SimulationDisclaimer() {
       </span>
       <p className="text-xs text-sky-900/80 leading-relaxed">
         <span className="block text-[13px] font-black text-sky-950">Every figure here is simulated</span>
-        Each strategy is played on historical prices: none of it is a real result. The figures are gross of trading costs
-        (the author&apos;s are shown next to them, not taken out) and aren&apos;t moved by money added or withdrawn. This is for
+        Each strategy is played on historical prices: none of it is a real result. The figures are net of trading costs
+        (the author&apos;s, shown next to them, are taken out) and aren&apos;t moved by money added or withdrawn. This is for
         educational and informational purposes only and isn&apos;t investment advice or a recommendation. Past and simulated
         performance doesn&apos;t predict future results.
       </p>
@@ -59,7 +59,7 @@ function SimulationDisclaimer() {
 function SimulatedBadge() {
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-[10px] font-black uppercase tracking-wider text-sky-800">
-      Simulated, gross of trading costs
+      Simulated, net of trading costs
     </span>
   );
 }
@@ -138,7 +138,7 @@ const positive = (v: string) => {
  * The published ones are newest first by default, with no horizon; picking a
  * horizon (1, 3, 5 or 10 years) shows each strategy's figures over it and lets the user filter by
  * volatility and drawdown and sort by a figure, which the backend only does on a horizon, so the
- * filters stay off without one. Every figure is a simulation, gross of its author's costs (shown next
+ * filters stay off without one. Every figure is a simulation, net of its author's costs (shown next
  * to them), labelled so,
  * under a disclaimer; nothing here is matched to the viewer, and nothing can be copied or adopted.
  * A strategy opens its page (PublishedStrategyPage).
@@ -341,7 +341,7 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen }: {
  * A strategy of the catalog as a card, the whole of it opening its page (as a module of a
  * portfolio's Insights opens its detail, the arrow in its corner turning gold as it's hovered):
  * its name and author, what it's for, one horizon's figures with the annualized return first, what
- * it holds, and the author's costs the figures are gross of.
+ * it holds, and the author's costs the figures are net of.
  */
 function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStrategy; horizon: FilterHorizon | null; onOpen: () => void }) {
   const figures = cardFigures(s, horizon);
@@ -395,7 +395,7 @@ function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStr
 
       <div className="mt-auto space-y-3">
         <AllocationBar targets={s.strategy.targets} />
-        <p className="text-[10px] text-[#a8a29e] leading-snug">Gross of the author&apos;s costs: {costsLine(s.costs, s.currency)}</p>
+        <p className="text-[10px] text-[#a8a29e] leading-snug">Net of the author&apos;s costs: {costsLine(s.costs, s.currency)}</p>
       </div>
     </article>
   );
@@ -442,7 +442,7 @@ const HORIZON_ORDER = [...FILTER_HORIZONS, "inception"] as const;
 
 /**
  * PUBLISHED STRATEGY PAGE — one strategy of the catalog (GET /v1/explore/strategies/{id}): what it holds,
- * how it rebalances, its author's costs (in their currency, the figures gross of them), the period
+ * how it rebalances, its author's costs (in their currency, the figures net of them), the period
  * it's simulated over, every horizon's figures (the whole history's too; total return as on the
  * Insights, annualized as in the list) and how it went through the past crises its history covers, then its
  * portfolio's Insights (ReadOnlySimulation), all simulated. Read only: no way to copy or adopt it.
@@ -546,7 +546,7 @@ export function PublishedStrategyPage({ publicationId, trail, onCompare, onNavig
               { label: "Rebalancing", value: describeRebalancing(s.strategy.rebalancing) },
             ]} />
           </DetailPanel>
-          <DetailPanel title="Author's costs" note="The figures are gross of these: they aren't taken out of them.">
+          <DetailPanel title="Author's costs" note="The figures are net of these: each trade's costs come off its day's return.">
             <DetailRows rows={[
               { label: "Commission", value: `${s.costs.commissionPct}% per trade` },
               { label: "Fixed fee", value: `${formatCurrency(s.costs.fixedFee, s.currency, 2)} per trade` },

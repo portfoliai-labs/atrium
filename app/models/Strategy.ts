@@ -13,8 +13,8 @@
 // Cash flows and calendar rebalancing act on the first trading day of each month, in this order:
 // contribution, withdrawal, rebalance. The drift band is checked every trading day. Amounts are in
 // the owner's reference currency (StrategyResponse.currency). Its figures are time-weighted on the
-// holdings' prices: cash flows don't move them, and neither do trading costs (commission, fixed fee,
-// spread), which show up in the trading costs: they're gross of them. Fund fees (TER) are already in
+// holdings' prices: cash flows don't move them, and they're net of the trading costs (commission,
+// fixed fee, spread): each day's come off its return. Fund fees (TER) are already in
 // the ETFs' prices, and taxes aren't modelled.
 
 type StrategyCategory = "equity" | "bonds" | "real_estate" | "commodities" | "cash" | "crypto";

@@ -6,8 +6,8 @@
 // /strategy), never writable, copyable or adoptable.
 //
 // Every figure is a simulation: the strategy played on historical prices. The figures are
-// time-weighted on the holdings' prices, so cash flows don't move them, and gross of trading costs:
-// the author's `costs` are shown next to them, never in them. The catalog labels them so, with a
+// time-weighted on the holdings' prices, so cash flows don't move them, and net of trading costs:
+// the author's `costs` are shown next to them and taken out of them. The catalog labels them so, with a
 // disclaimer, never shows return without volatility and drawdown next to it, and matches nothing to
 // the viewer's profile.
 
