@@ -3,7 +3,7 @@
 import { LayoutDashboard, ChevronRight, Sparkles, Users, Newspaper, BookOpen, LineChart, Wallet, Building2, History, Inbox } from "lucide-react";
 import { PreviewBadge } from "../preview/PreviewKit";
 import { useUser } from "../../context/UserContext";
-import { CLIENTS_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
+import { CLIENTS_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, SUBSCRIPTION_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
 import { useWallets } from "../../context/WalletsContext";
 import { useRealEstate } from "../../context/RealEstateContext";
 import { UserRole, SubscriptionTier } from "../../models/User";
@@ -123,7 +123,7 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
                   Unlock unlimited analysis and a more advanced AI model.
                 </p>
                 <button
-                  onClick={() => handleNavClick('settings')}
+                  onClick={() => handleNavClick(SUBSCRIPTION_SECTION)}
                   className="w-full py-2.5 bg-[#C49A3C] text-[#131210] rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-[#d4aa4c] transition-colors"
                 >
                   Upgrade Now

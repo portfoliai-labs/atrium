@@ -28,6 +28,7 @@ import { NoDataEmptyState } from "./NoDataEmptyState";
 import { InstrumentProfileModule } from "./InstrumentProfileModule";
 import { DonutList, type DonutItem } from "./DonutList";
 import { AssetArticlesModule } from "./journal/AssetArticlesModule";
+import { AssetNewsModule } from "./AssetNewsModule";
 import { BondRatesModule } from "./MarketRates";
 import { isBondClass } from "../../lib/rates";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
@@ -2115,6 +2116,7 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
           </Figs>
         </Module>
         <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
+        <AssetNewsModule asset={asset} name={data.name} />
         <AssetArticlesModule instrumentId={data.listing?.instrumentId ?? null} ticker={data.ticker} isin={data.isin} />
         {data.sectorWeightings.length > 1 && (
           <Module>

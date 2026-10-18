@@ -34,6 +34,16 @@ export const newsService = {
     return items.map(sanitizeNewsItem);
   },
 
+  // GET /v1/assets/{asset}/news — one asset's news over its last `days` (1-30, 7 by default),
+  // newest first, at most `limit` (1-20, 10 by default): by census' listing id or a market-data
+  // ticker, as GET /v1/assets/{asset}. Searched while asked, so slower than the day's news. An
+  // asset nobody writes about has none (an empty list); 404 for one census and the market data
+  // don't know.
+  async getAssetNews(asset: string, days?: number, limit?: number): Promise<NewsItem[]> {
+    const items = await apiFetch<NewsItem[]>(`/v1/assets/${encodeURIComponent(asset)}/news${buildQuery({ days, limit })}`);
+    return items.map(sanitizeNewsItem);
+  },
+
   // GET /v1/news/daily-article — the global "article of the day", same for every user.
   async getDailyArticle(): Promise<DailyArticle> {
     const article = await apiFetch<DailyArticle>(`/v1/news/daily-article`);

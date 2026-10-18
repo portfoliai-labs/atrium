@@ -1,20 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Script from "next/script";
-import { Crown, AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, FlaskConical, User as UserIcon, Trash2, Mail, Lock, Shapes } from "lucide-react";
+import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes } from "lucide-react";
 import { userService } from "../../services/userService";
 import { supabase } from "../../lib/supabaseClient";
-import type { SubscriptionResponse, NotificationPreferences } from "../../models/User";
-import SubscriptionSection from "./SubscriptionSection";
+import type { NotificationPreferences } from "../../models/User";
 import { DeleteAccountModal } from "./DeleteAccountModal";
 import { Toggle } from "./Toggle";
 import { useUser } from "../../context/UserContext";
 import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
-
-// Tally form used for tester applications: https://tally.so/r/QKWeYg
-const TESTER_APPLICATION_FORM_ID = "QKWeYg";
 
 function PreferenceRow({
   title,
@@ -56,7 +51,6 @@ function ReadOnlyField({ label, value, className = "" }: { label: string; value:
 }
 
 const TABS = [
-  { id: "subscription", label: "Subscription", icon: Crown },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "assets", label: "Assets", icon: Shapes },
   { id: "account", label: "Account", icon: UserIcon },
@@ -79,14 +73,11 @@ export const openAssetSettings = (onNavigate: (section: string) => void) => {
 export function SettingsSection() {
   const { user, logout, refreshUser, isDemo } = useUser();
   const [activeTab, setActiveTab] = useState<TabId>(() => {
-    const tab = requestedTab ?? "subscription";
+    const tab = requestedTab ?? "notifications";
     requestedTab = null;
     return tab;
   });
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-
-  const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
-  const [loading, setLoading] = useState(true);
 
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const [preferencesLoading, setPreferencesLoading] = useState(true);
@@ -104,11 +95,6 @@ export function SettingsSection() {
   const [savingPassword, setSavingPassword] = useState(false);
 
   useEffect(() => {
-    userService.getSubscription()
-      .then(setSubscription)
-      .catch((error) => console.error("Failed to load subscription:", error))
-      .finally(() => setLoading(false));
-
     userService.getNotificationPreferences()
       .then(setPreferences)
       .catch((error) => console.error("Failed to load notification preferences:", error))
@@ -118,18 +104,6 @@ export function SettingsSection() {
       .then((profile) => setNameForm({ first_name: profile.first_name ?? "", last_name: profile.last_name ?? "" }))
       .catch((error) => console.error("Failed to load the account information:", error));
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (loading || !subscription || window.location.hash !== "#pricing") return;
-
-    const pricingSection = document.getElementById("pricing");
-    if (!pricingSection) return;
-
-    window.requestAnimationFrame(() => {
-      pricingSection.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }, [loading, subscription]);
 
   const setPreference = (field: keyof Omit<NotificationPreferences, "updated_at">) => (value: boolean) => {
     setPreferences((prev) => (prev ? { ...prev, [field]: value } : prev));
@@ -236,7 +210,6 @@ export function SettingsSection() {
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-500">
-      <Script src="https://tally.so/widgets/embed.js" strategy="lazyOnload" />
 
       {/* Tab bar — a full-width 2-column grid on mobile (so the selector never
           scrolls sideways), the original inline pill row from sm and up. */}
@@ -266,66 +239,6 @@ export function SettingsSection() {
 
       {/* Every field and button below is disabled for a demo account (see lib/demo). */}
       <fieldset disabled={isDemo} className="contents">
-      {activeTab === "subscription" && (
-        <div className="space-y-8">
-          {/* Current plan */}
-          <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-[rgba(196,154,60,0.2)] shadow-sm space-y-6">
-            <div className="flex items-center gap-3 border-b border-[rgba(196,154,60,0.15)] pb-4">
-              <div className="p-2.5 bg-[#F7F5EF] text-[#C49A3C] rounded-xl">
-                <Crown className="w-5 h-5" />
-              </div>
-              <span className="font-bold text-sm text-[#1c1917]">Current Plan</span>
-            </div>
-
-            {loading ? (
-              <div className="flex justify-center py-6">
-                <Loader2 className="w-6 h-6 animate-spin text-[#C49A3C]" />
-              </div>
-            ) : !subscription ? (
-              <p className="text-sm text-[#78716c]">Unable to load subscription.</p>
-            ) : (
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#78716c] mb-1">Plan</p>
-                <p className="text-xl font-bold text-[#1c1917]" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
-                  {subscription.plan_name}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Tester program CTA — only relevant while still on the free tier */}
-          {!loading && subscription?.tier === "FREE" && (
-            <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-[rgba(196,154,60,0.2)] shadow-sm flex flex-col sm:flex-row sm:items-center gap-5 sm:gap-6">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-[#C49A3C]/10 shrink-0">
-                <FlaskConical className="w-6 h-6 text-[#C49A3C]" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-bold text-[#1c1917]">Want to become a tester?</p>
-                <p className="text-xs text-[#78716c] mt-0.5">
-                  Fill out a short form and we&apos;ll review your request for early, unlimited access.
-                </p>
-              </div>
-              <button
-                data-tally-open={TESTER_APPLICATION_FORM_ID}
-                data-tally-layout="modal"
-                data-tally-width="600"
-                data-tally-emoji-text="🧪"
-                data-tally-emoji-animation="wave"
-                className="shrink-0 px-5 py-2.5 bg-[#1c1917] text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-[#C49A3C] transition-colors"
-              >
-                Apply Now
-              </button>
-            </div>
-          )}
-
-          {/* Available plans — testers already have the best available access, nothing to upgrade to.
-              Waits on `loading` too: subscription is null until the fetch resolves, so checking
-              tier alone would flash the table on for a moment before hiding it for testers. */}
-          {/* A demo account (see lib/demo) can't change plan either. */}
-          {!loading && subscription?.tier !== "TESTER" && subscription?.tier !== "DEMO" && <SubscriptionSection />}
-        </div>
-      )}
-
       {activeTab === "notifications" && (
         <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-[rgba(196,154,60,0.2)] shadow-sm space-y-2">
           <div className="flex items-center justify-between gap-4 border-b border-[rgba(196,154,60,0.15)] pb-4 mb-2">
