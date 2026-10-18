@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookmarkX, Flag, Loader2 } from "lucide-react";
+import { BookmarkX, Loader2 } from "lucide-react";
 import { journalService } from "../../../services/journalService";
 import { dateLabel, journalErrorText } from "../../../lib/journal";
 import { ArticleCard, EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE, Spinner, usePaged } from "./JournalKit";
@@ -11,7 +11,7 @@ import { ArticleCard, EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE
  * SAVED — the reader's saved articles, the last saved first. An article that stops being readable
  * (unpublished, hidden, deleted) drops out on its own.
  */
-export function SavedArticles({ onOpen, onReports }: { onOpen: (slug: string) => void; onReports: () => void }) {
+export function SavedArticles({ onOpen }: { onOpen: (slug: string) => void }) {
   const list = usePaged((offset) => journalService.saved(PAGE_SIZE, offset), "saved");
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,15 +31,7 @@ export function SavedArticles({ onOpen, onReports }: { onOpen: (slug: string) =>
 
   return (
     <div className="space-y-6 pb-12">
-      <JournalHeader
-        title="Saved"
-        subtitle="Articles you kept to read again."
-        actions={
-          <button type="button" onClick={onReports} className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100">
-            <Flag className="h-3.5 w-3.5" /> Your reports
-          </button>
-        }
-      />
+      <JournalHeader title="Saved" subtitle="Articles you kept to read again." />
       {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
       {list.error ? (
         <ErrorState message={list.error} onRetry={list.retry} />

@@ -26,6 +26,8 @@ import { useDetail, useInsights, type Insights, type SectionState } from "../../
 import { pushDashboardEntry, readDashboardEntry, type DashboardOverlay } from "../../lib/dashboardHistory";
 import { NoDataEmptyState } from "./NoDataEmptyState";
 import { InstrumentProfileModule } from "./InstrumentProfileModule";
+import { DonutList, type DonutItem } from "./DonutList";
+import { AssetArticlesModule } from "./journal/AssetArticlesModule";
 import { BondRatesModule } from "./MarketRates";
 import { isBondClass } from "../../lib/rates";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
@@ -72,7 +74,7 @@ export const TOOLTIP_STYLE: React.CSSProperties = {
  * in as they arrive. Stale modules are followed through /insights/status (see useInsights).
  */
 export function PerformanceSection({
-  portfolioUuid, isAggregate = false, backtest = false, strategyShown = false, onNavigate, trail, pageLabel = "Insights", top, onOpenPortfolio, comparison = null,
+  portfolioUuid, isAggregate = false, backtest = false, strategyShown = false, onNavigate, trail, pageLabel = "Insights", trailInTop = false, top, onOpenPortfolio, comparison = null,
 }: {
   portfolioUuid: string; isAggregate?: boolean; onNavigate?: (section: string) => void;
   // A strategy's backtest (a virtual portfolio): its header carries BacktestBanner, and before
@@ -88,6 +90,9 @@ export function PerformanceSection({
   trail?: Crumb[];
   // This page's own step in the trail: the portfolio's name on its page in Investments.
   pageLabel?: string;
+  // `top` draws the trail itself (its header's breadcrumb, see PageHeader): none above it then,
+  // only with a month or a detail open, where `top` is hidden.
+  trailInTop?: boolean;
   // Drawn above the modules (the portfolio page's header, see InvestmentsSection), and hidden with
   // them while a detail view or a month is open.
   top?: React.ReactNode;
@@ -207,7 +212,7 @@ export function PerformanceSection({
         />
       ) : explore ? (
         <Breadcrumb trail={[...above, insightsCrumb(explore.onClose)]} current={explore.title} />
-      ) : trail ? (
+      ) : trail && !(trailInTop && top) ? (
         <Breadcrumb trail={trail} current={pageLabel} />
       ) : null}
       {!selected && !explore && top}
@@ -1379,9 +1384,9 @@ function RiskAssetsModule({ assets }: { assets: RiskModelResponse["assets"] }) {
   );
 }
 
-type Breakdown = "holding" | "portfolio" | "class" | "sector" | "region";
+type Breakdown = "holding" | "class" | "sector" | "region";
 const BREAKDOWN_LABELS: Record<Breakdown, string> = {
-  holding: "By holding", portfolio: "By portfolio", class: "By asset class", sector: "By sector", region: "By region",
+  holding: "By holding", class: "By asset class", sector: "By sector", region: "By region",
 };
 // Slices on the card: the largest few, then the rest as one "N more" slice that opens the
 // composition's detail (CompositionExplore), where everything is.
@@ -1398,15 +1403,15 @@ interface CompositionItem {
   // Of the whole, 0-100.
   weightPct: number;
   color: string;
-  // Opens it: a holding's page, a portfolio. Without it, a breakdown to read only.
+  // Opens it: a holding's page. Without it, a breakdown to read only.
   onOpen?: () => void;
 }
 
 /**
  * COMPOSITION — the Holdings module, at the top of a portfolio's page: what it's made of, as a
  * donut beside a list of rows, the largest COMPOSITION_TOP and the rest as one "N more", and the
- * way down a level. By holding (by portfolio on "All portfolios"), where a slice or a row opens
- * that holding's page (AssetExplore) or that portfolio; and, to read only, by asset class, sector
+ * way down a level. By holding, where a slice or a row opens that holding's page (AssetExplore)
+ * (All portfolios' portfolios are a module of their own, PortfoliosModule); and, to read only, by asset class, sector
  * and region (the look-through exposure). The breakdowns are a carousel that turns every 5
  * seconds: under the body, on one line, the one shown and a dot for each between the steps to
  * the previous and next; on touch the body swipes. The module, and its "N more", open the whole of it
@@ -1431,7 +1436,6 @@ function HoldingsExplorer({
   const membersModule = aggregate?.portfolios.module;
   const members = useMemo(() => membersModule?.members ?? [], [membersModule]);
   const breakdowns: Breakdown[] = [
-    ...(aggregate && members.length > 0 ? ["portfolio" as const] : []),
     "holding", "class",
     ...(sector && sector.entries.length > 0 ? ["sector" as const] : []),
     ...(region && region.entries.length > 0 ? ["region" as const] : []),
@@ -1462,17 +1466,6 @@ function HoldingsExplorer({
   const items = useMemo((): CompositionItem[] => {
     const total = holdings.reduce((sum, h) => sum + h.marketValue, 0);
     const palette = (i: number) => CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length];
-    if (breakdown === "portfolio") {
-      return [...members].sort((a, b) => b.marketValue - a.marketValue).map((m) => ({
-        key: m.portfolioUuid,
-        label: m.name,
-        sub: `${formatSignedCurrency(m.totalPnl, currency)} P&L`,
-        value: m.marketValue,
-        weightPct: m.weightPct,
-        color: colorOf(m.portfolioUuid),
-        onOpen: onOpenPortfolio ? () => onOpenPortfolio(m.portfolioUuid) : undefined,
-      }));
-    }
     if (breakdown === "holding") {
       return holdings.map((h, i) => ({
         key: h.assetId,
@@ -1499,7 +1492,7 @@ function HoldingsExplorer({
       weightPct: e.weightPct,
       color: e.label === "Unknown" ? UNKNOWN_EXPOSURE_COLOR : palette(colorIndex++),
     }));
-  }, [breakdown, holdings, members, sector, region, currency, colorOf, onOpenPortfolio]);
+  }, [breakdown, holdings, sector, region, setExploringAsset]);
 
   const total = items.reduce((sum, i) => sum + i.value, 0);
   const hidden = items.slice(COMPOSITION_TOP);
@@ -1855,16 +1848,18 @@ function CompositionExplore({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-[22px]">
         {members.length > 0 && (
-          <ExplorePanel title="By Portfolio" desc="Each portfolio's share of the value. Open one for its page.">
+          <ExplorePanel title="By Portfolio" desc="Each portfolio's share of the value as a bar, and of the risk as a line. Open one for its page.">
             <div className={MODULE_BODY}>
               <HBars
+                max={Math.max(...members.map((m) => Math.max(m.weightPct, m.riskContributionPct ?? 0)), 1) * 1.1}
                 rows={[...members].sort((a, b) => b.weightPct - a.weightPct).map((m) => ({
                   key: m.portfolioUuid,
                   label: m.name,
                   value: m.weightPct,
+                  mark: m.riskContributionPct,
                   figure: `${m.weightPct.toFixed(1)}%`,
                   color: colorOfPortfolio(m.portfolioUuid),
-                  title: `${m.name} · ${formatCurrency(m.marketValue, currency, 0)}`,
+                  title: `${m.name} · ${formatCurrency(m.marketValue, currency, 0)} · ${m.riskContributionPct === null ? "risk share not available" : `${m.riskContributionPct.toFixed(1)}% of the risk`}`,
                 }))}
                 onSelect={onOpenPortfolio}
               />
@@ -2120,6 +2115,7 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
           </Figs>
         </Module>
         <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
+        <AssetArticlesModule instrumentId={data.listing?.instrumentId ?? null} ticker={data.ticker} isin={data.isin} />
         {data.sectorWeightings.length > 1 && (
           <Module>
             <ModuleHead title="By Sector" desc="Where the fund's companies operate, by weight." />
@@ -3708,58 +3704,77 @@ interface AggregateSlots {
 const PREPARING_AGGREGATE = "Being prepared — this shows up after the overnight analysis of your portfolios has run.";
 
 /**
- * PORTFOLIOS MIX MODULE — the aggregate's `portfolios` module, Composition side: each
- * portfolio's share of the value as a bar, with its share of the risk as a line on the same
- * scale, then the assets held in more than one (from `comovement`, the same document). Risk
- * share next to weight is the point: a portfolio carrying more risk than its size, or one
- * offsetting the rest. Colours match the Compare page (portfolioColorMap).
+ * PORTFOLIOS MODULE — All portfolios' own portfolios, in place of the Composition card and the
+ * way to each one's page: on a donut and in a list, each with its value, P&L and share, a slice
+ * or a row opening it. The module opens the Composition's detail (CompositionExplore): the
+ * holdings, the breakdowns, each portfolio's share of the value and of the risk, and what more
+ * than one holds. The values are the aggregate's `portfolios` module (the overnight analysis);
+ * until it's there, the portfolios are listed without them, still opening.
  */
-function PortfoliosMixModule({
-  slot, comovement, currency,
-}: { slot: ModuleSlot<InsightsPortfoliosModule>; comovement: InsightsComovementModule | null; currency: string }) {
-  const data = slot.module;
+function PortfoliosModule({ slot, holdings, sector, region, overlapping, currency, portfolioUuid, onOpenPortfolio }: {
+  slot: ModuleSlot<InsightsPortfoliosModule>;
+  holdings: ModuleSlot<InsightsHoldingsModule>;
+  sector: InsightsExposureModule | null;
+  region: InsightsExposureModule | null;
+  overlapping: InsightsComovementModule["overlappingAssets"];
+  currency: string;
+  portfolioUuid: string;
+  onOpenPortfolio?: (uuid: string) => void;
+}) {
   const { portfolios } = usePortfolio();
   const colorOf = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
-  const overlapping = comovement?.overlappingAssets ?? [];
-  const members = data?.members ?? [];
-  const top = Math.max(...members.map((m) => Math.max(m.weightPct, m.riskContributionPct ?? 0)), 1) * 1.1;
+  const [exploring, setExploring] = useState(false);
+  const [exploringAsset, setExploringAsset] = useState<PortfolioHoldingResponse | null>(null);
+  const members = slot.updating ? [] : slot.module?.members ?? [];
+  const held = holdings.module?.holdings ?? [];
+  const real = portfolios.filter((p) => !p.isVirtual);
+  const open = (uuid: string) => (onOpenPortfolio ? () => onOpenPortfolio(uuid) : undefined);
+  const items: DonutItem[] = members.length > 0
+    ? members.map((m) => ({
+        key: m.portfolioUuid,
+        label: m.name,
+        sub: `${formatSignedCurrency(m.totalPnl, currency)} P&L`,
+        value: m.marketValue,
+        currency,
+        counted: m.marketValue > 0,
+        color: colorOf(m.portfolioUuid),
+        onOpen: open(m.portfolioUuid),
+      }))
+    : real.map((p) => ({ key: p.uuid, label: p.name, value: null, currency, counted: false, color: colorOf(p.uuid), onOpen: open(p.uuid) }));
 
   return (
     <Module>
-      <ModuleHead title="Portfolios Mix" desc="How each portfolio makes up the whole: its share of the value and of the risk." />
-      <SlotPlaceholder slot={slot} preparingMessage={PREPARING_AGGREGATE} />
-      {data !== null && !slot.updating && (
-        <div className={`${MODULE_BODY} space-y-4`}>
-          {slot.lagging && <UpdatingNote />}
-          <HBars
-            max={top}
-            rows={members.map((m) => ({
-              key: m.portfolioUuid,
-              label: m.name,
-              value: m.weightPct,
-              mark: m.riskContributionPct,
-              color: colorOf(m.portfolioUuid),
-              figure: `${m.weightPct.toFixed(0)}%`,
-              title: `${m.name} · ${formatCurrency(m.marketValue, currency, 0)} · ${m.riskContributionPct === null ? "risk share not available" : `${m.riskContributionPct.toFixed(1)}% of the risk`}`,
-            }))}
+      <ModuleHead
+        title="Portfolios"
+        desc="Each portfolio's value and share of the whole: open one for its page, or the module for what they hold."
+        onExplore={held.length > 0 ? () => setExploring(true) : undefined}
+      />
+      <div className={`${MODULE_BODY} space-y-3`}>
+        {members.length === 0 && (
+          <NoteS>{slot.loading || slot.updating ? "Their values are on the way." : slot.failed ? "Their values couldn't be loaded." : PREPARING_AGGREGATE}</NoteS>
+        )}
+        <DonutList items={items} currency={currency} />
+      </div>
+
+      {exploring && (
+        <ExploreView title="Composition" onClose={() => setExploring(false)}>
+          <CompositionExplore
+            holdings={held}
+            sector={sector?.entries ?? []}
+            region={region?.entries ?? []}
+            members={members}
+            overlapping={overlapping}
+            currency={currency}
+            colorOfPortfolio={colorOf}
+            onOpenAsset={(h) => { setExploring(false); setExploringAsset(h); }}
+            onOpenPortfolio={onOpenPortfolio}
           />
-          {overlapping.length > 0 && (
-            <div className="pt-1">
-              <h3 className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#78716c] pb-1">Held in more than one</h3>
-              <ul>
-                {overlapping.slice(0, 5).map((a) => (
-                  <li key={a.assetId} className="flex items-center gap-3 py-2 border-b border-[#EEE9DD] last:border-b-0 text-[13px]">
-                    <span className="min-w-0 flex-1 truncate font-semibold text-[#1c1917]" title={a.name}>{a.ticker ?? a.name}</span>
-                    <span className="flex items-center gap-1 shrink-0">
-                      {a.holdings.map((h) => <span key={h.portfolioUuid} className="h-2 w-2 rounded-full" style={{ background: colorOf(h.portfolioUuid) }} />)}
-                    </span>
-                    <span className="shrink-0 font-bold tabular-nums">{formatCurrency(a.marketValue, currency, 0)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
+        </ExploreView>
+      )}
+      {exploringAsset && assetKeyOf(exploringAsset) && (
+        <ExploreView title={exploringAsset.ticker ?? exploringAsset.name} onClose={() => setExploringAsset(null)}>
+          <AssetExplore asset={assetKeyOf(exploringAsset)!} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={holdings.revision} />
+        </ExploreView>
       )}
     </Module>
   );
@@ -4307,18 +4322,26 @@ function HistoryPage({
     <div className="grid grid-cols-2 lg:grid-cols-12 gap-[22px]">
       {updatingNote}
       <Tile id={moduleAnchor("value")}>{valueModule}</Tile>
-      <Tile span="wide" id={moduleAnchor("composition")}>{compositionModule}</Tile>
+      {/* All portfolios: its portfolios in place of the Composition, whose detail they open. */}
+      <Tile span="wide" id={moduleAnchor("composition")}>
+        {aggregate ? (
+          <PortfoliosModule
+            slot={aggregate.portfolios}
+            holdings={own(composition, (d) => d.holdings)}
+            sector={composition.data?.sectorExposure ?? null}
+            region={composition.data?.regionExposure ?? null}
+            overlapping={aggregate.comovement.module?.overlappingAssets ?? []}
+            currency={currency}
+            portfolioUuid={portfolioUuid}
+            onOpenPortfolio={onOpenPortfolio}
+          />
+        ) : compositionModule}
+      </Tile>
       <Tile span="narrow">
         {historyUpdating ? <Module><StaleUpdatingState /></Module> : (
           <ThisMonthCard slot={slotOf(insights.performance, timedOut, (d) => d.thisMonth, (_, d) => d.historyIsStale)} currency={currency} onOpen={onSelectMonth} />
         )}
       </Tile>
-      {aggregate && (
-        <>
-          <Tile span="half"><PortfoliosMixModule slot={aggregate.portfolios} comovement={aggregate.comovement.module} currency={currency} /></Tile>
-          <Tile span="half"><PortfolioCorrelationModule slot={aggregate.comovement} members={aggregate.portfolios.module?.members ?? []} /></Tile>
-        </>
-      )}
       {/* What was made, sold (realized, dividends) and still held (gains & losses), beside what
           trading cost; then the risk. */}
       <Tile span="narrow" id={moduleAnchor("realized")}>

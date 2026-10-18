@@ -2,11 +2,12 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, PenLine } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { journalService } from "../../../services/journalService";
 import type { ArticleStatus } from "../../../models/Journal";
 import { CATEGORY_LABELS, dateLabel } from "../../../lib/journal";
 import { Pills, serif } from "../../preview/PreviewKit";
+import { ActionButton } from "../PageHeader";
 import { EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE, Spinner, StatusChip, usePaged } from "./JournalKit";
 
 type Filter = "all" | ArticleStatus;
@@ -24,11 +25,7 @@ export function MyArticles({ onOpen, onNew }: { onOpen: (uuid: string) => void; 
       <JournalHeader
         title="Your articles"
         subtitle="Drafts only you can read, and what you've published."
-        actions={
-          <button type="button" onClick={onNew} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-slate-800">
-            <PenLine className="h-4 w-4" /> New article
-          </button>
-        }
+        actions={<ActionButton action={{ label: "New article", onClick: onNew, primary: true }} />}
       />
       <Pills<Filter>
         options={[

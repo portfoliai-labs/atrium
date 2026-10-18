@@ -71,7 +71,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   const readOnly = sample || !!wallet?.archived;
   const locked = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : wallet?.archived ? { disabled: true, title: ARCHIVED_TITLE } : {};
   const sampleLock = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
-  const allCrumb: Crumb = { label: "All wallets", onClick: () => onOpen(ALL_WALLETS, "insights") };
+  const allCrumb: Crumb = { label: "Wallets", onClick: () => onOpen(ALL_WALLETS, "insights") };
   const trail = all ? rootTrail : [...rootTrail, allCrumb];
   const nodeCrumb: Crumb = { label: title, onClick: () => onOpen(id, "insights") };
   const close = () => { setDialog(null); setDialogError(null); };
@@ -200,10 +200,16 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
 
   return (
     <div className="space-y-6 pb-12">
-      <Breadcrumb trail={trail} current={title} />
       <PageHeader
         eyebrow={wallet ? (wallet.archived ? "Wallet · Archived" : "Wallet") : "Wallets"}
-        badge={sample ? <PreviewBadge label="Sample" /> : undefined}
+        // Wallets › the wallet, in place of the eyebrow; an archived one says so beside it.
+        crumbs={trail}
+        badge={(
+          <>
+            {wallet?.archived && <span className="rounded-full bg-[#EEE9DD] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#78716c]">Archived</span>}
+            {sample && <PreviewBadge label="Sample" />}
+          </>
+        )}
         title={title}
         value={value}
         note={note}

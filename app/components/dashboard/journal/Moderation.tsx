@@ -8,7 +8,8 @@ import type { CommentCase, Decision, ModerationCaseDetail, ReportReason } from "
 import { NOTE_MAX, REASONS, REASON_LABELS, REPORT_STATUS_LABELS, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
 import { serif } from "../../preview/PreviewKit";
 import { ArticleDocument } from "./ArticleReader";
-import { BackLink, EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE, Spinner, StatusChip, usePaged } from "./JournalKit";
+import { Breadcrumb } from "../Breadcrumb";
+import { EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE, Spinner, StatusChip, usePaged } from "./JournalKit";
 
 /**
  * MODERATION — the editors' (NotAnEditorError for anyone else): the articles waiting for a
@@ -211,7 +212,7 @@ export function ModerationCasePage({ uuid, onBack }: { uuid: string; onBack: () 
     return () => { cancelled = true; };
   }, [uuid, attempt]);
 
-  const back = <BackLink label="Moderation" onClick={onBack} />;
+  const back = <Breadcrumb trail={[{ label: "Moderation", onClick: onBack }]} current={detail?.article.title || "Case"} />;
   if (error) return <div className="pb-12 space-y-5">{back}<ErrorState message={error} onRetry={() => setAttempt((n) => n + 1)} /></div>;
   if (!detail) return <div className="pb-12 space-y-5">{back}<Spinner /></div>;
 

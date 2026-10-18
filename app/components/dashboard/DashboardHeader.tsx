@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useUser } from "../../context/UserContext";
 import { useNotificationsContext } from "../../context/NotificationsContext";
 import { NotificationPanel } from "./NotificationPanel";
-import { SubscriptionPopover } from "./SubscriptionPopover";
+import { AccountMenu } from "./AccountMenu";
 import { TopbarSearch } from "./TopbarSearch";
 import type { AssetView } from "./AssetSection";
 import { ASSET_SECTION } from "../../lib/dashboardNav";
@@ -26,7 +26,7 @@ interface DashboardHeaderProps {
   isMenuOpen?: boolean;
   subscriptionTier?: SubscriptionTier | null;
   onNavigate?: (section: string) => void;
-  // A section on one of its pages (a notification's link), as the Sidebar's rows open them.
+  // A section on one of its pages (a notification's link).
   onOpenPage?: (section: string, view: unknown) => void;
 }
 
@@ -155,7 +155,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
 
         <div className="hidden md:block h-8 w-px bg-[#E0DACC] mx-2" />
 
-        {/* Profile pill */}
+        {/* Profile pill: the account menu (Profile, Messages, Settings, the subscription). */}
         <div className="relative">
           <button
             onClick={handleProfileClick}
@@ -189,10 +189,11 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
           </button>
 
           {isSubscriptionOpen && (
-            <SubscriptionPopover
+            <AccountMenu
               subscription={subscription}
               isLoading={isSubscriptionLoading}
               onClose={() => setIsSubscriptionOpen(false)}
+              onNavigate={onNavigate}
               onManage={onNavigate ? () => {
                 setIsSubscriptionOpen(false);
                 onNavigate("settings");

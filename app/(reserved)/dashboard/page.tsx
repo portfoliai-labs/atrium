@@ -32,7 +32,7 @@ import { DemoBanner } from "../../components/preview/DemoBanner";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
 import {
   ASSET_SECTION, CLIENTS_SECTION, EXPLORE_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, PLAN_SECTION,
-  PROFILE_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, WALLETS_SECTION, openPortfolioPage,
+  PROFILE_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, WALLETS_SECTION, DashboardPageContext, openPortfolioPage,
 } from "../../lib/dashboardNav";
 
 // 'reports' and 'profile' are omitted here on purpose: neither investors nor advisors have a
@@ -294,7 +294,6 @@ function DashboardPageContent() {
         <Sidebar
           activeSection={activeSection}
           setActiveSection={openSection}
-          onOpenPage={openPage}
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
           role={user?.role}
@@ -304,7 +303,7 @@ function DashboardPageContent() {
         <main className="flex-1 min-w-0 lg:ml-80 bg-[#F7F5EF] p-4 md:p-8 transition-all duration-300">
           <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
             {isDemo && <DemoBanner />}
-            {renderContent}
+            <DashboardPageContext.Provider value={openPage}>{renderContent}</DashboardPageContext.Provider>
           </div>
         </main>
       </div>

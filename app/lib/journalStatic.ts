@@ -147,14 +147,14 @@ const STATIC_ARTICLES: Article[] = WRITTEN.map((a) => ({
   updatedAt: `${a.publishedAt}T00:00:00Z`,
 }));
 
-/** The written articles, filtered as the API would (category, an editor's, words), a page at a time. */
+/** The written articles, filtered as the API would (category, an editor's, words; they name no instrument), a page at a time. */
 export const staticJournalSource: JournalSource = {
   async list(filters) {
     const words = filters.q?.trim().toLowerCase().split(/\s+/).filter(Boolean) ?? [];
     const matches = STATIC_ARTICLES.filter((a) =>
       (!filters.category || a.category === filters.category)
       && (!filters.authorKind || filters.authorKind === "editor")
-      && !filters.authorUuid && !filters.ticker && !filters.isin
+      && !filters.authorUuid && !filters.ticker && !filters.isin && !filters.instrumentId && !filters.listingId
       && words.every((w) => `${a.title} ${a.dek} ${blocksText(a.body)}`.toLowerCase().includes(w)),
     );
     const limit = filters.limit ?? 20;

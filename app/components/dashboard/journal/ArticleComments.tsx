@@ -289,8 +289,8 @@ export function ArticleComments({ article, canWrite, ownArticle, onCount }: {
   const [reporting, setReporting] = useState<ReportTarget | null>(null);
 
   return (
-    <section className="bg-white rounded-3xl border border-slate-200 shadow-sm px-6 py-8 md:px-14 md:py-10">
-      <div className="max-w-2xl mx-auto space-y-5">
+    <section className="pt-4">
+      <div className="max-w-2xl mx-auto space-y-5 pt-8 border-t border-[#E0DACC]">
         <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
           <MessageCircle className="h-5 w-5 text-[#C49A3C]" />
           Comments{article.commentCount > 0 && <span className="text-slate-400 font-bold">{article.commentCount}</span>}

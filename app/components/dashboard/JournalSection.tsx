@@ -14,6 +14,7 @@ import { MyArticles } from "./journal/MyArticles";
 import { SavedArticles } from "./journal/SavedArticles";
 import { MyReports } from "./journal/MyReports";
 import { ModerationCases, ModerationCasePage } from "./journal/Moderation";
+import { JournalNavContext } from "./journal/JournalMenu";
 
 const SECTION = JOURNAL_SECTION;
 
@@ -49,23 +50,6 @@ function viewFromHistory(): JournalView {
   if (!view?.page) return LIST;
   if (view.page === "journal" && view.slug) return { page: "article", slug: view.slug };
   return view;
-}
-
-/** The Sidebar row a page is under (see Sidebar). */
-export function journalRowOf(view: JournalView | undefined): "journal" | "saved" | "mine" | "moderation" {
-  switch (view?.page) {
-    case "saved":
-    case "reports":
-      return "saved";
-    case "mine":
-    case "write":
-      return "mine";
-    case "moderation":
-    case "case":
-      return "moderation";
-    default:
-      return "journal";
-  }
 }
 
 /**
@@ -105,45 +89,49 @@ export function JournalSection() {
     || ((view.page === "moderation" || view.page === "case") ? editor : canWrite);
   const page = allowed ? view : LIST;
 
-  switch (page.page) {
-    case "article":
-      return (
-        <ArticleReader
-          key={page.slug}
-          slug={page.slug}
-          onBack={() => go(LIST)}
-          onEdit={(uuid) => openEditor(uuid)}
-          onFilter={(filters) => go({ page: "journal", filters })}
-        />
-      );
-    case "saved":
-      return <SavedArticles onOpen={openArticle} onReports={() => go({ page: "reports" })} />;
-    case "reports":
-      return <MyReports onBack={() => go({ page: "saved" })} />;
-    case "mine":
-      return <MyArticles onOpen={openEditor} onNew={() => openEditor()} />;
-    case "write":
-      return (
-        <ArticleEditor
-          // The same editor on: a new article's first save gives it a uuid, in the same entry.
-          key="write"
-          uuid={page.uuid}
-          onCreated={(uuid) => go({ page: "write", uuid }, true)}
-          onBack={() => go({ page: "mine" })}
-          onRead={openArticle}
-        />
-      );
-    case "moderation":
-      return <ModerationCases onOpen={(uuid) => go({ page: "case", uuid })} />;
-    case "case":
-      return <ModerationCasePage key={page.uuid} uuid={page.uuid} onBack={() => go({ page: "moderation" })} />;
-    default:
-      return (
-        <ArticleList
-          filters={page.page === "journal" ? page.filters ?? {} : {}}
-          onFilters={(filters) => go({ page: "journal", filters }, true)}
-          onOpen={openArticle}
-        />
-      );
-  }
+  // The page itself; the Journal's menu, in each page's header, reads where it is and moves on.
+  const render = () => {
+    switch (page.page) {
+      case "article":
+        return (
+          <ArticleReader
+            key={page.slug}
+            slug={page.slug}
+            onEdit={(uuid) => openEditor(uuid)}
+            onFilter={(filters) => go({ page: "journal", filters })}
+          />
+        );
+      case "saved":
+        return <SavedArticles onOpen={openArticle} />;
+      case "reports":
+        return <MyReports />;
+      case "mine":
+        return <MyArticles onOpen={openEditor} onNew={() => openEditor()} />;
+      case "write":
+        return (
+          <ArticleEditor
+            // The same editor on: a new article's first save gives it a uuid, in the same entry.
+            key="write"
+            uuid={page.uuid}
+            onCreated={(uuid) => go({ page: "write", uuid }, true)}
+            onBack={() => go({ page: "mine" })}
+            onRead={openArticle}
+          />
+        );
+      case "moderation":
+        return <ModerationCases onOpen={(uuid) => go({ page: "case", uuid })} />;
+      case "case":
+        return <ModerationCasePage key={page.uuid} uuid={page.uuid} onBack={() => go({ page: "moderation" })} />;
+      default:
+        return (
+          <ArticleList
+            filters={page.page === "journal" ? page.filters ?? {} : {}}
+            onFilters={(filters) => go({ page: "journal", filters }, true)}
+            onOpen={openArticle}
+          />
+        );
+    }
+  };
+
+  return <JournalNavContext.Provider value={{ view: page, go }}>{render()}</JournalNavContext.Provider>;
 }

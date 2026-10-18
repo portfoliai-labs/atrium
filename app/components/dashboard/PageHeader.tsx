@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MoreHorizontal, Plus } from "lucide-react";
+import { Breadcrumb, type Crumb } from "./Breadcrumb";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 
@@ -48,9 +49,12 @@ const VISIBLE_ACTIONS = 3;
  * portfolio, so nothing on the pages under it asks which one.
  */
 export function PageHeader({
-  eyebrow, badge, notice, title, value, change, note, counters = [], actions = [], figures = [],
+  eyebrow, crumbs, badge, notice, title, value, change, note, counters = [], actions = [], figures = [],
 }: {
   eyebrow: string;
+  // The pages above this one (Investments › …): drawn as a breadcrumb in place of the eyebrow,
+  // the title its last step. The eyebrow stays for a section's own page, with nothing above it.
+  crumbs?: Crumb[];
   badge?: React.ReactNode;
   // Above it all, across the page: what the page is, when it needs saying (a backtest's banner).
   notice?: React.ReactNode;
@@ -72,10 +76,17 @@ export function PageHeader({
       {/* The actions keep to the right: beside a long title or note from lg, under it otherwise. */}
       <div className="flex flex-wrap lg:flex-nowrap items-end justify-between gap-5">
         <div className="min-w-0 lg:flex-1 flex flex-col gap-2">
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">
-            {eyebrow}
-            {badge}
-          </p>
+          {crumbs && crumbs.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Breadcrumb trail={crumbs} current={title} />
+              {badge}
+            </div>
+          ) : (
+            <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">
+              {eyebrow}
+              {badge}
+            </p>
+          )}
           <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05] text-balance" style={serif}>{title}</h1>
           {(value !== undefined || note) && (
             <p className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1.5">
@@ -153,7 +164,7 @@ export function PageHeader({
   );
 }
 
-function ActionButton({ action }: { action: PageAction }) {
+export function ActionButton({ action }: { action: PageAction }) {
   return (
     <button
       type="button"
@@ -172,7 +183,7 @@ function ActionButton({ action }: { action: PageAction }) {
   );
 }
 
-function MoreMenu({ actions }: { actions: PageAction[] }) {
+export function MoreMenu({ actions }: { actions: PageAction[] }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 

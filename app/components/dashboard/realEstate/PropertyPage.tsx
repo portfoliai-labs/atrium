@@ -12,7 +12,6 @@ import {
 import { dayLabel, errorText, today } from "../../../lib/wallets";
 import type { Mortgage, MortgageSchedule, Property, Valuation } from "../../../models/RealEstate";
 import type { Crumb } from "../Breadcrumb";
-import { Breadcrumb } from "../Breadcrumb";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { PageHeader, type PageAction, type PageFigure } from "../PageHeader";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
@@ -116,10 +115,17 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
 
   return (
     <div className="space-y-6 pb-12">
-      <Breadcrumb trail={trail} current={property.name} />
       <PageHeader
         eyebrow={eyebrow}
-        badge={sample ? <PreviewBadge label="Sample" /> : undefined}
+        // Real estate › the property, in place of the eyebrow; what it said of the property beside it.
+        crumbs={trail}
+        badge={(
+          <>
+            {property.archived && <span className="rounded-full bg-[#EEE9DD] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#78716c]">Archived</span>}
+            {property.soldOn && <span className="rounded-full bg-[#EEE9DD] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#78716c]">Sold {dayLabel(property.soldOn)}</span>}
+            {sample && <PreviewBadge label="Sample" />}
+          </>
+        )}
         title={property.name}
         value={money(f.valueAtShare)}
         change={gain === null ? null : { text: `${pct(gain)} on what was put in`, tone: toneOf(gain) }}

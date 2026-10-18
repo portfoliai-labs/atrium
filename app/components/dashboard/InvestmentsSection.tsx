@@ -232,11 +232,11 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
     return <StrategiesNode view={{ page: "backtest", uuid: portfolio.uuid, sub }} trail={strategiesTrail} onOpen={openStrategies} onOpenPortfolio={openPortfolio} onNavigate={onNavigate} />;
   }
 
-  // The pages above it: a portfolio sits under All portfolios.
+  // The pages above it: a portfolio sits under Investments (All portfolios' page).
   const aggregate = portfolios.find((p) => p.isAggregate);
   const trail: Crumb[] = portfolio.uuid === investments?.uuid || !aggregate
     ? rootTrail
-    : [...rootTrail, { label: aggregate.name, onClick: () => openPortfolio(aggregate.uuid) }];
+    : [...rootTrail, { label: "Investments", onClick: () => openPortfolio(aggregate.uuid) }];
 
   return (
     <PortfolioNode
@@ -412,7 +412,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
 
   const open = (next: PortfolioPage) => onOpen(portfolio.uuid, next);
   const nodeCrumb: Crumb = {
-    label: portfolio.name,
+    // All portfolios is the investments' own page: "Investments" above its pages.
+    label: portfolio.isAggregate ? "Investments" : portfolio.name,
     onClick: () => {
       if (page !== "overview") open("overview");
       else {
@@ -517,6 +518,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const header = (
     <PageHeader
       eyebrow={`${client ? `${client.name} · ` : ""}${backtest ? "Backtest" : portfolio.isAggregate || isInvestments ? "Investments" : "Portfolio"}`}
+      // The pages above it in place of the eyebrow (Investments › the portfolio), where there are some.
+      crumbs={trail}
       notice={backtest ? <BacktestBanner portfolioUuid={portfolio.uuid} /> : undefined}
       title={portfolio.name}
       note={note}
@@ -625,7 +628,9 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           isAggregate={portfolio.isAggregate}
           backtest={backtest}
           trail={trail}
-          pageLabel={portfolio.name}
+          // Its step above a month or a detail: All portfolios' is "Investments", as in its pages' trails.
+          pageLabel={portfolio.isAggregate ? "Investments" : portfolio.name}
+          trailInTop
           top={backtest ? header : (
             <>
               {header}

@@ -4,7 +4,7 @@
 import { journalService } from "../../../services/journalService";
 import type { ReportStatus } from "../../../models/Journal";
 import { REASON_LABELS, REPORT_STATUS_LABELS, dateLabel } from "../../../lib/journal";
-import { BackLink, EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE, Spinner, usePaged } from "./JournalKit";
+import { EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE, Spinner, usePaged } from "./JournalKit";
 
 const STATUS_TONES: Record<ReportStatus, string> = {
   open: "bg-amber-50 text-amber-700",
@@ -15,12 +15,11 @@ const STATUS_TONES: Record<ReportStatus, string> = {
 };
 
 /** YOUR REPORTS — the reader's reports on articles and comments, the newest first, each with the editors' decision. */
-export function MyReports({ onBack }: { onBack: () => void }) {
+export function MyReports() {
   const list = usePaged((offset) => journalService.reports(PAGE_SIZE, offset), "reports");
 
   return (
     <div className="space-y-6 pb-12">
-      <BackLink label="Saved" onClick={onBack} />
       <JournalHeader title="Your reports" subtitle="What you reported to the editors, and what they decided." />
       {list.error ? (
         <ErrorState message={list.error} onRetry={list.retry} />
