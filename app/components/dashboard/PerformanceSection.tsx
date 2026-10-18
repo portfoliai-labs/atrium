@@ -31,6 +31,7 @@ import { AssetArticlesModule } from "./journal/AssetArticlesModule";
 import { AssetNewsModule } from "./AssetNewsModule";
 import { BondRatesModule } from "./MarketRates";
 import { isBondClass } from "../../lib/rates";
+import { CompanyDescriptionModule } from "./CompanyDescriptionModule";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { PageHeader } from "./PageHeader";
 import { ExploreView, ExploreHostContext, ExplorePanel, DataTable, type DataColumn, type ExploreHeader } from "./ExploreView";
@@ -2123,6 +2124,7 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
           </dl>
         </Module>
         <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
+        <CompanyDescriptionModule profile={data.profile ?? null} />
         <AssetNewsModule asset={asset} name={data.name} />
         <AssetArticlesModule instrumentId={data.listing?.instrumentId ?? null} ticker={data.ticker} isin={data.isin} />
         {position.data && <PositionPanel position={position.data} />}

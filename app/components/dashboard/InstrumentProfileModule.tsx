@@ -19,7 +19,7 @@ const SEC_EDGAR_URL = "https://www.sec.gov/edgar";
 const AI_TIP = "Read from the source document by an AI model: it may be wrong, so check it against the document.";
 const IN_REVIEW_TIP = "Provisional: its sources disagree or it isn't well established yet, and it is being reviewed.";
 
-const LINK_CLASS = "inline-flex items-center gap-0.5 underline decoration-[#E0DACC] underline-offset-2 hover:text-[#C49A3C] hover:decoration-[#C49A3C] transition-colors";
+export const LINK_CLASS = "inline-flex items-center gap-0.5 underline decoration-[#E0DACC] underline-offset-2 hover:text-[#C49A3C] hover:decoration-[#C49A3C] transition-colors";
 
 // A source's date (YYYY-MM-DD) as the day it names, whatever the viewer's time zone.
 const sourceDateLabel = (iso: string) =>
@@ -183,15 +183,29 @@ function FactCell({ fact }: { fact: ProfileFact }) {
 
 /**
  * Where a value comes from: ESMA's FIRDS as its terms ask (ESMA named the source, its register
- * linked), a document (a KID, a methodology) linked by its url, and the day its source dates it.
+ * linked), a US company's annual report with the SEC named as its source (its filing linked), a
+ * document (a KID, a methodology) linked by its url, and the day its source dates it.
  */
-function SourceCitation({ source }: { source: ProfileSourceRef }) {
+export function SourceCitation({ source }: { source: ProfileSourceRef }) {
   const date = source.asOf ? sourceDateLabel(source.asOf) : null;
   if (source.source === "esma_firds") {
     return (
       <span>
         Source: ESMA (<a href={source.url ?? ESMA_FIRDS_URL} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>FIRDS</a>)
         {date && <> · {date}</>}
+      </span>
+    );
+  }
+  if (source.source === "sec_filing") {
+    return (
+      <span>
+        Source: SEC (
+        {source.url ? (
+          <a href={source.url} target="_blank" rel="noopener noreferrer" className={LINK_CLASS} title="Open the annual report on EDGAR">
+            Form 10-K<ExternalLink className="h-2.5 w-2.5 shrink-0" />
+          </a>
+        ) : "Form 10-K"})
+        {date && <> · filed {date}</>}
       </span>
     );
   }
@@ -208,7 +222,7 @@ function SourceCitation({ source }: { source: ProfileSourceRef }) {
   );
 }
 
-function AiBadge() {
+export function AiBadge() {
   return (
     <InfoTip text={AI_TIP}>
       <span className="inline-flex items-center rounded-full border border-[#C7D2FE] bg-[#EEF2FF] px-1.5 py-px text-[9.5px] font-black uppercase tracking-[0.08em] text-[#4338CA] cursor-help">
