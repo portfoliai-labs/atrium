@@ -2102,12 +2102,14 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
         </div>
       </Module>
 
+      <MarketDataModule listingId={listingId} />
+
       {isBondClass(data.assetClass) && <BondRatesModule isin={data.isin} name={data.name} currency={data.quoteCurrency} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-[22px]">
         {/* Two to a row, a row's lone card the whole of it: your position, its dividends and what
             it does or aims to do, so the description fills in for whichever is missing; then the
-            Profile, Key facts, a fund's Index and Market data. */}
+            Profile, Key facts and a fund's Index (Market data is under the price). */}
         <div className={`md:col-span-2 ${PAIRS} empty:hidden`}>
           {position.data && <PositionPanel position={position.data} />}
           <CompanyDescriptionModule profile={data.profile ?? null} />
@@ -2126,7 +2128,6 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
             </dl>
           </Module>
           <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
-          <MarketDataModule listingId={listingId} />
         </div>
         <AssetNewsModule listingId={listingId} name={data.name} />
         <AssetArticlesModule instrumentId={data.listing?.instrumentId ?? null} ticker={data.ticker} isin={data.isin} />

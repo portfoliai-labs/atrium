@@ -12,7 +12,35 @@ export interface MarketCap {
   source: string;
 }
 
-// The mean daily volume, in shares, of the last `sessions` sessions up to `asOf` (YYYY-MM-DD).
+// The provider's quote, a few minutes old at most: the last session (as of `marketTime`) and the
+// 52 weeks' range. Prices in the response's currency; volume in shares (null for a crypto).
+export interface Quote {
+  previousClose: number | null;
+  open: number | null;
+  dayLow: number | null;
+  dayHigh: number | null;
+  volume: number | null;
+  fiftyTwoWeekLow: number | null;
+  fiftyTwoWeekHigh: number | null;
+  marketTime: string | null;
+  source: string;
+}
+
+// A company's per-share figures (the provider's) and, at the current price, the P/E (null
+// without a positive EPS) and the forward dividend's yield (%). `earningsDate` YYYY-MM-DD.
+export interface Valuation {
+  trailingEps: number | null;
+  peRatio: number | null;
+  dividendRate: number | null;
+  dividendYieldPct: number | null;
+  earningsDate: string | null;
+  earningsDateEstimated: boolean;
+  targetMeanPrice: number | null;
+  source: string;
+}
+
+// The mean daily volume, in shares, of the last `sessions` sessions (three months) up to `asOf`
+// (YYYY-MM-DD).
 export interface AverageVolume {
   shares: number;
   sessions: number;
@@ -47,9 +75,11 @@ export interface RiskStatistics {
 }
 
 export interface AssetMarketData {
-  // ISO 4217: the listing's, the market cap's.
+  // ISO 4217: the listing's, every price's (a London listing's pence as pounds).
   currency: string;
+  quote: Quote | null;
   marketCap: MarketCap | null;
+  valuation: Valuation | null;
   averageVolume: AverageVolume | null;
   risk: RiskStatistics | null;
 }
