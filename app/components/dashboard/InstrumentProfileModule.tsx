@@ -183,7 +183,7 @@ function FactCell({ fact }: { fact: ProfileFact }) {
 
 /**
  * Where a value comes from: ESMA's FIRDS as its terms ask (ESMA named the source, its register
- * linked), a US company's annual report with the SEC named as its source (its filing linked), a
+ * linked), a company's annual report with the SEC named as its source (its filing linked), a
  * document (a KID, a methodology) linked by its url, and the day its source dates it.
  */
 export function SourceCitation({ source }: { source: ProfileSourceRef }) {
@@ -202,9 +202,9 @@ export function SourceCitation({ source }: { source: ProfileSourceRef }) {
         Source: SEC (
         {source.url ? (
           <a href={source.url} target="_blank" rel="noopener noreferrer" className={LINK_CLASS} title="Open the annual report on EDGAR">
-            Form 10-K<ExternalLink className="h-2.5 w-2.5 shrink-0" />
+            annual report<ExternalLink className="h-2.5 w-2.5 shrink-0" />
           </a>
-        ) : "Form 10-K"})
+        ) : "annual report"})
         {date && <> · filed {date}</>}
       </span>
     );

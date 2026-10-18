@@ -6,8 +6,9 @@ import { AiBadge, SourceCitation } from "./InstrumentProfileModule";
 import { MODULE_BODY, Module, ModuleHead, NoteS } from "./PerformanceSection";
 
 /**
- * COMPANY DESCRIPTION MODULE — what a US company does, in a paragraph an AI model summarised from
- * the business section of its latest annual report (Form 10-K), on its asset page (AssetExplore).
+ * COMPANY DESCRIPTION MODULE — what a company filing with the SEC does, in a paragraph an AI model
+ * summarised from its latest annual report (a 10-K, a foreign company's 20-F), on its asset page
+ * (AssetExplore).
  * Marked as the AI's, with the report linked and the SEC named as the source, as its terms ask.
  * Nothing for an asset census has no description of.
  */

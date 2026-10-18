@@ -9,7 +9,7 @@ import type { StrategyCategory } from "./Strategy";
 // provider's rules; esma_firds: ESMA's FIRDS, whose reuse is authorised with the source
 // acknowledged; isin: the fund's ISIN (its domicile); price_provider: the market-data provider;
 // registry: a crypto asset is one; users_votes: the users' consensus on the category; sec_filing:
-// a US company's annual report (Form 10-K) on the SEC's EDGAR, to be cited; curation: a curator's
+// a company's annual report on the SEC's EDGAR (a 10-K, a foreign company's 20-F), to be cited; curation: a curator's
 // decision, above every source. "unknown" for one this page doesn't know yet.
 type ProfileSource =
   | "issuer_kid" | "index_methodology" | "esma_firds" | "isin" | "price_provider" | "registry" | "users_votes"
@@ -105,7 +105,7 @@ interface InstrumentProfile {
   headquartersCity: string | null;
   employees: number | null;
   website: string | null;
-  // A US company's: what it does, one paragraph of English an AI model summarised from its latest
+  // A company's filing with the SEC: what it does, one paragraph of English an AI model summarised from its latest
   // annual report's business section (sources.description: sec_filing, the report linked).
   description: string | null;
   sources: Partial<Record<
@@ -123,7 +123,7 @@ const PROFILE_SOURCE_LABELS: Record<ProfileSource, string> = {
   price_provider: "Market data",
   registry: "Crypto registry",
   users_votes: "Users' consensus",
-  sec_filing: "Annual report (Form 10-K)",
+  sec_filing: "Annual report (SEC)",
   curation: "Reviewed by Atrium",
   unknown: "Other source",
 };
