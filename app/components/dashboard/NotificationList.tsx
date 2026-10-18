@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2, XCircle, Loader2, Clock, Bell, BellRing, Target, Hourglass, MessagesSquare } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Clock, Bell, BellRing, Target, Hourglass, MessagesSquare, UserRoundPlus } from "lucide-react";
 import type { NotificationResponse } from "../../services/notificationService";
 import { categoryLabel, formatAlertPct, formatRange, WINDOW_LABEL } from "../../lib/alerts";
 import type { AlertWindow } from "../../models/Alert";
-import { INVESTMENTS_SECTION, REAL_ESTATE_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
+import { INVESTMENTS_SECTION, PROFILE_SECTION, REAL_ESTATE_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
 import type { InvestmentsView } from "./InvestmentsSection";
 import type { WalletsView } from "./wallets/WalletsSection";
 import type { RealEstateView } from "./realEstate/RealEstateSection";
@@ -251,6 +251,41 @@ const MESSAGE_RECEIVED_CONFIG = {
 
 const MESSAGE_RECEIVED_SUMMARY = { title: "New message", detail: "You have new messages: read them in Messages." };
 
+// An investor's request to an advisor changed, for its other side (type ADVISOR_REQUEST).
+// Payload: request_uuid, request_status (PENDING when new and WITHDRAWN, to the advisor;
+// ACCEPTED, DECLINED, EXPIRED, to the investor), counterpart_uuid, counterpart_name. An
+// advisor's links to their Requests, an investor's to Find an advisor, or to Messages once
+// accepted (the chat opens with the request's message).
+const ADVISOR_REQUEST_CONFIG = {
+  label: "Advisor request",
+  icon: <UserRoundPlus className="w-5 h-5 text-[#C49A3C] shrink-0" />,
+  pill: "bg-[#C49A3C]/10 text-[#8A6A28] border-[#C49A3C]/30",
+};
+
+type AdvisorRequestStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "WITHDRAWN" | "EXPIRED";
+
+function getAdvisorRequestStatus(n: NotificationResponse): AdvisorRequestStatus | undefined {
+  return n.payload?.request_status as AdvisorRequestStatus | undefined;
+}
+
+function getAdvisorRequestSummary(n: NotificationResponse): { title: string; detail: string } {
+  const name = (n.payload?.counterpart_name as string | undefined) || "Someone";
+  switch (getAdvisorRequestStatus(n)) {
+    case "PENDING":
+      return { title: "New client request", detail: `${name} would like you as their advisor: answer before the request expires.` };
+    case "WITHDRAWN":
+      return { title: "Request withdrawn", detail: `${name} withdrew their request.` };
+    case "ACCEPTED":
+      return { title: "Request accepted", detail: `${name} is now your advisor: your conversation is open in Messages.` };
+    case "DECLINED":
+      return { title: "Request declined", detail: `${name} can't take you on: you can ask another of your matches.` };
+    case "EXPIRED":
+      return { title: "Request expired", detail: `${name} didn't answer in time: you can ask another of your matches.` };
+    default:
+      return { title: "Advisor request", detail: "One of your advisor requests changed." };
+  }
+}
+
 function formatDate(iso: string): string {
   const date = new Date(iso);
   const diffMs = Date.now() - date.getTime();
@@ -295,8 +330,11 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
         const isWalletAlert = n.type === "WALLET_ALERT";
         const isLossesExpiring = n.type === "LOSSES_EXPIRING";
         const isMessage = n.type === "MESSAGE_RECEIVED";
-        const cfg = isMessage ? MESSAGE_RECEIVED_CONFIG : isAlert || isRealEstateAlert || isWalletAlert ? ALERT_CONFIG : isStrategyFailed ? STATUS_CONFIG.FAILED : isStrategyShared ? STRATEGY_SHARED_CONFIG : isLossesExpiring ? LOSSES_EXPIRING_CONFIG : getJobStatus(n);
+        const isAdvisorRequest = n.type === "ADVISOR_REQUEST";
+        const requestStatus = isAdvisorRequest ? getAdvisorRequestStatus(n) : undefined;
+        const cfg = isMessage ? MESSAGE_RECEIVED_CONFIG : isAdvisorRequest ? ADVISOR_REQUEST_CONFIG : isAlert || isRealEstateAlert || isWalletAlert ? ALERT_CONFIG : isStrategyFailed ? STATUS_CONFIG.FAILED : isStrategyShared ? STRATEGY_SHARED_CONFIG : isLossesExpiring ? LOSSES_EXPIRING_CONFIG : getJobStatus(n);
         const summary = isMessage ? MESSAGE_RECEIVED_SUMMARY
+          : isAdvisorRequest ? getAdvisorRequestSummary(n)
           : isAlert ? getAlertSummary(n)
           : isRealEstateAlert ? getRealEstateAlertSummary(n)
           : isWalletAlert ? getWalletAlertSummary(n)
@@ -372,6 +410,18 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
                     className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
                   >
                     Open messages
+                  </button>
+                )}
+                {isAdvisorRequest && onOpenPage && (
+                  <button
+                    type="button"
+                    onClick={() => requestStatus === "PENDING" || requestStatus === "WITHDRAWN" ? onOpenPage("requests", undefined)
+                      : requestStatus === "ACCEPTED" ? onOpenPage("messages", undefined)
+                      : onOpenPage(PROFILE_SECTION, { page: "advisor" })}
+                    className="text-[10px] font-bold text-[#C49A3C] hover:text-[#a87f2f] underline underline-offset-2"
+                  >
+                    {requestStatus === "PENDING" || requestStatus === "WITHDRAWN" ? "Open requests"
+                      : requestStatus === "ACCEPTED" ? "Open messages" : "Find an advisor"}
                   </button>
                 )}
                 {isRealEstateAlert && onOpenPage && (
