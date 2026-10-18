@@ -2053,9 +2053,22 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
               {ASSET_RANGES.map((r) => (
                 <button key={r} type="button" aria-pressed={r === range} onClick={() => setRange(r)} className={chip(r === range)}>{r}</button>
               ))}
-              {hasQuoteToggle && [data.currency, data.quoteCurrency].map((c) => (
-                <button key={c} type="button" aria-pressed={c === unit} onClick={() => setInQuoteCurrency(c === data.quoteCurrency)} className={chip(c === unit)}>{c}</button>
-              ))}
+              {/* The currency, a different kind of choice from the range: a segmented switch, set apart. */}
+              {hasQuoteToggle && (
+                <div role="group" aria-label="Currency" className="ml-1.5 inline-flex rounded-lg bg-[#F3EFE6] p-0.5">
+                  {[data.currency, data.quoteCurrency].map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      aria-pressed={c === unit}
+                      onClick={() => setInQuoteCurrency(c === data.quoteCurrency)}
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-bold tracking-[0.04em] tabular-nums transition-colors ${c === unit ? "bg-white text-[#1c1917] shadow-sm" : "text-[#78716c] hover:text-[#1c1917]"}`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              )}
               {changePct !== null && (
                 <span className={`ml-1.5 text-[13px] font-bold tabular-nums ${toneClass(toneOfValue(changePct))}`} title={`Over ${ASSET_RANGE_LABELS[data.range]}`}>
                   {formatPct(changePct)}
@@ -2098,7 +2111,6 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
               </ResponsiveContainer>
             </div>
           )}
-          {data.pricesAsOf && <NoteS className="pt-2">Last close on {fullDateLabel(data.pricesAsOf)}, {formatCurrency(last ?? 0, unit, 2)}.</NoteS>}
         </div>
       </Module>
 
