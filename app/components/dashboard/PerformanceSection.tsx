@@ -2012,8 +2012,9 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
     ...(data.listing?.exchangeMic ? [{ label: "Market", value: exchangeLabel(data.listing.exchangeMic, data.listing.exchangeName)! }] : []),
     ...(data.isin ? [{ label: "ISIN", value: data.isin }] : []),
     { label: "Asset class", value: data.assetClass },
-    ...(data.sector ? [{ label: "Sector", value: data.sector }] : []),
-    ...(data.industry ? [{ label: "Industry", value: data.industry }] : []),
+    // census' GICS sector and industry, with their sources, are under Key facts.
+    ...(data.sector && data.profile?.sector == null ? [{ label: "Sector", value: data.sector }] : []),
+    ...(data.industry && data.profile?.industry == null ? [{ label: "Industry", value: data.industry }] : []),
     ...(data.country ? [{ label: "Country", value: data.country }] : []),
     // census' TER, with its source, is under Key facts.
     ...(data.terPct !== null && data.profile?.terPct == null ? [{ label: "TER", value: `${data.terPct.toFixed(2)}%` }] : []),

@@ -6,7 +6,7 @@ import { STRATEGY_CATEGORY_LABELS } from "../../models/Strategy";
 import type { Listing } from "../../models/Listing";
 import {
   DISTRIBUTION_LABELS, FACTOR_LABELS, INDEX_SIZE_LABELS, PROFILE_ASSET_CLASS_LABELS, PROFILE_SOURCE_LABELS,
-  REBALANCING_LABELS, REGION_LABELS, REPLICATION_LABELS, WEIGHTING_LABELS, labelOf,
+  INDUSTRY_LABELS, REBALANCING_LABELS, REGION_LABELS, REPLICATION_LABELS, SECTOR_LABELS, WEIGHTING_LABELS, labelOf,
   type InstrumentProfile, type ProfileSourceRef,
 } from "../../models/InstrumentProfile";
 import { InfoTip, MODULE_BODY, Module, ModuleHead, NoteS } from "./PerformanceSection";
@@ -33,12 +33,24 @@ const countryName = (code: string) => {
   }
 };
 
-/** One of the profile's facts: its label, its value and where the value comes from. */
-type ProfileFact = { key: string; label: string; value: string; source?: ProfileSourceRef };
+/** A company's website as a link (http or https only) and its host to show; null for anything else. */
+const websiteLink = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    return { href: parsed.href, host: parsed.hostname.replace(/^www\./, "") };
+  } catch {
+    return null;
+  }
+};
+
+/** One of the profile's facts: its label, its value (linked to `href`) and where the value comes from. */
+type ProfileFact = { key: string; label: string; value: string; href?: string; source?: ProfileSourceRef };
 
 /**
  * INSTRUMENT PROFILE MODULE — what census knows the instrument is (its category; a fund's costs,
- * distribution, domicile, replication, hedge, risk class and the index it tracks), each value
+ * distribution, domicile, replication, hedge, risk class and the index it tracks; a company's
+ * GICS sector and industry, head office, employees and website), each value
  * citing its source: ESMA's FIRDS by name, a KID or an index methodology linked with its date.
  * A value an AI model read is marked as such, one under review shown as provisional. Below, the
  * registries the listing's reference data comes from, as their terms ask: ESMA's FIRDS for a
@@ -97,6 +109,9 @@ export function InstrumentProfileModule({ profile, listing }: { profile: Instrum
 
 function profileFacts(p: InstrumentProfile): ProfileFact[] {
   const s = p.sources;
+  // The city and the country, either alone when the other isn't known (Santa Clara, United States).
+  const headOffice = [p.headquartersCity, p.headquarters && countryName(p.headquarters)].filter(Boolean).join(", ") || null;
+  const website = p.website ? websiteLink(p.website) : null;
   const facts: (ProfileFact | false)[] = [
     p.category !== null && { key: "category", label: "Category", value: STRATEGY_CATEGORY_LABELS[p.category] ?? p.category, source: s.category },
     p.terPct !== null && { key: "terPct", label: "Ongoing costs (TER)", value: `${p.terPct.toFixed(2)}% a year`, source: s.terPct },
@@ -106,6 +121,11 @@ function profileFacts(p: InstrumentProfile): ProfileFact[] {
     p.replication !== null && { key: "replication", label: "Replication", value: labelOf(REPLICATION_LABELS, p.replication), source: s.replication },
     p.currencyHedged !== null && { key: "currencyHedged", label: "Currency hedged", value: p.currencyHedged ? "Yes" : "No", source: s.currencyHedged },
     p.riskIndicator !== null && { key: "riskIndicator", label: "Risk class", value: `${p.riskIndicator} of 7`, source: s.riskIndicator },
+    p.sector !== null && { key: "sector", label: "Sector", value: labelOf(SECTOR_LABELS, p.sector), source: s.sector },
+    p.industry !== null && { key: "industry", label: "Industry", value: labelOf(INDUSTRY_LABELS, p.industry), source: s.industry },
+    headOffice !== null && { key: "headquarters", label: "Head office", value: headOffice, source: s.headquarters ?? s.headquartersCity },
+    p.employees !== null && { key: "employees", label: "Employees", value: p.employees.toLocaleString("en-US"), source: s.employees },
+    website !== null && { key: "website", label: "Website", value: website.host, href: website.href, source: s.website },
   ];
   return facts.filter((f): f is ProfileFact => !!f);
 }
@@ -142,8 +162,12 @@ function FactCell({ fact }: { fact: ProfileFact }) {
     <div className="flex flex-col gap-[3px] min-w-0 border-t border-[#EEE9DD] pt-2.5">
       <dt className="text-[11px] text-[#78716c] truncate">{fact.label}</dt>
       <dd className="flex flex-wrap items-center gap-1.5 min-w-0">
-        <span className={`text-[15px] font-bold tracking-[-0.01em] ${provisional ? "text-[#78716c] underline decoration-dashed decoration-[#C49A3C]/60 underline-offset-4" : "text-[#1c1917]"}`}>
-          {fact.value}
+        <span className={`text-[15px] font-bold tracking-[-0.01em] min-w-0 truncate ${provisional ? "text-[#78716c] underline decoration-dashed decoration-[#C49A3C]/60 underline-offset-4" : "text-[#1c1917]"}`}>
+          {fact.href ? (
+            <a href={fact.href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
+              {fact.value}<ExternalLink className="h-3 w-3 shrink-0" />
+            </a>
+          ) : fact.value}
         </span>
         {source?.ai && <AiBadge />}
         {provisional && <ProvisionalBadge />}
