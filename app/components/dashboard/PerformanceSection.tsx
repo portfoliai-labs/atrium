@@ -3084,23 +3084,32 @@ function BenchmarkPanels({ data }: { data: BenchmarkResponse }) {
           <CumulativeReturnChart portfolio={data.portfolioCumulativeReturnPct} benchmark={data.benchmarkCumulativeReturnPct} />
         </ExplorePanel>
       )}
-      <ExplorePanel eyebrow="Benchmark" title="Side by Side" desc="The return and risk of each, over the same period.">
-        <DataTable columns={pairColumns} rows={pairs} rowKey={(r) => r.key} />
-      </ExplorePanel>
-      <ExplorePanel
-        eyebrow="Benchmark"
-        title="Relative Figures"
-        desc={`How the portfolio's returns relate to the benchmark's${data.tradingDays !== null ? `, over ${data.tradingDays.toLocaleString("en-US")} trading days both have a price` : ""}. Hover a figure for what it means.`}
-      >
-        <RelativeFigures data={data} />
-      </ExplorePanel>
-      {basket.length > 0 && (
-        <ExplorePanel eyebrow="Benchmark" title="What the Benchmark Is Made Of" desc={BENCHMARK_BASKET_INFO}>
-          <div className="p-6 md:p-7">
-            <BenchmarkBasketList basket={basket} />
-          </div>
+      {/* The two side by side, and what the benchmark is beside them. */}
+      <div className={`grid grid-cols-1 gap-[22px] ${basket.length > 0 ? "lg:grid-cols-2" : ""}`}>
+        <ExplorePanel eyebrow="Benchmark" title="Side by Side" desc="The return and risk of each, over the same period.">
+          <DataTable columns={pairColumns} rows={pairs} rowKey={(r) => r.key} />
         </ExplorePanel>
-      )}
+        {basket.length > 0 && (
+          <ExplorePanel eyebrow="Benchmark" title="What the Benchmark Is Made Of" desc={BENCHMARK_BASKET_INFO}>
+            <div className="p-6 md:p-7">
+              <BenchmarkBasketList basket={basket} />
+            </div>
+          </ExplorePanel>
+        )}
+      </div>
+      {/* The ratios, a card for each question they answer. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-[22px]">
+        {relativeGroups(data).map((g) => (
+          <ExplorePanel
+            key={g.title}
+            eyebrow="Benchmark"
+            title={g.title}
+            desc={`How the portfolio's returns relate to the benchmark's${data.tradingDays !== null ? `, over ${data.tradingDays.toLocaleString("en-US")} trading days both have a price` : ""}. Hover a figure for what it means.`}
+          >
+            <RelativeFigures rows={g.rows} />
+          </ExplorePanel>
+        ))}
+      </div>
     </>
   );
 }
@@ -3109,14 +3118,12 @@ function BenchmarkPanels({ data }: { data: BenchmarkResponse }) {
 type RelativeRow = { label: string; info: string; value: string; reading: string | null; tone?: "gain" | "loss" };
 
 /**
- * RELATIVE FIGURES — the benchmark comparison's ratios, grouped by the question each answers
- * (did it earn more, does it follow the benchmark, how often was it ahead), one per row: the
- * figure on the right, and under its name what that value means in words. A null figure reads "—"
- * with no words under it.
+ * The benchmark comparison's ratios, grouped by the question each answers (did it earn more,
+ * does it follow the benchmark, how often was it ahead): a card each (RelativeFigures).
  */
-function RelativeFigures({ data }: { data: BenchmarkResponse }) {
+function relativeGroups(data: BenchmarkResponse): { title: string; rows: RelativeRow[] }[] {
   const signedRatio = (v: number | null) => (v === null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}`);
-  const groups: { title: string; rows: RelativeRow[] }[] = [
+  return [
     {
       title: "Did it earn more?",
       rows: [
@@ -3193,28 +3200,29 @@ function RelativeFigures({ data }: { data: BenchmarkResponse }) {
       ],
     },
   ];
+}
 
+/**
+ * RELATIVE FIGURES — one question's ratios, one per row: the figure on the right, and under its
+ * name what that value means in words. A null figure reads "—" with no words under it.
+ */
+function RelativeFigures({ rows }: { rows: RelativeRow[] }) {
   return (
-    <div className={`${MODULE_BODY} grid grid-cols-1 @3xl:grid-cols-3 gap-x-8 gap-y-5`}>
-      {groups.map((g) => (
-        <div key={g.title} className="min-w-0">
-          <h3 className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#78716c] pb-1">{g.title}</h3>
-          <dl>
-            {g.rows.map((r) => (
-              <div key={r.label} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 py-2.5 border-b border-[#EEE9DD] last:border-b-0">
-                <dt className="flex items-center gap-1 min-w-0 text-[13px] font-semibold text-[#1c1917]">
-                  <span className="truncate">{r.label}</span>
-                  <InfoTip text={r.info}>
-                    <Info className="h-3 w-3 shrink-0 text-[#a8a29e] hover:text-[#78716c] cursor-help transition-colors" />
-                  </InfoTip>
-                </dt>
-                <dd className={`row-span-2 self-center text-[15px] font-bold tabular-nums ${toneClass(r.tone)}`}>{r.value}</dd>
-                {r.reading && <dd className="text-[11.5px] text-[#78716c] truncate">{r.reading}</dd>}
-              </div>
-            ))}
-          </dl>
-        </div>
-      ))}
+    <div className={MODULE_BODY}>
+      <dl>
+        {rows.map((r) => (
+          <div key={r.label} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 py-2.5 border-b border-[#EEE9DD] last:border-b-0">
+            <dt className="flex items-center gap-1 min-w-0 text-[13px] font-semibold text-[#1c1917]">
+              <span className="truncate">{r.label}</span>
+              <InfoTip text={r.info}>
+                <Info className="h-3 w-3 shrink-0 text-[#a8a29e] hover:text-[#78716c] cursor-help transition-colors" />
+              </InfoTip>
+            </dt>
+            <dd className={`row-span-2 self-center text-[15px] font-bold tabular-nums ${toneClass(r.tone)}`}>{r.value}</dd>
+            {r.reading && <dd className="text-[11.5px] text-[#78716c] truncate">{r.reading}</dd>}
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }
@@ -3224,8 +3232,8 @@ const horizonLabel = (period: string) => (period === "Inception" ? "Since incept
 
 /**
  * RETURNS EXPLORE — the detail view behind ReturnsModule, /insights/returns: the growth curve the
- * headline figure is the end of, the return of each calendar year, every horizon with the risk
- * taken to earn it, and the best and worst month.
+ * headline figure is the end of, the return of each calendar year beside how steady they were,
+ * every horizon with the risk taken to earn it, and the best and worst month.
  */
 function ReturnsExplore({ portfolioUuid, revision }: { portfolioUuid: string; revision: number }) {
   const detail = useDetail(() => portfolioService.getReturns(portfolioUuid), portfolioUuid, revision);
@@ -3254,9 +3262,43 @@ function ReturnsPanels({ data }: { data: ReturnsResponse }) {
     { key: "rar", label: "Return / risk", align: "right", render: (h) => ratioOrDash(h.riskAdjustedReturn) },
   ];
 
+  const hasChart = cumulative.length >= 2;
+  const hasAnnual = annual.length > 0;
+  const hasHorizons = data.horizons.length > 0;
+  const hasExtremes = !!(data.bestMonth || data.worstMonth);
+  // How steady the years were: how many ended up, the best and the worst, and how long it's run.
+  const years = annual.length;
+  const upYears = annual.filter((a) => a.value >= 0).length;
+  const bestYear = years > 0 ? annual.reduce((b, a) => (a.value > b.value ? a : b)) : null;
+  const worstYear = years > 0 ? annual.reduce((w, a) => (a.value < w.value ? a : w)) : null;
+  const lifespan = data.lifespanDays >= 365 ? `${(data.lifespanDays / 365.25).toFixed(1)} years` : `${Math.max(1, Math.round(data.lifespanDays / 30.44))} months`;
+  const steadiness: { key: string; label: string; sub: string; value: string; tone?: "gain" | "loss" }[] = [
+    ...(years > 0 ? [{ key: "up", label: "Years that ended up", sub: "Calendar years with a positive return", value: `${upYears} of ${years}` }] : []),
+    ...(bestYear && years > 1 ? [{ key: "best", label: bestYear.year, sub: "Best year", value: formatPct(bestYear.value), tone: toneOfValue(bestYear.value) }] : []),
+    ...(worstYear && years > 1 ? [{ key: "worst", label: worstYear.year, sub: "Worst year", value: formatPct(worstYear.value), tone: toneOfValue(worstYear.value) }] : []),
+    ...(data.lifespanDays > 0 ? [{ key: "life", label: "Invested for", sub: "Since the first investment", value: lifespan }] : []),
+  ];
+  const hasSteadiness = steadiness.length > 0;
+  // The growth since inception across the page; then each row a wide card beside a narrow one:
+  // the calendar years beside how steady they were, every horizon beside the best and worst
+  // months. A card alone in its row takes all of it.
+  const row = (pair: boolean) => `grid grid-cols-1 gap-[22px] ${pair ? "lg:grid-cols-12" : ""}`;
+  const cell = (span: string, pair: boolean) => `min-w-0 [&>section]:h-full ${pair ? span : ""}`;
+  const figureList = (rows: typeof steadiness) => (
+    <dl className={MODULE_BODY}>
+      {rows.map((r) => (
+        <div key={r.key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 py-2.5 border-b border-[#EEE9DD] last:border-b-0">
+          <dt className="text-[13px] font-bold text-[#1c1917] truncate">{r.label}</dt>
+          <dd className={`row-span-2 self-center text-[15px] font-bold tabular-nums ${toneClass(r.tone)}`}>{r.value}</dd>
+          <dd className="text-[11.5px] text-[#78716c] truncate">{r.sub}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+
   return (
     <>
-      {cumulative.length >= 2 && (
+      {hasChart && (
         <ExplorePanel
           eyebrow="Returns"
           title="Since Inception"
@@ -3284,51 +3326,60 @@ function ReturnsPanels({ data }: { data: ReturnsResponse }) {
           </div>
         </ExplorePanel>
       )}
-      {(annual.length > 0 || data.bestMonth || data.worstMonth) && (
-        <div className={`grid grid-cols-1 gap-[22px] ${annual.length > 0 && (data.bestMonth || data.worstMonth) ? "lg:grid-cols-2" : ""}`}>
-          {annual.length > 0 && (
-            <ExplorePanel eyebrow="Returns" title="By Calendar Year" desc="The time-weighted return of each calendar year.">
-              <div className={`${MODULE_BODY} h-[220px]`}>
-                <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 600, height: 224 }}>
-                  <BarChart data={annual} margin={{ top: 16, right: 10, left: 0, bottom: 0 }}>
-                    <XAxis dataKey="year" tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }} axisLine={false} tickLine={false} width={56} />
-                    <Tooltip formatter={(value) => [formatPct(Number(value)), "Return"]} contentStyle={TOOLTIP_STYLE} cursor={{ fill: "#f1f5f9" }} />
-                    <Bar dataKey="value" radius={[6, 6, 6, 6]} maxBarSize={48}>
-                      {annual.map((a) => <Cell key={a.year} fill={a.value >= 0 ? "#10b981" : "#f43f5e"} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </ExplorePanel>
+      {(hasAnnual || hasSteadiness) && (
+        <div className={row(hasAnnual && hasSteadiness)}>
+          {hasAnnual && (
+            <div className={cell("lg:col-span-8", hasSteadiness)}>
+              <ExplorePanel eyebrow="Returns" title="By Calendar Year" desc="The time-weighted return of each calendar year.">
+                <div className={`${MODULE_BODY} h-[220px]`}>
+                  <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 600, height: 224 }}>
+                    <BarChart data={annual} margin={{ top: 16, right: 10, left: 0, bottom: 0 }}>
+                      <XAxis dataKey="year" tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }} axisLine={false} tickLine={false} />
+                      <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }} axisLine={false} tickLine={false} width={56} />
+                      <Tooltip formatter={(value) => [formatPct(Number(value)), "Return"]} contentStyle={TOOLTIP_STYLE} cursor={{ fill: "#f1f5f9" }} />
+                      <Bar dataKey="value" radius={[6, 6, 6, 6]} maxBarSize={48}>
+                        {annual.map((a) => <Cell key={a.year} fill={a.value >= 0 ? "#10b981" : "#f43f5e"} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </ExplorePanel>
+            </div>
           )}
-          {(data.bestMonth || data.worstMonth) && (
-            <ExplorePanel eyebrow="Returns" title="Best and Worst Months" desc="The extremes of the monthly returns, and the deepest fall since inception.">
-              <dl className={MODULE_BODY}>
-                {[
-                  data.bestMonth && { key: "best", label: monthYearLabel(data.bestMonth.month), sub: "Best month", value: formatPct(data.bestMonth.returnPct), tone: toneOfValue(data.bestMonth.returnPct) },
-                  data.worstMonth && { key: "worst", label: monthYearLabel(data.worstMonth.month), sub: "Worst month", value: formatPct(data.worstMonth.returnPct), tone: toneOfValue(data.worstMonth.returnPct) },
-                  data.maxDrawdownPct !== null && { key: "fall", label: "Deepest fall", sub: "From a high to a later low, since inception", value: formatPct(-Math.abs(data.maxDrawdownPct)), tone: "loss" as const },
-                ].filter((r) => !!r).map((r) => (
-                  <div key={r.key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 py-2.5 border-b border-[#EEE9DD] last:border-b-0">
-                    <dt className="text-[13px] font-bold text-[#1c1917] truncate">{r.label}</dt>
-                    <dd className={`row-span-2 self-center text-[15px] font-bold tabular-nums ${toneClass(r.tone)}`}>{r.value}</dd>
-                    <dd className="text-[11.5px] text-[#78716c] truncate">{r.sub}</dd>
-                  </div>
-                ))}
-              </dl>
-            </ExplorePanel>
+          {hasSteadiness && (
+            <div className={cell("lg:col-span-4", hasAnnual)}>
+              <ExplorePanel eyebrow="Returns" title="How Steady Was It?" desc="How its calendar years went, and how long it has been invested.">
+                {figureList(steadiness)}
+              </ExplorePanel>
+            </div>
           )}
         </div>
       )}
-      {data.horizons.length > 0 && (
-        <ExplorePanel
-          eyebrow="Returns"
-          title="By Horizon"
-          desc="Each trailing period with the risk taken to earn it. Return / risk is the return divided by the volatility: how much it earned for each unit of swing."
-        >
-          <DataTable columns={horizonColumns} rows={data.horizons} rowKey={(h) => h.period} />
-        </ExplorePanel>
+      {(hasHorizons || hasExtremes) && (
+        <div className={row(hasHorizons && hasExtremes)}>
+          {hasHorizons && (
+            <div className={cell("lg:col-span-8", hasExtremes)}>
+              <ExplorePanel
+                eyebrow="Returns"
+                title="By Horizon"
+                desc="Each trailing period with the risk taken to earn it. Return / risk is the return divided by the volatility: how much it earned for each unit of swing."
+              >
+                <DataTable columns={horizonColumns} rows={data.horizons} rowKey={(h) => h.period} />
+              </ExplorePanel>
+            </div>
+          )}
+          {hasExtremes && (
+            <div className={cell("lg:col-span-4", hasHorizons)}>
+              <ExplorePanel eyebrow="Returns" title="Best and Worst Months" desc="The extremes of the monthly returns, and the deepest fall since inception.">
+                {figureList([
+                  ...(data.bestMonth ? [{ key: "best", label: monthYearLabel(data.bestMonth.month), sub: "Best month", value: formatPct(data.bestMonth.returnPct), tone: toneOfValue(data.bestMonth.returnPct) }] : []),
+                  ...(data.worstMonth ? [{ key: "worst", label: monthYearLabel(data.worstMonth.month), sub: "Worst month", value: formatPct(data.worstMonth.returnPct), tone: toneOfValue(data.worstMonth.returnPct) }] : []),
+                  ...(data.maxDrawdownPct !== null ? [{ key: "fall", label: "Deepest fall", sub: "From a high to a later low, since inception", value: formatPct(-Math.abs(data.maxDrawdownPct)), tone: "loss" as const }] : []),
+                ])}
+              </ExplorePanel>
+            </div>
+          )}
+        </div>
       )}
     </>
   );
