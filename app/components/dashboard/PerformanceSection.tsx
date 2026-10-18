@@ -26,6 +26,7 @@ import { useDetail, useInsights, type Insights, type SectionState } from "../../
 import { pushDashboardEntry, readDashboardEntry, type DashboardOverlay } from "../../lib/dashboardHistory";
 import { NoDataEmptyState } from "./NoDataEmptyState";
 import { InstrumentProfileModule } from "./InstrumentProfileModule";
+import { CompanyDescriptionModule } from "./CompanyDescriptionModule";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { PageHeader } from "./PageHeader";
 import { ExploreView, ExploreHostContext, ExplorePanel, DataTable, type DataColumn, type ExploreHeader } from "./ExploreView";
@@ -2115,6 +2116,7 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
             {facts.map((f) => <Fig key={f.label} label={f.label} value={f.value} />)}
           </Figs>
         </Module>
+        <CompanyDescriptionModule profile={data.profile ?? null} />
         <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
         {data.sectorWeightings.length > 1 && (
           <Module>
