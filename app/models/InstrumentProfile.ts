@@ -9,11 +9,13 @@ import type { StrategyCategory } from "./Strategy";
 // provider's rules; esma_firds: ESMA's FIRDS, whose reuse is authorised with the source
 // acknowledged; isin: the fund's ISIN (its domicile); price_provider: the market-data provider;
 // registry: a crypto asset is one; users_votes: the users' consensus on the category; sec_filing:
-// a company's annual report on the SEC's EDGAR (a 10-K, a foreign company's 20-F), to be cited; curation: a curator's
-// decision, above every source. "unknown" for one this page doesn't know yet.
+// a company's annual report on the SEC's EDGAR (a 10-K, a foreign company's 20-F), to be cited;
+// wikipedia: a company's English Wikipedia article (its revision linked), CC BY-SA 4.0, to be
+// attributed with its licence; curation: a curator's decision, above every source. "unknown" for
+// one this page doesn't know yet.
 type ProfileSource =
   | "issuer_kid" | "index_methodology" | "esma_firds" | "isin" | "price_provider" | "registry" | "users_votes"
-  | "sec_filing" | "curation" | "unknown";
+  | "sec_filing" | "wikipedia" | "curation" | "unknown";
 
 interface ProfileSourceRef {
   source: ProfileSource;
@@ -105,8 +107,9 @@ interface InstrumentProfile {
   headquartersCity: string | null;
   employees: number | null;
   website: string | null;
-  // A company's filing with the SEC: what it does, one paragraph of English an AI model summarised from its latest
-  // annual report's business section (sources.description: sec_filing, the report linked).
+  // A company's: what it does, in English. A paragraph an AI model summarised from its latest
+  // annual report filed with the SEC (sources.description: sec_filing, the report linked), else its
+  // Wikipedia article's lead as written, paragraphs separated by blank lines (wikipedia).
   description: string | null;
   sources: Partial<Record<
     | "category" | "terPct" | "distribution" | "assetClass" | "domicile" | "replication" | "currencyHedged" | "riskIndicator" | "index"
@@ -124,6 +127,7 @@ const PROFILE_SOURCE_LABELS: Record<ProfileSource, string> = {
   registry: "Crypto registry",
   users_votes: "Users' consensus",
   sec_filing: "Annual report (SEC)",
+  wikipedia: "Wikipedia",
   curation: "Reviewed by Atrium",
   unknown: "Other source",
 };
