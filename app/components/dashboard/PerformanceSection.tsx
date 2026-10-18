@@ -1475,7 +1475,7 @@ function HoldingsExplorer({
         value: h.marketValue,
         weightPct: h.weightPct,
         color: palette(i),
-        onOpen: assetKeyOf(h) ? () => setExploringAsset(h) : undefined,
+        onOpen: h.listingId ? () => setExploringAsset(h) : undefined,
       }));
     }
     if (breakdown === "class") {
@@ -1708,9 +1708,9 @@ function HoldingsExplorer({
           />
         </ExploreView>
       )}
-      {exploringAsset && assetKeyOf(exploringAsset) && (
+      {exploringAsset?.listingId && (
         <ExploreView title={exploringAsset.ticker ?? exploringAsset.name} onClose={() => setExploringAsset(null)} noTrail>
-          <AssetExplore asset={assetKeyOf(exploringAsset)!} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={slot.revision} />
+          <AssetExplore listingId={exploringAsset.listingId} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={slot.revision} />
         </ExploreView>
       )}
     </Module>
@@ -1833,7 +1833,7 @@ function CompositionExplore({
                   dataKey="size"
                   nameKey="name"
                   isAnimationActive={false}
-                  content={(node) => <HoldingsMapCell node={node} onOpen={(assetId) => { const h = holdings.find((x) => x.assetId === assetId); if (h && assetKeyOf(h)) onOpenAsset(h); }} />}
+                  content={(node) => <HoldingsMapCell node={node} onOpen={(assetId) => { const h = holdings.find((x) => x.assetId === assetId); if (h?.listingId) onOpenAsset(h); }} />}
                 />
               </ResponsiveContainer>
             </div>
@@ -1941,14 +1941,13 @@ function HoldingsMapCell({ node, onOpen }: { node: TreemapNode; onOpen: (assetId
 }
 
 const ASSET_RANGES: AssetChartRange[] = ["1M", "6M", "1Y", "5Y", "MAX"];
-/** What the asset page asks for a holding by: its listing, else the ticker it was recorded by. */
-const assetKeyOf = (h: Pick<PortfolioHoldingResponse, "listingId" | "ticker">) => h.listingId || h.ticker;
 
 const ASSET_RANGE_LABELS: Record<AssetChartRange, string> = { "1M": "1 month", "6M": "6 months", "1Y": "1 year", "5Y": "5 years", MAX: "all time" };
 
 /**
  * ASSET EXPLORE — one holding's own page, opened from a row of HoldingsExplorer: its price
- * over a chosen range (GET /v1/assets/{asset}: its listing, or the ticker it was recorded by), for
+ * over a chosen range (GET /v1/assets/{listing_id}: a holding without census' listing, as a
+ * manual asset, has no page), for
  * a bond the rates it's priced against (BondRatesModule), what the asset is (identifiers, class,
  * sector or TER…), what it's made of when it's a fund, and the user's own position in it
  * (GET /positions/{assetId}, fetched alongside: the asset endpoint knows nothing about
@@ -1960,7 +1959,7 @@ const ASSET_RANGE_LABELS: Record<AssetChartRange, string> = { "1M": "1 month", "
  * range keeps the previous chart on screen (dimmed) until the new one arrives, since a ticker
  * nobody else holds can take a few seconds.
  */
-export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asset: string; assetId: string; portfolioUuid?: string; revision: number }) {
+export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { listingId: string; assetId: string; portfolioUuid?: string; revision: number }) {
   const position = useDetail(portfolioUuid ? () => portfolioService.getPosition(portfolioUuid, assetId) : null, assetId, revision);
   const [range, setRange] = useState<AssetChartRange>("1Y");
   const [inQuoteCurrency, setInQuoteCurrency] = useState(false);
@@ -1972,7 +1971,7 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
 
   useEffect(() => {
     let cancelled = false;
-    portfolioService.getAssetDetail(asset, range)
+    portfolioService.getAssetDetail(listingId, range)
       .then((data) => { if (!cancelled) setState({ data, error: null, forRange: range }); })
       .catch((err) => {
         if (cancelled) return;
@@ -1982,7 +1981,7 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
         setState((prev) => ({ ...prev, error, forRange: range }));
       });
     return () => { cancelled = true; };
-  }, [asset, range]);
+  }, [listingId, range]);
 
   const loading = state.forRange !== range;
   const error = loading ? null : state.error;
@@ -2124,7 +2123,7 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
           <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
           <CompanyDescriptionModule profile={data.profile ?? null} />
         </div>
-        <AssetNewsModule asset={asset} name={data.name} />
+        <AssetNewsModule listingId={listingId} name={data.name} />
         <AssetArticlesModule instrumentId={data.listing?.instrumentId ?? null} ticker={data.ticker} isin={data.isin} />
         {data.sectorWeightings.length > 1 && (
           <Module>
@@ -3836,9 +3835,9 @@ function PortfoliosModule({ slot, holdings, sector, region, overlapping, currenc
           />
         </ExploreView>
       )}
-      {exploringAsset && assetKeyOf(exploringAsset) && (
+      {exploringAsset?.listingId && (
         <ExploreView title={exploringAsset.ticker ?? exploringAsset.name} onClose={() => setExploringAsset(null)} noTrail>
-          <AssetExplore asset={assetKeyOf(exploringAsset)!} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={holdings.revision} />
+          <AssetExplore listingId={exploringAsset.listingId} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={holdings.revision} />
         </ExploreView>
       )}
     </Module>

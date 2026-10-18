@@ -121,11 +121,10 @@ export const portfolioService = {
     return apiFetch<RiskModelResponse | null>(`/v1/portfolios/${portfolioUuid}/insights/risk-model`);
   },
 
-  // GET /v1/assets/{ticker}?range= — a listed asset's price history and metadata, not tied to a
-  // portfolio. `ticker` is the market-data ticker the holdings rows carry (VWCE.MI, BTC-USD…),
-  // not the ISIN; it's URL-encoded since some contain ^ or =. Throws ApiError 404 for a ticker
-  // no provider knows.
-  async getAssetDetail(asset: string, range: AssetChartRange = "1Y"): Promise<AssetDetailResponse> {
-    return apiFetch<AssetDetailResponse>(`/v1/assets/${encodeURIComponent(asset)}${buildQuery({ range })}`);
+  // GET /v1/assets/{listing_id}?range= — a listed asset's price history and metadata, not tied
+  // to a portfolio, by census' listing id (a holding's listingId, a search result's). Throws
+  // ApiError 404 for a listing census doesn't know or no provider prices.
+  async getAssetDetail(listingId: string, range: AssetChartRange = "1Y"): Promise<AssetDetailResponse> {
+    return apiFetch<AssetDetailResponse>(`/v1/assets/${encodeURIComponent(listingId)}${buildQuery({ range })}`);
   },
 };
