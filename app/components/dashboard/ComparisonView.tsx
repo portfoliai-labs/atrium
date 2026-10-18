@@ -107,7 +107,7 @@ export function ComparisonView({
       {external.length > 0 && (
         <p className="flex items-start gap-2 text-xs text-slate-500 max-w-3xl">
           <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          A strategy&apos;s figures are its backtest&apos;s, simulated, as saved; a published strategy&apos;s are gross of costs, as in the catalog.
+          A strategy&apos;s figures are its backtest&apos;s, simulated, as saved; net of trading costs, as in the catalog.
         </p>
       )}
       {failed && (failedStatus === 403 || failedStatus === 404) && external.length > 0 ? (
