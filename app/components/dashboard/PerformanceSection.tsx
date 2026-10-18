@@ -2105,25 +2105,28 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
       {isBondClass(data.assetClass) && <BondRatesModule isin={data.isin} name={data.name} currency={data.quoteCurrency} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-[22px]">
-        {/* Your position beside the Profile; then Key facts, Market data and a fund's Index or a
-            company's description, sharing the row however many there are. */}
-        {position.data && <PositionPanel position={position.data} />}
-        <Module>
-          <ModuleHead title="Profile" desc="What the asset is and where it trades." />
-          {/* One fact a row, its value on the right: a market's or an industry's name wraps, not cut. */}
-          <dl className={MODULE_BODY}>
-            {facts.map((f) => (
-              <div key={f.label} className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-4 py-2.5 border-b border-[#EEE9DD] last:border-b-0">
-                <dt className="text-[12.5px] text-[#78716c]">{f.label}</dt>
-                <dd className="text-right text-[13.5px] font-bold text-[#1c1917] break-words">{f.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </Module>
-        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-none xl:grid-flow-col xl:auto-cols-fr gap-[22px] empty:hidden">
+        {/* Two to a row, a row's lone card the whole of it: your position, its dividends and what
+            it does or aims to do, so the description fills in for whichever is missing; then the
+            Profile, Key facts, a fund's Index and Market data. */}
+        <div className={`md:col-span-2 ${PAIRS} empty:hidden`}>
+          {position.data && <PositionPanel position={position.data} />}
+          <CompanyDescriptionModule profile={data.profile ?? null} />
+        </div>
+        <div className={`md:col-span-2 ${PAIRS}`}>
+          <Module>
+            <ModuleHead title="Profile" desc="What the asset is and where it trades." />
+            {/* One fact a row, its value on the right: a market's or an industry's name wraps, not cut. */}
+            <dl className={MODULE_BODY}>
+              {facts.map((f) => (
+                <div key={f.label} className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-4 py-2.5 border-b border-[#EEE9DD] last:border-b-0">
+                  <dt className="text-[12.5px] text-[#78716c]">{f.label}</dt>
+                  <dd className="text-right text-[13.5px] font-bold text-[#1c1917] break-words">{f.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </Module>
           <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
           <MarketDataModule listingId={listingId} />
-          <CompanyDescriptionModule profile={data.profile ?? null} />
         </div>
         <AssetNewsModule listingId={listingId} name={data.name} />
         <AssetArticlesModule instrumentId={data.listing?.instrumentId ?? null} ticker={data.ticker} isin={data.isin} />
@@ -2150,54 +2153,62 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
   );
 }
 
+// Cards two to a row on an asset's page, a row's lone card (the last, when they're odd) the
+// whole of it.
+const PAIRS = "grid grid-cols-1 md:grid-cols-2 gap-[22px] md:[&>*:last-child:nth-child(odd)]:col-span-2";
+
 /**
  * POSITION PANEL — the user's own position in an asset, in the reference currency: what's held
  * now and what it's worth, then what selling it has realized and what trading it has cost on each
- * broker, each only when it applies; under them, what it has paid in dividends, when it has.
+ * broker, each only when it applies; beside it, in a card of its own, what it has paid in
+ * dividends, when it has. Cards of the page's grid, not one: whatever follows them fills the row.
  */
 function PositionPanel({ position }: { position: PositionResponse }) {
   const { currency, holding, realized, costs, dividends } = position;
   const sold = realized !== null && realized.realizedTradingPnl !== 0;
+  const held = !!holding || sold || costs.length > 0;
   const paid = !!dividends && dividends.lifetimeIncome > 0;
-  if (!holding && !sold && costs.length === 0 && !paid) return null;
+  if (!held && !paid) return null;
 
   return (
-    <Module>
-      <ModuleHead
-        title={holding ? "Position" : "Past Position"}
-        desc="What you hold of it, what selling it has realized, what trading it has cost and what it has paid you."
-      />
-      <div className={`${MODULE_BODY} space-y-5`}>
-        <Figs>
-          {holding && (
-            <>
-              <Fig label="Market value" value={formatCurrency(holding.marketValue, currency, 0)} strong />
-              <Fig label="Unrealized P&L" value={formatSignedCurrency(holding.unrealizedPnl, currency)} tone={toneOfValue(holding.unrealizedPnl)} />
-              <Fig label="Quantity" value={formatQuantity(holding.quantity)} />
-              <Fig label="Avg. cost" value={formatCurrency(holding.avgCost, currency, 2)} />
-              <Fig label="Price" value={formatCurrency(holding.currentPrice, holding.currency, 2)} />
-              <Fig label="Invested" value={formatCurrency(holding.costBasis, currency, 0)} />
-              <Fig label="In portfolio" value={`${holding.weightPct.toFixed(1)}%`} sub="Of its value" />
-            </>
-          )}
-          {sold && <Fig label="Realized from sales" value={formatSignedCurrency(realized.realizedTradingPnl, currency)} tone={toneOfValue(realized.realizedTradingPnl)} />}
-          {costs.map((c) => (
-            <Fig key={c.broker} label={costs.length > 1 ? `Trading costs · ${c.broker}` : "Trading costs"} value={formatCurrency(c.totalCosts, currency, 2)} />
-          ))}
-        </Figs>
-        {paid && (
-          <div className="space-y-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#78716c]">Dividends</p>
-            <Figs>
-              <Fig label="Received" value={formatCurrency(dividends.lifetimeIncome, currency, 0)} sub="Since first buy" tone="gain" />
-              <Fig label="Last 12 months" value={formatCurrency(dividends.trailing12MIncome, currency, 0)} />
-              <Fig label="Yield" value={plainPctOrDash(dividends.yieldPct)} />
-              <Fig label="Yield on cost" value={plainPctOrDash(dividends.yieldOnCostPct)} />
-            </Figs>
-          </div>
-        )}
-      </div>
-    </Module>
+    <>
+      {held && (
+        <Module>
+          <ModuleHead
+            title={holding ? "Position" : "Past Position"}
+            desc="What you hold of it, what selling it has realized and what trading it has cost."
+          />
+          <Figs className={MODULE_BODY}>
+            {holding && (
+              <>
+                <Fig label="Market value" value={formatCurrency(holding.marketValue, currency, 0)} strong />
+                <Fig label="Unrealized P&L" value={formatSignedCurrency(holding.unrealizedPnl, currency)} tone={toneOfValue(holding.unrealizedPnl)} />
+                <Fig label="Quantity" value={formatQuantity(holding.quantity)} />
+                <Fig label="Avg. cost" value={formatCurrency(holding.avgCost, currency, 2)} />
+                <Fig label="Price" value={formatCurrency(holding.currentPrice, holding.currency, 2)} />
+                <Fig label="Invested" value={formatCurrency(holding.costBasis, currency, 0)} />
+                <Fig label="In portfolio" value={`${holding.weightPct.toFixed(1)}%`} sub="Of its value" />
+              </>
+            )}
+            {sold && <Fig label="Realized from sales" value={formatSignedCurrency(realized.realizedTradingPnl, currency)} tone={toneOfValue(realized.realizedTradingPnl)} />}
+            {costs.map((c) => (
+              <Fig key={c.broker} label={costs.length > 1 ? `Trading costs · ${c.broker}` : "Trading costs"} value={formatCurrency(c.totalCosts, currency, 2)} />
+            ))}
+          </Figs>
+        </Module>
+      )}
+      {paid && (
+        <Module>
+          <ModuleHead title="Dividends" desc="What it has paid you." />
+          <Figs className={MODULE_BODY}>
+            <Fig label="Received" value={formatCurrency(dividends.lifetimeIncome, currency, 0)} sub="Since first buy" tone="gain" strong />
+            <Fig label="Last 12 months" value={formatCurrency(dividends.trailing12MIncome, currency, 0)} />
+            <Fig label="Yield" value={plainPctOrDash(dividends.yieldPct)} />
+            <Fig label="Yield on cost" value={plainPctOrDash(dividends.yieldOnCostPct)} />
+          </Figs>
+        </Module>
+      )}
+    </>
   );
 }
 
