@@ -32,23 +32,23 @@ type Row = { key: string; label: string; value: string; source: number };
  * shares outstanding at the last price), the listing's average daily volume, and the statistics
  * of its own daily closes over the last three years (or what it has, from one): annualised
  * return and volatility, max drawdown, Sharpe ratio against its currency's central bank rate
- * (GET /v1/assets/{asset}/market-data). The provider's figures cite the provider; the statistics
+ * (GET /v1/assets/{listing_id}/market-data, by the page's listing id). The provider's figures cite the provider; the statistics
  * are the platform's own, computed with the method in the "i", never a provider's. Computed once
  * a day per listing, so the first visit of the day can take a few seconds: it loads on its own,
  * after the page. An error, or a listing with none of them, leaves the card out.
  */
-export function MarketDataModule({ asset }: { asset: string }) {
-  const [state, setState] = useState<{ asset: string; data: AssetMarketData | null } | null>(null);
+export function MarketDataModule({ listingId }: { listingId: string }) {
+  const [state, setState] = useState<{ listingId: string; data: AssetMarketData | null } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    portfolioService.getAssetMarketData(asset)
-      .then((data) => { if (!cancelled) setState({ asset, data }); })
-      .catch(() => { if (!cancelled) setState({ asset, data: null }); });
+    portfolioService.getAssetMarketData(listingId)
+      .then((data) => { if (!cancelled) setState({ listingId, data }); })
+      .catch(() => { if (!cancelled) setState({ listingId, data: null }); });
     return () => { cancelled = true; };
-  }, [asset]);
+  }, [listingId]);
 
-  const current = state?.asset === asset ? state : undefined;
+  const current = state?.listingId === listingId ? state : undefined;
   if (current === undefined) {
     return (
       <Module className="flex flex-col">

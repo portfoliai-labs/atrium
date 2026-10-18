@@ -132,7 +132,7 @@ export const portfolioService = {
   // GET /v1/assets/{listing_id}/market-data — the listing's market cap, average volume and risk
   // statistics, computed once a day (a listing's first call of the day can take a few seconds).
   // Throws ApiError 404 as getAssetDetail.
-  async getAssetMarketData(asset: string): Promise<AssetMarketData> {
-    return apiFetch<AssetMarketData>(`/v1/assets/${encodeURIComponent(asset)}/market-data`);
+  async getAssetMarketData(listingId: string): Promise<AssetMarketData> {
+    return apiFetch<AssetMarketData>(`/v1/assets/${encodeURIComponent(listingId)}/market-data`);
   },
 };

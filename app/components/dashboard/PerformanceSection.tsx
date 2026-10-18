@@ -2122,7 +2122,7 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
         </Module>
         <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-none xl:grid-flow-col xl:auto-cols-fr gap-[22px] empty:hidden">
           <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
-          <MarketDataModule asset={asset} />
+          <MarketDataModule listingId={listingId} />
           <CompanyDescriptionModule profile={data.profile ?? null} />
         </div>
         <AssetNewsModule listingId={listingId} name={data.name} />
