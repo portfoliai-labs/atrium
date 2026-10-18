@@ -6,6 +6,7 @@ import type {
   RealizedPnlResponse, ReturnsResponse, PeriodDashboard, BenchmarkResponse, VolatilityDetailResponse, RiskModelResponse,
   AssetDetailResponse, AssetChartRange,
 } from "../models/PortfolioData";
+import type { AssetMarketData } from "../models/MarketData";
 import { apiFetch } from "./apiClient";
 
 const buildQuery = (params: Record<string, string | number | null | undefined>) => {
@@ -127,5 +128,12 @@ export const portfolioService = {
   // no provider knows.
   async getAssetDetail(asset: string, range: AssetChartRange = "1Y"): Promise<AssetDetailResponse> {
     return apiFetch<AssetDetailResponse>(`/v1/assets/${encodeURIComponent(asset)}${buildQuery({ range })}`);
+  },
+
+  // GET /v1/assets/{listing_id}/market-data — the listing's market cap, average volume and risk
+  // statistics, computed once a day (a listing's first call of the day can take a few seconds).
+  // Throws ApiError 404 as getAssetDetail.
+  async getAssetMarketData(asset: string): Promise<AssetMarketData> {
+    return apiFetch<AssetMarketData>(`/v1/assets/${encodeURIComponent(asset)}/market-data`);
   },
 };

@@ -32,6 +32,7 @@ import { AssetNewsModule } from "./AssetNewsModule";
 import { BondRatesModule } from "./MarketRates";
 import { isBondClass } from "../../lib/rates";
 import { CompanyDescriptionModule } from "./CompanyDescriptionModule";
+import { MarketDataModule } from "./MarketDataModule";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { PageHeader } from "./PageHeader";
 import { ExploreView, ExploreHostContext, ExplorePanel, DataTable, type DataColumn, type ExploreHeader } from "./ExploreView";
@@ -2104,8 +2105,8 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
       {isBondClass(data.assetClass) && <BondRatesModule isin={data.isin} name={data.name} currency={data.quoteCurrency} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-[22px]">
-        {/* Your position beside the Profile; then Key facts beside a fund's Index or a company's
-            description, sharing the row however many there are. */}
+        {/* Your position beside the Profile; then Key facts, Market data and a fund's Index or a
+            company's description, sharing the row however many there are. */}
         {position.data && <PositionPanel position={position.data} />}
         <Module>
           <ModuleHead title="Profile" desc="What the asset is and where it trades." />
@@ -2121,6 +2122,7 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
         </Module>
         <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-none xl:grid-flow-col xl:auto-cols-fr gap-[22px] empty:hidden">
           <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
+          <MarketDataModule asset={asset} />
           <CompanyDescriptionModule profile={data.profile ?? null} />
         </div>
         <AssetNewsModule asset={asset} name={data.name} />
