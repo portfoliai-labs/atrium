@@ -34,7 +34,7 @@ export function AssetSection({ portfolioUuid }: { portfolioUuid?: string }) {
       >
         <ArrowLeft className="h-3.5 w-3.5" /> Back
       </button>
-      <AssetExplore key={view.listingId} asset={view.listingId} assetId={view.instrumentId} portfolioUuid={portfolioUuid} revision={0} />
+      <AssetExplore key={view.listingId} listingId={view.listingId} assetId={view.instrumentId} portfolioUuid={portfolioUuid} revision={0} />
     </div>
   );
 }
