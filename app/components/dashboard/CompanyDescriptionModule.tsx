@@ -17,19 +17,25 @@ const dayLabel = (iso: string) =>
  * an AI model summarised from its latest annual report (filed with the SEC, a 10-K or a foreign
  * company's 20-F, the SEC named as the source; or an EU company's ESEF report), marked as the AI's,
  * the report linked; else its English Wikipedia article's lead as written, attributed as its
- * licence asks (the article's revision, its authors, CC BY-SA 4.0). Nothing for an asset census
- * has no description of.
+ * licence asks (the article's revision, its authors, CC BY-SA 4.0). A fund's: what it aims to do,
+ * an AI model's summary of its KID's objectives, the KID linked ("About the fund"). Nothing for an
+ * asset census has no description of.
  */
 export function CompanyDescriptionModule({ profile }: { profile: InstrumentProfile | null }) {
   if (!profile?.description) return null;
   const source = profile.sources.description;
   const fromWikipedia = source?.source === "wikipedia";
+  const fromKid = source?.source === "issuer_kid";
 
   return (
     <Module className="md:col-span-2">
       <ModuleHead
-        title="About the company"
-        desc={fromWikipedia ? "What it does, from its Wikipedia article." : "What it does, from its latest annual report."}
+        title={fromKid ? "About the fund" : "About the company"}
+        desc={
+          fromKid ? "What it aims to do, from its key information document."
+          : fromWikipedia ? "What it does, from its Wikipedia article."
+          : "What it does, from its latest annual report."
+        }
       />
       <div className={`${MODULE_BODY} space-y-3`}>
         {profile.description.split(/\n\s*\n/).map((paragraph, i) => (
@@ -40,7 +46,8 @@ export function CompanyDescriptionModule({ profile }: { profile: InstrumentProfi
           {source && !fromWikipedia && (
             <>
               <NoteS>
-                <AiBadge /> Summarised by an AI model from the company&apos;s annual report: check it against the report linked.
+                <AiBadge /> Summarised by an AI model from {fromKid ? "the fund\u2019s key information document" : "the company\u2019s annual report"}:
+                check it against the document linked.
               </NoteS>
               <NoteS><SourceCitation source={source} /></NoteS>
             </>
