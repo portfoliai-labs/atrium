@@ -40,6 +40,31 @@ type Region =
   | "asia_pacific" | "single_country" | "other";
 type IndexSize = "large" | "large_mid" | "mid" | "small" | "all_cap";
 type Rebalancing = "monthly" | "quarterly" | "semi_annual" | "annual" | "other";
+// A company's GICS sector (11) and industry (74, the 2023 structure).
+type Sector =
+  | "energy" | "materials" | "industrials" | "consumer_discretionary" | "consumer_staples" | "health_care"
+  | "financials" | "information_technology" | "communication_services" | "utilities" | "real_estate";
+type Industry =
+  | "energy_equipment_services" | "oil_gas_consumable_fuels" | "chemicals" | "construction_materials"
+  | "containers_packaging" | "metals_mining" | "paper_forest_products" | "aerospace_defense"
+  | "building_products" | "construction_engineering" | "electrical_equipment" | "industrial_conglomerates"
+  | "machinery" | "trading_companies_distributors" | "commercial_services_supplies"
+  | "professional_services" | "air_freight_logistics" | "passenger_airlines" | "marine_transportation"
+  | "ground_transportation" | "transportation_infrastructure" | "automobile_components" | "automobiles"
+  | "household_durables" | "leisure_products" | "textiles_apparel_luxury_goods"
+  | "hotels_restaurants_leisure" | "diversified_consumer_services" | "distributors" | "broadline_retail"
+  | "specialty_retail" | "consumer_staples_distribution_retail" | "beverages" | "food_products" | "tobacco"
+  | "household_products" | "personal_care_products" | "health_care_equipment_supplies"
+  | "health_care_providers_services" | "health_care_technology" | "biotechnology" | "pharmaceuticals"
+  | "life_sciences_tools_services" | "banks" | "financial_services" | "consumer_finance" | "capital_markets"
+  | "mortgage_real_estate_investment_trusts_reits" | "insurance" | "it_services" | "software"
+  | "communications_equipment" | "technology_hardware_storage_peripherals"
+  | "electronic_equipment_instruments_components" | "semiconductors_semiconductor_equipment"
+  | "diversified_telecommunication_services" | "wireless_telecommunication_services" | "media"
+  | "entertainment" | "interactive_media_services" | "electric_utilities" | "gas_utilities"
+  | "multi_utilities" | "water_utilities" | "independent_power_and_renewable_electricity_producers"
+  | "diversified_reits" | "industrial_reits" | "hotel_resort_reits" | "office_reits" | "health_care_reits"
+  | "residential_reits" | "retail_reits" | "specialized_reits" | "real_estate_management_development";
 
 // The index a fund tracks, shared by the funds tracking it; `sources` by field (factors,
 // weighting, region, size, rebalancing).
@@ -71,8 +96,17 @@ interface InstrumentProfile {
   // The KID's summary risk indicator, 1 to 7.
   riskIndicator: number | null;
   index: IndexProfile | null;
+  // A company's (a share's): its GICS sector and industry, its head office (ISO 3166-1 alpha-2,
+  // and the city), its full-time employees, its website.
+  sector: Sector | null;
+  industry: Industry | null;
+  headquarters: string | null;
+  headquartersCity: string | null;
+  employees: number | null;
+  website: string | null;
   sources: Partial<Record<
-    "category" | "terPct" | "distribution" | "assetClass" | "domicile" | "replication" | "currencyHedged" | "riskIndicator" | "index",
+    | "category" | "terPct" | "distribution" | "assetClass" | "domicile" | "replication" | "currencyHedged" | "riskIndicator" | "index"
+    | "sector" | "industry" | "headquarters" | "headquartersCity" | "employees" | "website",
     ProfileSourceRef
   >>;
 }
@@ -116,6 +150,95 @@ const INDEX_SIZE_LABELS: Record<IndexSize, string> = {
 const REBALANCING_LABELS: Record<Rebalancing, string> = {
   monthly: "Monthly", quarterly: "Quarterly", semi_annual: "Twice a year", annual: "Yearly", other: "Other",
 };
+const SECTOR_LABELS: Record<Sector, string> = {
+  energy: "Energy",
+  materials: "Materials",
+  industrials: "Industrials",
+  consumer_discretionary: "Consumer Discretionary",
+  consumer_staples: "Consumer Staples",
+  health_care: "Health Care",
+  financials: "Financials",
+  information_technology: "Information Technology",
+  communication_services: "Communication Services",
+  utilities: "Utilities",
+  real_estate: "Real Estate",
+};
+const INDUSTRY_LABELS: Record<Industry, string> = {
+  energy_equipment_services: "Energy Equipment & Services",
+  oil_gas_consumable_fuels: "Oil, Gas & Consumable Fuels",
+  chemicals: "Chemicals",
+  construction_materials: "Construction Materials",
+  containers_packaging: "Containers & Packaging",
+  metals_mining: "Metals & Mining",
+  paper_forest_products: "Paper & Forest Products",
+  aerospace_defense: "Aerospace & Defense",
+  building_products: "Building Products",
+  construction_engineering: "Construction & Engineering",
+  electrical_equipment: "Electrical Equipment",
+  industrial_conglomerates: "Industrial Conglomerates",
+  machinery: "Machinery",
+  trading_companies_distributors: "Trading Companies & Distributors",
+  commercial_services_supplies: "Commercial Services & Supplies",
+  professional_services: "Professional Services",
+  air_freight_logistics: "Air Freight & Logistics",
+  passenger_airlines: "Passenger Airlines",
+  marine_transportation: "Marine Transportation",
+  ground_transportation: "Ground Transportation",
+  transportation_infrastructure: "Transportation Infrastructure",
+  automobile_components: "Automobile Components",
+  automobiles: "Automobiles",
+  household_durables: "Household Durables",
+  leisure_products: "Leisure Products",
+  textiles_apparel_luxury_goods: "Textiles, Apparel & Luxury Goods",
+  hotels_restaurants_leisure: "Hotels, Restaurants & Leisure",
+  diversified_consumer_services: "Diversified Consumer Services",
+  distributors: "Distributors",
+  broadline_retail: "Broadline Retail",
+  specialty_retail: "Specialty Retail",
+  consumer_staples_distribution_retail: "Consumer Staples Distribution & Retail",
+  beverages: "Beverages",
+  food_products: "Food Products",
+  tobacco: "Tobacco",
+  household_products: "Household Products",
+  personal_care_products: "Personal Care Products",
+  health_care_equipment_supplies: "Health Care Equipment & Supplies",
+  health_care_providers_services: "Health Care Providers & Services",
+  health_care_technology: "Health Care Technology",
+  biotechnology: "Biotechnology",
+  pharmaceuticals: "Pharmaceuticals",
+  life_sciences_tools_services: "Life Sciences Tools & Services",
+  banks: "Banks",
+  financial_services: "Financial Services",
+  consumer_finance: "Consumer Finance",
+  capital_markets: "Capital Markets",
+  mortgage_real_estate_investment_trusts_reits: "Mortgage Real Estate Investment Trusts (REITs)",
+  insurance: "Insurance",
+  it_services: "IT Services",
+  software: "Software",
+  communications_equipment: "Communications Equipment",
+  technology_hardware_storage_peripherals: "Technology Hardware, Storage & Peripherals",
+  electronic_equipment_instruments_components: "Electronic Equipment, Instruments & Components",
+  semiconductors_semiconductor_equipment: "Semiconductors & Semiconductor Equipment",
+  diversified_telecommunication_services: "Diversified Telecommunication Services",
+  wireless_telecommunication_services: "Wireless Telecommunication Services",
+  media: "Media",
+  entertainment: "Entertainment",
+  interactive_media_services: "Interactive Media & Services",
+  electric_utilities: "Electric Utilities",
+  gas_utilities: "Gas Utilities",
+  multi_utilities: "Multi-Utilities",
+  water_utilities: "Water Utilities",
+  independent_power_and_renewable_electricity_producers: "Independent Power and Renewable Electricity Producers",
+  diversified_reits: "Diversified REITs",
+  industrial_reits: "Industrial REITs",
+  hotel_resort_reits: "Hotel & Resort REITs",
+  office_reits: "Office REITs",
+  health_care_reits: "Health Care REITs",
+  residential_reits: "Residential REITs",
+  retail_reits: "Retail REITs",
+  specialized_reits: "Specialized REITs",
+  real_estate_management_development: "Real Estate Management & Development",
+};
 
 /** A label from `labels`, or the value as the API wrote it for one this page doesn't know yet. */
 function labelOf<T extends string>(labels: Record<T, string>, value: T): string {
@@ -124,9 +247,9 @@ function labelOf<T extends string>(labels: Record<T, string>, value: T): string 
 
 export type {
   InstrumentProfile, IndexProfile, ProfileSource, ProfileSourceRef,
-  Distribution, ProfileAssetClass, Replication, Factor, Weighting, Region, IndexSize, Rebalancing,
+  Distribution, ProfileAssetClass, Replication, Factor, Weighting, Region, IndexSize, Rebalancing, Sector, Industry,
 };
 export {
   PROFILE_SOURCE_LABELS, DISTRIBUTION_LABELS, PROFILE_ASSET_CLASS_LABELS, REPLICATION_LABELS, FACTOR_LABELS,
-  WEIGHTING_LABELS, REGION_LABELS, INDEX_SIZE_LABELS, REBALANCING_LABELS, labelOf,
+  WEIGHTING_LABELS, REGION_LABELS, INDEX_SIZE_LABELS, REBALANCING_LABELS, SECTOR_LABELS, INDUSTRY_LABELS, labelOf,
 };
