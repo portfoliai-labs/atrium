@@ -15,23 +15,23 @@ const dateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { m
 
 /**
  * NEWS — on an asset's page (AssetExplore), what's been written about it over the last week
- * (GET /v1/assets/{asset}/news, by the same listing id or ticker as the page): each article's
+ * (GET /v1/assets/{listing_id}/news, by the page's listing id): each article's
  * outlet, day and title, opening it on its site. Searched while asked (a few seconds), so it
  * loads on its own, after the page. A fund nobody writes about (most UCITS ETFs) has none, and
  * — like an error — leaves the module out.
  */
-export function AssetNewsModule({ asset, name }: { asset: string; name: string }) {
-  const [state, setState] = useState<{ asset: string; items: NewsItem[] | null } | null>(null);
+export function AssetNewsModule({ listingId, name }: { listingId: string; name: string }) {
+  const [state, setState] = useState<{ listingId: string; items: NewsItem[] | null } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    newsService.getAssetNews(asset, NEWS_DAYS, NEWS_LIMIT)
-      .then((items) => { if (!cancelled) setState({ asset, items }); })
-      .catch(() => { if (!cancelled) setState({ asset, items: null }); });
+    newsService.getAssetNews(listingId, NEWS_DAYS, NEWS_LIMIT)
+      .then((items) => { if (!cancelled) setState({ listingId, items }); })
+      .catch(() => { if (!cancelled) setState({ listingId, items: null }); });
     return () => { cancelled = true; };
-  }, [asset]);
+  }, [listingId]);
 
-  const current = state?.asset === asset ? state : undefined;
+  const current = state?.listingId === listingId ? state : undefined;
   if (current && (current.items === null || current.items.length === 0)) return null;
   // undefined while it's being searched.
   const items = current?.items ?? undefined;

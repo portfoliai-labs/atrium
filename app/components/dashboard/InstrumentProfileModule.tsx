@@ -238,7 +238,8 @@ function RefMark({ n }: { n?: number }) {
 
 /**
  * Where a value comes from: ESMA's FIRDS as its terms ask (ESMA named the source, its register
- * linked), a company's annual report with the SEC named as its source (its filing linked), a
+ * linked), a company's annual report with the SEC named as its source (its filing linked), an EU
+ * company's ESEF report with the year it covers (the report linked, filings.xbrl.org named), a
  * document (a KID, a methodology) linked by its url, and the day its source dates it.
  */
 export function SourceCitation({ source }: { source: ProfileSourceRef }) {
@@ -261,6 +262,20 @@ export function SourceCitation({ source }: { source: ProfileSourceRef }) {
           </a>
         ) : "annual report"})
         {date && <> · filed {date}</>}
+      </span>
+    );
+  }
+  if (source.source === "esef_report") {
+    return (
+      <span>
+        Source: the company&apos;s{" "}
+        {source.url ? (
+          <a href={source.url} target="_blank" rel="noopener noreferrer" className={LINK_CLASS} title="Open the annual financial report on filings.xbrl.org">
+            annual financial report<ExternalLink className="h-2.5 w-2.5 shrink-0" />
+          </a>
+        ) : "annual financial report"}{" "}
+        (ESEF, via filings.xbrl.org)
+        {date && <> · year ended {date}</>}
       </span>
     );
   }

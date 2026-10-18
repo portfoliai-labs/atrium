@@ -2,7 +2,7 @@
 //
 // Types for the Insights page's endpoints under GET /v1/portfolios/{p}/insights/* (four section
 // overviews, a status to poll, and one detail per explore view), /positions/{asset_id},
-// /v1/portfolios/comparison and /v1/assets/{listing_id} (or a ticker). Mirrors the backend's generated
+// /v1/portfolios/comparison and /v1/assets/{listing_id}. Mirrors the backend's generated
 // doc/frontend/portfolio-data-api.d.ts — regenerate from there if the routes change.
 //
 // Conventions shared by all of them:
@@ -753,10 +753,11 @@ interface PortfolioComparisonEntry {
 
 // ---------- asset detail ----------
 
-// GET /v1/assets/{ticker}?range= — one listed asset's price history and metadata, for any
-// authenticated user, held or not. Not an analytics document: read on request (the first call
-// for a ticker nobody holds can take a few seconds), never null, no status / isStale. A 404
-// (error_type "AssetNotFoundError") means no market-data provider knows the ticker.
+// GET /v1/assets/{listing_id}?range= — one listed asset's price history and metadata, for any
+// authenticated user, held or not, by census' listing id. Not an analytics document: read on
+// request (the first call for a listing nobody holds can take a few seconds), never null, no
+// status / isStale. A 404 (error_type "AssetNotFoundError") means census doesn't know the
+// listing or no market-data provider prices it.
 type AssetChartRange = "1M" | "6M" | "1Y" | "5Y" | "MAX";
 
 // Follows the range: 1M / 6M daily, 1Y / 5Y weekly, MAX monthly.

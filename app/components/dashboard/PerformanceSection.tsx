@@ -1476,7 +1476,7 @@ function HoldingsExplorer({
         value: h.marketValue,
         weightPct: h.weightPct,
         color: palette(i),
-        onOpen: assetKeyOf(h) ? () => setExploringAsset(h) : undefined,
+        onOpen: h.listingId ? () => setExploringAsset(h) : undefined,
       }));
     }
     if (breakdown === "class") {
@@ -1709,9 +1709,9 @@ function HoldingsExplorer({
           />
         </ExploreView>
       )}
-      {exploringAsset && assetKeyOf(exploringAsset) && (
+      {exploringAsset?.listingId && (
         <ExploreView title={exploringAsset.ticker ?? exploringAsset.name} onClose={() => setExploringAsset(null)} noTrail>
-          <AssetExplore asset={assetKeyOf(exploringAsset)!} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={slot.revision} />
+          <AssetExplore listingId={exploringAsset.listingId} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={slot.revision} />
         </ExploreView>
       )}
     </Module>
@@ -1834,7 +1834,7 @@ function CompositionExplore({
                   dataKey="size"
                   nameKey="name"
                   isAnimationActive={false}
-                  content={(node) => <HoldingsMapCell node={node} onOpen={(assetId) => { const h = holdings.find((x) => x.assetId === assetId); if (h && assetKeyOf(h)) onOpenAsset(h); }} />}
+                  content={(node) => <HoldingsMapCell node={node} onOpen={(assetId) => { const h = holdings.find((x) => x.assetId === assetId); if (h?.listingId) onOpenAsset(h); }} />}
                 />
               </ResponsiveContainer>
             </div>
@@ -1942,14 +1942,13 @@ function HoldingsMapCell({ node, onOpen }: { node: TreemapNode; onOpen: (assetId
 }
 
 const ASSET_RANGES: AssetChartRange[] = ["1M", "6M", "1Y", "5Y", "MAX"];
-/** What the asset page asks for a holding by: its listing, else the ticker it was recorded by. */
-const assetKeyOf = (h: Pick<PortfolioHoldingResponse, "listingId" | "ticker">) => h.listingId || h.ticker;
 
 const ASSET_RANGE_LABELS: Record<AssetChartRange, string> = { "1M": "1 month", "6M": "6 months", "1Y": "1 year", "5Y": "5 years", MAX: "all time" };
 
 /**
  * ASSET EXPLORE — one holding's own page, opened from a row of HoldingsExplorer: its price
- * over a chosen range (GET /v1/assets/{asset}: its listing, or the ticker it was recorded by), for
+ * over a chosen range (GET /v1/assets/{listing_id}: a holding without census' listing, as a
+ * manual asset, has no page), for
  * a bond the rates it's priced against (BondRatesModule), what the asset is (identifiers, class,
  * sector or TER…), what it's made of when it's a fund, and the user's own position in it
  * (GET /positions/{assetId}, fetched alongside: the asset endpoint knows nothing about
@@ -1961,7 +1960,7 @@ const ASSET_RANGE_LABELS: Record<AssetChartRange, string> = { "1M": "1 month", "
  * range keeps the previous chart on screen (dimmed) until the new one arrives, since a ticker
  * nobody else holds can take a few seconds.
  */
-export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asset: string; assetId: string; portfolioUuid?: string; revision: number }) {
+export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { listingId: string; assetId: string; portfolioUuid?: string; revision: number }) {
   const position = useDetail(portfolioUuid ? () => portfolioService.getPosition(portfolioUuid, assetId) : null, assetId, revision);
   const [range, setRange] = useState<AssetChartRange>("1Y");
   const [inQuoteCurrency, setInQuoteCurrency] = useState(false);
@@ -1973,7 +1972,7 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
 
   useEffect(() => {
     let cancelled = false;
-    portfolioService.getAssetDetail(asset, range)
+    portfolioService.getAssetDetail(listingId, range)
       .then((data) => { if (!cancelled) setState({ data, error: null, forRange: range }); })
       .catch((err) => {
         if (cancelled) return;
@@ -1983,7 +1982,7 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
         setState((prev) => ({ ...prev, error, forRange: range }));
       });
     return () => { cancelled = true; };
-  }, [asset, range]);
+  }, [listingId, range]);
 
   const loading = state.forRange !== range;
   const error = loading ? null : state.error;
@@ -2035,7 +2034,8 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
     `px-2.5 py-1 rounded-full border text-[11.5px] font-semibold transition-colors ${on ? "bg-[#1c1917] border-[#1c1917] text-white" : "border-[#E0DACC] text-[#78716c] hover:text-[#1c1917]"}`;
 
   return (
-    <>
+    // The header, the chart and the cards as far apart as the cards are from each other.
+    <div className="space-y-[22px]">
       <PageHeader
         eyebrow={`Holding · ${data.assetClass}`}
         title={data.name}
@@ -2125,7 +2125,7 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
           <MarketDataModule asset={asset} />
           <CompanyDescriptionModule profile={data.profile ?? null} />
         </div>
-        <AssetNewsModule asset={asset} name={data.name} />
+        <AssetNewsModule listingId={listingId} name={data.name} />
         <AssetArticlesModule instrumentId={data.listing?.instrumentId ?? null} ticker={data.ticker} isin={data.isin} />
         {data.sectorWeightings.length > 1 && (
           <Module>
@@ -2145,55 +2145,58 @@ export function AssetExplore({ asset, assetId, portfolioUuid, revision }: { asse
             <div className={MODULE_BODY}><HBars rows={weights(data.topHoldings)} /></div>
           </Module>
         )}
-        {position.data?.dividends && position.data.dividends.lifetimeIncome > 0 && (
-          <Module>
-            <ModuleHead title="Dividends" desc="What it has paid you." />
-            <Figs className={MODULE_BODY}>
-              <Fig label="Received" value={formatCurrency(position.data.dividends.lifetimeIncome, posCurrency, 0)} sub="Since first buy" tone="gain" strong />
-              <Fig label="Last 12 months" value={formatCurrency(position.data.dividends.trailing12MIncome, posCurrency, 0)} />
-              <Fig label="Yield" value={plainPctOrDash(position.data.dividends.yieldPct)} />
-              <Fig label="Yield on cost" value={plainPctOrDash(position.data.dividends.yieldOnCostPct)} />
-            </Figs>
-          </Module>
-        )}
       </div>
-    </>
+    </div>
   );
 }
 
 /**
  * POSITION PANEL — the user's own position in an asset, in the reference currency: what's held
  * now and what it's worth, then what selling it has realized and what trading it has cost on each
- * broker, each only when it applies. Its dividends are a module of their own.
+ * broker, each only when it applies; under them, what it has paid in dividends, when it has.
  */
 function PositionPanel({ position }: { position: PositionResponse }) {
-  const { currency, holding, realized, costs } = position;
+  const { currency, holding, realized, costs, dividends } = position;
   const sold = realized !== null && realized.realizedTradingPnl !== 0;
-  if (!holding && !sold && costs.length === 0) return null;
+  const paid = !!dividends && dividends.lifetimeIncome > 0;
+  if (!holding && !sold && costs.length === 0 && !paid) return null;
 
   return (
     <Module>
       <ModuleHead
         title={holding ? "Position" : "Past Position"}
-        desc="What you hold of it, what selling it has realized and what trading it has cost."
+        desc="What you hold of it, what selling it has realized, what trading it has cost and what it has paid you."
       />
-      <Figs className={MODULE_BODY}>
-        {holding && (
-          <>
-            <Fig label="Market value" value={formatCurrency(holding.marketValue, currency, 0)} strong />
-            <Fig label="Unrealized P&L" value={formatSignedCurrency(holding.unrealizedPnl, currency)} tone={toneOfValue(holding.unrealizedPnl)} />
-            <Fig label="Quantity" value={formatQuantity(holding.quantity)} />
-            <Fig label="Avg. cost" value={formatCurrency(holding.avgCost, currency, 2)} />
-            <Fig label="Price" value={formatCurrency(holding.currentPrice, holding.currency, 2)} />
-            <Fig label="Invested" value={formatCurrency(holding.costBasis, currency, 0)} />
-            <Fig label="In portfolio" value={`${holding.weightPct.toFixed(1)}%`} sub="Of its value" />
-          </>
+      <div className={`${MODULE_BODY} space-y-5`}>
+        <Figs>
+          {holding && (
+            <>
+              <Fig label="Market value" value={formatCurrency(holding.marketValue, currency, 0)} strong />
+              <Fig label="Unrealized P&L" value={formatSignedCurrency(holding.unrealizedPnl, currency)} tone={toneOfValue(holding.unrealizedPnl)} />
+              <Fig label="Quantity" value={formatQuantity(holding.quantity)} />
+              <Fig label="Avg. cost" value={formatCurrency(holding.avgCost, currency, 2)} />
+              <Fig label="Price" value={formatCurrency(holding.currentPrice, holding.currency, 2)} />
+              <Fig label="Invested" value={formatCurrency(holding.costBasis, currency, 0)} />
+              <Fig label="In portfolio" value={`${holding.weightPct.toFixed(1)}%`} sub="Of its value" />
+            </>
+          )}
+          {sold && <Fig label="Realized from sales" value={formatSignedCurrency(realized.realizedTradingPnl, currency)} tone={toneOfValue(realized.realizedTradingPnl)} />}
+          {costs.map((c) => (
+            <Fig key={c.broker} label={costs.length > 1 ? `Trading costs · ${c.broker}` : "Trading costs"} value={formatCurrency(c.totalCosts, currency, 2)} />
+          ))}
+        </Figs>
+        {paid && (
+          <div className="space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#78716c]">Dividends</p>
+            <Figs>
+              <Fig label="Received" value={formatCurrency(dividends.lifetimeIncome, currency, 0)} sub="Since first buy" tone="gain" />
+              <Fig label="Last 12 months" value={formatCurrency(dividends.trailing12MIncome, currency, 0)} />
+              <Fig label="Yield" value={plainPctOrDash(dividends.yieldPct)} />
+              <Fig label="Yield on cost" value={plainPctOrDash(dividends.yieldOnCostPct)} />
+            </Figs>
+          </div>
         )}
-        {sold && <Fig label="Realized from sales" value={formatSignedCurrency(realized.realizedTradingPnl, currency)} tone={toneOfValue(realized.realizedTradingPnl)} />}
-        {costs.map((c) => (
-          <Fig key={c.broker} label={costs.length > 1 ? `Trading costs · ${c.broker}` : "Trading costs"} value={formatCurrency(c.totalCosts, currency, 2)} />
-        ))}
-      </Figs>
+      </div>
     </Module>
   );
 }
@@ -3834,9 +3837,9 @@ function PortfoliosModule({ slot, holdings, sector, region, overlapping, currenc
           />
         </ExploreView>
       )}
-      {exploringAsset && assetKeyOf(exploringAsset) && (
+      {exploringAsset?.listingId && (
         <ExploreView title={exploringAsset.ticker ?? exploringAsset.name} onClose={() => setExploringAsset(null)} noTrail>
-          <AssetExplore asset={assetKeyOf(exploringAsset)!} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={holdings.revision} />
+          <AssetExplore listingId={exploringAsset.listingId} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={holdings.revision} />
         </ExploreView>
       )}
     </Module>

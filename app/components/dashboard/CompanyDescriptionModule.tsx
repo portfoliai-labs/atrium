@@ -2,36 +2,56 @@
 "use client";
 
 import { useState } from "react";
-import type { InstrumentProfile } from "../../models/InstrumentProfile";
-import { CardFoot, CardInfo, SourceCitation } from "./InstrumentProfileModule";
+import { ExternalLink } from "lucide-react";
+import type { InstrumentProfile, ProfileSourceRef } from "../../models/InstrumentProfile";
+import { CardFoot, CardInfo, LINK_CLASS, SourceCitation } from "./InstrumentProfileModule";
 import { MODULE_BODY, Module, ModuleHead } from "./PerformanceSection";
 
-// Past this many characters the paragraph opens on its first lines, with "Read more".
+const CC_BY_SA_URL = "https://creativecommons.org/licenses/by-sa/4.0/";
+
+// Past this many characters the text opens on its first lines, with "Read more".
 const LONG_DESCRIPTION = 480;
 
+// A source's date (YYYY-MM-DD) as the day it names, whatever the viewer's time zone.
+const dayLabel = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
 /**
- * COMPANY DESCRIPTION MODULE — what a company filing with the SEC does, in a paragraph an AI model
- * summarised from its latest annual report (a 10-K, a foreign company's 20-F), on its asset page
- * (AssetExplore), beside its Key facts: a long one opens on its first lines, so the row stays as
- * tall as the facts. Marked as the AI's in the tip by its title; at its foot the report, linked,
- * and the SEC named as the source, as its terms ask. Nothing for an asset census has no description of.
+ * COMPANY DESCRIPTION MODULE — what a company does, on its asset page (AssetExplore), beside its
+ * Key facts: a paragraph an AI model summarised from its latest annual report (filed with the
+ * SEC, a 10-K or a foreign company's 20-F, the SEC named as the source; or an EU company's ESEF
+ * report), the report linked; else its English Wikipedia article's lead as written, attributed
+ * as its licence asks (the article's revision, its authors, CC BY-SA 4.0). A fund's: what it aims
+ * to do, an AI model's summary of its KID's objectives, the KID linked ("About the fund"). A long
+ * one opens on its first lines, so the row stays as tall as the facts; an AI's summary is marked
+ * as such in the tip by its title, the source at the card's foot. Nothing for an asset census has
+ * no description of.
  */
 export function CompanyDescriptionModule({ profile }: { profile: InstrumentProfile | null }) {
   const [expanded, setExpanded] = useState(false);
   if (!profile?.description) return null;
   const source = profile.sources.description;
+  const fromWikipedia = source?.source === "wikipedia";
+  const fromKid = source?.source === "issuer_kid";
   const long = profile.description.length > LONG_DESCRIPTION;
+  const desc = fromKid ? "What it aims to do, from its key information document."
+    : fromWikipedia ? "What it does, from its Wikipedia article."
+    : "What it does, from its latest annual report.";
+  const info = source && !fromWikipedia
+    ? `${desc}\n\nSummarised by an AI model from ${fromKid ? "the fund\u2019s key information document" : "the company\u2019s annual report"}: it may be wrong, so check it against the document linked.`
+    : desc;
 
   return (
     <Module className="flex flex-col">
-      <ModuleHead
-        title="About the company"
-        desc="What it does, from its latest annual report."
-        right={<CardInfo text={"What it does, from its latest annual report.\n\nSummarised by an AI model from the company's annual report: it may be wrong, so check it against the report linked."} />}
-      />
+      <ModuleHead title={fromKid ? "About the fund" : "About the company"} desc={desc} right={<CardInfo text={info} />} />
       <div className={`${MODULE_BODY} flex flex-1 flex-col gap-5`}>
         <div>
-          <p className={`text-[13.5px] leading-relaxed text-[#44403c] ${long && !expanded ? "line-clamp-[8]" : ""}`}>{profile.description}</p>
+          {/* Collapsed, the first lines fading out: a height, not a line clamp, as it can be several paragraphs. */}
+          <div className={`space-y-3 ${long && !expanded ? "max-h-[12.5rem] overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]" : ""}`}>
+            {profile.description.split(/\n\s*\n/).map((paragraph, i) => (
+              <p key={i} className="text-[13.5px] leading-relaxed text-[#44403c]">{paragraph}</p>
+            ))}
+          </div>
           {long && (
             <button
               type="button"
@@ -44,13 +64,52 @@ export function CompanyDescriptionModule({ profile }: { profile: InstrumentProfi
         </div>
         {source && (
           <CardFoot>
-            <p className="flex flex-wrap gap-x-3 gap-y-0.5">
-              <span className="font-semibold text-[#a8a29e]">Source</span>
-              <SourceCitation source={source} />
-            </p>
+            {fromWikipedia ? (
+              <p><WikipediaAttribution source={source} /></p>
+            ) : (
+              <p className="flex flex-wrap gap-x-3 gap-y-0.5">
+                <span className="font-semibold text-[#a8a29e]">Source</span>
+                <SourceCitation source={source} />
+              </p>
+            )}
           </CardFoot>
         )}
       </div>
     </Module>
   );
+}
+
+/**
+ * Wikipedia's text as CC BY-SA 4.0 asks it attributed: the article (its revision read, linked),
+ * its authors (its history) and the licence (linked).
+ */
+function WikipediaAttribution({ source }: { source: ProfileSourceRef }) {
+  const title = articleTitle(source.url);
+  const history = title ? `https://en.wikipedia.org/w/index.php?title=${encodeURIComponent(title.replaceAll(" ", "_"))}&action=history` : null;
+  return (
+    <span>
+      From the Wikipedia article{" "}
+      {source.url ? (
+        <a href={source.url} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
+          {title ? `“${title}”` : "on the company"}<ExternalLink className="h-2.5 w-2.5 shrink-0" />
+        </a>
+      ) : "on the company"}
+      {source.asOf && <> (revision of {dayLabel(source.asOf)})</>}
+      {history && (
+        <>, by <a href={history} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>its authors</a></>
+      )}
+      , licensed under{" "}
+      <a href={CC_BY_SA_URL} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>CC BY-SA 4.0</a>.
+    </span>
+  );
+}
+
+/** The article's title from its revision's URL (…/index.php?title=Prysmian_Group&oldid=…). */
+function articleTitle(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).searchParams.get("title")?.replaceAll("_", " ") ?? null;
+  } catch {
+    return null;
+  }
 }
