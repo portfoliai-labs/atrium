@@ -1440,11 +1440,16 @@ function HoldingsExplorer({
   const colorOf = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
   const membersModule = aggregate?.portfolios.module;
   const members = useMemo(() => membersModule?.members ?? [], [membersModule]);
-  const breakdowns: Breakdown[] = [
-    "holding", "class",
-    ...(sector && sector.entries.length > 0 ? ["sector" as const] : []),
-    ...(region && region.entries.length > 0 ? ["region" as const] : []),
+  // Only the breakdowns with more than one slice: a donut of one (a single asset class, all of
+  // it in one region) says nothing. By holding stays when none has more, for the card to show it.
+  const classCount = useMemo(() => new Set(holdings.map((h) => h.assetClass)).size, [holdings]);
+  const splitBreakdowns: Breakdown[] = [
+    ...(holdings.length > 1 ? ["holding" as const] : []),
+    ...(classCount > 1 ? ["class" as const] : []),
+    ...(sector && sector.entries.length > 1 ? ["sector" as const] : []),
+    ...(region && region.entries.length > 1 ? ["region" as const] : []),
   ];
+  const breakdowns: Breakdown[] = splitBreakdowns.length > 0 ? splitBreakdowns : ["holding"];
   const [picked, setPicked] = useState<Breakdown | null>(null);
   const breakdown = picked && breakdowns.includes(picked) ? picked : breakdowns[0];
   // Which way the last step went (1 forward, -1 back), for the body to slide in from that side.
