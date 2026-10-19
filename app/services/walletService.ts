@@ -1,6 +1,6 @@
 // services/walletService.ts
 import type {
-  AnalyzeStatementRequest, Budget, BudgetInput, BudgetMonth, CategoryMonths, Merchants, Observations, RecurringPayments, Movement, MovementCategory, MovementFilters, MovementInput, MovementList,
+  AnalyzeStatementRequest, Budget, BudgetInput, BudgetMonth, CategoryMonths, CategoryRule, Merchants, Observations, RecurringPayments, Movement, MovementCategory, MovementFilters, MovementInput, MovementList,
   MovementUpdateRequest, StatementColumnMapping, StatementColumnMappingResponse, StatementImportResult,
   Transfer, TransferCreateRequest, Wallet, WalletAlertRule, WalletAlertRuleCreateRequest, WalletAlertRuleUpdateRequest,
   WalletCreateRequest, WalletReport, WalletReportRequest, WalletSummary, WalletUpdateRequest,
@@ -12,7 +12,7 @@ import { apiFetch, apiFetchForm } from "./apiClient";
 // (409, a write on an archived wallet), WalletHasMovementsError (409, a currency change),
 // MovementInTransferError (409, a transfer leg's date, amount or category), InvalidWalletError /
 // InvalidMovementError / InvalidTransferError / InvalidBudgetError / InvalidAlertRuleError (422),
-// AlertRuleNotFoundError (404), AlertRuleLimitReachedError (409, past 50 rules), FxRatesUnavailableError
+// AlertRuleNotFoundError / CategoryRuleNotFoundError (404), AlertRuleLimitReachedError (409, past 50 rules), FxRatesUnavailableError
 // (503, the summary or the budgets across wallets), ImportFileParsingError / ImportMappingIncompleteError (422). A demo account's
 // writes are refused before they leave (see lib/demo).
 
@@ -94,7 +94,8 @@ export const walletService = {
     return apiFetch<Movement>(`/v1/wallets/movements/${movementUuid}`, { method: "PATCH", body: JSON.stringify(payload) });
   },
 
-  // POST /v1/wallets/movements/categorize — null clears the category.
+  // POST /v1/wallets/movements/categorize — null clears the category. A category given is the rule
+  // for each movement's payee (null ends it): the payee's other movements nobody categorised take it.
   async categorize(movementUuids: string[], category: MovementCategory | null): Promise<Movement[]> {
     return apiFetch<Movement[]>(`/v1/wallets/movements/categorize`, {
       method: "POST",
@@ -191,6 +192,16 @@ export const walletService = {
     await apiFetch(`/v1/wallets/alert-rules/${ruleUuid}`, { method: "DELETE" });
   },
 
+  // GET /v1/wallets/category-rules — by payee, money out before money in.
+  async categoryRules(): Promise<CategoryRule[]> {
+    return apiFetch<CategoryRule[]>(`/v1/wallets/category-rules`);
+  },
+
+  // DELETE /v1/wallets/category-rules/{r} — the movements it categorised are left uncategorised.
+  async removeCategoryRule(ruleUuid: string): Promise<void> {
+    await apiFetch(`/v1/wallets/category-rules/${ruleUuid}`, { method: "DELETE" });
+  },
+
   // POST /v1/wallets/{w}/import/analyze-columns — a proposed mapping for a statement's columns.
   async analyzeStatement(walletUuid: string, payload: AnalyzeStatementRequest): Promise<StatementColumnMappingResponse> {
     return apiFetch<StatementColumnMappingResponse>(`/v1/wallets/${walletUuid}/import/analyze-columns`, {
@@ -201,7 +212,7 @@ export const walletService = {
 
   // POST /v1/wallets/{w}/import/commit — the file (CSV/XLS/XLSX, up to 10 MB) and the confirmed
   // mapping. Rows already in the wallet are counted as duplicates, not added again; what's imported
-  // arrives uncategorised.
+  // takes the category of its payee's rule, if there is one.
   async commitStatement(walletUuid: string, file: File, mapping: StatementColumnMapping): Promise<StatementImportResult> {
     const form = new FormData();
     form.append("file", file);

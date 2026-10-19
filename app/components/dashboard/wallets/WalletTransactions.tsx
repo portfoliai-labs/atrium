@@ -2,22 +2,23 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, Link2, Loader2, Search, Trash2, Unlink } from "lucide-react";
+import { ArrowLeftRight, Link2, Loader2, Search, Trash2, Unlink, Wand2 } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
 import { formatCurrency } from "../../../lib/format";
 import {
   ALL_WALLETS, CATEGORY_LABELS, INCOME_CATEGORIES, SPENDING_CATEGORIES, categoryColor, categoryLabel, dayLabel, errorText, walletColor,
 } from "../../../lib/wallets";
-import type { Movement, MovementCategory, MovementFilters, Wallet } from "../../../models/Wallet";
+import type { CategoryRule, Movement, MovementCategory, MovementFilters, Wallet } from "../../../models/Wallet";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Pills } from "../../preview/PreviewKit";
-import { MovementDialog } from "./WalletDialogs";
+import { DialogShell, MovementDialog } from "./WalletDialogs";
 
 const PAGE = 50;
 const SELECT = "h-9 px-3 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 outline-none";
 
-export function CategoryChip({ category, transfer }: { category: MovementCategory | null; transfer?: string }) {
+// `byRule`: set by the user's rule for the payee, not by the user.
+export function CategoryChip({ category, transfer, byRule }: { category: MovementCategory | null; transfer?: string; byRule?: boolean }) {
   if (transfer !== undefined) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap bg-slate-100 text-slate-500">
@@ -29,6 +30,7 @@ export function CategoryChip({ category, transfer }: { category: MovementCategor
   return (
     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap" style={{ background: `${color}14`, color }}>
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />{categoryLabel(category)}
+      {byRule && <span title="Set by your rule for this payee"><Wand2 className="h-3 w-3 opacity-70" aria-label="Set by a rule" /></span>}
     </span>
   );
 }
@@ -58,6 +60,7 @@ export function WalletTransactions({ initial, readOnly }: { initial: string; rea
   const [selection, setSelection] = useState<{ key: string; uuids: Set<string> }>({ key: "", uuids: new Set() });
   const [editing, setEditing] = useState<Movement | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showRules, setShowRules] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -164,6 +167,9 @@ export function WalletTransactions({ initial, readOnly }: { initial: string; rea
               <optgroup label="Money in">{INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}</optgroup>
               <optgroup label="Money out">{SPENDING_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}</optgroup>
             </select>
+            <button type="button" onClick={() => setShowRules(true)} className={`${SELECT} flex items-center gap-1.5 hover:border-slate-300`}>
+              <Wand2 className="h-3.5 w-3.5" />Category rules
+            </button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-slate-500">
@@ -189,6 +195,7 @@ export function WalletTransactions({ initial, readOnly }: { initial: string; rea
                 void act(() => walletService.categorize(categorizable.map((m) => m.uuid), value === "none" ? null : (value as MovementCategory)), "Unable to change the category.");
               }}
               aria-label="Set category"
+              title="The payee's other uncategorised movements, and new ones, take it too"
               className="h-9 px-3 rounded-xl bg-white/10 border border-white/20 text-xs font-bold text-white outline-none *:text-slate-900"
             >
               <option value="">Set category…</option>
@@ -269,7 +276,7 @@ export function WalletTransactions({ initial, readOnly }: { initial: string; rea
                           <p className="text-[11px] text-slate-400 truncate max-w-md">{[m.counterparty, m.note].filter(Boolean).join(" · ")}</p>
                         )}
                       </td>
-                      <td className="px-3 py-3"><CategoryChip category={m.category} transfer={m.transferUuid ? transferLabel(m) : undefined} /></td>
+                      <td className="px-3 py-3"><CategoryChip category={m.category} transfer={m.transferUuid ? transferLabel(m) : undefined} byRule={m.categorySource === "rule"} /></td>
                       {!scope && (
                         <td className="px-3 py-3 whitespace-nowrap text-slate-500">
                           <span className="inline-flex items-center gap-1.5">
@@ -310,6 +317,7 @@ export function WalletTransactions({ initial, readOnly }: { initial: string; rea
           onSaved={() => { setEditing(null); changed(); }}
         />
       )}
+      {showRules && <CategoryRulesDialog readOnly={readOnly} onClose={() => setShowRules(false)} />}
       {confirmDelete && (
         <ConfirmDialog
           title={`Delete ${picked.length === 1 ? "this movement" : `${picked.length} movements`}?`}
@@ -335,5 +343,85 @@ function BarButton({ icon, children, onClick, disabled, danger }: { icon: React.
       {icon}
       {children}
     </button>
+  );
+}
+
+/**
+ * The user's category rules: one per payee, money in and money out apart, learnt from the last
+ * category they gave one of its movements. Deleting one leaves the movements it categorised
+ * uncategorised; a demo account's are read only.
+ */
+export function CategoryRulesDialog({ readOnly, onClose }: { readOnly: boolean; onClose: () => void }) {
+  const { changed } = useWallets();
+  const [rules, setRules] = useState<CategoryRule[] | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    walletService.categoryRules()
+      .then((list) => { if (!cancelled) setRules(list); })
+      .catch((err) => { if (!cancelled) setError(errorText(err, "Unable to load the category rules.")); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const remove = async (rule: CategoryRule) => {
+    setRemoving(rule.uuid);
+    setError(null);
+    try {
+      await walletService.removeCategoryRule(rule.uuid);
+      setRules((prev) => prev?.filter((r) => r.uuid !== rule.uuid) ?? null);
+      changed();
+    } catch (err) {
+      setError(errorText(err, "Unable to delete this rule."));
+    } finally {
+      setRemoving(null);
+    }
+  };
+
+  return (
+    <DialogShell
+      icon={<Wand2 className="h-5 w-5" />}
+      title="Category rules"
+      subtitle="The category you give a movement is used for its payee's other movements, and for new ones."
+      busy={removing !== null}
+      error={error}
+      submitLabel="Done"
+      canSubmit
+      onSubmit={onClose}
+      onClose={onClose}
+      wide
+    >
+      {rules === null ? (
+        !error && <Loader2 className="h-5 w-5 text-slate-400 animate-spin" />
+      ) : rules.length === 0 ? (
+        <p className="text-sm font-semibold text-slate-500">
+          No rules yet: give a movement a category, and its payee&apos;s other movements follow.
+        </p>
+      ) : (
+        <ul className="divide-y divide-slate-100 border border-slate-100 rounded-2xl">
+          {rules.map((rule) => (
+            <li key={rule.uuid} className="flex items-center gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-800 truncate">{rule.payee}</p>
+                <p className="text-[11px] text-slate-400">{rule.incoming ? "Money in" : "Money out"}</p>
+              </div>
+              <CategoryChip category={rule.category} />
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => void remove(rule)}
+                  disabled={removing !== null}
+                  aria-label={`Delete the rule for ${rule.payee}`}
+                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {removing === rule.uuid ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </DialogShell>
   );
 }

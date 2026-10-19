@@ -13,6 +13,10 @@ export type MovementCategory =
 
 export type MovementSource = "manual" | "import" | "bank";
 
+// Who gave a movement its category: the user (it stays until they change it) or their rule for
+// the payee (it follows the rule).
+export type CategorySource = "user" | "rule";
+
 export type Amount = number | string;
 
 export interface Wallet {
@@ -56,6 +60,8 @@ export interface Movement {
   counterparty: string | null;
   // null: not categorised yet, and always on a transfer's leg.
   category: MovementCategory | null;
+  // null exactly when the category is.
+  categorySource: CategorySource | null;
   // Signed: money in positive. In the wallet's currency.
   amount: number;
   currency: string;
@@ -65,6 +71,20 @@ export interface Movement {
   transferUuid: string | null;
   counterpartWalletUuid: string | null;
   createdAt: string;
+}
+
+/**
+ * A payee's category, learnt from the last one the user gave one of its movements (money in and
+ * money out apart): the payee's movements nobody categorised, and every new one, take it.
+ */
+export interface CategoryRule {
+  uuid: string;
+  // As the movement it was learnt from names it.
+  payee: string;
+  incoming: boolean;
+  category: MovementCategory;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface MovementInput {
