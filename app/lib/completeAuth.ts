@@ -9,6 +9,17 @@ interface ApiErrorResponse {
   message?: string;
 }
 
+// Read (and cleared) by the dashboard's header, which greets the user once, right after signing in.
+export const JUST_SIGNED_IN_KEY = "just_signed_in";
+
+function markJustSignedIn() {
+  try {
+    sessionStorage.setItem(JUST_SIGNED_IN_KEY, "1");
+  } catch {
+    // No storage (a private window): no greeting.
+  }
+}
+
 export type AuthOutcome =
   | { kind: "addon-token"; token: string }
   | { kind: "redirect"; to: string }
@@ -32,6 +43,7 @@ export async function completeAuth(
   try {
     const userProfile = await userService.getUserProfile();
     localStorage.setItem("user_profile", JSON.stringify(userProfile));
+    markJustSignedIn();
     return { kind: "redirect", to: destination };
   } catch (error: unknown) {
     const apiError = error as ApiErrorResponse;
@@ -45,6 +57,7 @@ export async function completeAuth(
       // legal documents are accepted. Route into the app anyway — the (reserved)
       // layout's UserProvider + LegalGate will hit this same 403 and show the
       // acceptance screen before anything else renders.
+      markJustSignedIn();
       return { kind: "redirect", to: destination };
     }
 

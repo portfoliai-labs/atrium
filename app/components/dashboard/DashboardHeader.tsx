@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { LogOut, Bell, Menu, X } from "lucide-react";
 import Image from "next/image";
 import { useUser } from "../../context/UserContext";
@@ -13,6 +14,10 @@ import { ASSET_SECTION, SUBSCRIPTION_SECTION } from "../../lib/dashboardNav";
 import { userService } from "../../services/userService";
 import { BetaBadge } from "../common/BetaBadge";
 import type { SubscriptionTier, SubscriptionResponse } from "../../models/User";
+import { JUST_SIGNED_IN_KEY } from "../../lib/completeAuth";
+
+// How long the greeting stays after signing in before it leaves.
+const GREETING_MS = 4000;
 
 const TIER_LABEL: Record<SubscriptionTier, string> = {
   FREE: 'Free Plan',
@@ -46,6 +51,31 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
   const [isSubscriptionLoading, setIsSubscriptionLoading] = useState(false);
 
   const { user } = useUser();
+
+  // The greeting, only right after signing in (completeAuth marks it): shown once the user's name
+  // is known, then gone. The mark is cleared on reading, so a reload doesn't greet again.
+  const [justSignedIn, setJustSignedIn] = useState(false);
+  useEffect(() => {
+    // Read after mount (storage isn't there on the server), cancelled with the effect so a
+    // remount (Strict Mode's) reads it rather than losing it.
+    const timer = setTimeout(() => {
+      try {
+        if (sessionStorage.getItem(JUST_SIGNED_IN_KEY)) {
+          sessionStorage.removeItem(JUST_SIGNED_IN_KEY);
+          setJustSignedIn(true);
+        }
+      } catch {
+        // No storage: no greeting.
+      }
+    });
+    return () => clearTimeout(timer);
+  }, []);
+  const greetingName = justSignedIn ? user?.first_name : undefined;
+  useEffect(() => {
+    if (!greetingName) return;
+    const timer = setTimeout(() => setJustSignedIn(false), GREETING_MS);
+    return () => clearTimeout(timer);
+  }, [greetingName]);
 
   const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(" ");
   const initials = `${user?.first_name?.[0] ?? ""}${user?.last_name?.[0] ?? "U"}`.toUpperCase();
@@ -92,17 +122,26 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
           <BetaBadge />
         </div>
 
-        {user?.first_name && (
-          <div className="hidden lg:flex items-center gap-2 ml-4 px-4 py-1.5 bg-white/70 rounded-full border border-[rgba(196,154,60,0.25)]">
+        <AnimatePresence>
+          {greetingName && (
+          <motion.div
+            key="greeting"
+            initial={{ opacity: 0, x: -12, scale: 0.96 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: -12, scale: 0.96, filter: "blur(2px)" }}
+            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            className="hidden lg:flex items-center gap-2 ml-4 px-4 py-1.5 bg-white/70 rounded-full border border-[rgba(196,154,60,0.25)]"
+          >
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
             </span>
             <span className="text-[11px] font-bold text-[#78716c]">
-              Welcome back, {user.first_name}!
+              Welcome back, {greetingName}!
             </span>
-          </div>
-        )}
+          </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* RIGHT: Actions */}
