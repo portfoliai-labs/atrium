@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Bar, BarChart, Cell, Legend, Line, LineChart, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { Lightbulb, Loader2 } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
@@ -21,6 +21,9 @@ const TOP = 6;
 const MERCHANTS_SHOWN = 8;
 const MERCHANTS_ASKED = 20;
 const FIXED_COSTS: (MovementCategory | null)[] = ["housing", "utilities"];
+
+// A row of panels, a lone one (its neighbour hidden for having nothing to show) the whole of it.
+const ROW = "grid grid-cols-1 gap-6 lg:[&>*:only-child]:col-span-2";
 
 type Read = { categories: CategoryMonths; merchants: Merchants; recurring: RecurringPayments; observations: Observations };
 
@@ -105,6 +108,9 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
   const yearOut = months.reduce((s, m) => s + m.spending, 0);
   const rate = savingsRate(months);
   const empty = yearIn === 0 && yearOut === 0;
+  // Panels with nothing to show are left out, not drawn empty.
+  const hasBalance = months.some((m) => m.closingBalance !== 0);
+  const hasRates = rates.some((r) => r.rate !== null);
   const note = "Last 12 months, transfers between your wallets excluded.";
 
   return (
@@ -125,7 +131,9 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-6">
+      {(!empty || hasBalance) && (
+      <div className={`${ROW} lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]`}>
+        {!empty && (
         <Panel
           title="Money in and out"
           subtitle={scope ? "Month by month, transfers included." : "Month by month, across your wallets."}
@@ -150,6 +158,8 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
             </ResponsiveContainer>
           </div>
         </Panel>
+        )}
+        {hasBalance && (
         <Panel title="Balance" subtitle="At each month's end (today, for this one).">
           <div className="p-4 md:p-6 h-72">
             <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 400, height: 260 }}>
@@ -162,7 +172,9 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
             </ResponsiveContainer>
           </div>
         </Panel>
+        )}
       </div>
+      )}
 
       {empty ? (
         <p className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-500">
@@ -174,9 +186,10 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
         <p className="text-sm font-semibold text-rose-600">{current.error}</p>
       ) : (
         <>
+          {spendingTotal > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-6">
             <Panel title="Spending by category" subtitle={`${eur(spendingTotal)} · ${note}`}>
-              <CategoryBreakdown rows={spending} total={spendingTotal} format={eur} empty="No spending in this period." />
+              <CategoryBreakdown rows={spending} total={spendingTotal} format={eur} />
             </Panel>
             <Panel title="Month by month" subtitle="Spending in the largest categories, the rest as Other.">
               <div className="p-4 md:p-6 h-80">
@@ -193,11 +206,16 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
               </div>
             </Panel>
           </div>
+          )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {(incomeTotal > 0 || hasRates) && (
+          <div className={`${ROW} lg:grid-cols-2`}>
+            {incomeTotal > 0 && (
             <Panel title="Income sources" subtitle={`${eur(incomeTotal)} · ${note}`}>
               <IncomeBar rows={income} total={incomeTotal} format={eur} />
             </Panel>
+            )}
+            {hasRates && (
             <Panel title="Savings rate" subtitle="Share of each month's income not spent.">
               <div className="p-4 md:p-6 h-56">
                 <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 400, height: 200 }}>
@@ -211,9 +229,14 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
                 </ResponsiveContainer>
               </div>
             </Panel>
+            )}
           </div>
+          )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {(read.merchants.merchants.length > 0 || read.recurring.payments.length > 0) && (
+          <div className={`${ROW} lg:grid-cols-2`}>
+            {/* With payees only among rent and bills it stays, its toggle the way to them. */}
+            {read.merchants.merchants.length > 0 && (
             <Panel
               title="Top merchants"
               subtitle={`Where the money went, last 12 months${fixedCosts ? "" : ", rent and bills aside"}.`}
@@ -224,7 +247,7 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
               }
             >
               {shownMerchants.length === 0 ? (
-                <p className="p-6 text-sm font-semibold text-slate-500">No payments in this period.</p>
+                <p className="p-6 text-sm font-semibold text-slate-500">Only rent and bills in this period.</p>
               ) : (
                 <ul className="px-6 md:px-7 py-4 divide-y divide-slate-100">
                   {shownMerchants.map((m) => (
@@ -241,14 +264,13 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
                 </ul>
               )}
             </Panel>
+            )}
+            {read.recurring.payments.length > 0 && (
             <Panel
               title="Recurring payments"
               subtitle="Detected from repeating payments, the last 13 months."
-              right={read.recurring.payments.length > 0 ? <MiniFig label="A year" value={formatCurrency(read.recurring.yearlyTotal, read.recurring.currency, 0)} /> : undefined}
+              right={<MiniFig label="A year" value={formatCurrency(read.recurring.yearlyTotal, read.recurring.currency, 0)} />}
             >
-              {read.recurring.payments.length === 0 ? (
-                <p className="p-6 text-sm font-semibold text-slate-500">Nothing repeats yet: recurring payments show after a few of them.</p>
-              ) : (
                 <ul className="px-6 md:px-7 py-4 divide-y divide-slate-100">
                   {read.recurring.payments.map((r) => (
                     <li key={`${r.walletUuid}:${r.name}`} className="py-2.5 flex items-center justify-between gap-3">
@@ -262,9 +284,10 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
                     </li>
                   ))}
                 </ul>
-              )}
             </Panel>
+            )}
           </div>
+          )}
         </>
       )}
     </>
@@ -282,17 +305,15 @@ function MiniFig({ label, value, tone }: { label: string; value: string; tone?: 
 
 type CategoryRow = { category: MovementCategory | null; amount: number };
 
-function CategoryBreakdown({ rows, total, format, empty }: { rows: CategoryRow[]; total: number; format: (v: number) => string; empty: string }) {
-  if (total <= 0) return <p className="p-6 text-sm font-semibold text-slate-500">{empty}</p>;
+// Where the money went: a bar split by category, each its colour, over the categories with
+// their amount and share.
+function CategoryBreakdown({ rows, total, format }: { rows: CategoryRow[]; total: number; format: (v: number) => string }) {
   return (
-    <div className="p-6 md:p-7 flex flex-col sm:flex-row items-center gap-6">
-      <PieChart width={150} height={150}>
-        <Pie data={rows.map((r) => ({ name: categoryLabel(r.category), amount: r.amount }))} dataKey="amount" nameKey="name" innerRadius={46} outerRadius={72} paddingAngle={1.5} stroke="none" isAnimationActive={false}>
-          {rows.map((r) => <Cell key={r.category ?? "none"} fill={categoryColor(r.category)} />)}
-        </Pie>
-        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v, n) => [format(Number(v)), n]} />
-      </PieChart>
-      <ul className="flex-1 w-full space-y-1.5">
+    <div className="p-6 md:p-7 space-y-4">
+      <div className="flex h-3 rounded-full overflow-hidden">
+        {rows.map((r) => <span key={r.category ?? "none"} title={categoryLabel(r.category)} style={{ width: `${(r.amount / total) * 100}%`, background: categoryColor(r.category) }} />)}
+      </div>
+      <ul className="w-full space-y-1.5">
         {rows.map((r) => (
           <li key={r.category ?? "none"} className="flex items-center justify-between gap-3 text-[13px]">
             <span className="flex items-center gap-2 font-semibold text-slate-700">
@@ -309,7 +330,6 @@ function CategoryBreakdown({ rows, total, format, empty }: { rows: CategoryRow[]
 }
 
 function IncomeBar({ rows, total, format }: { rows: CategoryRow[]; total: number; format: (v: number) => string }) {
-  if (total <= 0) return <p className="p-6 text-sm font-semibold text-slate-500">No income in this period.</p>;
   return (
     <div className="p-6 md:p-7 space-y-3">
       <div className="flex h-3 rounded-full overflow-hidden">
