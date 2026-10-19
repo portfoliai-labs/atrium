@@ -10,16 +10,17 @@ import {
   ArrowUpRight, ChevronLeft, ChevronRight, Info,
 } from "lucide-react";
 import {
-  AreaChart, Area, LineChart, Line, BarChart, Bar, ReferenceDot, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Treemap,
+  AreaChart, Area, LineChart, Line, BarChart, Bar, ReferenceDot, ReferenceLine, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Treemap,
   type TreemapNode,
 } from "recharts";
 import { portfolioService } from "../../services/portfolioService";
 import { portfoliosService } from "../../services/portfoliosService";
+import { transactionService } from "../../services/transactionService";
 import { STRATEGY_PROXIES, simulatedPeriod, targetLabel, type StrategyFrequency, type StrategyParams, type StrategyResponse } from "../../models/Strategy";
 import { exchangeLabel, listingLine } from "../../models/Listing";
 import { ApiError } from "../../services/apiClient";
 import { formatCompact, formatCurrency, formatQuantity } from "../../lib/format";
-import { toChartPoints } from "../../lib/series";
+import { toChartPoints, type SeriesPoint } from "../../lib/series";
 import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useDetail, useInsights, type Insights, type SectionState } from "../../hooks/useInsights";
@@ -45,6 +46,7 @@ import type {
   InsightsTradingCostsModule, InsightsRealizedPnlModule, InsightsThisMonthModule,
   InsightsValueModule, InsightsVolatilityModule, InsightsFrontierModule, InsightsPerformanceResponse, PortfolioComparisonEntry,
 } from "../../models/PortfolioData";
+import type { TransactionResponse } from "../../models/Transaction";
 
 const chartDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const fullDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
@@ -1960,6 +1962,48 @@ const ASSET_RANGE_LABELS: Record<AssetChartRange, string> = { "1M": "1 month", "
  * range keeps the previous chart on screen (dimmed) until the new one arrives, since a ticker
  * nobody else holds can take a few seconds.
  */
+// The trades read for the price chart's markers: the most recent ones, at most.
+const TRADES_READ = 200;
+
+interface TradeMark {
+  // The chart's point the trades fall on: the last one on or before their day.
+  date: string;
+  value: number;
+  buys: number;
+  sells: number;
+  // One line per trade, as it was recorded.
+  lines: string[];
+}
+
+/**
+ * The buys and sells on the price chart: each on the chart's point of its day (the last one on or
+ * before it, as the chart may hold one point a week or a month), so it sits on the line whatever
+ * currency either is in; the trades on one point together. Trades before the chart's range are
+ * left out.
+ */
+function tradeMarkers(trades: TransactionResponse[], points: SeriesPoint[]): TradeMark[] {
+  if (points.length === 0) return [];
+  const marks = new Map<string, TradeMark>();
+  for (const trade of trades) {
+    if (trade.operation !== "buy" && trade.operation !== "sell") continue;
+    const day = trade.date.slice(0, 10);
+    let index = -1;
+    for (let lo = 0, hi = points.length - 1; lo <= hi;) {
+      const mid = (lo + hi) >> 1;
+      if (points[mid].date.slice(0, 10) <= day) { index = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    if (index < 0) continue;
+    const point = points[index];
+    const mark = marks.get(point.date) ?? { date: point.date, value: point.value, buys: 0, sells: 0, lines: [] };
+    if (trade.operation === "buy") mark.buys += 1;
+    else mark.sells += 1;
+    const price = trade.price !== null ? ` at ${formatCurrency(trade.price, trade.currency, 2)}` : "";
+    mark.lines.push(`${trade.operation === "buy" ? "Bought" : "Sold"} ${trade.quantity ?? ""}${price} · ${fullDateLabel(day)}`);
+    marks.set(point.date, mark);
+  }
+  return [...marks.values()];
+}
+
 export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { listingId: string; assetId: string; portfolioUuid?: string; revision: number }) {
   const position = useDetail(portfolioUuid ? () => portfolioService.getPosition(portfolioUuid, assetId) : null, assetId, revision);
   const [range, setRange] = useState<AssetChartRange>("1Y");
@@ -1992,6 +2036,17 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
   const series = data ? (showQuote ? data.quotePrices : data.prices) : null;
   const unit = data ? (showQuote ? data.quoteCurrency : data.currency) : "";
   const points = useMemo(() => (series ? toChartPoints(series) : []), [series]);
+  // The user's trades in this asset (this position's, by its asset id): read by the instrument's
+  // ISIN, else the position's ticker, as the transactions' list filters them.
+  const tradeFilter = data?.isin ? { isin: data.isin } : position.data?.holding?.ticker ? { ticker: position.data.holding.ticker } : null;
+  const trades = useDetail(
+    portfolioUuid && tradeFilter ? () => transactionService.getUserTransactions(portfolioUuid, TRADES_READ, 0, tradeFilter) : null,
+    `${assetId}:${JSON.stringify(tradeFilter)}`, revision,
+  );
+  const tradeMarks = useMemo(
+    () => tradeMarkers((trades.data?.items ?? []).filter((t) => t.asset_id === assetId), points),
+    [trades.data, assetId, points],
+  );
 
   if (data === null) {
     return loading ? (
@@ -2022,6 +2077,9 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
   ];
   const held = position.data?.holding ?? null;
   const posCurrency = position.data?.currency ?? data.currency;
+  // The average cost is in the position's currency (each trade at its day's rate): drawn on the
+  // price only when the chart is in that currency too.
+  const avgCostLine = held && held.quantity > 0 && posCurrency === unit ? held.avgCost : null;
   const weights = (entries: ExposureEntryResponse[]) =>
     entries.slice(0, 6).map((e, i) => ({
       key: e.label,
@@ -2047,7 +2105,9 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
       <Module>
         <ModuleHead
           title="Price"
-          desc="Adjusted closes over the range picked."
+          desc={tradeMarks.length > 0 || avgCostLine !== null
+            ? "Adjusted closes over the range picked, with your buys and sells on them and your average cost."
+            : "Adjusted closes over the range picked."}
           right={
             <div className="flex flex-wrap items-center gap-1.5">
               {ASSET_RANGES.map((r) => (
@@ -2107,6 +2167,34 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
                     contentStyle={TOOLTIP_STYLE}
                   />
                   <Area type="monotone" dataKey="value" stroke={lineColor} strokeWidth={2} fill={lineColor} fillOpacity={0.1} />
+                  {avgCostLine !== null && (
+                    <ReferenceLine
+                      y={avgCostLine}
+                      ifOverflow="extendDomain"
+                      stroke={AXIS_TICK_COLOR}
+                      strokeDasharray="4 4"
+                      label={{ value: `Avg. cost ${formatCurrency(avgCostLine, unit, 2)}`, position: "insideBottomLeft", fontSize: 11, fill: AXIS_TICK_COLOR }}
+                    />
+                  )}
+                  {tradeMarks.map((mark) => (
+                    <ReferenceDot
+                      key={mark.date}
+                      x={mark.date}
+                      y={mark.value}
+                      shape={(props: { cx?: number | string; cy?: number | string }) => (
+                        <circle
+                          cx={props.cx}
+                          cy={props.cy}
+                          r={5}
+                          fill={mark.buys > 0 && mark.sells === 0 ? "#10b981" : mark.sells > 0 && mark.buys === 0 ? "#f43f5e" : "#C49A3C"}
+                          stroke="#fff"
+                          strokeWidth={1.5}
+                        >
+                          <title>{mark.lines.join("\n")}</title>
+                        </circle>
+                      )}
+                    />
+                  ))}
                 </AreaChart>
               </ResponsiveContainer>
             </div>
