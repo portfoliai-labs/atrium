@@ -5,7 +5,7 @@ import { ExternalLink, Info } from "lucide-react";
 import { STRATEGY_CATEGORY_LABELS } from "../../models/Strategy";
 import type { Listing } from "../../models/Listing";
 import {
-  DISTRIBUTION_LABELS, FACTOR_LABELS, INDEX_SIZE_LABELS, PROFILE_ASSET_CLASS_LABELS, PROFILE_SOURCE_LABELS,
+  CONSENSUS_LABELS, DISTRIBUTION_LABELS, FACTOR_LABELS, INDEX_SIZE_LABELS, PROFILE_ASSET_CLASS_LABELS, PROFILE_SOURCE_LABELS,
   INDUSTRY_LABELS, REBALANCING_LABELS, REGION_LABELS, REPLICATION_LABELS, SECTOR_LABELS, WEIGHTING_LABELS, labelOf,
   type InstrumentProfile, type ProfileSourceRef,
 } from "../../models/InstrumentProfile";
@@ -32,6 +32,16 @@ const countryName = (code: string) => {
   }
 };
 
+/** A launch as precise as its source states it (ISO 8601: 2009-01-03, 2015-07, 2015): Jan 3, 2009; July 2015; 2015. */
+const launchLabel = (iso: string) => {
+  const [year, month, day] = iso.split("-").map(Number);
+  if (!month) return String(year);
+  const date = new Date(year, month - 1, day || 1);
+  return day
+    ? date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+};
+
 /** A company's website as a link (http or https only) and its host to show; null for anything else. */
 const websiteLink = (url: string) => {
   try {
@@ -49,7 +59,8 @@ type ProfileFact = { key: string; label: string; value: string; href?: string; s
 /**
  * INSTRUMENT PROFILE MODULE — what census knows the instrument is, as two cards side by side:
  * KEY FACTS (its category; a fund's costs, distribution, domicile, replication, hedge and risk
- * class; a company's GICS sector and industry, head office, employees and website) and, for a
+ * class; a company's GICS sector and industry, head office, employees and website; a crypto
+ * asset's launch, consensus, maximum supply, website and white paper) and, for a
  * fund tracking one, INDEX (the index it tracks and how that's built). Each a table, each value
  * marked with the number of its source, the sources listed once at the card's foot: ESMA's FIRDS
  * by name, a KID or an index methodology linked with its date. A value an AI model read is marked
@@ -160,6 +171,10 @@ function profileFacts(p: InstrumentProfile): ProfileFact[] {
   // The city and the country, either alone when the other isn't known (Santa Clara, United States).
   const headOffice = [p.headquartersCity, p.headquarters && countryName(p.headquarters)].filter(Boolean).join(", ") || null;
   const website = p.website ? websiteLink(p.website) : null;
+  const whitePaper = p.whitePaper ? websiteLink(p.whitePaper) : null;
+  // A capped supply's cap; "No cap" for an uncapped one (Ether).
+  const maxSupply = p.supplyCapped === false ? "No cap"
+    : p.maxSupply !== null ? p.maxSupply.toLocaleString("en-US", { maximumFractionDigits: 0 }) : null;
   const facts: (ProfileFact | false)[] = [
     p.category !== null && { key: "category", label: "Category", value: STRATEGY_CATEGORY_LABELS[p.category] ?? p.category, source: s.category },
     p.terPct !== null && { key: "terPct", label: "Ongoing costs (TER)", value: `${p.terPct.toFixed(2)}% a year`, source: s.terPct },
@@ -173,7 +188,11 @@ function profileFacts(p: InstrumentProfile): ProfileFact[] {
     p.industry !== null && { key: "industry", label: "Industry", value: labelOf(INDUSTRY_LABELS, p.industry), source: s.industry },
     headOffice !== null && { key: "headquarters", label: "Head office", value: headOffice, source: s.headquarters ?? s.headquartersCity },
     p.employees !== null && { key: "employees", label: "Employees", value: p.employees.toLocaleString("en-US"), source: s.employees },
+    p.launched !== null && { key: "launched", label: "Launched", value: launchLabel(p.launched), source: s.launched },
+    p.consensus !== null && { key: "consensus", label: "Consensus", value: labelOf(CONSENSUS_LABELS, p.consensus), source: s.consensus },
+    maxSupply !== null && { key: "maxSupply", label: "Maximum supply", value: maxSupply, source: s.maxSupply ?? s.supplyCapped },
     website !== null && { key: "website", label: "Website", value: website.host, href: website.href, source: s.website },
+    whitePaper !== null && { key: "whitePaper", label: "White paper", value: "Read", href: whitePaper.href, source: s.whitePaper },
   ];
   return facts.filter((f): f is ProfileFact => !!f);
 }

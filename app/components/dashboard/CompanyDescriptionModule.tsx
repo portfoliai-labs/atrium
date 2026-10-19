@@ -24,8 +24,9 @@ const dayLabel = (iso: string) =>
  * as its licence asks (the article's revision, its authors, CC BY-SA 4.0). A fund's: what it aims
  * to do, an AI model's summary of its KID's objectives, the KID linked ("About the fund"). A long
  * one opens on its first lines, so the row stays as tall as the facts; an AI's summary is marked
- * as such in the tip by its title, the source at the card's foot. Nothing for an asset census has
- * no description of.
+ * as such in the tip by its title, the source at the card's foot. A crypto asset's: what it is,
+ * its Wikipedia article's lead ("About the asset"). Nothing for an asset census has no description
+ * of.
  */
 export function CompanyDescriptionModule({ profile }: { profile: InstrumentProfile | null }) {
   const [expanded, setExpanded] = useState(false);
@@ -33,8 +34,10 @@ export function CompanyDescriptionModule({ profile }: { profile: InstrumentProfi
   const source = profile.sources.description;
   const fromWikipedia = source?.source === "wikipedia";
   const fromKid = source?.source === "issuer_kid";
+  const isCrypto = profile.category === "crypto";
   const long = profile.description.length > LONG_DESCRIPTION;
   const desc = fromKid ? "What it aims to do, from its key information document."
+    : isCrypto ? "What it is, from its Wikipedia article."
     : fromWikipedia ? "What it does, from its Wikipedia article."
     : "What it does, from its latest annual report.";
   const info = source && !fromWikipedia
@@ -43,7 +46,7 @@ export function CompanyDescriptionModule({ profile }: { profile: InstrumentProfi
 
   return (
     <Module className="flex flex-col">
-      <ModuleHead title={fromKid ? "About the fund" : "About the company"} desc={desc} right={<CardInfo text={info} />} />
+      <ModuleHead title={fromKid ? "About the fund" : isCrypto ? "About the asset" : "About the company"} desc={desc} right={<CardInfo text={info} />} />
       <div className={`${MODULE_BODY} flex flex-1 flex-col gap-5`}>
         <div>
           {/* Collapsed, the first lines fading out: a height, not a line clamp, as it can be several paragraphs. */}
@@ -65,7 +68,7 @@ export function CompanyDescriptionModule({ profile }: { profile: InstrumentProfi
         {source && (
           <CardFoot>
             {fromWikipedia ? (
-              <p><WikipediaAttribution source={source} /></p>
+              <p><WikipediaAttribution source={source} subject={isCrypto ? "the asset" : "the company"} /></p>
             ) : (
               <p className="flex flex-wrap gap-x-3 gap-y-0.5">
                 <span className="font-semibold text-[#a8a29e]">Source</span>
@@ -83,7 +86,7 @@ export function CompanyDescriptionModule({ profile }: { profile: InstrumentProfi
  * Wikipedia's text as CC BY-SA 4.0 asks it attributed: the article (its revision read, linked),
  * its authors (its history) and the licence (linked).
  */
-function WikipediaAttribution({ source }: { source: ProfileSourceRef }) {
+function WikipediaAttribution({ source, subject }: { source: ProfileSourceRef; subject: string }) {
   const title = articleTitle(source.url);
   const history = title ? `https://en.wikipedia.org/w/index.php?title=${encodeURIComponent(title.replaceAll(" ", "_"))}&action=history` : null;
   return (
@@ -91,9 +94,9 @@ function WikipediaAttribution({ source }: { source: ProfileSourceRef }) {
       From the Wikipedia article{" "}
       {source.url ? (
         <a href={source.url} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
-          {title ? `“${title}”` : "on the company"}<ExternalLink className="h-2.5 w-2.5 shrink-0" />
+          {title ? `“${title}”` : `on ${subject}`}<ExternalLink className="h-2.5 w-2.5 shrink-0" />
         </a>
-      ) : "on the company"}
+      ) : `on ${subject}`}
       {source.asOf && <> (revision of {dayLabel(source.asOf)})</>}
       {history && (
         <>, by <a href={history} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>its authors</a></>
