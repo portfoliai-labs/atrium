@@ -11,12 +11,14 @@ import type { StrategyCategory } from "./Strategy";
 // registry: a crypto asset is one; users_votes: the users' consensus on the category; sec_filing:
 // a company's annual report on the SEC's EDGAR (a 10-K, a foreign company's 20-F), to be cited;
 // esef_report: an EU company's annual financial report in ESEF (from filings.xbrl.org), cited;
-// wikipedia: a company's English Wikipedia article (its revision linked), CC BY-SA 4.0, to be
-// attributed with its licence; curation: a curator's decision, above every source. "unknown" for
-// one this page doesn't know yet.
+// wikipedia: a company's or a crypto asset's English Wikipedia article (its revision linked), CC
+// BY-SA 4.0, to be attributed with its licence; wikidata: a crypto asset's Wikidata item (its
+// launch), linked; coinmarketcap: a crypto asset's page on CoinMarketCap (its links, consensus and
+// supply), linked and cited; curation: a curator's decision, above every source. "unknown" for one
+// this page doesn't know yet.
 type ProfileSource =
   | "issuer_kid" | "index_methodology" | "esma_firds" | "isin" | "price_provider" | "registry" | "users_votes"
-  | "sec_filing" | "esef_report" | "wikipedia" | "curation" | "unknown";
+  | "sec_filing" | "esef_report" | "wikipedia" | "wikidata" | "coinmarketcap" | "curation" | "unknown";
 
 interface ProfileSourceRef {
   source: ProfileSource;
@@ -44,6 +46,8 @@ type Region =
   | "asia_pacific" | "single_country" | "other";
 type IndexSize = "large" | "large_mid" | "mid" | "small" | "all_cap";
 type Rebalancing = "monthly" | "quarterly" | "semi_annual" | "annual" | "other";
+// How a crypto asset's network agrees on its ledger.
+type Consensus = "proof_of_work" | "proof_of_stake";
 // A company's GICS sector (11) and industry (74, the 2023 structure).
 type Sector =
   | "energy" | "materials" | "industrials" | "consumer_discretionary" | "consumer_staples" | "health_care"
@@ -111,11 +115,21 @@ interface InstrumentProfile {
   // A company's: what it does, in English. A paragraph an AI model summarised from its latest
   // annual report (sources.description: sec_filing, its report to the SEC; or esef_report, an EU
   // company's ESEF report, asOf the end of the year it reports on; the report linked), else its
-  // Wikipedia article's lead as written, paragraphs separated by blank lines (wikipedia).
+  // Wikipedia article's lead as written, paragraphs separated by blank lines (wikipedia). A crypto
+  // asset's: its Wikipedia article's lead.
   description: string | null;
+  // A crypto asset's: its white paper (a URL), when it was launched (ISO 8601 to its source's
+  // precision: 2009-01-03, 2015-07 or 2015), its consensus, whether its supply is capped and its
+  // cap (units of the asset; null when uncapped). Its website is `website`.
+  whitePaper: string | null;
+  launched: string | null;
+  consensus: Consensus | null;
+  supplyCapped: boolean | null;
+  maxSupply: number | null;
   sources: Partial<Record<
     | "category" | "terPct" | "distribution" | "assetClass" | "domicile" | "replication" | "currencyHedged" | "riskIndicator" | "index"
-    | "sector" | "industry" | "headquarters" | "headquartersCity" | "employees" | "website" | "description",
+    | "sector" | "industry" | "headquarters" | "headquartersCity" | "employees" | "website" | "description"
+    | "whitePaper" | "launched" | "consensus" | "supplyCapped" | "maxSupply",
     ProfileSourceRef
   >>;
 }
@@ -131,6 +145,8 @@ const PROFILE_SOURCE_LABELS: Record<ProfileSource, string> = {
   sec_filing: "Annual report (SEC)",
   esef_report: "Annual report (ESEF)",
   wikipedia: "Wikipedia",
+  wikidata: "Wikidata",
+  coinmarketcap: "CoinMarketCap",
   curation: "Reviewed by Atrium",
   unknown: "Other source",
 };
@@ -161,6 +177,9 @@ const INDEX_SIZE_LABELS: Record<IndexSize, string> = {
 };
 const REBALANCING_LABELS: Record<Rebalancing, string> = {
   monthly: "Monthly", quarterly: "Quarterly", semi_annual: "Twice a year", annual: "Yearly", other: "Other",
+};
+const CONSENSUS_LABELS: Record<Consensus, string> = {
+  proof_of_work: "Proof of work", proof_of_stake: "Proof of stake",
 };
 const SECTOR_LABELS: Record<Sector, string> = {
   energy: "Energy",
@@ -260,8 +279,10 @@ function labelOf<T extends string>(labels: Record<T, string>, value: T): string 
 export type {
   InstrumentProfile, IndexProfile, ProfileSource, ProfileSourceRef,
   Distribution, ProfileAssetClass, Replication, Factor, Weighting, Region, IndexSize, Rebalancing, Sector, Industry,
+  Consensus,
 };
 export {
   PROFILE_SOURCE_LABELS, DISTRIBUTION_LABELS, PROFILE_ASSET_CLASS_LABELS, REPLICATION_LABELS, FACTOR_LABELS,
-  WEIGHTING_LABELS, REGION_LABELS, INDEX_SIZE_LABELS, REBALANCING_LABELS, SECTOR_LABELS, INDUSTRY_LABELS, labelOf,
+  WEIGHTING_LABELS, REGION_LABELS, INDEX_SIZE_LABELS, REBALANCING_LABELS, SECTOR_LABELS, INDUSTRY_LABELS, CONSENSUS_LABELS,
+  labelOf,
 };
