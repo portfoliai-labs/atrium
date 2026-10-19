@@ -72,7 +72,8 @@ export function InstrumentProfileModule({ profile, listing }: { profile: Instrum
   const facts = profile ? profileFacts(profile) : [];
   const index = profile?.index ?? null;
   const isSecurity = listing?.kind === "security";
-  const showFacts = facts.length > 0 || isSecurity;
+  // Key facts only with something to show: no card saying nothing is known.
+  const showFacts = facts.length > 0;
   if (!showFacts && !index) return null;
 
   return (
@@ -118,9 +119,7 @@ function FactsCard({ title, desc, facts, attribution }: { title: string; desc: s
     <Module className="flex flex-col">
       <ModuleHead title={title} desc={desc} right={<CardInfo text={info} />} />
       <div className={`${MODULE_BODY} flex flex-1 flex-col gap-5`}>
-        {facts.length > 0
-          ? <FactTable facts={facts} refOf={refs.numberOf} />
-          : <p className="text-[12.5px] text-[#a8a29e]">Nothing is known about this instrument yet.</p>}
+        <FactTable facts={facts} refOf={refs.numberOf} />
         {sources.length > 0 && (
           <CardFoot>
             <p className="flex flex-wrap gap-x-3 gap-y-0.5">
@@ -172,9 +171,10 @@ function profileFacts(p: InstrumentProfile): ProfileFact[] {
   const headOffice = [p.headquartersCity, p.headquarters && countryName(p.headquarters)].filter(Boolean).join(", ") || null;
   const website = p.website ? websiteLink(p.website) : null;
   const whitePaper = p.whitePaper ? websiteLink(p.whitePaper) : null;
-  // A capped supply's cap; "No cap" for an uncapped one (Ether).
+  // A capped supply's cap; "No cap" for an uncapped one (Ether). The crypto fields are checked
+  // with != null: a profile from a backend that doesn't send them yet has them undefined.
   const maxSupply = p.supplyCapped === false ? "No cap"
-    : p.maxSupply !== null ? p.maxSupply.toLocaleString("en-US", { maximumFractionDigits: 0 }) : null;
+    : p.maxSupply != null ? p.maxSupply.toLocaleString("en-US", { maximumFractionDigits: 0 }) : null;
   const facts: (ProfileFact | false)[] = [
     p.category !== null && { key: "category", label: "Category", value: STRATEGY_CATEGORY_LABELS[p.category] ?? p.category, source: s.category },
     p.terPct !== null && { key: "terPct", label: "Ongoing costs (TER)", value: `${p.terPct.toFixed(2)}% a year`, source: s.terPct },
@@ -188,8 +188,8 @@ function profileFacts(p: InstrumentProfile): ProfileFact[] {
     p.industry !== null && { key: "industry", label: "Industry", value: labelOf(INDUSTRY_LABELS, p.industry), source: s.industry },
     headOffice !== null && { key: "headquarters", label: "Head office", value: headOffice, source: s.headquarters ?? s.headquartersCity },
     p.employees !== null && { key: "employees", label: "Employees", value: p.employees.toLocaleString("en-US"), source: s.employees },
-    p.launched !== null && { key: "launched", label: "Launched", value: launchLabel(p.launched), source: s.launched },
-    p.consensus !== null && { key: "consensus", label: "Consensus", value: labelOf(CONSENSUS_LABELS, p.consensus), source: s.consensus },
+    p.launched != null && { key: "launched", label: "Launched", value: launchLabel(p.launched), source: s.launched },
+    p.consensus != null && { key: "consensus", label: "Consensus", value: labelOf(CONSENSUS_LABELS, p.consensus), source: s.consensus },
     maxSupply !== null && { key: "maxSupply", label: "Maximum supply", value: maxSupply, source: s.maxSupply ?? s.supplyCapped },
     website !== null && { key: "website", label: "Website", value: website.host, href: website.href, source: s.website },
     whitePaper !== null && { key: "whitePaper", label: "White paper", value: "Read", href: whitePaper.href, source: s.whitePaper },
