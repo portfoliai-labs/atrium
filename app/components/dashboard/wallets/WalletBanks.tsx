@@ -7,7 +7,7 @@ import { useWallets } from "../../../context/WalletsContext";
 import { bankingService } from "../../../services/bankingService";
 import { formatCurrency } from "../../../lib/format";
 import { dayLabel, errorText } from "../../../lib/wallets";
-import type { Bank, BankAccount, BankLink } from "../../../models/Banking";
+import type { AccountSync, Bank, BankAccount, BankLink } from "../../../models/Banking";
 import type { Wallet } from "../../../models/Wallet";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -26,10 +26,20 @@ const RENEW_WITHIN_DAYS = 14;
 const daysLeft = (link: BankLink) =>
   link.validUntil ? Math.ceil((new Date(link.validUntil).getTime() - Date.now()) / 86_400_000) : 0;
 
-const accountLabel = (a: BankAccount) => [a.name ?? "Account", a.ibanLast4 ? `•••• ${a.ibanLast4}` : null].filter(Boolean).join(" ");
+export const accountLabel = (a: BankAccount) => [a.name ?? "Account", a.ibanLast4 ? `•••• ${a.ibanLast4}` : null].filter(Boolean).join(" ");
 
-const syncText = (imported: number, duplicates: number) =>
-  imported === 0 ? "Nothing new." : `${imported} new ${imported === 1 ? "movement" : "movements"}${duplicates ? `, ${duplicates} already there` : ""}.`;
+// What a read brought: what's new, what was there already, and what was left out (booked before
+// the day the account is read from, or in another currency).
+export const syncText = (accounts: AccountSync[]) => {
+  const imported = accounts.reduce((s, a) => s + a.imported, 0);
+  const duplicates = accounts.reduce((s, a) => s + a.duplicates, 0);
+  const skipped = accounts.reduce((s, a) => s + a.skipped, 0);
+  return [
+    imported === 0 ? "Nothing new" : `${imported} new ${imported === 1 ? "movement" : "movements"}`,
+    duplicates ? `${duplicates} already there` : null,
+    skipped ? `${skipped} left out (before the day it's read from, or in another currency)` : null,
+  ].filter(Boolean).join(", ") + ".";
+};
 
 /**
  * WALLET BANKS — the banks linked through open banking, read only: a link is the consent given at
@@ -74,12 +84,16 @@ export function WalletBanks() {
       setBusy(null);
     }
   };
-  const sync = (link: BankLink) => act(link.uuid, async () => {
+  const readNow = async (link: BankLink) => {
     const result = await bankingService.sync(link.uuid);
-    const imported = result.accounts.reduce((s, a) => s + a.imported, 0);
-    const duplicates = result.accounts.reduce((s, a) => s + a.duplicates, 0);
-    setNotes((n) => ({ ...n, [link.uuid]: syncText(imported, duplicates) }));
-  }, "Unable to read this bank now.");
+    setNotes((n) => ({ ...n, [link.uuid]: syncText(result.accounts) }));
+  };
+  const sync = (link: BankLink) => act(link.uuid, () => readNow(link), "Unable to read this bank now.");
+  // A linked account is read at once, not at the next of the twice-a-day reads.
+  const linkAccount = (link: BankLink, account: BankAccount, walletUuid: string) => act(account.uuid, async () => {
+    await bankingService.linkAccount(account.uuid, walletUuid);
+    await readNow(link);
+  }, "Unable to link this account.");
   const remove = async () => {
     if (!removing) return;
     await act(removing.uuid, () => bankingService.remove(removing.uuid), "Unable to remove this bank.");
@@ -128,7 +142,7 @@ export function WalletBanks() {
                   onSync={() => void sync(link)}
                   onRenew={() => setConnecting({ renew: link })}
                   onRemove={() => { setError(null); setRemoving(link); }}
-                  onLink={(account, walletUuid) => void act(account.uuid, () => bankingService.linkAccount(account.uuid, walletUuid), "Unable to link this account.")}
+                  onLink={(account, walletUuid) => void linkAccount(link, account, walletUuid)}
                   onUnlink={(account) => void act(account.uuid, () => bankingService.unlinkAccount(account.uuid), "Unable to unlink this account.")}
                 />
               ))}
@@ -278,7 +292,84 @@ function BankAccountRow({ account, wallets, taken, readOnly, busy, onLink, onUnl
   );
 }
 
-function IconButton({ label, onClick, danger, spinning, disabled, title, children }: {
+/**
+ * WALLET BANK SYNC — in a wallet's settings: the bank account it's linked to, if any, and reading
+ * it now. Linking and unlinking stay on the Banks page; a read here is the whole link's, its note
+ * this account's.
+ */
+export function WalletBankSync({ wallet }: { wallet: Wallet }) {
+  const { sample, version, changed } = useWallets();
+  const [state, setState] = useState<{ found: { link: BankLink; account: BankAccount } | null; error: string | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    bankingService.links()
+      .then((links) => {
+        if (cancelled) return;
+        const link = links.find((l) => l.accounts.some((a) => a.walletUuid === wallet.uuid));
+        const account = link?.accounts.find((a) => a.walletUuid === wallet.uuid);
+        setState({ found: link && account ? { link, account } : null, error: null });
+      })
+      .catch((err) => { if (!cancelled) setState({ found: null, error: errorText(err, "Unable to load your banks.") }); });
+    return () => { cancelled = true; };
+  }, [wallet.uuid, version]);
+
+  if (state === null) return null;
+  const found = state.found;
+  if (!found) {
+    return state.error ? <p className="text-[11.5px] font-semibold text-rose-600">{state.error}</p> : null;
+  }
+
+  const { link, account } = found;
+  const active = link.status === "active";
+  const lock = sample ? DEMO_DISABLED_TITLE : wallet.archived ? "An archived wallet isn't read" : !active ? "The consent ended: renew it on the Banks page" : null;
+  const balance = account.reportedBalance === null ? null : formatCurrency(account.reportedBalance, account.currency, 2);
+  const meta = [
+    link.lastSyncedAt ? `read ${dayLabel(link.lastSyncedAt.slice(0, 10))}` : "not read yet",
+    balance && `bank balance ${balance}`,
+    account.syncFrom && `from ${dayLabel(account.syncFrom)}`,
+  ].filter(Boolean).join(" · ");
+
+  const readNow = async () => {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      const result = await bankingService.sync(link.uuid);
+      setNote(syncText(result.accounts.filter((a) => a.accountUuid === account.uuid)));
+      changed();
+    } catch (err) {
+      setError(errorText(err, "Unable to read this bank now."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <span className="block text-[11px] font-black uppercase tracking-widest text-slate-400">Bank</span>
+      <div className="flex items-center gap-3 rounded-xl border border-[#EEE9DD] px-3 py-2.5">
+        <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${active ? "bg-[#C49A3C]/10 text-[#C49A3C]" : "bg-rose-50 text-rose-600"}`}>
+          <Landmark className="h-3.5 w-3.5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[12.5px] font-bold text-slate-700">{link.bankName} · {accountLabel(account)}</span>
+          <span className="block text-[11px] text-slate-500">{meta}</span>
+        </span>
+        <IconButton label="Read now" onClick={() => void readNow()} spinning={busy} disabled={!!lock} title={lock ?? undefined}>
+          <RefreshCw className="h-3.5 w-3.5" />
+        </IconButton>
+      </div>
+      {note && <p className="text-[11.5px] font-semibold text-emerald-700">{note}</p>}
+      {error && <p className="text-[11.5px] font-semibold text-rose-600">{error}</p>}
+    </div>
+  );
+}
+
+export function IconButton({ label, onClick, danger, spinning, disabled, title, children }: {
   label: string; onClick: () => void; danger?: boolean; spinning?: boolean; disabled?: boolean; title?: string; children: React.ReactNode;
 }) {
   return (
