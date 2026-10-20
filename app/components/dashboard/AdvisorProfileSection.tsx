@@ -173,7 +173,7 @@ export function AdvisorProfileSection() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={logoUrl} alt="Company logo" className="w-full h-full object-contain" />
                   ) : (
-                    <ImagePlus className="w-6 h-6 text-[#a8a29e]" />
+                    <ImagePlus className="w-6 h-6 text-[#857e78]" />
                   )}
                 </button>
                 <input
@@ -242,7 +242,7 @@ export function AdvisorProfileSection() {
           <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-wider text-[#78716c] ml-1">Specialization</label>
             <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#a8a29e]"><Briefcase className="w-5 h-5" /></div>
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#857e78]"><Briefcase className="w-5 h-5" /></div>
               <input
                 type="text"
                 maxLength={200}

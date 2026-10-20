@@ -46,7 +46,7 @@ export function LegalLayout({
         >
           {title}
         </h1>
-        <p className="text-[12px] uppercase tracking-widest mb-12" style={{ color: "#a8a29e" }}>
+        <p className="text-[12px] uppercase tracking-widest mb-12" style={{ color: "#857e78" }}>
           Last updated: {lastUpdated}
         </p>
 

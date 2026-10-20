@@ -14,7 +14,7 @@ import {
 } from "../../models/ManualAsset";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-const INPUT = "h-10 px-3 rounded-xl bg-white border border-slate-200 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-300 placeholder:font-normal focus:border-slate-300 focus:ring-4 focus:ring-slate-50";
+const INPUT = "h-10 px-3 rounded-xl bg-white border border-slate-200 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400 placeholder:font-normal focus:border-slate-300 focus:ring-4 focus:ring-slate-50";
 // Today in the user's own time zone, as YYYY-MM-DD.
 const today = () => new Date().toLocaleDateString("en-CA");
 const dateLabel = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });

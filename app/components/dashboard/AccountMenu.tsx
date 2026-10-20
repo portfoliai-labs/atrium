@@ -66,7 +66,7 @@ export function AccountMenu({ subscription, isLoading, onClose, onNavigate, onMa
                 <span className="truncate">{subscription?.plan_name ?? "Your plan"}</span>
               )}
             </span>
-            {onManage && <ArrowRight className="w-4 h-4 shrink-0 text-[#a8a29e]" />}
+            {onManage && <ArrowRight className="w-4 h-4 shrink-0 text-[#857e78]" />}
           </button>
         </div>
 
@@ -83,7 +83,7 @@ export function AccountMenu({ subscription, isLoading, onClose, onNavigate, onMa
                 }}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-[#1c1917] hover:bg-white transition-colors"
               >
-                <e.icon className="h-4 w-4 text-[#a8a29e]" />
+                <e.icon className="h-4 w-4 text-[#857e78]" />
                 {e.label}
               </button>
             ))}

@@ -355,7 +355,7 @@ function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStr
       aria-label={`Open ${s.portfolioName}`}
       className="group/card relative h-full bg-white rounded-[1.75rem] border border-[#EEE9DD] p-6 flex flex-col gap-5 cursor-pointer transition-colors hover:border-[#C49A3C]/60 hover:bg-[#FBFAF6] outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40"
     >
-      <span aria-hidden className="absolute top-5 right-5 h-6 w-6 rounded-full flex items-center justify-center text-[#a8a29e] transition-colors group-hover/card:text-[#C49A3C]">
+      <span aria-hidden className="absolute top-5 right-5 h-6 w-6 rounded-full flex items-center justify-center text-[#857e78] transition-colors group-hover/card:text-[#C49A3C]">
         <ArrowUpRight className="h-4 w-4" />
       </span>
 
@@ -395,7 +395,7 @@ function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStr
 
       <div className="mt-auto space-y-3">
         <AllocationBar targets={s.strategy.targets} />
-        <p className="text-[10px] text-[#a8a29e] leading-snug">Net of the author&apos;s costs: {costsLine(s.costs, s.currency)}</p>
+        <p className="text-[10px] text-[#857e78] leading-snug">Net of the author&apos;s costs: {costsLine(s.costs, s.currency)}</p>
       </div>
     </article>
   );
@@ -414,7 +414,7 @@ function FilterField({ label, suffix, value, disabled, onChange }: { label: stri
           disabled={disabled}
           placeholder="Any"
           onChange={(e) => onChange(e.target.value)}
-          className="w-full h-11 px-3.5 pr-12 rounded-xl bg-white border border-slate-200 text-sm font-semibold tabular-nums text-slate-900 outline-none placeholder:text-slate-300 focus:border-[#C49A3C]/60 disabled:bg-slate-50 disabled:cursor-not-allowed"
+          className="w-full h-11 px-3.5 pr-12 rounded-xl bg-white border border-slate-200 text-sm font-semibold tabular-nums text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#C49A3C]/60 disabled:bg-slate-50 disabled:cursor-not-allowed"
         />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">{suffix}</span>
       </span>

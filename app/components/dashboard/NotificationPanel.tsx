@@ -64,7 +64,7 @@ export function NotificationPanel({
           {notifications.length > 0 && (
             <button
               onClick={onDismissAll}
-              className="flex items-center gap-1 text-[10px] font-semibold text-[#a8a29e] hover:text-rose-500 transition-colors"
+              className="flex items-center gap-1 text-[10px] font-semibold text-[#857e78] hover:text-rose-500 transition-colors"
             >
               <Trash2 className="w-3 h-3" />
               Clear all

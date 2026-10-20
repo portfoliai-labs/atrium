@@ -269,7 +269,7 @@ function PreferencesCard() {
                 <select id="pref-language" value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value })} disabled={saving} className={select}>
                   {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.flag} {l.label}</option>)}
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a8a29e]" />
+                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#857e78]" />
               </div>
             </div>
             <div>
@@ -278,7 +278,7 @@ function PreferencesCard() {
                 <select id="pref-currency" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} disabled={saving} className={select}>
                   {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a8a29e]" />
+                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#857e78]" />
               </div>
             </div>
             {!isAdvisor && (
@@ -289,7 +289,7 @@ function PreferencesCard() {
                     {!form.taxResidence && <option value="" disabled>Not set</option>}
                     {residenceOptions(saved?.taxResidence || null).map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
                   </select>
-                  <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a8a29e]" />
+                  <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#857e78]" />
                 </div>
                 <p className="text-[11px] text-[#78716c] mt-1.5">
                   {form.taxResidence && !TAX_REGIME_COUNTRIES.includes(form.taxResidence)

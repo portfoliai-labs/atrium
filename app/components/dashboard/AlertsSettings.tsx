@@ -208,7 +208,7 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
             <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${TONE_STYLES[state.tone].chip}`}>{state.label}</span>
             {figures && (
               <span className="text-[13px] font-bold tabular-nums text-[#1c1917]">
-                {figures.current} <span className="text-[#a8a29e] font-semibold">of {figures.limit}</span>
+                {figures.current} <span className="text-[#857e78] font-semibold">of {figures.limit}</span>
               </span>
             )}
           </div>
@@ -217,7 +217,7 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
               <div className={`h-full rounded-full ${BAR_TONE[state.tone]}`} style={{ width: `${Math.max(3, state.progressPct)}%` }} />
             )}
           </div>
-          <p className="text-[11px] font-semibold text-[#a8a29e] mt-1.5">
+          <p className="text-[11px] font-semibold text-[#857e78] mt-1.5">
             {state.progressPct !== null ? `${Math.round(state.progressPct)}% of the way to the limit` : state.kind === "off" ? "Not being checked" : "Nothing measured yet"}
           </p>
         </div>
@@ -337,7 +337,7 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
               subtitle={<>
                 {own.length === 0 ? "No alerts yet" : `${manual.length} of ${ALERT_RULE_LIMIT} alerts`}
                 {kept.length > 0 && ` · ${kept.length} from the adopted strategy`}
-                <span className="text-[#a8a29e]"> · checked about every 5 minutes</span>
+                <span className="text-[#857e78]"> · checked about every 5 minutes</span>
               </>}
               right={<>
                 {byTone.map((t) => (
@@ -350,7 +350,7 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
             >
               {form?.portfolioUuid === p.uuid && <div className="px-6 md:px-8 pb-5">{formFor(p)}</div>}
               {own.length === 0 ? (
-                <p className="px-6 md:px-8 py-5 border-t border-[rgba(196,154,60,0.12)] text-sm text-[#a8a29e]">
+                <p className="px-6 md:px-8 py-5 border-t border-[rgba(196,154,60,0.12)] text-sm text-[#857e78]">
                   Nothing watched on this portfolio. Create an alert to be told when it moves by a set amount, or when a holding or an asset class leaves a range you choose.
                 </p>
               ) : manual.length > 0 && (

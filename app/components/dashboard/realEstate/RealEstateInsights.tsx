@@ -95,7 +95,7 @@ export function RealEstateInsights({ currency, onOpenProperty }: { currency: str
         <ModuleHead title="Properties" desc="Each one's figures in its own currency, at your share. Open one for its page." />
         <div className="pb-2">
           {active.length === 0
-            ? <p className={`${MODULE_BODY} text-[12.5px] text-[#a8a29e]`}>No properties yet.</p>
+            ? <p className={`${MODULE_BODY} text-[12.5px] text-[#857e78]`}>No properties yet.</p>
             : <DataTable columns={columns} rows={active} rowKey={(p) => p.uuid} initialSort={{ key: "value", desc: true }} />}
         </div>
       </Module>

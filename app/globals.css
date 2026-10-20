@@ -19,10 +19,25 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* The palette's lightest greys for text, a shade darker than Tailwind's, so that a caption or a
+   placeholder reads on white and on the cream grounds (about 4:1, where Tailwind's are 2.5:1). The
+   same grey as text-[#857e78], the warm one. */
+@theme {
+  --color-slate-400: #748094;
+  --color-stone-400: #857e78;
+}
+
+/* The app is light only: no dark theme for the operating system's to switch to (it turned the
+   inherited text, and with it the inputs' placeholders, near white on the white cards). */
+:root {
+  color-scheme: light;
+}
+
+/* A placeholder with no colour of its own: the light grey above, not half its field's text colour
+   (Tailwind's), which fades with a disabled field's. */
+@layer base {
+  ::placeholder {
+    color: #857e78;
   }
 }
 

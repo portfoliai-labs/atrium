@@ -33,7 +33,7 @@ function DocumentPreviewModal({ doc, onClose }: { doc: LegalDocument; onClose: (
         <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-[rgba(196,154,60,0.2)]">
           <h2 className="font-bold text-[#1c1917] text-sm">
             {formatDocumentLabel(doc.code)}{" "}
-            <span className="text-[#a8a29e] font-normal">v{doc.version}</span>
+            <span className="text-[#857e78] font-normal">v{doc.version}</span>
           </h2>
           <div className="flex items-center gap-1">
             <a
@@ -135,13 +135,13 @@ export function AcceptanceScreen({ documents, onAccepted }: { documents: LegalDo
                   {formatDocumentLabel(doc.code)}
                   <ExternalLink className="w-3 h-3" />
                 </button>
-                <span className="text-[#a8a29e]"> (v{doc.version})</span>
+                <span className="text-[#857e78]"> (v{doc.version})</span>
               </span>
             </label>
           ))}
         </div>
 
-        <p className="text-[11px] text-[#a8a29e] leading-relaxed mb-6">
+        <p className="text-[11px] text-[#857e78] leading-relaxed mb-6">
           By accepting, you also confirm that you are at least 18 years old. PortfoliAI reports —
           including AI-generated analysis — are informational only and do not constitute
           financial advice.
@@ -273,7 +273,7 @@ export function LegalGate({ children }: { children: React.ReactNode }) {
               ? "We can't confirm your identity because your Google account has no verified email. Please sign in again, ideally with an account that has a verified email address."
               : "Something went wrong on our end. This is usually temporary — please try again in a moment."}
           </p>
-          <p className="text-[11px] text-[#a8a29e] mb-6 font-mono">
+          <p className="text-[11px] text-[#857e78] mb-6 font-mono">
             {checkError instanceof ApiError ? `${checkError.status} ${checkError.message}` : checkError.message}
           </p>
           {isUnverifiedEmail ? (

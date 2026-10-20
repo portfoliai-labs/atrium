@@ -80,7 +80,7 @@ const FaqItem = ({
         className="flex-shrink-0 w-6 h-6 rounded-full border flex items-center justify-center mt-0.5 transition-colors"
         style={{
           borderColor: isOpen ? '#C49A3C' : '#e7e5e0',
-          color: isOpen ? '#C49A3C' : '#a8a29e',
+          color: isOpen ? '#C49A3C' : '#857e78',
         }}
       >
         {isOpen

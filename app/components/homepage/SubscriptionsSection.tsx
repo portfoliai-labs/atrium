@@ -74,7 +74,7 @@ const PlanCard = ({
       {/* Period */}
       <div
         className="text-[12px] mb-1"
-        style={{ color: featured ? 'rgba(255,255,255,0.25)' : '#a8a29e' }}
+        style={{ color: featured ? 'rgba(255,255,255,0.25)' : '#857e78' }}
       >
         {plan.period ?? 'per month'}
       </div>
@@ -186,7 +186,7 @@ const SubscriptionSection = ({ onCta }: { onCta: () => void }) => {
           >
             Simple,<br />transparent pricing.
           </motion.h2>
-          <p className="mt-3 text-[14px] max-w-sm" style={{ color: '#a8a29e' }}>
+          <p className="mt-3 text-[14px] max-w-sm" style={{ color: '#857e78' }}>
             Billed annually — monthly billing available at a premium.
           </p>
         </div>

@@ -236,11 +236,11 @@ function TaxesModule({ properties, onOpen }: { properties: Property[]; onOpen: (
       />
       <div className={`${MODULE_BODY} space-y-4`}>
         {list === undefined ? (
-          <p className="text-[12.5px] text-[#a8a29e]">Loading…</p>
+          <p className="text-[12.5px] text-[#857e78]">Loading…</p>
         ) : list === null ? (
           <p className="text-[12.5px] text-rose-600">Unable to work out the taxes right now.</p>
         ) : taxes.length === 0 ? (
-          <p className="text-[12.5px] text-[#a8a29e]">No property tax this year.</p>
+          <p className="text-[12.5px] text-[#857e78]">No property tax this year.</p>
         ) : (
           <>
             <Figs>
@@ -271,7 +271,7 @@ function TaxesModule({ properties, onOpen }: { properties: Property[]; onOpen: (
                         <span className={`block text-[11.5px] font-semibold ${tone}`}>{status}</span>
                       </span>
                       <span className="font-bold tabular-nums text-slate-900">{t.status === "computed" ? money(t.amount) : "—"}</span>
-                      <ChevronRight className="h-4 w-4 text-[#a8a29e]" />
+                      <ChevronRight className="h-4 w-4 text-[#857e78]" />
                     </button>
                   </li>
                 );
@@ -308,14 +308,14 @@ export function ValueModule({ summary, desc = "What your properties are worth at
       <ModuleHead title="Value" desc={desc} />
       <div className={`${MODULE_BODY} h-64`}>
         {summary === undefined ? (
-          <p className="text-[12.5px] text-[#a8a29e]">Loading…</p>
+          <p className="text-[12.5px] text-[#857e78]">Loading…</p>
         ) : summary === null || data.length === 0 ? (
-          <p className="text-[12.5px] text-[#a8a29e]">Can&apos;t be added up right now: an exchange rate is missing.</p>
+          <p className="text-[12.5px] text-[#857e78]">Can&apos;t be added up right now: an exchange rate is missing.</p>
         ) : (
           <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 700, height: 240 }}>
             <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#a8a29e" }} axisLine={false} tickLine={false} minTickGap={40} />
-              <YAxis tickFormatter={(v) => formatCompact(Number(v))} tick={{ fontSize: 10, fill: "#a8a29e" }} axisLine={false} tickLine={false} width={48} domain={["auto", "auto"]} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#857e78" }} axisLine={false} tickLine={false} minTickGap={40} />
+              <YAxis tickFormatter={(v) => formatCompact(Number(v))} tick={{ fontSize: 10, fill: "#857e78" }} axisLine={false} tickLine={false} width={48} domain={["auto", "auto"]} />
               <Tooltip
                 formatter={(v, name) => [formatCurrency(Number(v), currency, 0), name === "value" ? "Value" : name === "equity" ? "Equity" : "Put in"]}
                 contentStyle={{ borderRadius: 12, border: "1px solid #E0DACC", fontSize: 12 }}
@@ -344,9 +344,9 @@ export function CashFlowModule({ summary }: { summary: Summary }) {
       <ModuleHead title="Cash flow" desc="Rents and payouts in; expenses, property taxes and mortgage instalments out, over the last 12 months." />
       <div className={`${MODULE_BODY} space-y-4`}>
         {summary === undefined ? (
-          <p className="text-[12.5px] text-[#a8a29e]">Loading…</p>
+          <p className="text-[12.5px] text-[#857e78]">Loading…</p>
         ) : months.length === 0 ? (
-          <p className="text-[12.5px] text-[#a8a29e]">Can&apos;t be added up right now: an exchange rate is missing.</p>
+          <p className="text-[12.5px] text-[#857e78]">Can&apos;t be added up right now: an exchange rate is missing.</p>
         ) : (
           <>
             <Figs>
@@ -357,10 +357,10 @@ export function CashFlowModule({ summary }: { summary: Summary }) {
             <div className="h-[170px]">
               <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 400, height: 170 }}>
                 <BarChart data={months.map((m) => ({ label: monthLabel(m.month), income: m.income, out: -(m.expenses + m.mortgagePayments) }))} stackOffset="sign" margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#a8a29e" }} axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={(v) => formatCompact(Number(v))} tick={{ fontSize: 10, fill: "#a8a29e" }} axisLine={false} tickLine={false} width={40} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#857e78" }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={(v) => formatCompact(Number(v))} tick={{ fontSize: 10, fill: "#857e78" }} axisLine={false} tickLine={false} width={40} />
                   <Tooltip formatter={(v, name) => [formatCurrency(Math.abs(Number(v)), currency, 0), name === "income" ? "In" : "Out"]} contentStyle={{ borderRadius: 12, border: "1px solid #E0DACC", fontSize: 12 }} />
-                  <ReferenceLine y={0} stroke="#a8a29e" />
+                  <ReferenceLine y={0} stroke="#857e78" />
                   <Bar dataKey="income" stackId="flow" fill="#1baf7a" radius={[3, 3, 0, 0]} isAnimationActive={false} />
                   <Bar dataKey="out" stackId="flow" fill="#e11d48" radius={[3, 3, 0, 0]} isAnimationActive={false} />
                 </BarChart>

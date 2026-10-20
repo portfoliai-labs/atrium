@@ -74,7 +74,7 @@ export function PolicySummary({
             <div key={s.id} className="flex items-start gap-3 px-4 py-3 rounded-2xl bg-[#F7F5EF]">
               {issues.length === 0
                 ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />
-                : <Circle className="w-4 h-4 mt-0.5 shrink-0 text-[#a8a29e]" />}
+                : <Circle className="w-4 h-4 mt-0.5 shrink-0 text-[#857e78]" />}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-[#1c1917]">{s.label}</p>
                 {issues.length > 0 && (
@@ -121,7 +121,7 @@ export function PolicySummary({
               {s.rows.map((r, j) => (
                 <div key={`${r.label}-${j}`} className="contents">
                   <dt className="font-semibold text-[#78716c]">{r.label}</dt>
-                  <dd className={`font-bold whitespace-pre-wrap ${r.value === "Not specified" ? "text-[#a8a29e]" : "text-[#1c1917]"}`}>
+                  <dd className={`font-bold whitespace-pre-wrap ${r.value === "Not specified" ? "text-[#857e78]" : "text-[#1c1917]"}`}>
                     {r.value}
                   </dd>
                 </div>

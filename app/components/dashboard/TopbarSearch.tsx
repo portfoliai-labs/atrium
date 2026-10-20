@@ -81,7 +81,7 @@ export function TopbarSearch({ onOpen }: { onOpen: (listing: Listing) => void })
           onClick={() => (expanded ? inputRef.current?.focus() : expand())}
           title="Search securities"
           aria-label="Search securities"
-          className="shrink-0 flex items-center justify-center w-10 md:w-11 h-full text-[#a8a29e] hover:text-[#1c1917] transition-colors"
+          className="shrink-0 flex items-center justify-center w-10 md:w-11 h-full text-[#857e78] hover:text-[#1c1917] transition-colors"
         >
           {status === "loading" ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
         </button>
@@ -100,7 +100,7 @@ export function TopbarSearch({ onOpen }: { onOpen: (listing: Listing) => void })
           onFocus={() => setFocused(true)}
           onKeyDown={handleKeyDown}
           placeholder="Name, ticker or ISIN"
-          className={`min-w-0 flex-1 bg-transparent pr-3 text-sm font-semibold text-[#1c1917] placeholder:text-[#a8a29e] placeholder:font-normal outline-none transition-opacity duration-200 ${
+          className={`min-w-0 flex-1 bg-transparent pr-3 text-sm font-semibold text-[#1c1917] placeholder:text-[#857e78] placeholder:font-normal outline-none transition-opacity duration-200 ${
             expanded ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
         />
@@ -109,11 +109,11 @@ export function TopbarSearch({ onOpen }: { onOpen: (listing: Listing) => void })
       {showList && (
         <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-2xl bg-white border border-[#E0DACC] shadow-xl shadow-stone-300/40 overflow-hidden z-10">
           {!searchable ? (
-            <p className="px-4 py-3 text-xs font-semibold text-[#a8a29e]">
+            <p className="px-4 py-3 text-xs font-semibold text-[#857e78]">
               Type at least {LISTING_SEARCH_MIN_LENGTH} characters — name, ticker or ISIN.
             </p>
           ) : status === "loading" ? (
-            <p className="px-4 py-3 text-xs font-semibold text-[#a8a29e]">Searching…</p>
+            <p className="px-4 py-3 text-xs font-semibold text-[#857e78]">Searching…</p>
           ) : status === "error" ? (
             <p className="px-4 py-3 text-xs font-semibold text-rose-600">{error}</p>
           ) : results.length === 0 ? (
@@ -140,7 +140,7 @@ export function TopbarSearch({ onOpen }: { onOpen: (listing: Listing) => void })
                       {listingLine(r)}
                     </p>
                   </div>
-                  {r.isin && <span className="text-[10px] font-semibold text-[#a8a29e] shrink-0">{r.isin}</span>}
+                  {r.isin && <span className="text-[10px] font-semibold text-[#857e78] shrink-0">{r.isin}</span>}
                 </li>
               ))}
             </ul>

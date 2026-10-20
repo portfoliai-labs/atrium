@@ -214,7 +214,7 @@ function DashboardPageContent() {
       case PROFILE_SECTION:
         return <MyProfileSection key={sectionVisit} />;
       case 'messages':
-        return <MessagesSection />;
+        return <MessagesSection key={sectionVisit} />;
       case 'upload':
         // Every portfolio at once: the list filters by portfolio, and new rows say where they go.
         // An advisor's is each client's portfolio's, see above.

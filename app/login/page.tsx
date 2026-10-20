@@ -195,7 +195,7 @@ function LoginContent() {
 
               <form onSubmit={handlePasswordSubmit} className="space-y-3">
                 <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "#a8a29e" }} />
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "#857e78" }} />
                   <input
                     type="email"
                     required
@@ -208,7 +208,7 @@ function LoginContent() {
                   />
                 </div>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "#a8a29e" }} />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "#857e78" }} />
                   <input
                     type="password"
                     required
@@ -249,7 +249,7 @@ function LoginContent() {
                 </button>
               </p>
 
-              <p className="text-center text-[10px] font-semibold uppercase tracking-[0.1em] mt-6 mb-2" style={{ color: "#a8a29e" }}>
+              <p className="text-center text-[10px] font-semibold uppercase tracking-[0.1em] mt-6 mb-2" style={{ color: "#857e78" }}>
                 Or try a demo account
               </p>
               <div className="grid grid-cols-2 gap-2">
@@ -283,7 +283,7 @@ function LoginContent() {
             <div className="flex-1 h-px" style={{ background: "#E0DACC" }} />
           </div>
 
-          <p className="text-center text-[11px] mt-8 leading-relaxed" style={{ color: "#a8a29e" }}>
+          <p className="text-center text-[11px] mt-8 leading-relaxed" style={{ color: "#857e78" }}>
             By continuing, you agree to our{" "}
             <a href="#" className="underline transition-colors" style={{ color: "#78716c" }}
               onMouseEnter={(e) => (e.currentTarget.style.color = "#1c1917")}

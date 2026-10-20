@@ -195,7 +195,7 @@ function MetricTile({ row, entries, currency, colorOf, isUpdating }: {
       <div className="flex items-center justify-between gap-2 mb-4">
         <h3 className="text-sm font-black text-slate-900">{row.label}</h3>
         {row.info && (
-          <span title={row.info} aria-label={row.info} className="text-slate-300 hover:text-slate-500 cursor-help transition-colors">
+          <span title={row.info} aria-label={row.info} className="text-slate-400 hover:text-slate-600 cursor-help transition-colors">
             <Info className="h-4 w-4" />
           </span>
         )}

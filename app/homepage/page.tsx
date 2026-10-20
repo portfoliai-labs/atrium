@@ -132,7 +132,7 @@ function HeroSection({ onLogin }: { onLogin: () => void }) {
             {[{ num: "Daily", label: "updates" }, { num: "AI", label: "analysis" }, { num: "100%", label: "cost transparency" }].map((s, i) => (
               <div key={i} className={`flex-1 ${i > 0 ? "pl-5 border-l" : ""}`} style={{ borderColor: "#E0DACC" }}>
                 <div className="text-[22px] font-bold leading-none mb-1" style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#1c1917" }}>{s.num}</div>
-                <div className="text-[9px] uppercase tracking-[0.08em]" style={{ color: "#a8a29e" }}>{s.label}</div>
+                <div className="text-[9px] uppercase tracking-[0.08em]" style={{ color: "#857e78" }}>{s.label}</div>
               </div>
             ))}
           </div>

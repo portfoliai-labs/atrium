@@ -171,12 +171,12 @@ export function ProfileRows({ rows, footer }: { rows: { label: string; value: Re
       {rows.map((r, i) => (
         <div key={`${r.label}-${i}`} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
           <dt className="font-semibold text-[#78716c]">{r.label}</dt>
-          <dd className={`font-bold text-right whitespace-pre-wrap ${r.value === NOT_SET ? "text-[#a8a29e]" : "text-[#1c1917]"}`}>
+          <dd className={`font-bold text-right whitespace-pre-wrap ${r.value === NOT_SET ? "text-[#857e78]" : "text-[#1c1917]"}`}>
             {r.value}
           </dd>
         </div>
       ))}
-      {footer && <p className="text-xs font-semibold text-[#a8a29e]">{footer}</p>}
+      {footer && <p className="text-xs font-semibold text-[#857e78]">{footer}</p>}
     </dl>
   );
 }
@@ -236,7 +236,7 @@ export function ProfileDialog({ title, description, status, size = "narrow", foo
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="p-2 text-[#a8a29e] hover:text-[#1c1917] hover:bg-[#F7F5EF] rounded-lg transition-colors"
+              className="p-2 text-[#857e78] hover:text-[#1c1917] hover:bg-[#F7F5EF] rounded-lg transition-colors"
             >
               <X className="w-5 h-5" />
             </button>

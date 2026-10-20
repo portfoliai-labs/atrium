@@ -99,7 +99,7 @@ export function SaleTaxSummary({ tax, currency }: { tax: PropertyTax; currency: 
         </p>
       )}
       {tax.status === "computed" && other === null && flat && !(g && g.gain <= 0) && (
-        <p className="text-[11.5px] text-[#a8a29e]">Add your tax details for the year to compare it with IRPEF.</p>
+        <p className="text-[11.5px] text-[#857e78]">Add your tax details for the year to compare it with IRPEF.</p>
       )}
       {g && (
         <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 text-[12.5px] rounded-xl bg-[#F7F5EF] px-4 py-3">
@@ -136,7 +136,7 @@ export function SaleTaxSummary({ tax, currency }: { tax: PropertyTax; currency: 
         <p className="text-[11px] text-amber-700">The purchase can&apos;t be revalued: ISTAT&apos;s index isn&apos;t available for its month. The gain shown is overestimated.</p>
       )}
       {revaluation && g && revaluation.toMonth.slice(0, 7) < g.soldOn.slice(0, 7) && (
-        <p className="text-[11px] text-[#a8a29e]">The sale month&apos;s index isn&apos;t out yet: revalued to {monthName(revaluation.toMonth.slice(0, 7))} for now.</p>
+        <p className="text-[11px] text-[#857e78]">The sale month&apos;s index isn&apos;t out yet: revalued to {monthName(revaluation.toMonth.slice(0, 7))} for now.</p>
       )}
     </div>
   );
@@ -180,13 +180,13 @@ export function SaleSimulatorModule({ property }: { property: Property }) {
           </Field>
         </div>
         {!request ? (
-          <p className="text-[12.5px] text-[#a8a29e]">Pick a day and a price.</p>
+          <p className="text-[12.5px] text-[#857e78]">Pick a day and a price.</p>
         ) : error ? (
           <p className="text-[12.5px] text-rose-600">{error}</p>
         ) : tax === undefined ? (
           <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />
         ) : tax === null ? (
-          <p className="text-[12.5px] text-[#a8a29e]">No rules for a sale in this country.</p>
+          <p className="text-[12.5px] text-[#857e78]">No rules for a sale in this country.</p>
         ) : (
           <SaleTaxSummary tax={tax} currency={property.currency} />
         )}

@@ -123,9 +123,9 @@ function FactsCard({ title, desc, facts, attribution }: { title: string; desc: s
         {sources.length > 0 && (
           <CardFoot>
             <p className="flex flex-wrap gap-x-3 gap-y-0.5">
-              <span className="font-semibold text-[#a8a29e]">Sources</span>
+              <span className="font-semibold text-[#857e78]">Sources</span>
               {sources.map((source, i) => (
-                <span key={i}><span className="tabular-nums text-[#a8a29e]">[{i + 1}]</span> <SourceCitation source={source} /></span>
+                <span key={i}><span className="tabular-nums text-[#857e78]">[{i + 1}]</span> <SourceCitation source={source} /></span>
               ))}
             </p>
           </CardFoot>
@@ -139,7 +139,7 @@ function FactsCard({ title, desc, facts, attribution }: { title: string; desc: s
 export function CardInfo({ text }: { text: string }) {
   return (
     <InfoTip text={text}>
-      <Info className="h-3.5 w-3.5 text-[#a8a29e] hover:text-[#78716c] cursor-help transition-colors" />
+      <Info className="h-3.5 w-3.5 text-[#857e78] hover:text-[#78716c] cursor-help transition-colors" />
     </InfoTip>
   );
 }
@@ -252,7 +252,7 @@ function FactRow({ fact, n }: { fact: ProfileFact; n?: number }) {
 // A value's source, by its number in the list at the module's foot.
 function RefMark({ n }: { n?: number }) {
   if (n === undefined) return null;
-  return <sup className="ml-0.5 text-[9.5px] font-semibold text-[#a8a29e] no-underline">[{n}]</sup>;
+  return <sup className="ml-0.5 text-[9.5px] font-semibold text-[#857e78] no-underline">[{n}]</sup>;
 }
 
 /**

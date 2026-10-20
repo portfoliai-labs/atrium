@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { LogOut, Bell, Menu, X } from "lucide-react";
+import { LogOut, Bell, Menu, Sparkles, X } from "lucide-react";
 import Image from "next/image";
 import { useUser } from "../../context/UserContext";
 import { useNotificationsContext } from "../../context/NotificationsContext";
@@ -10,7 +10,7 @@ import { NotificationPanel } from "./NotificationPanel";
 import { AccountMenu } from "./AccountMenu";
 import { TopbarSearch } from "./TopbarSearch";
 import type { AssetView } from "./AssetSection";
-import { ASSET_SECTION, SUBSCRIPTION_SECTION } from "../../lib/dashboardNav";
+import { ASSET_SECTION, SUBSCRIPTION_SECTION, aiChatView } from "../../lib/dashboardNav";
 import { userService } from "../../services/userService";
 import { BetaBadge } from "../common/BetaBadge";
 import type { SubscriptionTier, SubscriptionResponse } from "../../models/User";
@@ -50,7 +50,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
   const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
   const [isSubscriptionLoading, setIsSubscriptionLoading] = useState(false);
 
-  const { user } = useUser();
+  const { user, isDemo } = useUser();
 
   // The greeting, only right after signing in (completeAuth marks it): shown once the user's name
   // is known, then gone. The mark is cleared on reading, so a reload doesn't greet again.
@@ -156,12 +156,24 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
           />
         )}
 
+        {/* The AI assistant: a new chat with it, in Messages. Not a demo account's. */}
+        {onOpenPage && !isDemo && (
+          <button
+            onClick={() => onOpenPage("messages", aiChatView())}
+            title="Ask the AI assistant"
+            aria-label="Ask the AI assistant"
+            className="p-2 md:p-2.5 text-[#C49A3C] hover:text-[#1c1917] hover:bg-[#E0DACC] rounded-xl md:rounded-2xl transition-all"
+          >
+            <Sparkles className="h-5 w-5" />
+          </button>
+        )}
+
         {/* Bell (mobile) — a fixed-width absolute dropdown has nowhere to sit on a
             narrow viewport without overflowing it, so mobile routes to the
             full-page NotificationsSection instead. */}
         <button
           onClick={() => onNavigate?.("notifications")}
-          className="relative md:hidden p-2 text-[#a8a29e] hover:text-[#1c1917] hover:bg-[#E0DACC] rounded-xl transition-all"
+          className="relative md:hidden p-2 text-[#857e78] hover:text-[#1c1917] hover:bg-[#E0DACC] rounded-xl transition-all"
         >
           <Bell className="h-5 w-5" />
           {hasUnread && (
@@ -173,7 +185,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
         <div className="relative hidden md:block">
           <button
             onClick={handleBellClick}
-            className="relative p-2.5 text-[#a8a29e] hover:text-[#1c1917] hover:bg-[#E0DACC] rounded-2xl transition-all"
+            className="relative p-2.5 text-[#857e78] hover:text-[#1c1917] hover:bg-[#E0DACC] rounded-2xl transition-all"
           >
             <Bell className="h-5 w-5" />
             {hasUnread && (
@@ -243,7 +255,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
 
         <button
           onClick={onLogout}
-          className="ml-1 md:ml-2 p-2 md:p-2.5 text-[#a8a29e] hover:text-rose-600 hover:bg-rose-50 rounded-xl md:rounded-2xl transition-all group"
+          className="ml-1 md:ml-2 p-2 md:p-2.5 text-[#857e78] hover:text-rose-600 hover:bg-rose-50 rounded-xl md:rounded-2xl transition-all group"
           title="Sign Out"
         >
           <LogOut className="h-5 w-5 group-hover:translate-x-0.5 transition-transform" />

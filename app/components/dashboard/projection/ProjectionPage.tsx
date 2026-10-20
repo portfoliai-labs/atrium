@@ -293,9 +293,9 @@ function Field({ label, suffix, value, placeholder, onChange }: { label: string;
           value={value}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full h-10 px-3 pr-16 rounded-xl bg-white border border-[#E0DACC] text-sm font-semibold tabular-nums text-[#1c1917] outline-none placeholder:text-[#d6d3d1] focus:border-[#C49A3C] focus:ring-4 focus:ring-[#C49A3C]/10"
+          className="w-full h-10 px-3 pr-16 rounded-xl bg-white border border-[#E0DACC] text-sm font-semibold tabular-nums text-[#1c1917] outline-none placeholder:text-[#857e78] focus:border-[#C49A3C] focus:ring-4 focus:ring-[#C49A3C]/10"
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-[#a8a29e] pointer-events-none">{suffix}</span>
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-[#857e78] pointer-events-none">{suffix}</span>
       </span>
     </label>
   );
@@ -446,7 +446,7 @@ function Basis({ data }: { data: Projection }) {
         <ul className="space-y-1.5 text-[12.5px] text-[#57534e] list-disc pl-4">
           {lines.map((l) => <li key={l}>{l}</li>)}
         </ul>
-        <p className="mt-3 text-[11px] text-[#a8a29e]">
+        <p className="mt-3 text-[11px] text-[#857e78]">
           Starting value {formatCurrency(data.initialValue, data.currency, 0)}, cash included · prices of {date(data.pricedAt)} · returns of {date(data.returnsComputedAt)}. Past returns don&apos;t promise future ones.
         </p>
       </div>

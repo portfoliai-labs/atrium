@@ -139,7 +139,7 @@ function ImuCard({ property, year, readOnly, onRecordPayment, right, list, tax, 
         ) : list === null ? (
           <p className="text-[12.5px] text-rose-600">Unable to work out the tax right now.</p>
         ) : !tax ? (
-          <p className="text-[12.5px] text-[#a8a29e]">Nothing owed for {year}: it wasn&apos;t yours that year.</p>
+          <p className="text-[12.5px] text-[#857e78]">Nothing owed for {year}: it wasn&apos;t yours that year.</p>
         ) : tax.status === "not_computed" ? (
           <NotComputed tax={tax} money={money} readOnly={readOnly} action={{ label: "Complete the land registry", onClick: onEdit }} />
         ) : (

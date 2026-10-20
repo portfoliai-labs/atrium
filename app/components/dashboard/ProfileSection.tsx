@@ -111,7 +111,7 @@ export function ProfileSection() {
             : `${done} of ${IPS_STEPS.length} steps · continue`}
         </span>
       </span>
-      <ArrowRight className="w-4 h-4 text-[#a8a29e] group-hover:text-[#C49A3C] transition-colors" />
+      <ArrowRight className="w-4 h-4 text-[#857e78] group-hover:text-[#C49A3C] transition-colors" />
     </button>
   );
 
@@ -293,7 +293,7 @@ function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
                     <span className="text-lg leading-none">{languages.find(l => l.code === formData.language)?.flag}</span>
                     {languages.find(l => l.code === formData.language)?.label}
                   </span>
-                  <ChevronDown className={`w-4 h-4 text-[#a8a29e] transition-transform ${isLangOpen ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`w-4 h-4 text-[#857e78] transition-transform ${isLangOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isLangOpen && (
                   <div className="absolute z-10 w-full mt-2 bg-white border border-[rgba(196,154,60,0.2)] rounded-xl shadow-xl overflow-hidden">
@@ -312,9 +312,9 @@ function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
               <div className="relative">
                 <button onClick={() => setIsCurrencyOpen(!isCurrencyOpen)} className={dropdownBtnClass}>
                   <span className="flex items-center gap-2">
-                    <Banknote className="w-4 h-4 text-[#a8a29e]" /> {formData.currency}
+                    <Banknote className="w-4 h-4 text-[#857e78]" /> {formData.currency}
                   </span>
-                  <ChevronDown className={`w-4 h-4 text-[#a8a29e] transition-transform ${isCurrencyOpen ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`w-4 h-4 text-[#857e78] transition-transform ${isCurrencyOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isCurrencyOpen && (
                   <div className="absolute z-10 w-full mt-2 bg-white border border-[rgba(196,154,60,0.2)] rounded-xl shadow-xl overflow-hidden">
@@ -340,7 +340,7 @@ function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
                 <span className={riskLevels.find(r => r.code === formData.risk_tolerance)?.color}>
                   {riskLevels.find(r => r.code === formData.risk_tolerance)?.label}
                 </span>
-                <ChevronDown className={`w-4 h-4 text-[#a8a29e] transition-transform ${isRiskOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-[#857e78] transition-transform ${isRiskOpen ? 'rotate-180' : ''}`} />
               </button>
               {isRiskOpen && (
                 <div className="absolute z-10 w-full mt-2 bg-white border border-[rgba(196,154,60,0.2)] rounded-xl shadow-xl overflow-hidden">
@@ -396,7 +396,7 @@ function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
                 Estimated Wealth ({formData.currency})
               </label>
               <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#a8a29e]"><Coins className="w-5 h-5" /></div>
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#857e78]"><Coins className="w-5 h-5" /></div>
                 <input
                   type="text"
                   className={`${inputClass} pl-12`}
@@ -410,7 +410,7 @@ function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
                 Annual Income, Net ({formData.currency})
               </label>
               <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#a8a29e]"><Banknote className="w-5 h-5" /></div>
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#857e78]"><Banknote className="w-5 h-5" /></div>
                 <input
                   type="text"
                   className={`${inputClass} pl-12`}
@@ -424,7 +424,7 @@ function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
                 Income Invested (%)
               </label>
               <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#a8a29e]"><Percent className="w-5 h-5" /></div>
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#857e78]"><Percent className="w-5 h-5" /></div>
                 <input
                   type="text"
                   className={`${inputClass} pl-12`}
@@ -484,7 +484,7 @@ function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
                                   commit();
                                 }
                               }}
-                              className="text-center bg-transparent border-0 outline-none font-bold text-[#1c1917] placeholder-[#a8a29e] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0"
+                              className="text-center bg-transparent border-0 outline-none font-bold text-[#1c1917] placeholder-[#857e78] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0"
                             />
                           )
                         )}
@@ -540,7 +540,7 @@ function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
                       <button
                         type="button"
                         onClick={() => setGoals(goals.filter((_, i) => i !== index))}
-                        className="text-[#a8a29e] hover:text-rose-500 leading-none shrink-0 mt-0.5"
+                        className="text-[#857e78] hover:text-rose-500 leading-none shrink-0 mt-0.5"
                       >
                         ×
                       </button>

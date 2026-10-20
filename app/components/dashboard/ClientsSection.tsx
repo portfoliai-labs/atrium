@@ -150,7 +150,7 @@ function ClientsList({ onOpen }: { onOpen: (uuid: string) => void }) {
       ) : (
         <Module>
           <ModuleHead title="Your clients" desc="Open a client to see their portfolios." />
-          <div className="hidden md:grid grid-cols-[minmax(0,1fr)_9rem_6rem_10rem_2rem] gap-4 px-6 pb-2 text-[10px] font-black uppercase tracking-widest text-[#a8a29e]">
+          <div className="hidden md:grid grid-cols-[minmax(0,1fr)_9rem_6rem_10rem_2rem] gap-4 px-6 pb-2 text-[10px] font-black uppercase tracking-widest text-[#857e78]">
             <span>Client</span>
             <span className="text-right">Investments</span>
             <span className="text-right">Return</span>
@@ -225,7 +225,7 @@ function ClientRow({ client, figures, rules, onOpen, onRemove }: {
         <span className="text-right text-sm font-black tabular-nums text-[#1c1917]">
           {figures === undefined ? <span className="inline-block h-3 w-16 rounded bg-slate-100 animate-pulse" /> : figures ? formatCurrency(figures.marketValue, figures.currency, 0) : "—"}
         </span>
-        <span className={`hidden md:block text-right text-sm font-bold tabular-nums ${ret == null ? "text-[#a8a29e]" : ret >= 0 ? "text-[#047857]" : "text-[#e11d48]"}`}>
+        <span className={`hidden md:block text-right text-sm font-bold tabular-nums ${ret == null ? "text-[#857e78]" : ret >= 0 ? "text-[#047857]" : "text-[#e11d48]"}`}>
           {ret == null ? "—" : signedPct(ret)}
         </span>
         <span className="col-span-2 md:col-span-1 pl-13 md:pl-0">
@@ -234,19 +234,19 @@ function ClientRow({ client, figures, rules, onOpen, onRemove }: {
               <BellRing className="w-3 h-3" /> {summary.text}
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#a8a29e]">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#857e78]">
               <BellRing className="w-3 h-3" /> {rules === null ? "…" : "No alerts"}
             </span>
           )}
         </span>
-        <ChevronRight className="hidden md:block w-4 h-4 text-[#a8a29e] group-hover:text-[#C49A3C] transition-colors justify-self-end" />
+        <ChevronRight className="hidden md:block w-4 h-4 text-[#857e78] group-hover:text-[#C49A3C] transition-colors justify-self-end" />
       </button>
       <button
         type="button"
         onClick={onRemove}
         aria-label={`Remove ${clientDisplayName(client)}`}
         title="Remove client"
-        className="absolute right-14 top-1/2 -translate-y-1/2 p-2 rounded-lg text-[#a8a29e] hover:text-rose-600 hover:bg-rose-50 transition-colors md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 hidden md:block"
+        className="absolute right-14 top-1/2 -translate-y-1/2 p-2 rounded-lg text-[#857e78] hover:text-rose-600 hover:bg-rose-50 transition-colors md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 hidden md:block"
       >
         <Trash2 className="w-4 h-4" />
       </button>

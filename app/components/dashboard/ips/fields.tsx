@@ -6,7 +6,7 @@ import type { Option } from "../../../lib/ips";
 
 export const LABEL_CLASS = "text-[10px] font-bold uppercase tracking-wider text-[#78716c] ml-1";
 export const INPUT_CLASS =
-  "w-full p-3.5 bg-white border border-[rgba(196,154,60,0.25)] rounded-xl font-medium text-[#1c1917] outline-none focus:border-[#C49A3C] focus:ring-4 focus:ring-[#C49A3C]/10 transition-all placeholder:text-[#a8a29e]";
+  "w-full p-3.5 bg-white border border-[rgba(196,154,60,0.25)] rounded-xl font-medium text-[#1c1917] outline-none focus:border-[#C49A3C] focus:ring-4 focus:ring-[#C49A3C]/10 transition-all placeholder:text-[#857e78]";
 
 export function Field({
   label, hint, className = "", children,
@@ -82,7 +82,7 @@ export function NumberInput({
         className={`${INPUT_CLASS} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${suffix ? "pr-14" : ""}`}
       />
       {suffix && (
-        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-[#a8a29e] pointer-events-none">
+        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-[#857e78] pointer-events-none">
           {suffix}
         </span>
       )}
@@ -233,7 +233,7 @@ export function TagList({
                 type="button"
                 aria-label={`Remove ${v}`}
                 onClick={() => onChange(values.filter((x) => x !== v))}
-                className="p-1 rounded-full text-[#a8a29e] hover:text-rose-500 hover:bg-rose-50"
+                className="p-1 rounded-full text-[#857e78] hover:text-rose-500 hover:bg-rose-50"
               >
                 <X className="w-3 h-3" />
               </button>

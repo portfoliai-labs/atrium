@@ -20,7 +20,7 @@ export function PortfolioGroupCard({ name, eyebrow = "Portfolio", color, subtitl
       <div className="h-1.5" style={{ backgroundColor: accent }} />
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 px-6 md:px-8 pt-6 pb-5">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#a8a29e] mb-1.5">
+          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#857e78] mb-1.5">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accent }} />
             {eyebrow}
           </p>

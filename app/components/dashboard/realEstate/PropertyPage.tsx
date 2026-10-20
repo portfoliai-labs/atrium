@@ -312,11 +312,11 @@ function MortgagesModule({ property, source, version, readOnly, onChangeRate, on
       <ModuleHead title="Mortgages" desc="Your part of each loan, its schedule worked out on its rate changes and the instalments paid." />
       <div className={`${MODULE_BODY} space-y-4`}>
         {mortgages === undefined ? (
-          <p className="text-[12.5px] text-[#a8a29e]">Loading…</p>
+          <p className="text-[12.5px] text-[#857e78]">Loading…</p>
         ) : mortgages === null ? (
           <p className="text-[12.5px] text-rose-600">Unable to load the mortgages.</p>
         ) : sorted.length === 0 ? (
-          <p className="text-[12.5px] text-[#a8a29e]">No mortgage on it.</p>
+          <p className="text-[12.5px] text-[#857e78]">No mortgage on it.</p>
         ) : sorted.map((m) => (
           <MortgageCard
             key={m.uuid}
@@ -503,9 +503,9 @@ function ValuationsModule({ property, source, version, readOnly, onChanged }: {
       <ModuleHead title="Valuations" desc="What the whole property is worth: the latest is its value. Before any, the purchase price." />
       <div className={MODULE_BODY}>
         {valuations === undefined ? (
-          <p className="text-[12.5px] text-[#a8a29e]">Loading…</p>
+          <p className="text-[12.5px] text-[#857e78]">Loading…</p>
         ) : !valuations || valuations.length === 0 ? (
-          <p className="text-[12.5px] text-[#a8a29e]">
+          <p className="text-[12.5px] text-[#857e78]">
             {property.figures.valueSource === "purchase_price" ? "None yet: its value is the purchase price."
               : property.figures.valueSource === "market_zone" ? "None yet: its value is the middle of its zone's market range." : "None yet."}
           </p>

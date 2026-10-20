@@ -810,7 +810,7 @@ function PlanningTools({ taxes, onOpen, onOpenStrategies }: { taxes: boolean; on
               <span className="block text-[14px] font-bold text-[#1c1917]">{t.title}</span>
               <span className="block mt-0.5 text-xs text-[#78716c] leading-relaxed">{t.text}</span>
             </span>
-            <ChevronRight className="h-4 w-4 text-[#a8a29e] mt-2.5 shrink-0" />
+            <ChevronRight className="h-4 w-4 text-[#857e78] mt-2.5 shrink-0" />
           </button>
         ))}
       </div>

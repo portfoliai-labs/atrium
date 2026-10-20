@@ -28,7 +28,7 @@ export function NotificationsSection({ onOpenPage }: { onOpenPage?: (section: st
         <div className="flex justify-end">
           <button
             onClick={dismissAll}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#a8a29e] hover:text-rose-500 hover:bg-rose-50 transition-colors shrink-0"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#857e78] hover:text-rose-500 hover:bg-rose-50 transition-colors shrink-0"
           >
             <Trash2 className="w-3.5 h-3.5" />
             Clear all

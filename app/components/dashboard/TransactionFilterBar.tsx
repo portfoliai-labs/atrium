@@ -40,7 +40,7 @@ function FilterInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="h-9 px-3 rounded-lg bg-white border border-slate-200 text-slate-900 text-xs font-semibold placeholder:text-slate-300 placeholder:font-normal outline-none focus:ring-4 focus:ring-slate-50 focus:border-slate-300 transition-all min-w-0 w-full sm:w-32"
+      className="h-9 px-3 rounded-lg bg-white border border-slate-200 text-slate-900 text-xs font-semibold placeholder:text-slate-400 placeholder:font-normal outline-none focus:ring-4 focus:ring-slate-50 focus:border-slate-300 transition-all min-w-0 w-full sm:w-32"
     />
   );
 }
@@ -60,7 +60,7 @@ function DateFilterInput({
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       placeholder=""
-      className="h-9 px-3 rounded-lg bg-white border border-slate-200 text-slate-900 text-xs font-semibold placeholder:text-slate-300 placeholder:font-normal outline-none focus:ring-4 focus:ring-slate-50 focus:border-slate-300 transition-all min-w-0 w-full sm:w-32"
+      className="h-9 px-3 rounded-lg bg-white border border-slate-200 text-slate-900 text-xs font-semibold placeholder:text-slate-400 placeholder:font-normal outline-none focus:ring-4 focus:ring-slate-50 focus:border-slate-300 transition-all min-w-0 w-full sm:w-32"
     />
   );
 }

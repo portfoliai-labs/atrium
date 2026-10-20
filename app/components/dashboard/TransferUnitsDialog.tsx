@@ -85,7 +85,7 @@ export function TransferUnitsDialog({ fromPortfolioUuid, assetId, assetLabel, po
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               placeholder="10"
-              className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-slate-900 text-sm font-semibold placeholder:text-slate-300 outline-none focus:ring-4 focus:ring-slate-50 focus:border-slate-300"
+              className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-slate-900 text-sm font-semibold placeholder:text-slate-400 outline-none focus:ring-4 focus:ring-slate-50 focus:border-slate-300"
             />
           </label>
           <label className="block">

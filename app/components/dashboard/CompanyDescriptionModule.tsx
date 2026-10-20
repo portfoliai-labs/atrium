@@ -71,7 +71,7 @@ export function CompanyDescriptionModule({ profile }: { profile: InstrumentProfi
               <p><WikipediaAttribution source={source} subject={isCrypto ? "the asset" : "the company"} /></p>
             ) : (
               <p className="flex flex-wrap gap-x-3 gap-y-0.5">
-                <span className="font-semibold text-[#a8a29e]">Source</span>
+                <span className="font-semibold text-[#857e78]">Source</span>
                 <SourceCitation source={source} />
               </p>
             )}

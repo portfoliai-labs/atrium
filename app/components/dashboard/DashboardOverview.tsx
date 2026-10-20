@@ -25,6 +25,7 @@ import { useRealEstateNetWorth, type RealEstateNetWorth } from "../../hooks/useR
 import { useRealEstate } from "../../context/RealEstateContext";
 import { PreviewBadge } from "../preview/PreviewKit";
 import { WealthBreakdown } from "./WealthBreakdown";
+import { AiHelpButton } from "./assistant/AiHelpButton";
 
 // One portfolio's GET /v1/portfolios/{p}/overview: null snapshot = no data yet (no transactions,
 // or the aggregate's first build hasn't landed), `failed` = the request itself errored.
@@ -607,6 +608,7 @@ function ModuleHead({
           style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
         >
           {title}
+          <AiHelpButton title={title} desc={desc} className="ml-1.5 align-middle" />
         </h2>
         {desc && <p className="text-[13px] text-slate-500 mt-1 leading-relaxed">{desc}</p>}
       </div>

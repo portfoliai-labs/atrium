@@ -71,7 +71,7 @@ export function MarketDataModule({ listingId }: { listingId: string }) {
       <Module>
         <ModuleHead title="Market data" desc={DESC} />
         <div className={MODULE_BODY}>
-          <p className="flex items-center gap-2 text-[12.5px] text-[#a8a29e]">
+          <p className="flex items-center gap-2 text-[12.5px] text-[#857e78]">
             <Loader2 className="h-3.5 w-3.5 animate-spin text-[#C49A3C]" /> Computing…
           </p>
         </div>
@@ -171,7 +171,7 @@ function MarketDataCard({ column, risk }: { column: Column; risk: RiskStatistics
                 <th scope="row" className="py-2.5 pr-3 text-left align-top text-[12.5px] font-normal text-[#78716c]">{row.label}</th>
                 <td className="py-2.5 text-right align-top text-[13.5px] font-bold tabular-nums text-[#1c1917] whitespace-nowrap">
                   {row.value}
-                  {ref(row.source) !== null && <sup className="ml-0.5 text-[9.5px] font-semibold text-[#a8a29e]">[{ref(row.source)}]</sup>}
+                  {ref(row.source) !== null && <sup className="ml-0.5 text-[9.5px] font-semibold text-[#857e78]">[{ref(row.source)}]</sup>}
                 </td>
               </tr>
             ))}
@@ -180,10 +180,10 @@ function MarketDataCard({ column, risk }: { column: Column; risk: RiskStatistics
         {sources.length > 0 && (
           <CardFoot>
             <p className="flex flex-wrap gap-x-3 gap-y-0.5">
-              <span className="font-semibold text-[#a8a29e]">{sources.length > 1 ? "Sources" : "Source"}</span>
+              <span className="font-semibold text-[#857e78]">{sources.length > 1 ? "Sources" : "Source"}</span>
               {sources.map((source, i) => (
                 <span key={source}>
-                  <span className="tabular-nums text-[#a8a29e]">[{i + 1}]</span>{" "}
+                  <span className="tabular-nums text-[#857e78]">[{i + 1}]</span>{" "}
                   {source === COMPUTED
                     ? <>Computed by PortfoliAI{risk && <>, {dayLabel(risk.start)} to {dayLabel(risk.end)}</>}</>
                     : MARKET_DATA_SOURCE_LABELS[source] ?? source}

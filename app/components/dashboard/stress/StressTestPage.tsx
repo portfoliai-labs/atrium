@@ -36,7 +36,7 @@ interface Loaded {
   error: string | null;
 }
 
-const TH = "py-2 pr-4 text-left text-[10px] font-black uppercase tracking-[0.12em] text-[#a8a29e] whitespace-nowrap";
+const TH = "py-2 pr-4 text-left text-[10px] font-black uppercase tracking-[0.12em] text-[#857e78] whitespace-nowrap";
 const THR = `${TH} text-right pr-0 pl-4`;
 const TD = "py-2.5 pr-4 align-top";
 const TDR = "py-2.5 pl-4 text-right tabular-nums align-top whitespace-nowrap";
@@ -245,7 +245,7 @@ function ShockList<K extends string>({ title, note, rows, label, options, onChan
   return (
     <div>
       <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#78716c]">{title}</p>
-      <p className="text-[11px] text-[#a8a29e] mb-2">{note}</p>
+      <p className="text-[11px] text-[#857e78] mb-2">{note}</p>
       <ul className="space-y-1.5">
         {rows.map((r, i) => (
           <li key={r.key} className="flex items-center gap-2">
@@ -262,13 +262,13 @@ function ShockList<K extends string>({ title, note, rows, label, options, onChan
                   valid(r.text) ? "border-[#E0DACC] focus:border-[#C49A3C]" : "border-rose-300"
                 }`}
               />
-              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-[#a8a29e] pointer-events-none">%</span>
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-[#857e78] pointer-events-none">%</span>
             </span>
             <button
               type="button"
               onClick={() => onChange(rows.filter((_, j) => j !== i))}
               aria-label={`Remove ${label(r.key)}`}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-[#a8a29e] hover:text-[#e11d48] hover:bg-rose-50"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-[#857e78] hover:text-[#e11d48] hover:bg-rose-50"
             >
               <X className="h-4 w-4" />
             </button>
@@ -337,7 +337,7 @@ function Result({ data }: { data: StressTest }) {
             <ul className="space-y-2.5">
               {data.categories.map((c) => (
                 <li key={c.category ?? "none"} className="grid grid-cols-[8rem_minmax(0,1fr)_5rem] sm:grid-cols-[10rem_minmax(0,1fr)_9rem_5rem] items-center gap-3 text-[13px]">
-                  <span className="font-bold text-[#1c1917] truncate">{categoryName(c.category)}{c.category === "cash" && <span className="font-normal text-[#a8a29e]"> · with the balance</span>}</span>
+                  <span className="font-bold text-[#1c1917] truncate">{categoryName(c.category)}{c.category === "cash" && <span className="font-normal text-[#857e78]"> · with the balance</span>}</span>
                   {/* A diverging bar around the middle: losses left, gains right. */}
                   <span className="relative h-2.5 rounded-full bg-[#F4F1EA]">
                     <span className="absolute inset-y-0 left-1/2 w-px bg-[#E0DACC]" />
@@ -379,7 +379,7 @@ function Result({ data }: { data: StressTest }) {
                     <tr key={p.assetId}>
                       <td className={TD}>
                         <span className="block font-semibold text-[#1c1917]">{p.name}</span>
-                        <span className="block text-[11px] text-[#a8a29e]">{[p.ticker ?? p.isin, categoryName(p.category), p.assetCurrency].filter(Boolean).join(" · ")}</span>
+                        <span className="block text-[11px] text-[#857e78]">{[p.ticker ?? p.isin, categoryName(p.category), p.assetCurrency].filter(Boolean).join(" · ")}</span>
                       </td>
                       <td className={`${TD} text-[12px] ${p.source === "uncovered" ? "text-amber-700 font-semibold" : "text-[#78716c]"}`}>{sourceLabel(p)}</td>
                       <td className={TDR}>{money(p.valueBefore)}</td>

@@ -815,7 +815,7 @@ function OptionalNumberField({ label, value, onChange, suffix }: { label: string
           min={0}
           placeholder="Off"
           onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-          className={`${fieldBox} tabular-nums placeholder:text-slate-300 ${suffix ? "pr-28" : ""}`}
+          className={`${fieldBox} tabular-nums placeholder:text-slate-400 ${suffix ? "pr-28" : ""}`}
         />
         {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">{suffix}</span>}
       </span>

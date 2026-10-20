@@ -66,7 +66,7 @@ function MarketTrend({ property }: { property: Property }) {
   const paidPerSqm = Math.round(property.purchasePrice / property.sqm);
 
   return (
-    <Panel
+    <Panel aiHelp={false}
       title={`Market trend · ${zone.name} vs ${zone.city}`}
       subtitle="Asking price per m², quarterly. The dot is what was paid per m²."
       right={<span className="text-sm font-black tabular-nums"><span className={zoneYoY(zone) >= 0 ? "text-emerald-600" : "text-rose-600"}>{formatPct(zoneYoY(zone))}</span> <span className="text-slate-400 text-xs font-semibold">last 12 months</span></span>}
@@ -96,7 +96,7 @@ function ZoneSnapshot({ property }: { property: Property }) {
   const value = propertyValue(property);
   const marketRent = zone.rentPerSqm * property.sqm;
   return (
-    <Panel title={`${zone.name} at a glance`} subtitle="Neighbourhood figures, this quarter.">
+    <Panel aiHelp={false} title={`${zone.name} at a glance`} subtitle="Neighbourhood figures, this quarter.">
       <div className="p-6 md:p-7 grid grid-cols-2 gap-x-6 gap-y-5">
         <Stat label="Price / m²" value={eur(now)} note={`${formatPct(zoneYoY(zone))} YoY`} />
         <Stat label="Your value / m²" value={eur(value / property.sqm)} note={`${formatPct((value / property.sqm / now - 1) * 100)} vs zone`} />
@@ -123,7 +123,7 @@ function ZoneSnapshot({ property }: { property: Property }) {
 function RentByZone({ property }: { property: Property }) {
   const data = ZONES.filter((z) => z.city === property.city).map((z) => ({ name: z.name, rent: z.rentPerSqm, yield: zoneGrossYield(z), id: z.id }));
   return (
-    <Panel title={`Rents across ${property.city}`} subtitle="Long-term rent per m² per month, by neighbourhood.">
+    <Panel aiHelp={false} title={`Rents across ${property.city}`} subtitle="Long-term rent per m² per month, by neighbourhood.">
       <div className="p-4 md:p-6 h-64">
         <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 400, height: 240 }}>
           <BarChart data={data} layout="vertical" margin={{ top: 0, right: 16, left: 8, bottom: 0 }}>
@@ -162,7 +162,7 @@ function ShortTermRental({ property }: { property: Property }) {
   const zone = zoneById(property.zoneId);
 
   return (
-    <Panel
+    <Panel aiHelp={false}
       title="Short-term rental potential"
       subtitle="Would it earn more on Airbnb-style short stays than on a long-term lease?"
       right={<PreviewBadge label="Sample model" />}
@@ -233,7 +233,7 @@ function Roadmap() {
     { icon: <Sparkles className="h-4 w-4" />, title: "AI deal check", text: "Paste a listing: fair price, expected yield and short-stay score before you buy." },
   ];
   return (
-    <Panel title="On the roadmap" subtitle="Analyses planned for real estate.">
+    <Panel aiHelp={false} title="On the roadmap" subtitle="Analyses planned for real estate.">
       <div className="p-6 md:p-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map((it) => (
           <div key={it.title} className="rounded-2xl border border-dashed border-slate-200 p-4">

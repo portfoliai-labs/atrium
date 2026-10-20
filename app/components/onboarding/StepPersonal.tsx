@@ -7,7 +7,7 @@ interface StepPersonalProps {
 }
 
 export function StepPersonal({ formData, setFormData, showCurrency }: StepPersonalProps) {
-  const inputClass = "w-full p-4 bg-[#F7F5EF] border border-[rgba(196,154,60,0.3)] rounded-2xl font-bold text-[#1c1917] focus:bg-white focus:border-[#C49A3C] focus:ring-4 focus:ring-[#C49A3C]/10 outline-none transition-all placeholder:text-[#a8a29e] placeholder:font-normal";
+  const inputClass = "w-full p-4 bg-[#F7F5EF] border border-[rgba(196,154,60,0.3)] rounded-2xl font-bold text-[#1c1917] focus:bg-white focus:border-[#C49A3C] focus:ring-4 focus:ring-[#C49A3C]/10 outline-none transition-all placeholder:text-[#857e78] placeholder:font-normal";
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4">

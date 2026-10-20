@@ -63,7 +63,7 @@ function RoleCard({
       >
         {title}
       </h3>
-      <p className={`text-sm leading-relaxed ${dark ? "text-[#a8a29e]" : "text-[#78716c]"}`}>{description}</p>
+      <p className={`text-sm leading-relaxed ${dark ? "text-[#857e78]" : "text-[#78716c]"}`}>{description}</p>
       <div className={`mt-6 flex items-center gap-2 text-xs font-bold uppercase tracking-wider ${dark ? "text-[#C49A3C]" : "text-[#C49A3C]"}`}>
         Get Started <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
       </div>
@@ -317,7 +317,7 @@ function OnboardingWizard() {
             className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 transition-all duration-300 text-sm ${
               step >= num
                 ? "bg-[#C49A3C] border-[#C49A3C]/30 text-white"
-                : "bg-white border-[rgba(196,154,60,0.3)] text-[#a8a29e]"
+                : "bg-white border-[rgba(196,154,60,0.3)] text-[#857e78]"
             }`}
           >
             {step > num ? <Check className="w-4 h-4" /> : num}

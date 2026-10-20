@@ -119,7 +119,7 @@ function QuoteView({ node, updateAttributes, editor }: ReactNodeViewProps) {
           disabled={!editor.isEditable}
           onChange={(e) => updateAttributes({ attribution: e.target.value })}
           placeholder="Who said it (optional)"
-          className="flex-1 bg-transparent font-bold text-slate-500 outline-none placeholder:font-medium placeholder:text-slate-300"
+          className="flex-1 bg-transparent font-bold text-slate-500 outline-none placeholder:font-medium placeholder:text-slate-400"
         />
       </div>
     </NodeViewWrapper>

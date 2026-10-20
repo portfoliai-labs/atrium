@@ -69,7 +69,7 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
         className={`group relative flex items-center justify-between rounded-xl font-semibold transition-all duration-200 active:scale-[0.98] px-4 py-3 ${
           isActive
             ? "bg-[#C49A3C]/15 text-[#C49A3C] border border-[#C49A3C]/30"
-            : "text-[#a8a29e] hover:bg-white/5 hover:text-white border border-transparent"
+            : "text-[#857e78] hover:bg-white/5 hover:text-white border border-transparent"
         }`}
       >
         <div className="flex items-center gap-3">
@@ -114,7 +114,7 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
                   <Sparkles className="h-3.5 w-3.5 text-[#C49A3C]" />
                   <p className="text-[9px] font-black uppercase tracking-widest text-[#C49A3C]">Pro Version</p>
                 </div>
-                <p className="text-[13px] font-medium text-[#a8a29e] leading-tight mb-4">
+                <p className="text-[13px] font-medium text-[#857e78] leading-tight mb-4">
                   Unlock unlimited analysis and a more advanced AI model.
                 </p>
                 <button

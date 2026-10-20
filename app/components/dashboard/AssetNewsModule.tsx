@@ -41,7 +41,7 @@ export function AssetNewsModule({ listingId, name }: { listingId: string; name: 
       <ModuleHead title="News" desc={`What's been written about ${name} over the last ${NEWS_DAYS} days.`} />
       <div className={MODULE_BODY}>
         {items === undefined ? (
-          <p className="flex items-center gap-2 text-[12.5px] text-[#a8a29e]">
+          <p className="flex items-center gap-2 text-[12.5px] text-[#857e78]">
             <Loader2 className="h-3.5 w-3.5 animate-spin text-[#C49A3C]" /> Looking for news…
           </p>
         ) : (
@@ -55,12 +55,12 @@ export function AssetNewsModule({ listingId, name }: { listingId: string; name: 
                     <img src={item.imageUrl} alt="" className="h-14 w-20 shrink-0 rounded-lg object-cover bg-[#F7F5EF]" />
                   )}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[11px] font-semibold text-[#a8a29e]">
+                    <span className="block truncate text-[11px] font-semibold text-[#857e78]">
                       {[item.source, item.publishedAt ? dateLabel(item.publishedAt) : null].filter(Boolean).join(" · ")}
                     </span>
                     <span className="mt-0.5 block text-[13px] font-bold leading-snug text-[#1c1917] line-clamp-2">{item.title}</span>
                   </span>
-                  {item.url && <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-0.5 text-[#a8a29e] group-hover:text-[#C49A3C] transition-colors" />}
+                  {item.url && <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-0.5 text-[#857e78] group-hover:text-[#C49A3C] transition-colors" />}
                 </>
               );
               const row = "group flex items-start gap-3 py-3 border-b border-[#EEE9DD]";

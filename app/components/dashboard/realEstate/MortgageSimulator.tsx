@@ -213,7 +213,7 @@ export function MortgageSimulatorDialog({ property, mortgage, readOnly, onClose,
       </div>
 
       {!request ? (
-        <p className="text-[12.5px] text-[#a8a29e]">{mode === "prepay" ? "Pick a day and an amount." : "Pick a day and the new rate."}</p>
+        <p className="text-[12.5px] text-[#857e78]">{mode === "prepay" ? "Pick a day and an amount." : "Pick a day and the new rate."}</p>
       ) : sim.error ? (
         <p className="text-[12.5px] text-rose-600">{sim.error}</p>
       ) : !sim.result || !after ? (

@@ -139,7 +139,7 @@ export default function AdvisorDashboardOverview({ onNavigate }: { onNavigate: (
                       <span className="flex-1 min-w-0">
                         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <span className="text-sm font-bold text-[#1c1917] truncate">{name}</span>
-                          <span className="text-xs text-[#a8a29e] truncate">{rule.portfolioName}</span>
+                          <span className="text-xs text-[#857e78] truncate">{rule.portfolioName}</span>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${TONE_STYLES[state.tone].chip}`}>{state.label}</span>
                         </span>
                         <span className="block text-xs text-[#78716c] truncate">{title}</span>
@@ -152,7 +152,7 @@ export default function AdvisorDashboardOverview({ onNavigate }: { onNavigate: (
                           </span>
                         )}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-[#a8a29e] shrink-0" />
+                      <ChevronRight className="w-4 h-4 text-[#857e78] shrink-0" />
                     </button>
                   </li>
                 );
@@ -206,7 +206,7 @@ export default function AdvisorDashboardOverview({ onNavigate }: { onNavigate: (
                           <span className={`block text-[11px] font-bold tabular-nums ${ret >= 0 ? "text-[#047857]" : "text-[#e11d48]"}`}>{signedPct(ret)}</span>
                         )}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-[#a8a29e] shrink-0" />
+                      <ChevronRight className="w-4 h-4 text-[#857e78] shrink-0" />
                     </button>
                   </li>
                 );
@@ -242,7 +242,7 @@ export default function AdvisorDashboardOverview({ onNavigate }: { onNavigate: (
                       <span className="block text-sm font-bold text-[#1c1917] truncate">{p.name}</span>
                       <span className="block text-xs text-[#78716c]">Created {dateLabel(p.createdAt)}</span>
                     </span>
-                    <ChevronRight className="w-4 h-4 text-[#a8a29e] shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-[#857e78] shrink-0" />
                   </button>
                 </li>
               ))}

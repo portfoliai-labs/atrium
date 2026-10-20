@@ -75,11 +75,11 @@ export function LeasesModule({ property, readOnly, onChanged }: { property: Prop
       />
       <div className={MODULE_BODY}>
         {list === undefined ? (
-          <p className="text-[12.5px] text-[#a8a29e]">Loading…</p>
+          <p className="text-[12.5px] text-[#857e78]">Loading…</p>
         ) : list === null ? (
           <p className="text-[12.5px] text-rose-600">Unable to load the leases.</p>
         ) : list.length === 0 ? (
-          <p className="text-[12.5px] text-[#a8a29e]">No lease. Add one to have its rent taxed (cedolare secca or IRPEF) and, at an agreed rent, IMU lowered.</p>
+          <p className="text-[12.5px] text-[#857e78]">No lease. Add one to have its rent taxed (cedolare secca or IRPEF) and, at an agreed rent, IMU lowered.</p>
         ) : (
           <ul className="divide-y divide-[#EEE9DD]">
             {list.map((l) => {

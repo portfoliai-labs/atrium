@@ -60,7 +60,7 @@ export function ObjectivesStep({ policy, update, currency }: StepProps) {
                 type="button"
                 aria-label={`Remove goal ${i + 1}`}
                 onClick={() => set({ goals: o.goals.filter((x) => x.id !== g.id) })}
-                className="justify-self-start p-3 rounded-xl text-[#a8a29e] hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                className="justify-self-start p-3 rounded-xl text-[#857e78] hover:text-rose-500 hover:bg-rose-50 transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
               </button>

@@ -141,7 +141,7 @@ export function PageHeader({
               <>
                 <span className="flex items-center justify-between gap-1.5 text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#78716c]">
                   {f.label}
-                  {f.onClick && <i className="not-italic normal-case tracking-normal font-semibold text-[#a8a29e] group-hover:text-[#C49A3C] transition-colors">↓</i>}
+                  {f.onClick && <i className="not-italic normal-case tracking-normal font-semibold text-[#857e78] group-hover:text-[#C49A3C] transition-colors">↓</i>}
                 </span>
                 <span className={`block text-[22px] font-bold tracking-[-0.01em] tabular-nums truncate ${f.tone === "gain" ? "text-[#047857]" : f.tone === "loss" ? "text-[#e11d48]" : "text-[#1c1917]"}`}>
                   {f.value}

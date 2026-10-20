@@ -443,7 +443,7 @@ function BandField({ label, suffix, value, onChange }: { label: string; suffix: 
           min={0}
           placeholder="Off"
           onChange={(e) => onChange(e.target.value === "" ? null : Math.max(0.1, Number(e.target.value)))}
-          className="w-full h-10 px-3 pr-28 rounded-xl bg-white border border-slate-200 text-sm font-semibold tabular-nums text-slate-900 outline-none placeholder:text-slate-300 focus:border-[#C49A3C]/60 focus:ring-4 focus:ring-[#C49A3C]/10"
+          className="w-full h-10 px-3 pr-28 rounded-xl bg-white border border-slate-200 text-sm font-semibold tabular-nums text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#C49A3C]/60 focus:ring-4 focus:ring-[#C49A3C]/10"
         />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">{suffix}</span>
       </span>

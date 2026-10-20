@@ -86,7 +86,7 @@ export function WalletBanks() {
     setRemoving(null);
   };
 
-  if (links === undefined) return <p className="text-[13px] text-[#a8a29e]">Loading…</p>;
+  if (links === undefined) return <p className="text-[13px] text-[#857e78]">Loading…</p>;
   if (links === null) return <p className="text-[13px] font-semibold text-rose-600">{state?.error}</p>;
 
   return (
@@ -110,7 +110,7 @@ export function WalletBanks() {
         />
         <div className={MODULE_BODY}>
           {links.length === 0 ? (
-            <p className="text-[12.5px] text-[#a8a29e]">
+            <p className="text-[12.5px] text-[#857e78]">
               No bank connected yet. Connect one to have your current account&apos;s movements come in on their own: you give the
               consent at your bank, for up to 180 days, and can end it here at any time. Older months come by importing a statement.
             </p>

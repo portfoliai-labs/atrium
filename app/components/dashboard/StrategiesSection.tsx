@@ -231,7 +231,7 @@ function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpe
                 disabled={isDemo}
                 aria-label={`Delete ${p.name}`}
                 title={isDemo ? DEMO_DISABLED_TITLE : "Delete this backtest"}
-                className="absolute top-4 right-4 p-2 rounded-lg text-[#a8a29e] hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="absolute top-4 right-4 p-2 rounded-lg text-[#857e78] hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Trash2 className="h-4 w-4" />
               </button>

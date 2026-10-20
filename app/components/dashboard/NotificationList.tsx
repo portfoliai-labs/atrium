@@ -48,7 +48,7 @@ const STATUS_CONFIG: Record<JobStatus, {
   },
   QUEUED: {
     label: "Queued",
-    icon: <Clock className="w-5 h-5 text-[#a8a29e] shrink-0" />,
+    icon: <Clock className="w-5 h-5 text-[#857e78] shrink-0" />,
     pill: "bg-stone-50 text-stone-600 border-stone-200",
   },
 };
@@ -313,7 +313,7 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
 
   if (notifications.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-10 gap-3 text-[#a8a29e]">
+      <div className="flex flex-col items-center justify-center py-10 gap-3 text-[#857e78]">
         <Bell className="w-8 h-8 opacity-30" />
         <p className="text-sm font-medium">No notifications yet</p>
       </div>
@@ -371,7 +371,7 @@ export function NotificationList({ notifications, isLoading, onOpenPage }: Notif
                   )}
                   {summary ? summary.title : reportName || "Report job"}
                 </span>
-                <span className="text-[10px] text-[#a8a29e] shrink-0">
+                <span className="text-[10px] text-[#857e78] shrink-0">
                   {formatDate(n.created_at)}
                 </span>
               </div>

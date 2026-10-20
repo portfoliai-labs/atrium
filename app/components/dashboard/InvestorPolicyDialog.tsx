@@ -136,7 +136,7 @@ export function InvestorPolicyDialog({ policy, status, update, onClose, inline =
                 type="button"
                 onClick={onClose}
                 aria-label={inline ? "Back to Profile" : "Close"}
-                className="p-2 text-[#a8a29e] hover:text-[#1c1917] hover:bg-[#F7F5EF] rounded-lg transition-colors"
+                className="p-2 text-[#857e78] hover:text-[#1c1917] hover:bg-[#F7F5EF] rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>

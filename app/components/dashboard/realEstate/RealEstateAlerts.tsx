@@ -156,7 +156,7 @@ export function RealEstateAlerts({ trail, property, onOpenProperty }: {
       />
 
       {rules === undefined ? (
-        <p className="text-[13px] text-[#a8a29e]">Loading…</p>
+        <p className="text-[13px] text-[#857e78]">Loading…</p>
       ) : rules === null ? (
         <p className="text-[13px] font-semibold text-rose-600">{state?.error}</p>
       ) : (
@@ -210,7 +210,7 @@ export function RealEstateAlerts({ trail, property, onOpenProperty }: {
             />
             <div className={MODULE_BODY}>
               {rules.length === 0 ? (
-                <p className="text-[12.5px] text-[#a8a29e]">
+                <p className="text-[12.5px] text-[#857e78]">
                   No alert yet. Add one to be told when a rent doesn&apos;t come in, a tax falls due, a mortgage instalment isn&apos;t recorded,
                   a lease is ending or the debt grows too large against the value.
                 </p>

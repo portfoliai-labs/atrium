@@ -2,6 +2,7 @@
 "use client";
 
 import { FlaskConical, Lock } from "lucide-react";
+import { AiHelpButton } from "../dashboard/assistant/AiHelpButton";
 
 /**
  * PREVIEW KIT — the pieces every not-yet-available feature is built from (Real estate, Wallets,
@@ -69,13 +70,21 @@ export function ComingSoonButton({ icon, children, dark = true, className = "" }
 
 /** A white card with a heading, like the Insights modules. */
 export function Panel({
-  title, subtitle, right, children, className = "",
-}: { title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode; className?: string }) {
+  title, subtitle, right, children, className = "", aiHelp = true,
+}: {
+  title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode; className?: string;
+  // The ✨ that asks the AI what the panel is saying: not on a panel of sample data.
+  aiHelp?: boolean;
+}) {
   return (
     <section className={`bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden ${className}`}>
       <div className="px-6 md:px-7 pt-5 pb-4 flex flex-wrap items-start justify-between gap-3 border-b border-slate-100">
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-black text-slate-900">{title}</h3>
+          <h3 className="text-sm font-black text-slate-900 flex items-center gap-1">
+            {title}
+            {/* Only in the dashboard. */}
+            {aiHelp && <AiHelpButton title={title} desc={subtitle} className="-my-1" />}
+          </h3>
           {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
         </div>
         {right}

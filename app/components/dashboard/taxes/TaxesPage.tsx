@@ -122,7 +122,7 @@ export function TaxesPage({ trail, onOpenSettings, onOpenPortfolios }: {
       >
         {years.map((y) => <option key={y} value={y}>{y}</option>)}
       </select>
-      <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-[#a8a29e]" />
+      <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-[#857e78]" />
     </label>
   );
 
@@ -341,12 +341,12 @@ function SubHead({ title, note }: { title: string; note?: string }) {
   return (
     <p className="flex flex-wrap items-baseline gap-x-2">
       <span className="text-[13px] font-bold text-[#1c1917]">{title}</span>
-      {note && <span className="text-[11px] text-[#a8a29e]">{note}</span>}
+      {note && <span className="text-[11px] text-[#857e78]">{note}</span>}
     </p>
   );
 }
 
-const TH = "py-2 pr-4 text-left text-[10px] font-black uppercase tracking-[0.12em] text-[#a8a29e] whitespace-nowrap";
+const TH = "py-2 pr-4 text-left text-[10px] font-black uppercase tracking-[0.12em] text-[#857e78] whitespace-nowrap";
 const THR = `${TH} text-right pr-0 pl-4`;
 const TD = "py-2.5 pr-4 align-top";
 const TDR = "py-2.5 pl-4 text-right tabular-nums align-top whitespace-nowrap";
@@ -373,14 +373,14 @@ function IncomesTable({ incomes, money, total }: { incomes: TaxedIncome[]; money
               <tr key={i.category}>
                 <td className={TD}>
                   <span className="block font-semibold text-[#1c1917]">{categoryLabel(i.category)}</span>
-                  {categoryDetail(i.category) && <span className="block text-[11px] text-[#a8a29e]">{categoryDetail(i.category)}</span>}
+                  {categoryDetail(i.category) && <span className="block text-[11px] text-[#857e78]">{categoryDetail(i.category)}</span>}
                 </td>
                 <td className={`${TDR} text-[#047857]`}>{money(i.gains)}</td>
                 <td className={`${TDR} ${i.losses < 0 ? "text-[#e11d48]" : ""}`}>{money(i.losses)}</td>
                 <td className={TDR} title={i.offsetLosses.map((o) => `${o.originYear}: ${money(o.amount)}`).join("\n") || undefined}>
                   {offset === 0 ? "—" : money(offset)}
                   {i.offsetLosses.length > 0 && (
-                    <span className="block text-[11px] text-[#a8a29e]">from {i.offsetLosses.map((o) => o.originYear).join(", ")}</span>
+                    <span className="block text-[11px] text-[#857e78]">from {i.offsetLosses.map((o) => o.originYear).join(", ")}</span>
                   )}
                 </td>
                 <td className={TDR}>{money(i.taxable)}</td>
@@ -423,7 +423,7 @@ function IncomeCategoriesTable({ categories, money, total }: { categories: Incom
             <tr key={c.category}>
               <td className={TD}>
                 <span className="block font-semibold text-[#1c1917]">{categoryLabel(c.category)}</span>
-                {categoryDetail(c.category) && <span className="block text-[11px] text-[#a8a29e]">{categoryDetail(c.category)}</span>}
+                {categoryDetail(c.category) && <span className="block text-[11px] text-[#857e78]">{categoryDetail(c.category)}</span>}
               </td>
               <td className={TDR}>{money(c.gross)}</td>
               <td className={TDR}>{c.withheldAtSource === 0 ? "—" : money(c.withheldAtSource)}</td>
@@ -541,7 +541,7 @@ function ExpiringLosses({ losses, harvestable, year, isCurrent, money, nameOf }:
           </div>
         )}
         {isCurrent && harvestable.length > 0 && (
-          <p className="text-[11px] text-[#a8a29e]">Valued at the last prices available. Selling to realize a gain is a decision to weigh with your advisor.</p>
+          <p className="text-[11px] text-[#857e78]">Valued at the last prices available. Selling to realize a gain is a decision to weigh with your advisor.</p>
         )}
       </div>
     </section>
@@ -567,7 +567,7 @@ function HarvestTable({ rows, money, nameOf }: { rows: UnrealizedGain[]; money: 
             <tr key={`${h.portfolioUuid}:${h.assetId}`}>
               <td className={`${TD} pl-4`}>
                 <span className="block font-semibold text-[#1c1917]">{assetName(h)}</span>
-                <span className="block text-[11px] text-[#a8a29e]">
+                <span className="block text-[11px] text-[#857e78]">
                   {categoryLabel(h.taxCategory)}{h.taxableShare < 1 ? ` · ${ratePct(h.taxableShare)} taxable` : ""}
                 </span>
               </td>
@@ -707,10 +707,10 @@ function SaleRow({ gain: g, money, portfolio, open, onToggle }: {
         <td className={TD}>
           <span className="flex items-center gap-1.5 font-semibold text-[#1c1917]">
             {assetName(g)}
-            {hasLots && <ChevronDown className={`h-3.5 w-3.5 text-[#a8a29e] transition-transform ${open ? "rotate-180" : ""}`} />}
+            {hasLots && <ChevronDown className={`h-3.5 w-3.5 text-[#857e78] transition-transform ${open ? "rotate-180" : ""}`} />}
           </span>
           {g.taxCategory && (
-            <span className="block text-[11px] text-[#a8a29e]">
+            <span className="block text-[11px] text-[#857e78]">
               {categoryLabel(g.taxCategory)}{g.taxableShare !== null && g.taxableShare < 1 ? ` · ${ratePct(g.taxableShare)} taxable` : ""}
             </span>
           )}
@@ -718,7 +718,7 @@ function SaleRow({ gain: g, money, portfolio, open, onToggle }: {
         <td className={`${TD} text-[#78716c]`}>
           {portfolio}
           {g.taxationMode === "withheld" && (
-            <span className="block text-[11px] text-[#a8a29e]">
+            <span className="block text-[11px] text-[#857e78]">
               {TAXATION_MODE_LABELS.withheld.label}{g.withheldTax !== null ? ` · ${money(g.withheldTax)}` : ""}
             </span>
           )}
@@ -735,7 +735,7 @@ function SaleRow({ gain: g, money, portfolio, open, onToggle }: {
         <tr className="bg-[#FBFAF6]">
           <td />
           <td colSpan={6} className="pb-3 pr-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#a8a29e] mb-1.5">Lots sold, oldest first</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#857e78] mb-1.5">Lots sold, oldest first</p>
             <ul className="space-y-1">
               {g.lots.map((l, i) => (
                 <li key={i} className="flex justify-between gap-4 text-xs text-[#78716c] tabular-nums max-w-md">
@@ -814,7 +814,7 @@ function PaymentRow({ payment: p, money, portfolio }: { payment: IncomePayment; 
       <td className={`${TD} whitespace-nowrap text-[#78716c]`}>{dateLabel(p.executedAt)}</td>
       <td className={TD}>
         <span className="block font-semibold text-[#1c1917]">{p.assetId ? assetName({ ...p, assetId: p.assetId }) : "Cash"}</span>
-        <span className="block text-[11px] text-[#a8a29e]">
+        <span className="block text-[11px] text-[#857e78]">
           {INCOME_KIND_LABELS[p.kind] ?? p.kind}
           {p.taxCategory ? ` · ${categoryLabel(p.taxCategory)}` : ""}
           {p.rate !== null ? ` · ${ratePct(p.rate)}` : ""}
@@ -822,13 +822,13 @@ function PaymentRow({ payment: p, money, portfolio }: { payment: IncomePayment; 
       </td>
       <td className={`${TD} text-[#78716c]`}>
         {portfolio}
-        {withheld && <span className="block text-[11px] text-[#a8a29e]">Taxed at source by the broker</span>}
+        {withheld && <span className="block text-[11px] text-[#857e78]">Taxed at source by the broker</span>}
       </td>
       <td className={TDR}>{money(p.gross)}</td>
       <td className={TDR}>{p.withheldAtSource === 0 ? "—" : money(p.withheldAtSource)}</td>
       <td className={TDR}>
         {p.taxable === null ? "—" : money(p.taxable)}
-        {p.accruedOffset > 0 && <span className="block text-[11px] text-[#a8a29e]">less {money(p.accruedOffset)} accrued paid</span>}
+        {p.accruedOffset > 0 && <span className="block text-[11px] text-[#857e78]">less {money(p.accruedOffset)} accrued paid</span>}
       </td>
       <td className={`${TDR} font-bold text-[#1c1917]`}>{p.tax === null ? "—" : money(p.tax)}</td>
     </tr>

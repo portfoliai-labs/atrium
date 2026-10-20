@@ -493,7 +493,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             rows={1}
             placeholder="Title"
             style={serif}
-            className={`w-full resize-none field-sizing-content bg-transparent text-3xl md:text-4xl font-black text-slate-900 leading-tight outline-none placeholder:text-slate-300 ${flagged === "title" ? "underline decoration-rose-400" : ""}`}
+            className={`w-full resize-none field-sizing-content bg-transparent text-3xl md:text-4xl font-black text-slate-900 leading-tight outline-none placeholder:text-slate-400 ${flagged === "title" ? "underline decoration-rose-400" : ""}`}
           />
           <textarea
             value={form.dek}
@@ -501,7 +501,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             onChange={(e) => change({ dek: e.target.value.replace(/\n/g, " ") })}
             rows={1}
             placeholder="Subtitle (optional): one line on what the reader will take away"
-            className={`w-full resize-none field-sizing-content bg-transparent text-base md:text-lg text-slate-500 leading-relaxed outline-none placeholder:text-slate-300 ${flagged === "dek" ? "underline decoration-rose-400" : ""}`}
+            className={`w-full resize-none field-sizing-content bg-transparent text-base md:text-lg text-slate-500 leading-relaxed outline-none placeholder:text-slate-400 ${flagged === "dek" ? "underline decoration-rose-400" : ""}`}
           />
           <BodyEditor key={bodyKey} initial={initialBody} onChange={onBodyChange} editorRef={editorRef} />
         </div>

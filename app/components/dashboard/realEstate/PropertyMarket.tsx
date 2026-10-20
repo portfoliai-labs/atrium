@@ -65,7 +65,7 @@ export function PropertyMarketModule({ property, readOnly, onEdit }: { property:
       />
       <div className={`${MODULE_BODY} space-y-4`}>
         {market === undefined ? (
-          <p className="text-[12.5px] text-[#a8a29e]">Loading…</p>
+          <p className="text-[12.5px] text-[#857e78]">Loading…</p>
         ) : market.status === "missing_fields" ? (
           // The form has no map: a zone is found from the municipality, picked by hand.
           market.missingFields.includes("details.municipality_code") ? (

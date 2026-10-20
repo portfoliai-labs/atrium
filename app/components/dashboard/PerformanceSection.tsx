@@ -47,6 +47,7 @@ import type {
   InsightsValueModule, InsightsVolatilityModule, InsightsFrontierModule, InsightsPerformanceResponse, PortfolioComparisonEntry,
 } from "../../models/PortfolioData";
 import type { TransactionResponse } from "../../models/Transaction";
+import { AiHelpButton } from "./assistant/AiHelpButton";
 
 const chartDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const fullDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
@@ -333,7 +334,7 @@ export function Fig({ label, value, sub, tone, strong = false, info, badge }: {
         <span className="truncate">{label}</span>
         {info && (
           <InfoTip text={info}>
-            <Info className="h-3 w-3 shrink-0 text-[#a8a29e] hover:text-[#78716c] cursor-help transition-colors" />
+            <Info className="h-3 w-3 shrink-0 text-[#857e78] hover:text-[#78716c] cursor-help transition-colors" />
           </InfoTip>
         )}
       </span>
@@ -341,7 +342,7 @@ export function Fig({ label, value, sub, tone, strong = false, info, badge }: {
         <span className={`font-bold tabular-nums truncate tracking-[-0.01em] ${strong ? "text-[22px]" : "text-[17px]"} ${toneClass(tone)}`}>{value}</span>
         {badge}
       </span>
-      {sub && <span className="text-[11px] text-[#a8a29e] truncate">{sub}</span>}
+      {sub && <span className="text-[11px] text-[#857e78] truncate">{sub}</span>}
     </span>
   );
 }
@@ -361,7 +362,7 @@ export function FigRows({ rows }: {
             <span className="truncate">{r.label}</span>
             {r.info && (
               <InfoTip text={r.info}>
-                <Info className="h-3 w-3 shrink-0 text-[#a8a29e] hover:text-[#78716c] cursor-help transition-colors" />
+                <Info className="h-3 w-3 shrink-0 text-[#857e78] hover:text-[#78716c] cursor-help transition-colors" />
               </InfoTip>
             )}
           </dt>
@@ -445,7 +446,7 @@ export const moduleAnchor = (m: ModuleAnchor) => `module-${m}`;
 // to the card's top right corner (ExpandButton), always in the same place whatever the header
 // holds; the whole card lights up on hover. Clicks on `right` stay its own (a breakdown's chips
 // switch the breakdown, they don't open the detail). `desc` says what the module shows, on hovering
-// the title.
+// the title. The ✨ beside the title asks the AI assistant what the module is saying (AiHelpButton).
 // (`eyebrow` was a gold line above the title; it's no longer drawn.)
 export function ModuleHead({
   title, desc, right, icon, onExplore,
@@ -459,6 +460,7 @@ export function ModuleHead({
         <div className="flex items-center gap-2 min-w-0">
           {icon}
           <h2 title={desc} className="text-[10px] font-black uppercase tracking-[0.14em] text-[#78716c]">{title}</h2>
+          <AiHelpButton title={title} desc={desc} className="-my-1" />
         </div>
         {right && (onExplore ? <div onClick={(e) => e.stopPropagation()} className="cursor-auto">{right}</div> : right)}
       </div>
@@ -478,7 +480,7 @@ function ExpandButton({ title, onClick }: { title: string; onClick: () => void }
       onClick={onClick}
       aria-label={`Open ${title} in detail`}
       title="Open in detail"
-      className="absolute top-4 right-4 md:top-[18px] md:right-[18px] h-6 w-6 rounded-full flex items-center justify-center text-[#a8a29e] transition-colors group-hover/module:text-[#C49A3C] hover:bg-[#C49A3C]/10 outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40"
+      className="absolute top-4 right-4 md:top-[18px] md:right-[18px] h-6 w-6 rounded-full flex items-center justify-center text-[#857e78] transition-colors group-hover/module:text-[#C49A3C] hover:bg-[#C49A3C]/10 outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40"
     >
       <ArrowUpRight className="h-4 w-4" />
     </button>
@@ -597,7 +599,7 @@ function SnapshotChart({ chart, currency, className = "h-64" }: { chart: ValuePo
   // A single point has nothing to draw a line/area between — recharts still plots its dot,
   // which reads as a broken/empty chart rather than "not enough history yet".
   if (chart.length < 2) {
-    return <p className="text-[12.5px] text-[#a8a29e]">Not enough history yet to chart.</p>;
+    return <p className="text-[12.5px] text-[#857e78]">Not enough history yet to chart.</p>;
   }
 
   const sorted = [...chart].sort((a, b) => new Date(a.snapshotAt).getTime() - new Date(b.snapshotAt).getTime());
@@ -720,7 +722,7 @@ function StaleUpdatingState() {
 
 /** Placeholder line for a module whose analytics can't be drawn (yet). */
 function ModuleMessage({ children }: { children: React.ReactNode }) {
-  return <p className={`text-[12.5px] text-[#a8a29e] ${MODULE_BODY}`}>{children}</p>;
+  return <p className={`text-[12.5px] text-[#857e78] ${MODULE_BODY}`}>{children}</p>;
 }
 
 const isPeriodEmpty = (data: PeriodDashboard) =>
@@ -1524,7 +1526,7 @@ function HoldingsExplorer({
   const isLast = (item: CompositionItem) => item === shown[shown.length - 1];
 
   const carousel = holdings.length > 0 && breakdowns.length > 1;
-  const stepButton = "h-6 w-6 rounded-full flex items-center justify-center text-[#a8a29e] transition-colors hover:text-[#1c1917] hover:bg-[#F7F5EF] outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40";
+  const stepButton = "h-6 w-6 rounded-full flex items-center justify-center text-[#857e78] transition-colors hover:text-[#1c1917] hover:bg-[#F7F5EF] outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40";
   // Under the body, on one line: the breakdown shown and a dot for each, between the steps to
   // the previous and next one. The active dot fills up over 5 seconds (composition-autoplay, in globals.css),
   // and when it's full the carousel steps on (onAnimationEnd), so the timer and what it draws
@@ -1561,7 +1563,7 @@ function HoldingsExplorer({
             >
               <span
                 className={`relative block h-1.5 rounded-full overflow-hidden transition-all duration-300 group-focus-visible/dot:ring-2 group-focus-visible/dot:ring-[#C49A3C]/40 ${
-                  b === breakdown ? "w-6 bg-[#EEE9DD]" : "w-1.5 bg-[#E0DACC] group-hover/dot:bg-[#a8a29e]"
+                  b === breakdown ? "w-6 bg-[#EEE9DD]" : "w-1.5 bg-[#E0DACC] group-hover/dot:bg-[#857e78]"
                 }`}
               >
                 {b === breakdown && (
@@ -1678,7 +1680,7 @@ function HoldingsExplorer({
                     <span className="hidden @2xl:block shrink-0 min-w-[92px] text-right text-xs text-[#78716c] tabular-nums">
                       {item.weightPct.toFixed(1)}%
                     </span>
-                    <span className="w-4 @2xl:w-[18px] shrink-0">{item.onOpen && <ChevronRight className="h-4 w-4 text-[#a8a29e]" />}</span>
+                    <span className="w-4 @2xl:w-[18px] shrink-0">{item.onOpen && <ChevronRight className="h-4 w-4 text-[#857e78]" />}</span>
                   </>
                 );
                 const rowClass = `w-full flex items-center gap-3 px-2 @2xl:px-2.5 py-[9px] @2xl:py-[11px] rounded-[14px] text-left transition-colors ${isLast(item) ? "" : "border-b border-[#EEE9DD]"} ${hovered === item.key ? "bg-[#F7F5EF]" : ""}`;
@@ -2145,7 +2147,7 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
         <div className={MODULE_BODY}>
           {error && <p className="pb-3 text-sm font-semibold text-[#e11d48]">{error}</p>}
           {points.length < 2 ? (
-            <p className="text-[12.5px] text-[#a8a29e]">No prices in this range.</p>
+            <p className="text-[12.5px] text-[#857e78]">No prices in this range.</p>
           ) : (
             <div className={`h-[220px] transition-opacity ${loading ? "opacity-40" : ""}`}>
               <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 700, height: 220 }}>
@@ -2568,7 +2570,7 @@ function RealizedFigure({ label, info, value, note, tone, emphasis = false }: {
       <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
         {label}
         <InfoTip text={info}>
-          <Info className="h-3.5 w-3.5 text-slate-300 hover:text-slate-500 cursor-help transition-colors" />
+          <Info className="h-3.5 w-3.5 text-slate-400 hover:text-slate-600 cursor-help transition-colors" />
         </InfoTip>
       </p>
       <p
@@ -2614,7 +2616,7 @@ function RealizedPnlModule({ slot, currency, portfolioUuid }: {
         <div className={`${MODULE_BODY} space-y-3.5`}>
           {slot.lagging && <UpdatingNote />}
           {!hasAny ? (
-            <p className="text-[12.5px] text-[#a8a29e]">No closed positions yet.</p>
+            <p className="text-[12.5px] text-[#857e78]">No closed positions yet.</p>
           ) : (
             <FigRows
               rows={[
@@ -2889,7 +2891,7 @@ function RollingVolatilityChart({ series, className = "h-64" }: { series: TimeSe
   const points = useMemo(() => toChartPoints(series), [series]);
 
   if (points.length < 2) {
-    return <p className="text-[12.5px] text-[#a8a29e]">Not enough data yet to chart.</p>;
+    return <p className="text-[12.5px] text-[#857e78]">Not enough data yet to chart.</p>;
   }
 
   return (
@@ -2954,7 +2956,7 @@ function VolatilityModule({
         <div className={`${MODULE_BODY} space-y-4`}>
           {slot.lagging && <UpdatingNote />}
           {slot.module.status === "insufficient_history" ? (
-            <p className="text-[12.5px] text-[#a8a29e]">Volatility needs at least a year of history — it will appear once your portfolio has one.</p>
+            <p className="text-[12.5px] text-[#857e78]">Volatility needs at least a year of history — it will appear once your portfolio has one.</p>
           ) : (
             // The figures in a column beside the chart, as in the Performance module.
             <div className="grid grid-cols-1 @2xl:grid-cols-[auto_minmax(0,1fr)] gap-[22px] @2xl:gap-8 items-center">
@@ -3053,7 +3055,7 @@ function VolatilityPanels({ data }: { data: VolatilityDetailResponse }) {
 const HELD_NAMES_SHOWN = 2;
 
 function HeldNames({ names }: { names: string[] }) {
-  if (names.length === 0) return <span className="text-[#a8a29e]">—</span>;
+  if (names.length === 0) return <span className="text-[#857e78]">—</span>;
   const shown = names.slice(0, HELD_NAMES_SHOWN);
   const more = names.length - shown.length;
   return (
@@ -3346,7 +3348,7 @@ function RelativeFigures({ rows }: { rows: RelativeRow[] }) {
             <dt className="flex items-center gap-1 min-w-0 text-[13px] font-semibold text-[#1c1917]">
               <span className="truncate">{r.label}</span>
               <InfoTip text={r.info}>
-                <Info className="h-3 w-3 shrink-0 text-[#a8a29e] hover:text-[#78716c] cursor-help transition-colors" />
+                <Info className="h-3 w-3 shrink-0 text-[#857e78] hover:text-[#78716c] cursor-help transition-colors" />
               </InfoTip>
             </dt>
             <dd className={`row-span-2 self-center text-[15px] font-bold tabular-nums ${toneClass(r.tone)}`}>{r.value}</dd>
@@ -3748,7 +3750,7 @@ function TradingCostsModule({ slot, currency, portfolioUuid }: { slot: ModuleSlo
         <div className={`${MODULE_BODY} space-y-4`}>
           {slot.lagging && <UpdatingNote />}
           {data.totalTransactions === 0 ? (
-            <p className="text-[12.5px] text-[#a8a29e]">No trades recorded yet.</p>
+            <p className="text-[12.5px] text-[#857e78]">No trades recorded yet.</p>
           ) : (
             <Figs pairs>
                 <Fig label="Fees paid" value={formatCurrency(data.totalCosts, currency, 0)} strong info="Commissions plus the spread paid on every buy and sell, since your first transaction." />
@@ -4006,7 +4008,7 @@ function PortfolioCorrelationModule({ slot, members }: { slot: ModuleSlot<Insigh
                         return (
                           <td key={colUuid} className="p-0">
                             {i === j || v === null ? (
-                              <div className="w-[52px] h-[34px] rounded-md bg-[#F7F5EF] flex items-center justify-center text-[#a8a29e]">—</div>
+                              <div className="w-[52px] h-[34px] rounded-md bg-[#F7F5EF] flex items-center justify-center text-[#857e78]">—</div>
                             ) : (
                               <div
                                 className="w-[52px] h-[34px] rounded-md flex items-center justify-center font-semibold tabular-nums"

@@ -37,6 +37,14 @@ export const EXPLORE_SECTION = "explore";
 export const CLIENTS_SECTION = "clients";
 // A security's page, opened from the top bar's search (see AssetSection).
 export const ASSET_SECTION = "asset";
+// Messages' page with a new chat with the AI assistant open: from the top bar's AI button, or a
+// widget's (AiHelpButton), with the question to send at once.
+export const MESSAGES_NEW_AI_CHAT = "new-ai-chat";
+export type AiChatView = { page: typeof MESSAGES_NEW_AI_CHAT; question?: string };
+export const aiChatView = (question?: string): AiChatView => ({ page: MESSAGES_NEW_AI_CHAT, question });
+export const readAiChatView = (view: unknown): AiChatView | null => (
+  typeof view === "object" && view !== null && (view as AiChatView).page === MESSAGES_NEW_AI_CHAT ? (view as AiChatView) : null
+);
 // Profile: the user's preferences (language, currency, tax residence), once Settings' tab, an
 // investor's Investment Policy, and Find an advisor under it, once a section of its own (see
 // MyProfileSection). Not "profile",

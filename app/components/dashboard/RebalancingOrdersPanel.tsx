@@ -100,7 +100,7 @@ export function RebalancingOrdersPanel({ portfolioUuid }: { portfolioUuid: strin
                 placeholder="0"
                 onChange={(e) => setContributionText(e.target.value)}
                 aria-invalid={contributionProblem !== null}
-                className={`w-40 h-10 px-3 pr-12 rounded-xl bg-white border text-sm font-semibold tabular-nums text-slate-900 outline-none placeholder:text-slate-300 focus:ring-4 focus:ring-[#C49A3C]/10 ${
+                className={`w-40 h-10 px-3 pr-12 rounded-xl bg-white border text-sm font-semibold tabular-nums text-slate-900 outline-none placeholder:text-slate-400 focus:ring-4 focus:ring-[#C49A3C]/10 ${
                   contributionProblem ? "border-rose-300" : "border-slate-200 focus:border-[#C49A3C]/60"
                 }`}
               />

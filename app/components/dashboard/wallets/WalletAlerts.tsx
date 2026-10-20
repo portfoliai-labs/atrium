@@ -89,7 +89,7 @@ export function WalletAlerts({ scope }: { scope: string | null }) {
     }
   };
 
-  if (rules === undefined) return <p className="text-[13px] text-[#a8a29e]">Loading…</p>;
+  if (rules === undefined) return <p className="text-[13px] text-[#857e78]">Loading…</p>;
   if (rules === null) return <p className="text-[13px] font-semibold text-rose-600">{state?.error}</p>;
 
   const archived = !!walletOf(scope)?.archived;
@@ -143,7 +143,7 @@ export function WalletAlerts({ scope }: { scope: string | null }) {
         />
         <div className={MODULE_BODY}>
           {rules.length === 0 ? (
-            <p className="text-[12.5px] text-[#a8a29e]">
+            <p className="text-[12.5px] text-[#857e78]">
               No alert yet. Add one to be told when a balance runs low, a budget is nearly used up, a large payment goes out or
               your salary comes in.
             </p>
