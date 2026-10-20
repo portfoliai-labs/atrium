@@ -70,6 +70,9 @@ interface StrategyProfile {
   breakdowns: ProfileBreakdown[];
   cashWeightPct: number;
   computedAt: string;
+  // Each of `strategy.targets`' weight of the whole now, in their order (a category target's is
+  // its proxy's); absent from an ianus before it.
+  targetWeightsPct?: number[];
 }
 
 interface PublishedStrategy {
