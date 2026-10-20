@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes } from "lucide-react";
+import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, Landmark } from "lucide-react";
 import { userService } from "../../services/userService";
 import { supabase } from "../../lib/supabaseClient";
 import type { NotificationPreferences } from "../../models/User";
@@ -10,6 +10,8 @@ import { Toggle } from "./Toggle";
 import { useUser } from "../../context/UserContext";
 import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
+import { WalletBanks } from "./wallets/WalletBanks";
+import { useWallets } from "../../context/WalletsContext";
 
 function PreferenceRow({
   title,
@@ -53,10 +55,21 @@ function ReadOnlyField({ label, value, className = "" }: { label: string; value:
 const TABS = [
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "assets", label: "Assets", icon: Shapes },
+  // The banks connected through open banking: an investor's, where they have wallets.
+  { id: "banks", label: "Banks", icon: Landmark },
   { id: "account", label: "Account", icon: UserIcon },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+// A link into a tab from outside the dashboard (`/dashboard?section=settings&settingsTab=banks`,
+// where the bank sends the user back to).
+const SETTINGS_TAB_PARAM = "settingsTab";
+const linkedTab = (): TabId | null => {
+  if (typeof window === "undefined") return null;
+  const tab = new URLSearchParams(window.location.search).get(SETTINGS_TAB_PARAM);
+  return TABS.some((t) => t.id === tab) ? (tab as TabId) : null;
+};
 
 // The tab the next Settings opens on, when a link elsewhere asks for one (the asset categories,
 // under Assets); read once, as it mounts.
@@ -72,11 +85,24 @@ export const openAssetSettings = (onNavigate: (section: string) => void) => {
 
 export function SettingsSection() {
   const { user, logout, refreshUser, isDemo } = useUser();
-  const [activeTab, setActiveTab] = useState<TabId>(() => {
-    const tab = requestedTab ?? "notifications";
+  const { available: walletsAvailable } = useWallets();
+  // Banks only where the wallets are (a backend with them, a demo account's sample data).
+  const hasBanks = user?.role !== "ADVISOR" && (isDemo || walletsAvailable);
+  const tabs = TABS.filter((t) => t.id !== "banks" || hasBanks);
+  const [chosenTab, setActiveTab] = useState<TabId>(() => {
+    const tab = requestedTab ?? linkedTab() ?? "notifications";
     requestedTab = null;
     return tab;
   });
+  const activeTab: TabId = chosenTab === "banks" && !hasBanks ? "notifications" : chosenTab;
+
+  // The link's tab is read once: Settings opened again later starts on its first tab.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(SETTINGS_TAB_PARAM)) return;
+    url.searchParams.delete(SETTINGS_TAB_PARAM);
+    window.history.replaceState(window.history.state, "", url);
+  }, []);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
@@ -214,7 +240,7 @@ export function SettingsSection() {
       {/* Tab bar — a full-width 2-column grid on mobile (so the selector never
           scrolls sideways), the original inline pill row from sm and up. */}
       <div className="grid grid-cols-2 sm:inline-flex gap-1 p-1 bg-white rounded-2xl sm:rounded-full border border-[rgba(196,154,60,0.2)]">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const active = tab.id === activeTab;
           return (
             <button
@@ -471,6 +497,9 @@ export function SettingsSection() {
           </div>
         </div>
       )}
+
+      {/* A demo account's is a sample bank, read only (WalletBanks locks its own changes). */}
+      {activeTab === "banks" && <WalletBanks />}
 
       {message && (
         <div className={`fixed bottom-6 md:bottom-8 left-1/2 -translate-x-1/2 px-6 md:px-8 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-4 z-50 ${message.type === 'success' ? 'bg-[#1c1917] text-white' : 'bg-rose-500 text-white'}`}>

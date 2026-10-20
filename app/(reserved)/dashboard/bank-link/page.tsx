@@ -9,8 +9,8 @@ import { useUser } from "../../../context/UserContext";
 import { bankingService } from "../../../services/bankingService";
 import { errorText } from "../../../lib/wallets";
 
-// Where the user goes once the link is done: All wallets' Banks, to choose each account's wallet.
-const BANKS_PAGE = "/dashboard?section=wallets&walletsPage=banks";
+// Where the user goes once the link is done: Settings' Banks, to choose each account's wallet.
+const BANKS_PAGE = "/dashboard?section=settings&settingsTab=banks";
 
 /**
  * BANK LINK — the page the bank sends the user back to after the consent (registered with the open

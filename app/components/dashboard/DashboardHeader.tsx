@@ -206,7 +206,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
 
         <div className="hidden md:block h-8 w-px bg-[#E0DACC] mx-2" />
 
-        {/* Profile pill: the account menu (Profile, Messages, Settings, the subscription). */}
+        {/* Profile pill: the account menu (Profile, an investor's Investment Policy and Find an advisor, Messages, Settings, the subscription). */}
         <div className="relative">
           <button
             onClick={handleProfileClick}
@@ -245,6 +245,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
               isLoading={isSubscriptionLoading}
               onClose={() => setIsSubscriptionOpen(false)}
               onNavigate={onNavigate}
+              onOpenPage={onOpenPage}
               onManage={onNavigate ? () => {
                 setIsSubscriptionOpen(false);
                 onNavigate(SUBSCRIPTION_SECTION);

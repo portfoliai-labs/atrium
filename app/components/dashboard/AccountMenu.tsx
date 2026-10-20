@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Crown, Loader2, ArrowRight, MessagesSquare, Settings, UserRound } from "lucide-react";
+import { Crown, Loader2, ArrowRight, ClipboardList, Handshake, MessagesSquare, Settings, UserRound } from "lucide-react";
 import { PROFILE_SECTION } from "../../lib/dashboardNav";
+import { useUser } from "../../context/UserContext";
 import type { SubscriptionResponse } from "../../models/User";
 
 interface AccountMenuProps {
@@ -11,21 +12,34 @@ interface AccountMenuProps {
   onClose: () => void;
   // Opens one of the account's sections (Profile, Messages, Settings).
   onNavigate?: (section: string) => void;
+  // A section on one of its pages (Profile's Investment Policy and Find an advisor).
+  onOpenPage?: (section: string, view: unknown) => void;
   onManage?: () => void;
 }
 
-const ENTRIES = [
-  { section: PROFILE_SECTION, label: "Profile", icon: UserRound },
-  { section: "messages", label: "Messages", icon: MessagesSquare },
-  { section: "settings", label: "Settings", icon: Settings },
+type Entry = { key: string; label: string; icon: typeof UserRound; section: string; view?: unknown };
+
+const PROFILE: Entry = { key: "profile", section: PROFILE_SECTION, label: "Profile", icon: UserRound };
+// An investor's: pages of Profile's (see MyProfileSection).
+const INVESTOR_ENTRIES: Entry[] = [
+  { key: "policy", section: PROFILE_SECTION, view: { page: "policy" }, label: "Investment Policy", icon: ClipboardList },
+  { key: "advisor", section: PROFILE_SECTION, view: { page: "advisor" }, label: "Find an advisor", icon: Handshake },
+];
+const OTHER_ENTRIES: Entry[] = [
+  { key: "messages", section: "messages", label: "Messages", icon: MessagesSquare },
+  { key: "settings", section: "settings", label: "Settings", icon: Settings },
 ];
 
 /**
  * ACCOUNT MENU — what opens from the profile pill in the top bar: the user's plan on top (a
- * button to manage it), then their own sections (Profile, Messages, Settings, out of the Sidebar).
+ * button to manage it), then their own sections (Profile, an investor's Investment Policy and
+ * Find an advisor, Messages, Settings, out of the Sidebar).
  */
-export function AccountMenu({ subscription, isLoading, onClose, onNavigate, onManage }: AccountMenuProps) {
+export function AccountMenu({ subscription, isLoading, onClose, onNavigate, onOpenPage, onManage }: AccountMenuProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const { user } = useUser();
+  const isAdvisor = user?.role === "ADVISOR";
+  const entries = [PROFILE, ...(isAdvisor || !onOpenPage ? [] : INVESTOR_ENTRIES), ...OTHER_ENTRIES];
 
   useEffect(() => {
     function handleMouseDown(e: MouseEvent) {
@@ -72,14 +86,16 @@ export function AccountMenu({ subscription, isLoading, onClose, onNavigate, onMa
 
         {onNavigate && (
           <nav role="menu" className="p-2 flex flex-col">
-            {ENTRIES.map((e) => (
+            {entries.map((e) => (
               <button
-                key={e.section}
+                key={e.key}
                 type="button"
                 role="menuitem"
                 onClick={() => {
                   onClose();
-                  onNavigate(e.section);
+                  // Profile itself on its own page too, even when one of its pages is open.
+                  if (onOpenPage && e.section === PROFILE_SECTION) onOpenPage(e.section, e.view ?? { page: "home" });
+                  else onNavigate(e.section);
                 }}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-[#1c1917] hover:bg-white transition-colors"
               >

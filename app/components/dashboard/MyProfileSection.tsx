@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight, ChevronDown, ClipboardList, Download, Handshake, Loader2, Lock, Save } from "lucide-react";
+import { ChevronDown, Download, Loader2, Save } from "lucide-react";
 import { userService } from "../../services/userService";
 import { useSectionView } from "../../lib/dashboardHistory";
 import { PROFILE_SECTION } from "../../lib/dashboardNav";
@@ -14,14 +14,15 @@ import { InvestorPolicyEditor, riskToleranceLabel } from "./InvestorPolicyDialog
 import { PROFILE_GRID, PolicyCards, ProfileCard, ProfileDialog, ProfileRows } from "./ips/PolicyCards";
 import { Breadcrumb } from "./Breadcrumb";
 
-// Profile's own page, the guided setup of the Investment Policy under it, or Find an advisor (an
-// older entry's `tab: "advisor"` too; its `tab: "policy"`, the setup).
-export type ProfilePage = "home" | "setup" | "advisor";
+// Profile's own page (the preferences), an investor's Investment Policy (set up step by step, then
+// its cards) or Find an advisor, each opened from the account menu (an older entry's `page:
+// "setup"`, `tab: "policy"` and `tab: "advisor"` too).
+export type ProfilePage = "home" | "policy" | "advisor";
 
 const parseView = (raw: unknown): { page: ProfilePage } => {
   const v = raw as { page?: string; tab?: string } | undefined;
   if (v?.page === "advisor" || v?.tab === "advisor") return { page: "advisor" };
-  if (v?.page === "setup" || v?.tab === "policy") return { page: "setup" };
+  if (v?.page === "policy" || v?.page === "setup" || v?.tab === "policy") return { page: "policy" };
   return { page: "home" };
 };
 
@@ -40,32 +41,31 @@ const CURRENCIES = [
 
 /**
  * PROFILE — the user's Preferences (language, currency and, for an investor, the tax residence
- * their taxes are computed by), once Settings' tab, and an investor's Investment Policy. The first
- * time, the policy is set up step by step on a page of its own (InvestorPolicyEditor); once it's
- * complete, Profile shows it as cards, a step each, each edited on its own (PolicyCards), and a
- * button opens Find an advisor, matched on it: a page under Profile, for those who want one. The
- * page is in the section's history entry (`{ page }`), so back and forward follow it. A demo
- * account sees the preferences but can't change them.
+ * their taxes are computed by), once Settings' tab, and two pages of an investor's, each an entry
+ * of the account menu: the Investment Policy and Find an advisor. The first time, the policy is
+ * set up step by step (InvestorPolicyEditor); once it's complete, its page shows it as cards, a
+ * step each, each edited on its own (PolicyCards). Advisors are matched on it, so Find an advisor
+ * asks for it first (see AdvisorMatchSection). The page is in the section's history entry
+ * (`{ page }`), so back and forward follow it. A demo account sees the preferences but can't
+ * change them.
  */
 export function MyProfileSection() {
   const { user } = useUser();
   const isAdvisor = user?.role === "ADVISOR";
   const [view, open] = useSectionView(PROFILE_SECTION, parseView);
   const page: ProfilePage = isAdvisor ? "home" : view.page;
-  // An investor's: an advisor has no Investment Policy of their own.
-  const { policy, status, update } = useInvestorPolicy(isAdvisor ? undefined : user?.uuid);
+  // An investor's, on its page: an advisor has no Investment Policy of their own.
+  const { policy, status, update } = useInvestorPolicy(isAdvisor || page !== "policy" ? undefined : user?.uuid);
   const done = policy ? completedSteps(policy).length : 0;
 
-  // Advisors are matched on the whole policy: the way to them opens once it's complete.
   const complete = !!policy && done === IPS_STEPS.length;
   // Once set up, the policy is the cards for the rest of the visit, even should an edit leave a
-  // step incomplete (its card says what's missing); until then, the way to the guided setup.
+  // step incomplete (its card says what's missing); until then, the guided setup.
   const [settled, setSettled] = useState(false);
   if (complete && !settled) setSettled(true);
   const asCards = complete || settled;
   const currency = user?.currency || "USD";
   const riskTolerance = riskToleranceLabel(user?.risk_tolerance);
-  const home = { label: "Profile", onClick: () => open({ page: "home" }) };
 
   const download = () => {
     if (!policy) return;
@@ -80,30 +80,20 @@ export function MyProfileSection() {
   if (page === "advisor") {
     return (
       <div className="space-y-6 pb-12">
-        <Breadcrumb trail={[home]} current="Find an advisor" />
-        {/* Without a policy there's nothing to match on: it's set up from Profile. */}
-        <AdvisorMatchSection onOpenPolicy={() => open({ page: "setup" })} />
+        <Breadcrumb trail={[]} current="Find an advisor" hidden />
+        {/* Without a policy there's nothing to match on: it's set up on its own page. */}
+        <AdvisorMatchSection onOpenPolicy={() => open({ page: "policy" })} />
       </div>
     );
   }
 
-  if (page === "setup") {
+  if (page === "policy") {
     return (
-      <div className="space-y-6 pb-12">
-        <Breadcrumb trail={[home]} current="Investment Policy" />
-        {/* Saved as it's filled in: leaving at any step loses nothing. */}
-        {policy
-          ? <InvestorPolicyEditor policy={policy} status={status} update={update} onDone={() => open({ page: "home" })} />
-          : <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-[#C49A3C]" /></div>}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6 pb-12 animate-in fade-in duration-500">
-      {!isAdvisor && (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {asCards && (
+      <div className="space-y-6 pb-12 animate-in fade-in duration-500">
+        <Breadcrumb
+          trail={[]}
+          current="Investment Policy"
+          right={policy && asCards ? (
             <button
               type="button"
               onClick={download}
@@ -111,49 +101,21 @@ export function MyProfileSection() {
             >
               <Download className="w-3.5 h-3.5" /> Download policy
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => open({ page: "advisor" })}
-            disabled={!complete}
-            title={complete ? undefined : "Complete your Investment Policy first"}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[rgba(196,154,60,0.3)] bg-white text-xs font-bold text-[#1c1917] hover:border-[#C49A3C] transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-[rgba(196,154,60,0.3)]"
-          >
-            {complete ? <Handshake className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />} Find an advisor
-          </button>
-        </div>
-      )}
+          ) : undefined}
+        />
+        {!policy
+          ? <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-[#C49A3C]" /></div>
+          : asCards
+            ? <PolicyCards policy={policy} status={status} update={update} currency={currency} riskTolerance={riskTolerance} />
+            // Saved as it's filled in: leaving at any step loses nothing. Once complete, its cards.
+            : <InvestorPolicyEditor policy={policy} status={status} update={update} />}
+      </div>
+    );
+  }
 
-      {/* The first time: the guided setup, until the policy is complete. */}
-      {!isAdvisor && policy && !asCards && (
-        <div className="bg-[#1c1917] text-white p-6 md:p-8 rounded-[2rem] shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-5">
-          <div className="flex items-start gap-4">
-            <div className="p-2.5 bg-white/10 text-[#C49A3C] rounded-xl shrink-0">
-              <ClipboardList className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-base font-bold">
-                {done === 0 && policy.version === null ? "Set up your Investment Policy" : `Your Investment Policy · ${done} of ${IPS_STEPS.length} steps`}
-              </p>
-              <p className="text-xs text-white/70 mt-1 max-w-xl">
-                Your objectives, risk, constraints, allocation and what you look for in an advisor, a step at a time. Once it&apos;s complete, it&apos;s your profile here, and advisors can be matched on it.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => open({ page: "setup" })}
-            className="shrink-0 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#C49A3C] text-[#1c1917] text-sm font-bold hover:bg-white transition-colors"
-          >
-            {done === 0 && policy.version === null ? "Start" : "Continue"} <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Preferences first, then (once set up) the policy, a card a step, in one grid. */}
-      {!isAdvisor && policy && asCards
-        ? <PolicyCards policy={policy} status={status} update={update} currency={currency} riskTolerance={riskTolerance} leading={<PreferencesCard />} />
-        : <div className={PROFILE_GRID}><PreferencesCard /></div>}
+  return (
+    <div className="space-y-6 pb-12 animate-in fade-in duration-500">
+      <div className={PROFILE_GRID}><PreferencesCard /></div>
     </div>
   );
 }
