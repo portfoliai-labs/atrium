@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Archive, Loader2, Plus, Upload } from "lucide-react";
+import { Archive, Landmark, Loader2, Plus, Upload } from "lucide-react";
 import { useWallets, useWalletSummary } from "../../../context/WalletsContext";
 // The retired hub's (see below): import { useWalletSummaries } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
@@ -23,15 +23,16 @@ import { WalletAlerts } from "./WalletAlerts";
 import { WalletBanks } from "./WalletBanks";
 import { WalletBudgets } from "./WalletBudgets";
 import { MovementDialog, TransferDialog, WalletFormDialog } from "./WalletDialogs";
+import { ManageWallets } from "./ManageWallets";
 import { WalletImportDialog } from "./WalletImportDialog";
 import { WalletInsights } from "./WalletInsights";
 import { WalletReports } from "./WalletReports";
 import { WalletTransactions } from "./WalletTransactions";
 
-export type WalletPage = "insights" | "transactions" | "budgets" | "reports" | "alerts" | "banks";
+export type WalletPage = "insights" | "transactions" | "budgets" | "reports" | "alerts" | "banks" | "manage";
 
 export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
-  insights: "Insights", transactions: "Transactions", budgets: "Budgets", reports: "Reports", alerts: "Alerts", banks: "Banks",
+  insights: "Insights", transactions: "Transactions", budgets: "Budgets", reports: "Reports", alerts: "Alerts", banks: "Banks", manage: "Manage wallets",
 };
 
 const ARCHIVED_TITLE = "An archived wallet is read only";
@@ -44,7 +45,8 @@ type Dialog = "new" | "edit" | "movement" | "import" | "transfer" | "archive" | 
  * balance, its activity (each count opening its page), what can be done with it and its year in
  * figures; under it, on All wallets, its Composition, a row per wallet going down to that wallet
  * (the archived ones listed after it), then the Insights. Its Transactions, Budgets, Reports and Alerts are pages of
- * their own, and All wallets' Banks (the banks connected through open banking). A wallet that's gone (deleted, or from an old link) opens all
+ * their own, and All wallets' Banks (the banks connected through open banking) and Manage wallets (each
+ * wallet's bank account linked there). A wallet that's gone (deleted, or from an old link) opens all
  * of them. Archived wallets are read only, and so is everything for a demo account.
  */
 export function WalletNode({ id, page, rootTrail, onOpen }: {
@@ -105,7 +107,9 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         { label: "Delete wallet", danger: true, onClick: () => setDialog("delete"), ...sampleLock },
       ]
     : [
-        { label: "Add wallet", primary: true, onClick: () => setDialog("new"), ...sampleLock },
+        // Manage wallets is also where each one's bank account is linked.
+        { label: "Manage wallets", primary: true, onClick: () => onOpen(ALL_WALLETS, "manage") },
+        { label: "Add wallet", onClick: () => setDialog("new"), ...sampleLock },
         // Its page lists the banks connected, a demo account's sample one included.
         { label: "Connect a bank", onClick: () => onOpen(ALL_WALLETS, "banks") },
         ...(active.length > 1 ? [{ label: "Transfer", onClick: () => setDialog("transfer"), ...sampleLock }] : []),
@@ -187,6 +191,11 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         <SmallButton icon={<Upload className="h-3.5 w-3.5" />} onClick={() => setDialog("import")} {...locked}>Import statement</SmallButton>
         <SmallButton icon={<Plus className="h-3.5 w-3.5" />} dark onClick={() => setDialog("movement")} {...locked}>Add</SmallButton>
       </div>
+    ) : page === "manage" ? (
+      <div className="flex gap-2">
+        <SmallButton icon={<Landmark className="h-3.5 w-3.5" />} onClick={() => onOpen(ALL_WALLETS, "banks")}>Connect a bank</SmallButton>
+        <SmallButton icon={<Plus className="h-3.5 w-3.5" />} dark onClick={() => setDialog("new")} {...sampleLock}>New wallet</SmallButton>
+      </div>
     ) : undefined;
     return (
       <div className="space-y-6 pb-12">
@@ -197,6 +206,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         {page === "reports" && <WalletReports key={scopeKey} walletUuid={wallet?.uuid} readOnly={sample} />}
         {page === "alerts" && <WalletAlerts scope={scope} />}
         {page === "banks" && <WalletBanks />}
+        {page === "manage" && <ManageWallets onOpenWallet={(uuid) => onOpen(uuid, "insights")} onOpenBanks={() => onOpen(ALL_WALLETS, "banks")} />}
         {dialogs}
       </div>
     );

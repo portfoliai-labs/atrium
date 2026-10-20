@@ -10,6 +10,7 @@ import {
   errorText, today,
 } from "../../../lib/wallets";
 import type { Movement, MovementCategory, Wallet, WalletKind } from "../../../models/Wallet";
+import { WalletBankSync } from "./WalletBanks";
 
 // ── The pieces every dialog here is made of ──
 
@@ -100,7 +101,8 @@ const amountText = (v: number) => String(Math.abs(v));
 
 /**
  * New wallet, or a wallet's settings: name, kind, institution, currency (only while it has no
- * movements), opening balance and day (no movement can be booked before it), colour.
+ * movements), opening balance and day (no movement can be booked before it), colour; and, for a
+ * wallet linked to a bank account, reading it now.
  */
 export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }: {
   wallet?: Wallet;
@@ -217,6 +219,7 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
           ))}
         </div>
       </div>
+      {wallet && <WalletBankSync wallet={wallet} />}
     </DialogShell>
   );
 }
