@@ -42,11 +42,13 @@ import type {
   BenchmarkResponse, BenchmarkComponentEntry, TimeSeries, HorizonEntry, DividendsResponse, TradingCostsResponse,
   AssetDetailResponse, AssetChartRange, PeriodDashboard, MonthlyMarketEffectEntry, ValuePoint, PortfolioHoldingResponse,
   RealizedPnlResponse, RiskEventEntry, ReturnsResponse, VolatilityDetailResponse,
-  PositionResponse, InsightsHoldingsModule, InsightsExposureModule, InsightsPortfoliosModule, InsightsComovementModule,
+  PositionResponse, InsightsHoldingsModule, InsightsExposureModule, InsightsClassificationsModule, InsightsPortfoliosModule,
+  InsightsComovementModule, ClassificationDimension,
   InsightsTradingCostsModule, InsightsRealizedPnlModule, InsightsThisMonthModule,
   InsightsValueModule, InsightsVolatilityModule, InsightsFrontierModule, InsightsPerformanceResponse, PortfolioComparisonEntry,
 } from "../../models/PortfolioData";
 import type { TransactionResponse } from "../../models/Transaction";
+import { DIMENSION_LABELS, DIMENSION_PANELS, allocationRows, dimensionOf, isInformative } from "../../lib/classifications";
 import { AiHelpButton } from "./assistant/AiHelpButton";
 
 const chartDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -777,6 +779,8 @@ const isHistoryEmpty = (value: InsightsValueModule) =>
 // "Unknown" collects assets with no known breakdown — a data gap, not a real sector/region —
 // so it gets a neutral bar instead of taking a slot in the gold palette.
 const UNKNOWN_EXPOSURE_COLOR = "#cbd5e1";
+// The cash, beside the classified holdings: neutral too, a shade apart from the unclassified.
+const CASH_SLICE_COLOR = "#a8a29e";
 
 // Correlation cells share the returns heatmap's emerald/rose scheme (positive/negative) but
 // scale intensity linearly over [-1, 1] rather than a capped magnitude — correlation is
@@ -1391,9 +1395,17 @@ function RiskAssetsModule({ assets }: { assets: RiskModelResponse["assets"] }) {
   );
 }
 
-type Breakdown = "holding" | "class" | "sector" | "region";
+type Breakdown = "holding" | "class" | "sector" | "region" | "category" | "companySector" | "headquarters" | "indexRegion";
+// The breakdowns by census' classification (what the holdings are), beside the look-through ones
+// (sector, region: what the funds hold). The index factors stay in the detail: a multi-factor fund
+// counts under each, which a donut of the whole can't show.
+const CLASSIFICATION_BREAKDOWNS: Partial<Record<Breakdown, ClassificationDimension>> = {
+  category: "category", companySector: "sector", headquarters: "headquarters", indexRegion: "index_region",
+};
 const BREAKDOWN_LABELS: Record<Breakdown, string> = {
   holding: "By holding", class: "By asset class", sector: "By sector", region: "By region",
+  category: DIMENSION_LABELS.category, companySector: DIMENSION_LABELS.sector,
+  headquarters: DIMENSION_LABELS.headquarters, indexRegion: DIMENSION_LABELS.index_region,
 };
 // Slices on the card: the largest few, then the rest as one "N more" slice that opens the
 // composition's detail (CompositionExplore), where everything is.
@@ -1418,18 +1430,20 @@ interface CompositionItem {
  * COMPOSITION — the Holdings module, at the top of a portfolio's page: what it's made of, as a
  * donut beside a list of rows, the largest COMPOSITION_TOP and the rest as one "N more", and the
  * way down a level. By holding, where a slice or a row opens that holding's page (AssetExplore)
- * (All portfolios' portfolios are a module of their own, PortfoliosModule); and, to read only, by asset class, sector
- * and region (the look-through exposure). The breakdowns are a carousel that turns every 5
+ * (All portfolios' portfolios are a module of their own, PortfoliosModule); and, to read only, by category, asset
+ * class, sector and region (the look-through exposure), company sector, head office and index region (census'
+ * classification: what the holdings are, the cash a slice of its own). The breakdowns are a carousel that turns every 5
  * seconds: under the body, on one line, the one shown and a dot for each between the steps to
  * the previous and next; on touch the body swipes. The module, and its "N more", open the whole of it
  * (CompositionExplore).
  */
 function HoldingsExplorer({
-  slot, sector, region, aggregate, currency, portfolioUuid, onOpenPortfolio,
+  slot, sector, region, classifications, aggregate, currency, portfolioUuid, onOpenPortfolio,
 }: {
   slot: ModuleSlot<InsightsHoldingsModule>;
   sector: InsightsExposureModule | null;
   region: InsightsExposureModule | null;
+  classifications: InsightsClassificationsModule | null;
   // "All portfolios" only.
   aggregate: AggregateSlots | null;
   currency: string;
@@ -1445,11 +1459,19 @@ function HoldingsExplorer({
   // Only the breakdowns with more than one slice: a donut of one (a single asset class, all of
   // it in one region) says nothing. By holding stays when none has more, for the card to show it.
   const classCount = useMemo(() => new Set(holdings.map((h) => h.assetClass)).size, [holdings]);
+  const classified = (b: Breakdown) => {
+    const dimension = CLASSIFICATION_BREAKDOWNS[b];
+    return dimension !== undefined && isInformative(dimensionOf(classifications, dimension)) ? [b] : [];
+  };
   const splitBreakdowns: Breakdown[] = [
     ...(holdings.length > 1 ? ["holding" as const] : []),
+    ...classified("category"),
     ...(classCount > 1 ? ["class" as const] : []),
     ...(sector && sector.entries.length > 1 ? ["sector" as const] : []),
     ...(region && region.entries.length > 1 ? ["region" as const] : []),
+    ...classified("companySector"),
+    ...classified("headquarters"),
+    ...classified("indexRegion"),
   ];
   const breakdowns: Breakdown[] = splitBreakdowns.length > 0 ? splitBreakdowns : ["holding"];
   const [picked, setPicked] = useState<Breakdown | null>(null);
@@ -1495,6 +1517,19 @@ function HoldingsExplorer({
         key: label, label, value, weightPct: total > 0 ? (value / total) * 100 : 0, color: palette(i),
       }));
     }
+    const dimension = CLASSIFICATION_BREAKDOWNS[breakdown];
+    const allocation = dimension !== undefined ? dimensionOf(classifications, dimension) : null;
+    if (classifications && allocation) {
+      let classColor = 0;
+      return allocationRows(classifications, allocation).map((r) => ({
+        key: r.key,
+        label: r.label,
+        sub: r.assetCount !== null ? `${r.assetCount} ${r.assetCount === 1 ? "holding" : "holdings"}` : undefined,
+        value: r.marketValue,
+        weightPct: r.weightPct,
+        color: r.isCash ? CASH_SLICE_COLOR : r.isUnclassified ? UNKNOWN_EXPOSURE_COLOR : palette(classColor++),
+      }));
+    }
     const exposure = breakdown === "sector" ? sector : region;
     let colorIndex = 0;
     return [...(exposure?.entries ?? [])].sort((a, b) => b.weightPct - a.weightPct).map((e) => ({
@@ -1504,7 +1539,7 @@ function HoldingsExplorer({
       weightPct: e.weightPct,
       color: e.label === "Unknown" ? UNKNOWN_EXPOSURE_COLOR : palette(colorIndex++),
     }));
-  }, [breakdown, holdings, sector, region, setExploringAsset]);
+  }, [breakdown, holdings, sector, region, classifications, setExploringAsset]);
 
   const total = items.reduce((sum, i) => sum + i.value, 0);
   const hidden = items.slice(COMPOSITION_TOP);
@@ -1709,6 +1744,7 @@ function HoldingsExplorer({
             holdings={holdings}
             sector={sector?.entries ?? []}
             region={region?.entries ?? []}
+            classifications={classifications}
             members={aggregate ? members : []}
             overlapping={aggregate?.comovement.module?.overlappingAssets ?? []}
             currency={currency}
@@ -1730,16 +1766,18 @@ function HoldingsExplorer({
 /**
  * COMPOSITION EXPLORE — everything the Composition card sums up, beyond its largest few: how
  * concentrated the portfolio is, every holding as a map (area by value, colour by asset class)
- * and as a table to sort, and each look-through breakdown (asset class, sector, region, and on
+ * and as a table to sort, and each breakdown (asset class; the look-through sector and region;
+ * census' classification by category, company sector, head office, index region and factor; on
  * "All portfolios" each portfolio and the assets held in more than one) in full, as bars. A
  * holding opens its page (AssetExplore), a portfolio its own.
  */
 function CompositionExplore({
-  holdings, sector, region, members, overlapping, currency, colorOfPortfolio, onOpenAsset, onOpenPortfolio,
+  holdings, sector, region, classifications, members, overlapping, currency, colorOfPortfolio, onOpenAsset, onOpenPortfolio,
 }: {
   holdings: PortfolioHoldingResponse[];
   sector: ExposureEntryResponse[];
   region: ExposureEntryResponse[];
+  classifications: InsightsClassificationsModule | null;
   members: InsightsPortfoliosModule["members"];
   overlapping: InsightsComovementModule["overlappingAssets"];
   currency: string;
@@ -1777,6 +1815,18 @@ function CompositionExplore({
       value: e.weightPct,
       figure: `${e.weightPct.toFixed(1)}%`,
       color: e.label === "Unknown" ? UNKNOWN_EXPOSURE_COLOR : CATEGORICAL_PALETTE[colorIndex++ % CATEGORICAL_PALETTE.length],
+    }));
+  };
+
+  const classificationBars = (module: InsightsClassificationsModule, allocation: InsightsClassificationsModule["dimensions"][number]) => {
+    let colorIndex = 0;
+    return allocationRows(module, allocation).map((r) => ({
+      key: r.key,
+      label: r.label,
+      value: r.weightPct,
+      figure: `${r.weightPct.toFixed(1)}%`,
+      color: r.isCash ? CASH_SLICE_COLOR : r.isUnclassified ? UNKNOWN_EXPOSURE_COLOR : CATEGORICAL_PALETTE[colorIndex++ % CATEGORICAL_PALETTE.length],
+      title: `${r.label} · ${formatCurrency(r.marketValue, currency, 0)}${r.assetCount !== null ? ` · ${r.assetCount} ${r.assetCount === 1 ? "holding" : "holdings"}` : ""}`,
     }));
   };
 
@@ -1893,6 +1943,11 @@ function CompositionExplore({
             <div className={MODULE_BODY}><HBars rows={exposureBars(region)} /></div>
           </ExplorePanel>
         )}
+        {classifications?.dimensions.filter((d) => isInformative(d)).map((d) => (
+          <ExplorePanel key={d.dimension} title={DIMENSION_PANELS[d.dimension].title} desc={DIMENSION_PANELS[d.dimension].desc}>
+            <div className={MODULE_BODY}><HBars rows={classificationBars(classifications, d)} /></div>
+          </ExplorePanel>
+        ))}
       </div>
 
       <ExplorePanel title="Every Holding" desc="Sort by any column. Open a holding for its page.">
@@ -3895,11 +3950,12 @@ const PREPARING_AGGREGATE = "Being prepared — this shows up after the overnigh
  * than one holds. The values are the aggregate's `portfolios` module (the overnight analysis);
  * until it's there, the portfolios are listed without them, still opening.
  */
-function PortfoliosModule({ slot, holdings, sector, region, overlapping, currency, portfolioUuid, onOpenPortfolio }: {
+function PortfoliosModule({ slot, holdings, sector, region, classifications, overlapping, currency, portfolioUuid, onOpenPortfolio }: {
   slot: ModuleSlot<InsightsPortfoliosModule>;
   holdings: ModuleSlot<InsightsHoldingsModule>;
   sector: InsightsExposureModule | null;
   region: InsightsExposureModule | null;
+  classifications: InsightsClassificationsModule | null;
   overlapping: InsightsComovementModule["overlappingAssets"];
   currency: string;
   portfolioUuid: string;
@@ -3946,6 +4002,7 @@ function PortfoliosModule({ slot, holdings, sector, region, overlapping, currenc
             holdings={held}
             sector={sector?.entries ?? []}
             region={region?.entries ?? []}
+            classifications={classifications}
             members={members}
             overlapping={overlapping}
             currency={currency}
@@ -4462,6 +4519,7 @@ function HistoryPage({
       slot={own(composition, (d) => d.holdings)}
       sector={composition.data?.sectorExposure ?? null}
       region={composition.data?.regionExposure ?? null}
+      classifications={composition.data?.classifications ?? null}
       aggregate={aggregate}
       currency={currency}
       portfolioUuid={portfolioUuid}
@@ -4514,6 +4572,7 @@ function HistoryPage({
             holdings={own(composition, (d) => d.holdings)}
             sector={composition.data?.sectorExposure ?? null}
             region={composition.data?.regionExposure ?? null}
+            classifications={composition.data?.classifications ?? null}
             overlapping={aggregate.comovement.module?.overlappingAssets ?? []}
             currency={currency}
             portfolioUuid={portfolioUuid}
