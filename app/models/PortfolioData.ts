@@ -317,6 +317,35 @@ interface InsightsExposureModule extends ModuleState {
   entries: ExposureEntryResponse[];
 }
 
+// What the held instruments are, by census' classification (never what a fund holds: that is the
+// look-through sector/region exposure). A dimension's values are census' enum values in lower case
+// (a sector `information_technology`, an index region `north_america`, a factor `value`; `no_factor`
+// for an index with none), a head office an ISO 3166-1 alpha-2 country; `value` null gathers the
+// holdings the dimension says nothing of (a fund has no sector, a share no index).
+type ClassificationDimension = "category" | "sector" | "headquarters" | "index_region" | "index_factors";
+
+interface AllocationEntryResponse {
+  value: string | null;
+  marketValue: number;
+  // Of the whole portfolio, its cash included.
+  weightPct: number;
+  assetCount: number;
+}
+
+interface DimensionAllocationResponse {
+  dimension: ClassificationDimension;
+  // A holding counts under several values (a multi-factor index): the weights add up to more.
+  overlapping: boolean;
+  // The largest first, the unclassified last; the cash is the module's.
+  entries: AllocationEntryResponse[];
+}
+
+interface InsightsClassificationsModule extends ModuleState {
+  cashValue: number;
+  cashWeightPct: number;
+  dimensions: DimensionAllocationResponse[];
+}
+
 interface InsightsPortfoliosModule extends ModuleState {
   members: CompositionMemberEntry[];
 }
@@ -334,6 +363,8 @@ interface InsightsCompositionResponse {
   holdings: InsightsHoldingsModule | null;
   sectorExposure: InsightsExposureModule | null;
   regionExposure: InsightsExposureModule | null;
+  // Absent from a nucleo before the classifications.
+  classifications?: InsightsClassificationsModule | null;
   portfolios: InsightsPortfoliosModule | null;
   comovement: InsightsComovementModule | null;
 }
@@ -810,7 +841,8 @@ export type {
   CorrelationMatrix,
   CompositionMemberEntry, PortfolioCorrelationMatrix, AssetHoldingEntry, OverlappingAssetEntry,
   ValuePoint, MonthlyMarketEffectEntry,
-  InsightsHoldingsModule, InsightsExposureModule, InsightsPortfoliosModule, InsightsComovementModule, InsightsCompositionResponse,
+  InsightsHoldingsModule, InsightsExposureModule, InsightsClassificationsModule, DimensionAllocationResponse,
+  AllocationEntryResponse, ClassificationDimension, InsightsPortfoliosModule, InsightsComovementModule, InsightsCompositionResponse,
   InsightsDividendsModule, InsightsTradingCostsModule, InsightsRealizedPnlModule, InsightsIncomeCostsResponse,
   InsightsValueModule, InsightsThisMonthModule, InsightsHeatmapModule, InsightsPerformanceResponse,
   InsightsVolatilityModule, InsightsFrontierModule, InsightsRiskResponse,
