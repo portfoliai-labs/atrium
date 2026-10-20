@@ -18,6 +18,7 @@ import { describeRebalancing } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
 import type { CompareStrategy } from "./ComparisonView";
 import { CATEGORY_COLORS, SECURITY_COLORS } from "./StrategyBuilder";
+import { ProfileRows, ProfileSummary } from "./StrategyProfile";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 const dateLabel = (iso: string) => new Date(iso.length === 10 ? `${iso}T00:00:00` : iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
@@ -341,7 +342,8 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen }: {
  * A strategy of the catalog as a card, the whole of it opening its page (as a module of a
  * portfolio's Insights opens its detail, the arrow in its corner turning gold as it's hovered):
  * its name and author, what it's for, one horizon's figures with the annualized return first, what
- * it holds, and the author's costs the figures are net of.
+ * it holds (its targets, then its profile: category, region, index factors), and the author's
+ * costs the figures are net of.
  */
 function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStrategy; horizon: FilterHorizon | null; onOpen: () => void }) {
   const figures = cardFigures(s, horizon);
@@ -395,6 +397,7 @@ function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStr
 
       <div className="mt-auto space-y-3">
         <AllocationBar targets={s.strategy.targets} />
+        <ProfileSummary profile={s.profile} />
         <p className="text-[10px] text-[#857e78] leading-snug">Net of the author&apos;s costs: {costsLine(s.costs, s.currency)}</p>
       </div>
     </article>
@@ -554,6 +557,12 @@ export function PublishedStrategyPage({ publicationId, trail, onCompare, onNavig
             ]} />
           </DetailPanel>
         </div>
+
+        {s.profile && (
+          <DetailPanel title="Profile" note={`What it holds as of ${dateLabel(s.profile.computedAt)}, each share of the whole.`}>
+            <ProfileRows profile={s.profile} />
+          </DetailPanel>
+        )}
 
         <DetailPanel title="Figures by period" badge={<SimulatedBadge />} note={s.figuresComputedAt ? `Computed ${dateLabel(s.figuresComputedAt)}.` : undefined}>
           {horizons.length === 0 ? (

@@ -45,6 +45,33 @@ interface CrisisFigures {
   maxDrawdownPct: number | null;
 }
 
+// A strategy's investment methodology as plain percentages, as its last tick holds it: no label
+// or threshold of the platform's. `category` and `index_factors` are census' classification of
+// what each holding is (`equity`, `value`, `no_factor` for an index with none); `asset_class` the
+// holding's class as its provider names it (`ETF`); `region` and `sector` look through the funds
+// to what they hold (`North America`, `Technology`). Weights of the whole portfolio, the cash
+// apart (`cashWeightPct`); `value` null: the holdings the dimension knows nothing of.
+type ProfileDimension = "category" | "asset_class" | "region" | "sector" | "index_factors";
+
+interface ProfileShare {
+  value: string | null;
+  weightPct: number;
+}
+
+interface ProfileBreakdown {
+  dimension: ProfileDimension;
+  // A holding counts under several values (a multi-factor index): the weights add up to more.
+  overlapping: boolean;
+  // The largest first, the unknown last.
+  shares: ProfileShare[];
+}
+
+interface StrategyProfile {
+  breakdowns: ProfileBreakdown[];
+  cashWeightPct: number;
+  computedAt: string;
+}
+
 interface PublishedStrategy {
   publicationId: string;
   portfolioUuid: string;
@@ -65,6 +92,8 @@ interface PublishedStrategy {
   crises: CrisisFigures[];
   publishedAt: string;
   figuresComputedAt: string | null;
+  // Null until its holdings are first computed; absent from an ianus before the profile.
+  profile?: StrategyProfile | null;
 }
 
 interface CatalogPage {
@@ -126,6 +155,6 @@ const isFigureSort = (sort: CatalogSort) => sort !== "newest";
 
 export type {
   CatalogHorizon, FilterHorizon, CatalogSort, Crisis, HorizonFigures, CrisisFigures, PublishedStrategy, CatalogPage,
-  CatalogQuery, PublishStrategyPayload,
+  CatalogQuery, PublishStrategyPayload, ProfileDimension, ProfileShare, ProfileBreakdown, StrategyProfile,
 };
 export { MAX_DESCRIPTION_LENGTH, FILTER_HORIZONS, HORIZON_LABELS, SORT_LABELS, CRISIS_LABELS, isFigureSort };
