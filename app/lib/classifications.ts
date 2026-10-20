@@ -12,25 +12,36 @@ import { FACTOR_LABELS, REGION_LABELS, SECTOR_LABELS, labelOf, type Factor, type
 import { STRATEGY_CATEGORY_LABELS, type StrategyCategory } from "../models/Strategy";
 import { countryName } from "./taxes";
 
-// On the composition card's carousel, beside "By sector" / "By region" (the look-through).
-export const DIMENSION_LABELS: Record<ClassificationDimension, string> = {
-  category: "By category",
-  sector: "By company sector",
-  headquarters: "By head office",
-  index_region: "By index region",
-  index_factors: "By index factor",
-};
-
-// The composition's detail: each dimension's panel, and what it reads.
+// The composition's detail: each dimension's panel, and what it reads (its "i"). The card shows
+// the category only: the others sit beside look-through breakdowns of a similar name.
 export const DIMENSION_PANELS: Record<ClassificationDimension, { title: string; desc: string }> = {
-  category: { title: "By Category", desc: "What each holding is exposed to: equity, bonds, real estate, commodities, cash, crypto." },
-  sector: { title: "By Company Sector", desc: "Each share's GICS sector. Funds have none: see By Sector for what they hold." },
-  headquarters: { title: "By Head Office", desc: "Where each company has its head office. Funds have none: see By Region for what they hold." },
-  index_region: { title: "By Index Region", desc: "The region of the index each fund tracks, as the fund states it, not looked through." },
+  category: {
+    title: "By Category",
+    desc: "What each holding is exposed to: equity, bonds, real estate, commodities, cash or crypto. A fund counts whole under its own.",
+  },
+  sector: {
+    title: "By Company Sector",
+    desc: "Each share's own GICS sector; funds are unclassified here. By Sector looks through the funds to the companies they hold instead.",
+  },
+  headquarters: {
+    title: "By Head Office",
+    desc: "The country of each company's head office; funds are unclassified here. By Region looks through the funds to where their companies are.",
+  },
+  index_region: {
+    title: "By Index Region",
+    desc: "The region of the index each fund tracks, as the fund states it: an MSCI World fund is Global. By Region looks through it to where its companies are (mostly North America).",
+  },
   index_factors: {
     title: "By Index Factor",
-    desc: "The factor tilts of the index each fund tracks. A multi-factor fund counts under each, so the shares add up to more.",
+    desc: "The factor tilts of the index each fund tracks (none for one weighted by market cap). A multi-factor fund counts under each, so the shares add up to more.",
   },
+};
+
+// The look-through breakdowns' "i", on the card and in the detail: how they differ from the
+// classification's of a similar name.
+export const LOOK_THROUGH_INFO = {
+  sector: "Looking through the funds to the companies they hold, by weight. By Company Sector, in the detail, takes each share's own sector instead.",
+  region: "Looking through the funds to where their companies are: an MSCI World fund counts as mostly North America. By Index Region, in the detail, takes the region its index states instead: Global.",
 };
 
 export const UNCLASSIFIED_LABEL = "Unclassified";

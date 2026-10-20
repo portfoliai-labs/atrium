@@ -48,7 +48,7 @@ import type {
   InsightsValueModule, InsightsVolatilityModule, InsightsFrontierModule, InsightsPerformanceResponse, PortfolioComparisonEntry,
 } from "../../models/PortfolioData";
 import type { TransactionResponse } from "../../models/Transaction";
-import { DIMENSION_LABELS, DIMENSION_PANELS, allocationRows, dimensionOf, isInformative } from "../../lib/classifications";
+import { DIMENSION_PANELS, LOOK_THROUGH_INFO, allocationRows, dimensionOf, isInformative } from "../../lib/classifications";
 import { AiHelpButton } from "./assistant/AiHelpButton";
 
 const chartDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -511,6 +511,15 @@ const STAT_COLOR_MAP: Record<StatProps["color"], string> = {
 };
 
 const INFO_TIP_WIDTH = 256;
+
+/** The "i" that explains what's next to it, on hover or focus (InfoTip). */
+function InfoIcon({ text }: { text: string }) {
+  return (
+    <InfoTip text={text}>
+      <Info className="h-3 w-3 shrink-0 text-[#857e78] hover:text-[#78716c] cursor-help transition-colors" />
+    </InfoTip>
+  );
+}
 
 /**
  * INFO TIP — wraps an element (a stat's icon) and shows a short explanation while it's hovered
@@ -1395,17 +1404,17 @@ function RiskAssetsModule({ assets }: { assets: RiskModelResponse["assets"] }) {
   );
 }
 
-type Breakdown = "holding" | "class" | "sector" | "region" | "category" | "companySector" | "headquarters" | "indexRegion";
-// The breakdowns by census' classification (what the holdings are), beside the look-through ones
-// (sector, region: what the funds hold). The index factors stay in the detail: a multi-factor fund
-// counts under each, which a donut of the whole can't show.
-const CLASSIFICATION_BREAKDOWNS: Partial<Record<Breakdown, ClassificationDimension>> = {
-  category: "category", companySector: "sector", headquarters: "headquarters", indexRegion: "index_region",
-};
+type Breakdown = "holding" | "class" | "sector" | "region" | "category";
+// The card's breakdown by census' classification (what the holdings are): the category only. The
+// company sector, head office, index region and factors are in the detail, each beside the
+// look-through breakdown it could be taken for (By Sector, By Region: what the funds hold).
+const CLASSIFICATION_BREAKDOWNS: Partial<Record<Breakdown, ClassificationDimension>> = { category: "category" };
 const BREAKDOWN_LABELS: Record<Breakdown, string> = {
-  holding: "By holding", class: "By asset class", sector: "By sector", region: "By region",
-  category: DIMENSION_LABELS.category, companySector: DIMENSION_LABELS.sector,
-  headquarters: DIMENSION_LABELS.headquarters, indexRegion: DIMENSION_LABELS.index_region,
+  holding: "By holding", class: "By asset class", sector: "By sector", region: "By region", category: "By category",
+};
+// The "i" beside the carousel's label: what a breakdown reads, where it could be misread.
+const BREAKDOWN_INFO: Partial<Record<Breakdown, string>> = {
+  category: DIMENSION_PANELS.category.desc, sector: LOOK_THROUGH_INFO.sector, region: LOOK_THROUGH_INFO.region,
 };
 // Slices on the card: the largest few, then the rest as one "N more" slice that opens the
 // composition's detail (CompositionExplore), where everything is.
@@ -1430,9 +1439,9 @@ interface CompositionItem {
  * COMPOSITION — the Holdings module, at the top of a portfolio's page: what it's made of, as a
  * donut beside a list of rows, the largest COMPOSITION_TOP and the rest as one "N more", and the
  * way down a level. By holding, where a slice or a row opens that holding's page (AssetExplore)
- * (All portfolios' portfolios are a module of their own, PortfoliosModule); and, to read only, by category, asset
- * class, sector and region (the look-through exposure), company sector, head office and index region (census'
- * classification: what the holdings are, the cash a slice of its own). The breakdowns are a carousel that turns every 5
+ * (All portfolios' portfolios are a module of their own, PortfoliosModule); and, to read only, by category (census'
+ * classification: what the holdings are, the cash a slice of its own), asset class, sector and region (the
+ * look-through exposure), an "i" beside the label saying which. The breakdowns are a carousel that turns every 5
  * seconds: under the body, on one line, the one shown and a dot for each between the steps to
  * the previous and next; on touch the body swipes. The module, and its "N more", open the whole of it
  * (CompositionExplore).
@@ -1469,9 +1478,6 @@ function HoldingsExplorer({
     ...(classCount > 1 ? ["class" as const] : []),
     ...(sector && sector.entries.length > 1 ? ["sector" as const] : []),
     ...(region && region.entries.length > 1 ? ["region" as const] : []),
-    ...classified("companySector"),
-    ...classified("headquarters"),
-    ...classified("indexRegion"),
   ];
   const breakdowns: Breakdown[] = splitBreakdowns.length > 0 ? splitBreakdowns : ["holding"];
   const [picked, setPicked] = useState<Breakdown | null>(null);
@@ -1584,7 +1590,10 @@ function HoldingsExplorer({
         <ChevronLeft className="h-3.5 w-3.5" />
       </button>
       <div className="flex items-center gap-3 px-1">
-        <span className="min-w-[88px] text-right text-[11.5px] font-semibold text-[#1c1917]">{BREAKDOWN_LABELS[breakdown]}</span>
+        <span className="min-w-[88px] flex items-center justify-end gap-1 text-[11.5px] font-semibold text-[#1c1917]">
+          {BREAKDOWN_LABELS[breakdown]}
+          {BREAKDOWN_INFO[breakdown] && <InfoIcon text={BREAKDOWN_INFO[breakdown]} />}
+        </span>
         <div className="flex items-center gap-1.5">
           {breakdowns.map((b) => (
             <button
@@ -1934,17 +1943,20 @@ function CompositionExplore({
           </div>
         </ExplorePanel>
         {sector.length > 0 && (
-          <ExplorePanel title="By Sector" desc="Looking through funds to the companies they hold, by weight.">
+          <ExplorePanel title="By Sector" desc={LOOK_THROUGH_INFO.sector} right={<InfoIcon text={LOOK_THROUGH_INFO.sector} />}>
             <div className={MODULE_BODY}><HBars rows={exposureBars(sector)} /></div>
           </ExplorePanel>
         )}
         {region.length > 0 && (
-          <ExplorePanel title="By Region" desc="Looking through funds to where their companies are, by weight.">
+          <ExplorePanel title="By Region" desc={LOOK_THROUGH_INFO.region} right={<InfoIcon text={LOOK_THROUGH_INFO.region} />}>
             <div className={MODULE_BODY}><HBars rows={exposureBars(region)} /></div>
           </ExplorePanel>
         )}
         {classifications?.dimensions.filter((d) => isInformative(d)).map((d) => (
-          <ExplorePanel key={d.dimension} title={DIMENSION_PANELS[d.dimension].title} desc={DIMENSION_PANELS[d.dimension].desc}>
+          <ExplorePanel
+            key={d.dimension} title={DIMENSION_PANELS[d.dimension].title} desc={DIMENSION_PANELS[d.dimension].desc}
+            right={<InfoIcon text={DIMENSION_PANELS[d.dimension].desc} />}
+          >
             <div className={MODULE_BODY}><HBars rows={classificationBars(classifications, d)} /></div>
           </ExplorePanel>
         ))}
