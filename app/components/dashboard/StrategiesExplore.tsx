@@ -18,7 +18,7 @@ import { describeRebalancing } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
 import type { CompareStrategy } from "./ComparisonView";
 import { CATEGORY_COLORS, SECURITY_COLORS } from "./StrategyBuilder";
-import { ProfileRows, ProfileSummary } from "./StrategyProfile";
+import { ProfileSummary } from "./StrategyProfile";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 const dateLabel = (iso: string) => new Date(iso.length === 10 ? `${iso}T00:00:00` : iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
@@ -523,22 +523,11 @@ export function PublishedStrategyPage({ publicationId, trail, onCompare, onNavig
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <DetailPanel title="Allocation">
-            <ul className="divide-y divide-slate-100">
-              {s.strategy.targets.filter((t) => t.weightPct > 0).map((t) => (
-                <li key={targetKey(t)} className="py-2.5 flex items-center justify-between gap-3">
-                  <span className="min-w-0">
-                    <span className="block text-[13px] font-bold text-slate-900 truncate">{targetLabel(t)}</span>
-                    <span className="block text-[11px] text-slate-500 truncate">
-                      {t.kind === "asset"
-                        ? [t.asset.ticker, exchangeLabel(t.asset.exchangeMic ?? null), t.asset.currency, t.asset.isin].filter(Boolean).join(" · ")
-                        : `Through ${STRATEGY_PROXIES[t.category]}`}
-                    </span>
-                  </span>
-                  <span className="text-[13px] font-black tabular-nums text-slate-900">{t.weightPct}%</span>
-                </li>
-              ))}
-            </ul>
+          <DetailPanel
+            title="Allocation"
+            note={s.profile ? `Now: as of ${dateLabel(s.profile.computedAt)}. Region, sector and factors are in Composition below.` : "Region, sector and factors are in Composition below."}
+          >
+            <AllocationRows strategy={s} />
           </DetailPanel>
           <DetailPanel title="Rules">
             <DetailRows rows={[
@@ -557,12 +546,6 @@ export function PublishedStrategyPage({ publicationId, trail, onCompare, onNavig
             ]} />
           </DetailPanel>
         </div>
-
-        {s.profile && (
-          <DetailPanel title="Profile" note={`What it holds as of ${dateLabel(s.profile.computedAt)}, each share of the whole.`}>
-            <ProfileRows profile={s.profile} />
-          </DetailPanel>
-        )}
 
         <DetailPanel title="Figures by period" badge={<SimulatedBadge />} note={s.figuresComputedAt ? `Computed ${dateLabel(s.figuresComputedAt)}.` : undefined}>
           {horizons.length === 0 ? (
@@ -641,6 +624,53 @@ function describeFlow(f: StrategyParams["contributions"] | StrategyParams["withd
   const amount = f.amountType === "percent_of_value" ? `${f.amount}% of value` : formatCurrency(f.amount, currency, 0);
   const from = "startAfterYears" in f && f.startAfterYears > 0 ? `, from year ${f.startAfterYears + 1}` : "";
   return `${amount} / ${FLOW_EVERY[f.frequency]}${from}`;
+}
+
+/**
+ * ALLOCATION ROWS — the strategy's rules beside what it holds now: each target with the instrument
+ * it buys (a category through its proxy), its target weight and, once its holdings are computed,
+ * its weight now as a bar against a mark at the target, and the drift between them. A target at 0
+ * that isn't held is left out.
+ */
+function AllocationRows({ strategy: s }: { strategy: PublishedStrategy }) {
+  const now = s.profile?.targetWeightsPct;
+  const rows = s.strategy.targets
+    .map((t, i) => ({ target: t, nowPct: now && now.length === s.strategy.targets.length ? now[i] : null }))
+    .filter((r) => r.target.weightPct > 0 || (r.nowPct ?? 0) > 0);
+  const top = Math.max(...rows.map((r) => Math.max(r.target.weightPct, r.nowPct ?? 0)), 1);
+  return (
+    <ul className="divide-y divide-slate-100">
+      {rows.map(({ target: t, nowPct }) => {
+        const drift = nowPct === null ? null : nowPct - t.weightPct;
+        return (
+          <li key={targetKey(t)} className="py-3 space-y-1.5">
+            <div className="flex items-start justify-between gap-3">
+              <span className="min-w-0">
+                <span className="block text-[13px] font-bold text-slate-900 truncate">{targetLabel(t)}</span>
+                <span className="block text-[11px] text-slate-500 truncate">
+                  {t.kind === "asset"
+                    ? [t.asset.ticker, exchangeLabel(t.asset.exchangeMic ?? null), t.asset.currency, t.asset.isin].filter(Boolean).join(" · ")
+                    : `Through ${STRATEGY_PROXIES[t.category]}`}
+                </span>
+              </span>
+              <span className="shrink-0 text-right tabular-nums">
+                <span className="block text-[13px] font-black text-slate-900">{nowPct === null ? `${t.weightPct}%` : `${nowPct.toFixed(1)}%`}</span>
+                <span className="block text-[10.5px] text-slate-500">
+                  {nowPct === null ? "target" : `target ${t.weightPct}%${drift !== null && Math.abs(drift) >= 0.05 ? ` · ${drift > 0 ? "+" : "−"}${Math.abs(drift).toFixed(1)}` : ""}`}
+                </span>
+              </span>
+            </div>
+            {nowPct !== null && (
+              <span className="relative block h-1.5 rounded-full bg-slate-100" aria-hidden>
+                <span className="absolute inset-y-0 left-0 rounded-full bg-[#C49A3C]" style={{ width: `${Math.min(100, (nowPct / top) * 100)}%` }} />
+                <span className="absolute -inset-y-[3px] w-0.5 bg-slate-900" style={{ left: `${Math.min(99.5, (t.weightPct / top) * 100)}%` }} title={`Target ${t.weightPct}%`} />
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 function DetailPanel({ title, badge, note, children }: { title: string; badge?: React.ReactNode; note?: string; children: React.ReactNode }) {

@@ -2,23 +2,15 @@
 "use client";
 
 import { allocationLabel } from "../../lib/classifications";
-import type { ProfileBreakdown, ProfileDimension, ProfileShare, StrategyProfile } from "../../models/PublishedStrategy";
+import type { ProfileDimension, ProfileShare, StrategyProfile } from "../../models/PublishedStrategy";
 
-// What each dimension is called, saying which look through the funds (what they hold) and which
-// are census' classification of the holdings themselves.
+// What each dimension is called on a catalog card.
 const DIMENSION_TITLES: Record<ProfileDimension, string> = {
   category: "Category",
   asset_class: "Asset class",
   region: "Region",
   sector: "Sector",
   index_factors: "Index factors",
-};
-const DIMENSION_NOTES: Record<ProfileDimension, string> = {
-  category: "What each holding is exposed to.",
-  asset_class: "Each holding's class, as its data provider names it.",
-  region: "Looking through the funds to where their companies are.",
-  sector: "Looking through the funds to the companies they hold.",
-  index_factors: "The factor tilts of the indices the funds track; a multi-factor fund counts under each.",
 };
 // On a catalog card: the dimensions that tell strategies apart at a glance, the largest few of each.
 const CARD_DIMENSIONS: ProfileDimension[] = ["category", "region", "index_factors"];
@@ -59,32 +51,5 @@ export function ProfileSummary({ profile }: { profile: StrategyProfile | null | 
         );
       })}
     </dl>
-  );
-}
-
-/**
- * PROFILE ROWS — a strategy page's whole profile: every dimension with each of its values and its
- * weight of the whole, the unknown last, and the cash apart.
- */
-export function ProfileRows({ profile }: { profile: StrategyProfile }) {
-  return (
-    <div className="space-y-4">
-      {profile.breakdowns.map((b: ProfileBreakdown) => (
-        <div key={b.dimension}>
-          <p className="text-[12px] font-bold text-slate-900">{DIMENSION_TITLES[b.dimension]}</p>
-          <p className="text-[11px] text-slate-500 mb-1.5">{DIMENSION_NOTES[b.dimension]}</p>
-          <ul className="flex flex-wrap gap-x-4 gap-y-1">
-            {b.shares.map((s) => (
-              <li key={s.value ?? "\u0000unknown"} className={`text-[12.5px] ${s.value === null ? "text-slate-400" : "text-slate-700"}`}>
-                {shareLabel(b.dimension, s)} <span className="font-bold tabular-nums text-slate-900">{s.weightPct.toFixed(1)}%</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-      {profile.cashWeightPct > 0 && (
-        <p className="text-[12px] text-slate-500">Cash <span className="font-bold tabular-nums text-slate-900">{profile.cashWeightPct.toFixed(1)}%</span>, beside every dimension.</p>
-      )}
-    </div>
   );
 }
