@@ -120,10 +120,9 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         { label: "Delete wallet", danger: true, onClick: () => setDialog("delete"), ...sampleLock },
       ]
     : [
-        // Manage wallets is where a wallet is added, and where each one's bank account is linked.
+        // Manage wallets is where a wallet is added, and where each one's bank account is linked;
+        // its page leads to the banks connected (Banks), a demo account's sample one included.
         { label: "Manage wallets", primary: true, onClick: () => onOpen(ALL_WALLETS, "manage") },
-        // Its page lists the banks connected, a demo account's sample one included.
-        { label: "Connect a bank", onClick: () => onOpen(ALL_WALLETS, "banks") },
       ];
   const counters = [
     { key: "transactions", label: "transactions", count, onClick: () => onOpen(id, "transactions") },
