@@ -1,6 +1,7 @@
 // services/walletService.ts
 import type {
-  AnalyzeStatementRequest, Budget, BudgetInput, BudgetMonth, CategoryMonths, CategoryRule, Merchants, Observations, RecurringPayments, Movement, MovementCategory, MovementFilters, MovementInput, MovementList,
+  AnalyzeStatementRequest, Budget, BudgetInput, BudgetMonth, Category, CategoryCreateRequest, CategoryMonths, CategoryRule, CategoryUpdateRequest,
+  Merchants, Observations, RecurringPayments, Movement, MovementFilters, MovementInput, MovementList,
   MovementUpdateRequest, StatementColumnMapping, StatementColumnMappingResponse, StatementImportResult,
   Transfer, TransferCreateRequest, Wallet, WalletAlertRule, WalletAlertRuleCreateRequest, WalletAlertRuleUpdateRequest,
   WalletCreateRequest, WalletReport, WalletReportRequest, WalletSummary, WalletUpdateRequest,
@@ -11,7 +12,9 @@ import { apiFetch, apiFetchForm } from "./apiClient";
 // WalletNotFoundError / MovementNotFoundError (404, someone else's included), WalletArchivedError
 // (409, a write on an archived wallet), WalletHasMovementsError (409, a currency change),
 // MovementInTransferError (409, a transfer leg's date, amount or category), InvalidWalletError /
-// InvalidMovementError / InvalidTransferError / InvalidBudgetError / InvalidAlertRuleError (422),
+// InvalidMovementError / InvalidTransferError / InvalidBudgetError / InvalidAlertRuleError /
+// InvalidCategoryError (422: a name taken, a parent of the other kind, too deep, past 200),
+// CategoryNotFoundError (404),
 // AlertRuleNotFoundError / CategoryRuleNotFoundError (404), AlertRuleLimitReachedError (409, past 50 rules), FxRatesUnavailableError
 // (503, the summary or the budgets across wallets), ImportFileParsingError / ImportMappingIncompleteError (422). A demo account's
 // writes are refused before they leave (see lib/demo).
@@ -20,7 +23,7 @@ function movementQuery(filters: MovementFilters = {}) {
   const params = new URLSearchParams();
   if (filters.bookedFrom) params.set("bookedFrom", filters.bookedFrom);
   if (filters.bookedTo) params.set("bookedTo", filters.bookedTo);
-  for (const c of filters.categories ?? []) params.append("category", c);
+  for (const c of filters.categoryUuids ?? []) params.append("categoryUuid", c);
   if (filters.uncategorizedOnly) params.set("uncategorizedOnly", "true");
   if (filters.text?.trim()) params.set("text", filters.text.trim());
   if (filters.direction) params.set("direction", filters.direction);
@@ -96,10 +99,10 @@ export const walletService = {
 
   // POST /v1/wallets/movements/categorize — null clears the category. A category given is the rule
   // for each movement's payee (null ends it): the payee's other movements nobody categorised take it.
-  async categorize(movementUuids: string[], category: MovementCategory | null): Promise<Movement[]> {
+  async categorize(movementUuids: string[], categoryUuid: string | null): Promise<Movement[]> {
     return apiFetch<Movement[]>(`/v1/wallets/movements/categorize`, {
       method: "POST",
-      body: JSON.stringify({ movementUuids, category }),
+      body: JSON.stringify({ movementUuids, categoryUuid }),
     });
   },
 
@@ -151,20 +154,41 @@ export const walletService = {
     return apiFetch<Observations>(`${insightsBase(walletUuid)}/observations`);
   },
 
-  // GET /v1/wallets/budgets — this month's, in the categories' order.
+  // GET /v1/wallets/categories — the user's, in tree order (a parent before its children, income
+  // first); the presets are made on the first read. The deleted ones last, when asked.
+  async categories(includeDeleted = false): Promise<Category[]> {
+    return apiFetch<Category[]>(`/v1/wallets/categories${includeDeleted ? "?includeDeleted=true" : ""}`);
+  },
+
+  async createCategory(payload: CategoryCreateRequest): Promise<Category> {
+    return apiFetch<Category>(`/v1/wallets/categories`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  // PATCH /v1/wallets/categories/{c} — its children move with it.
+  async updateCategory(categoryUuid: string, payload: CategoryUpdateRequest): Promise<Category> {
+    return apiFetch<Category>(`/v1/wallets/categories/${categoryUuid}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+
+  // DELETE /v1/wallets/categories — all or none: each one's children, movements, rules and income
+  // alerts go to its parent; its budget ends this month.
+  async deleteCategories(categoryUuids: string[]): Promise<void> {
+    await apiFetch(`/v1/wallets/categories`, { method: "DELETE", body: JSON.stringify(categoryUuids) });
+  },
+
+  // GET /v1/wallets/budgets — this month's, in the categories' tree order.
   async budgets(): Promise<Budget[]> {
     return apiFetch<Budget[]>(`/v1/wallets/budgets`);
   },
 
   // POST /v1/wallets/budgets — sets the categories' monthly limits from this month on (one per
-  // spending category), all or none; answers every budget.
+  // spending category, at any level), all or none; answers every budget.
   async setBudgets(budgets: BudgetInput[]): Promise<Budget[]> {
     return apiFetch<Budget[]>(`/v1/wallets/budgets`, { method: "POST", body: JSON.stringify(budgets) });
   },
 
   // DELETE /v1/wallets/budgets — from this month on: the months before keep them.
-  async deleteBudgets(categories: MovementCategory[]): Promise<void> {
-    await apiFetch(`/v1/wallets/budgets`, { method: "DELETE", body: JSON.stringify(categories) });
+  async deleteBudgets(categoryUuids: string[]): Promise<void> {
+    await apiFetch(`/v1/wallets/budgets`, { method: "DELETE", body: JSON.stringify(categoryUuids) });
   },
 
   // GET /v1/wallets/budgets/month — a month (YYYY-MM, this one by default) against the budgets it had.

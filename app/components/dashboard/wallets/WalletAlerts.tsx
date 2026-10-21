@@ -6,15 +6,14 @@ import { ArrowDownLeft, BellRing, CircleCheck, Pencil, Plus, Receipt, Target, Tr
 import { useWallets } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
 import {
-  ALERT_TYPES, ALERT_TYPE_LIST, CATEGORY_LABELS, INCOME_CATEGORIES, alertFindingText, alertRuleText, currentAlertFindings, dayLabel, errorText,
+  ALERT_TYPES, ALERT_TYPE_LIST, alertFindingText, alertRuleText, currentAlertFindings, dayLabel, errorText, type CategoryTree,
 } from "../../../lib/wallets";
-import type {
-  MovementCategory, Wallet, WalletAlertParams, WalletAlertRule, WalletAlertRuleUpdateRequest, WalletAlertType,
-} from "../../../models/Wallet";
+import type { Wallet, WalletAlertParams, WalletAlertRule, WalletAlertRuleUpdateRequest, WalletAlertType } from "../../../models/Wallet";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Toggle } from "../Toggle";
 import { DialogShell, Field, INPUT, parseAmount } from "./WalletDialogs";
+import { CategoryOptions } from "./WalletCategories";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 
 export const WALLET_ALERT_ICONS: Record<WalletAlertType, React.ComponentType<{ className?: string }>> = {
@@ -36,7 +35,7 @@ const channelsText = (r: Pick<WalletAlertRule, "notifyEmail" | "notifyInApp">) =
  * findings. A demo account's are sample rules, read only.
  */
 export function WalletAlerts({ scope }: { scope: string | null }) {
-  const { wallets, source, version, sample } = useWallets();
+  const { wallets, categories, source, version, sample } = useWallets();
   const key = `${scope ?? "all"}:${version}`;
   // The list as read, then as the writes left it (no refetch for a toggle).
   const [state, setState] = useState<{ key: string; rules: WalletAlertRule[] | null; error: string | null } | null>(null);
@@ -59,7 +58,7 @@ export function WalletAlerts({ scope }: { scope: string | null }) {
     setState((s) => s && { ...s, rules: s.rules?.map((r) => (r.uuid === rule.uuid ? rule : r)) ?? null });
   const walletOf = (uuid: string | null) => (uuid ? wallets.find((w) => w.uuid === uuid) : undefined);
   const nameOf = (uuid: string | null) => (uuid ? walletOf(uuid)?.name ?? "A wallet" : "Every wallet");
-  const ruleText = (r: Pick<WalletAlertRule, "params" | "walletUuid">) => alertRuleText(r.params, walletOf(r.walletUuid)?.currency);
+  const ruleText = (r: Pick<WalletAlertRule, "params" | "walletUuid">) => alertRuleText(r.params, walletOf(r.walletUuid)?.currency ?? "EUR", categories);
   const findingsOf = (r: WalletAlertRule) => (scope ? r.findings.filter((f) => f.walletUuid === scope || f.walletUuid === null) : r.findings);
   const findings = rules ? currentAlertFindings(rules).filter((f) => !scope || f.walletUuid === scope || f.walletUuid === null) : [];
 
@@ -219,8 +218,8 @@ export function WalletAlerts({ scope }: { scope: string | null }) {
   );
 }
 
-/** The value a rule's form starts from: its own, or the type's default. */
-function initialValue(type: WalletAlertType, rule?: WalletAlertRule): string {
+/** The value a rule's form starts from: its own, or the type's default (the salary, or the first money-in category). */
+function initialValue(type: WalletAlertType, tree: CategoryTree, rule?: WalletAlertRule): string {
   const params = rule?.params.type === type ? rule.params : undefined;
   switch (type) {
     case "low_balance":
@@ -230,9 +229,12 @@ function initialValue(type: WalletAlertType, rule?: WalletAlertRule): string {
     case "large_payment":
       return params?.type === "large_payment" ? params.threshold : "250";
     case "income_received":
-      return params?.type === "income_received" ? params.category : "salary";
+      return params?.type === "income_received" ? params.categoryUuid : (tree.preset("salary") ?? tree.active("income")[0])?.uuid ?? "";
   }
 }
+
+/** A rule's params as they're sent: a money-in category by its uuid alone. */
+const sentParams = (p: WalletAlertParams): WalletAlertParams => (p.type === "income_received" ? { type: p.type, categoryUuid: p.categoryUuid } : p);
 
 /**
  * A rule, new or to change: what it watches (fixed once made), the wallet (one, every one, or
@@ -245,9 +247,10 @@ function AlertRuleDialog({ rule, wallets, initialWalletUuid, onClose, onSaved }:
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { categories } = useWallets();
   const [type, setType] = useState<WalletAlertType>(rule?.params.type ?? "low_balance");
   const [walletUuid, setWalletUuid] = useState<string>(rule ? rule.walletUuid ?? "" : initialWalletUuid ?? wallets[0]?.uuid ?? "");
-  const [value, setValue] = useState(initialValue(type, rule));
+  const [value, setValue] = useState(initialValue(type, categories, rule));
   const [notifyEmail, setNotifyEmail] = useState(rule?.notifyEmail ?? true);
   const [notifyInApp, setNotifyInApp] = useState(rule?.notifyInApp ?? true);
   const [busy, setBusy] = useState(false);
@@ -258,7 +261,7 @@ function AlertRuleDialog({ rule, wallets, initialWalletUuid, onClose, onSaved }:
   const currency = wallet?.currency ?? "EUR";
   const parsed = parseAmount(value);
   let params: WalletAlertParams | null = null;
-  if (type === "income_received") params = { type, category: value as MovementCategory };
+  if (type === "income_received") params = value ? { type, categoryUuid: value } : null;
   else if (parsed !== null && type === "low_balance") params = { type, threshold: parsed };
   else if (parsed !== null && type === "large_payment" && Number(parsed) > 0) params = { type, threshold: parsed };
   else if (parsed !== null && type === "budget_threshold" && Number(parsed) > 0 && Number(parsed) <= 200) params = { type, thresholdPct: parsed };
@@ -266,7 +269,7 @@ function AlertRuleDialog({ rule, wallets, initialWalletUuid, onClose, onSaved }:
 
   const pickType = (t: WalletAlertType) => {
     setType(t);
-    setValue(initialValue(t, rule));
+    setValue(initialValue(t, categories, rule));
     if (ALERT_TYPES[t].wallet === "one" && !walletUuid) setWalletUuid(initialWalletUuid ?? wallets[0]?.uuid ?? "");
   };
 
@@ -278,7 +281,7 @@ function AlertRuleDialog({ rule, wallets, initialWalletUuid, onClose, onSaved }:
       if (rule) {
         // Only what changed: new params make what the rule finds now known again, not told.
         const changes: WalletAlertRuleUpdateRequest = {};
-        if (JSON.stringify(params) !== JSON.stringify(rule.params)) changes.params = params;
+        if (JSON.stringify(params) !== JSON.stringify(sentParams(rule.params))) changes.params = params;
         if (notifyEmail !== rule.notifyEmail) changes.notifyEmail = notifyEmail;
         if (notifyInApp !== rule.notifyInApp) changes.notifyInApp = notifyInApp;
         if (Object.keys(changes).length > 0) await walletService.updateAlertRule(rule.uuid, changes);
@@ -346,9 +349,9 @@ function AlertRuleDialog({ rule, wallets, initialWalletUuid, onClose, onSaved }:
           </Field>
         )}
         {type === "income_received" ? (
-          <Field label="Coming in as">
+          <Field label="Coming in as" hint="Its subcategories' money in counts too.">
             <select value={value} onChange={(e) => setValue(e.target.value)} className={INPUT}>
-              {INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+              <CategoryOptions kind="income" />
             </select>
           </Field>
         ) : (
@@ -381,7 +384,7 @@ function AlertRuleDialog({ rule, wallets, initialWalletUuid, onClose, onSaved }:
           <Toggle checked={notifyInApp} onChange={setNotifyInApp} label="In the app" />
         </label>
       </div>
-      {params && <p className="text-[12px] font-semibold text-slate-500">“{alertRuleText(params, currency)}”</p>}
+      {params && <p className="text-[12px] font-semibold text-slate-500">“{alertRuleText(params, currency, categories)}”</p>}
     </DialogShell>
   );
 }

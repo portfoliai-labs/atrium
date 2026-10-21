@@ -3,24 +3,25 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, FileText, Link2, Loader2, PlusCircle, Search,
+  ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, FileText, FolderTree, Link2, Loader2, PlusCircle, Search,
   SlidersHorizontal, Trash2, Unlink, UploadCloud, Wand2, X,
 } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
 import { formatCurrency } from "../../../lib/format";
-import {
-  ALL_WALLETS, CATEGORY_LABELS, INCOME_CATEGORIES, SPENDING_CATEGORIES, categoryColor, categoryLabel, dayLabel, errorText, walletColor,
-} from "../../../lib/wallets";
-import type { CategoryRule, Movement, MovementCategory, MovementFilters, Wallet } from "../../../models/Wallet";
+import { ALL_WALLETS, dayLabel, errorText, walletColor, type CategoryRef } from "../../../lib/wallets";
+import type { CategoryRule, Movement, MovementFilters, Wallet } from "../../../models/Wallet";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Pills } from "../../preview/PreviewKit";
 import { DialogShell, MovementDialog } from "./WalletDialogs";
+import { CategoryOptions } from "./WalletCategories";
 
 const PAGE = 25;
 
-// `byRule`: set by the user's rule for the payee, not by the user.
-export function CategoryChip({ category, transfer, byRule }: { category: MovementCategory | null; transfer?: string; byRule?: boolean }) {
+// `byRule`: set by the user's rule for the payee, not by the user. Named and coloured from the
+// user's tree, a subcategory's path in its title.
+export function CategoryChip({ category, transfer, byRule }: { category: CategoryRef; transfer?: string; byRule?: boolean }) {
+  const { categories } = useWallets();
   if (transfer !== undefined) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap bg-slate-100 text-slate-500">
@@ -28,10 +29,15 @@ export function CategoryChip({ category, transfer, byRule }: { category: Movemen
       </span>
     );
   }
-  const color = categoryColor(category);
+  const color = categories.color(category);
+  const nested = !!category.categoryUuid && categories.depth(category.categoryUuid) > 0;
   return (
-    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap" style={{ background: `${color}14`, color }}>
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />{categoryLabel(category)}
+    <span
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap"
+      style={{ background: `${color}14`, color }}
+      title={nested ? categories.path(category.categoryUuid!) : undefined}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />{categories.label(category)}
       {byRule && <span title="Set by your rule for this payee"><Wand2 className="h-3 w-3 opacity-70" aria-label="Set by a rule" /></span>}
     </span>
   );
@@ -50,13 +56,14 @@ type Direction = "all" | "in" | "out";
  * them, in and out of two wallets) linked as one transfer, which a transfer's leg can be unlinked
  * from. An archived wallet's, and a demo account's, are read only (`lock` says why).
  */
-export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }: {
+export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport, onCategories }: {
   initial: string;
   readOnly: boolean;
   // Why movements can't be added here (a demo account, an archived wallet); undefined when they can.
   lock?: string;
   onAdd: () => void;
   onImport: () => void;
+  onCategories: () => void;
 }) {
   const { wallets, source, version, changed } = useWallets();
   const [wallet, setWallet] = useState(initial);
@@ -64,7 +71,8 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
   const [query, setQuery] = useState("");
   const [text, setText] = useState("");
   const [direction, setDirection] = useState<Direction>("all");
-  const [category, setCategory] = useState<"all" | "none" | MovementCategory>("all");
+  // A category's uuid (its subcategories' movements included), or every one, or none.
+  const [category, setCategory] = useState<string>("all");
   const [hideTransfers, setHideTransfers] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -91,7 +99,7 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
   const filters = useMemo<MovementFilters>(() => ({
     ...(text.trim() ? { text } : {}),
     ...(direction !== "all" ? { direction } : {}),
-    ...(category === "none" ? { uncategorizedOnly: true } : category !== "all" ? { categories: [category] } : {}),
+    ...(category === "none" ? { uncategorizedOnly: true } : category !== "all" ? { categoryUuids: [category] } : {}),
     ...(hideTransfers ? { excludeTransfers: true } : {}),
     ...(from ? { bookedFrom: from } : {}),
     ...(to ? { bookedTo: to } : {}),
@@ -199,6 +207,13 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
             {loading && result && <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />}
             <button
               type="button"
+              onClick={onCategories}
+              className="flex items-center gap-1.5 px-3 h-9 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-500 hover:border-slate-300 hover:text-slate-700 transition-colors"
+            >
+              <FolderTree className="h-3.5 w-3.5" />Categories
+            </button>
+            <button
+              type="button"
               onClick={() => setShowRules(true)}
               className="flex items-center gap-1.5 px-3 h-9 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-500 hover:border-slate-300 hover:text-slate-700 transition-colors"
             >
@@ -259,11 +274,11 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
             <div className="flex items-center gap-2 flex-wrap">
               <Pills<Direction> options={[{ value: "all", label: "In and out" }, { value: "in", label: "Money in" }, { value: "out", label: "Money out" }]} value={direction} onChange={setDirection} />
               <div className="relative w-full sm:w-44">
-                <select value={category} onChange={(e) => setCategory(e.target.value as typeof category)} aria-label="Category" className={`${FILTER} w-full pr-8 appearance-none`}>
+                <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category" className={`${FILTER} w-full pr-8 appearance-none`}>
                   <option value="all">Every category</option>
                   <option value="none">Uncategorised</option>
-                  <optgroup label="Money in">{INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}</optgroup>
-                  <optgroup label="Money out">{SPENDING_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}</optgroup>
+                  <optgroup label="Money in"><CategoryOptions kind="income" /></optgroup>
+                  <optgroup label="Money out"><CategoryOptions kind="spending" /></optgroup>
                 </select>
                 <ChevronDown className="h-3.5 w-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
@@ -295,7 +310,7 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
                     onChange={(e) => {
                       const value = e.target.value;
                       if (!value) return;
-                      void act(() => walletService.categorize(categorizable.map((m) => m.uuid), value === "none" ? null : (value as MovementCategory)), "Unable to change the category.");
+                      void act(() => walletService.categorize(categorizable.map((m) => m.uuid), value === "none" ? null : value), "Unable to change the category.");
                     }}
                     aria-label="Set category"
                     title="The payee's other uncategorised movements, and new ones, take it too"
@@ -303,8 +318,8 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
                   >
                     <option value="">Set category ({categorizable.length})…</option>
                     <option value="none">Uncategorised</option>
-                    <optgroup label="Money in">{INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}</optgroup>
-                    <optgroup label="Money out">{SPENDING_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}</optgroup>
+                    <optgroup label="Money in"><CategoryOptions kind="income" /></optgroup>
+                    <optgroup label="Money out"><CategoryOptions kind="spending" /></optgroup>
                   </select>
                 )}
                 {linkable && (
@@ -369,7 +384,7 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-black text-slate-900 truncate">{m.description}</span>
-                      <CategoryChip category={m.category} transfer={m.transferUuid ? transferLabel(m) : undefined} byRule={m.categorySource === "rule"} />
+                      <CategoryChip category={m} transfer={m.transferUuid ? transferLabel(m) : undefined} byRule={m.categorySource === "rule"} />
                       <span className="text-xs font-semibold text-slate-400 shrink-0">{dayLabel(m.bookedOn)}</span>
                     </div>
                     {secondaryParts && (
@@ -541,7 +556,7 @@ export function CategoryRulesDialog({ readOnly, onClose }: { readOnly: boolean; 
                 <p className="text-sm font-semibold text-slate-800 truncate">{rule.payee}</p>
                 <p className="text-[11px] text-slate-400">{rule.incoming ? "Money in" : "Money out"}</p>
               </div>
-              <CategoryChip category={rule.category} />
+              <CategoryChip category={rule} />
               {!readOnly && (
                 <button
                   type="button"

@@ -5,12 +5,13 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { useUser } from "./UserContext";
 import { ApiError } from "../services/apiClient";
 import { walletService } from "../services/walletService";
-import { apiWalletSource, type WalletSource } from "../lib/wallets";
-import type { Wallet, WalletSummary } from "../models/Wallet";
+import { apiWalletSource, categoryTree, type CategoryTree, type WalletSource } from "../lib/wallets";
+import type { Category, Wallet, WalletSummary } from "../models/Wallet";
 
 /**
  * WALLETS CONTEXT — an investor's wallets, loaded once for the dashboard: the Dashboard, Wealth, the
- * Sidebar's rows under Wealth and the wallet pages read the same list, archived wallets included.
+ * Sidebar's rows under Wealth and the wallet pages read the same list, archived wallets included,
+ * and the same category tree (the user's categories, which name and colour every figure).
  * A demo account reads its own from the API like any other (arca's demo data), read only. Pages that read movements or
  * summaries refetch when `version` moves: after any write, `changed()` bumps it and reloads the
  * list (balances move with every movement). Empty, and never loaded, for an advisor.
@@ -18,6 +19,10 @@ import type { Wallet, WalletSummary } from "../models/Wallet";
 interface WalletsContextType {
   // Oldest first, archived included.
   wallets: Wallet[];
+  // Empty until read (and where the API doesn't have them): a category then reads as its preset.
+  categories: CategoryTree;
+  // undefined while the first read is on, then the last read's error (null: read).
+  categoriesError: string | null | undefined;
   loading: boolean;
   error: string | null;
   // Whether the wallets can be shown at all: false while the API doesn't have them (a backend
@@ -37,6 +42,8 @@ export function WalletsProvider({ children }: { children: React.ReactNode }) {
   const enabled = !!user && user.role !== "ADVISOR";
   const sample = enabled && isDemo;
   const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [categoryList, setCategoryList] = useState<Category[]>([]);
+  const [categoriesError, setCategoriesError] = useState<string | null | undefined>(undefined);
   // Loading until the first answer only: a reload after a write keeps the pages up.
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,11 +69,28 @@ export function WalletsProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [enabled, version]);
 
+  // Apart from the wallets: a page shows without them, its categories as their presets.
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    apiWalletSource.categories()
+      .then((list) => {
+        if (cancelled) return;
+        setCategoryList(list);
+        setCategoriesError(null);
+      })
+      .catch((err) => { if (!cancelled) setCategoriesError(err instanceof Error ? err.message : "Unable to load your categories."); });
+    return () => { cancelled = true; };
+  }, [enabled, version]);
+  const categories = useMemo(() => categoryTree(categoryList), [categoryList]);
+
   const loading = enabled && !loaded;
   const changed = useCallback(() => setVersion((v) => v + 1), []);
 
   const value = useMemo<WalletsContextType>(() => ({
     wallets,
+    categories,
+    categoriesError,
     loading,
     error,
     available: enabled && !missing,
@@ -74,7 +98,7 @@ export function WalletsProvider({ children }: { children: React.ReactNode }) {
     source: apiWalletSource,
     version,
     changed,
-  }), [sample, wallets, loading, error, enabled, missing, version, changed]);
+  }), [sample, wallets, categories, categoriesError, loading, error, enabled, missing, version, changed]);
   return <WalletsContext.Provider value={value}>{children}</WalletsContext.Provider>;
 }
 

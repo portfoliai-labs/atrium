@@ -9,7 +9,7 @@ import { Lightbulb, Loader2 } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
 import { formatCompact, formatCurrency } from "../../../lib/format";
 import {
-  CADENCE_LABELS, categoryColor, categoryLabel, dayLabel, errorText, monthLabel, monthName, observationText, savingsRate,
+  CADENCE_LABELS, dayLabel, errorText, monthLabel, monthName, observationText, savingsRate, type CategoryRef, type CategoryTree,
 } from "../../../lib/wallets";
 import type { CategoryMonths, Merchants, MovementCategory, Observations, RecurringPayments, WalletSummary } from "../../../models/Wallet";
 import { AXIS_TICK, TOOLTIP_STYLE } from "../../preview/PreviewKit";
@@ -54,11 +54,31 @@ function useInsights(scope: string | null, from: string | undefined, to: string 
   return state?.key === key ? state : null;
 }
 
-/** Each category's money out or in over the months, largest first. */
-function byCategory(months: CategoryMonths["months"], field: "spending" | "income") {
-  const map = new Map<MovementCategory | null, number>();
-  for (const m of months) for (const c of m.categories) if (c[field] > 0) map.set(c.category, (map.get(c.category) ?? 0) + c[field]);
-  return [...map].map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount);
+/**
+ * Each category's money out or in over the months, its subcategories' added in (arca's figures are
+ * per movement's own category): the top level, largest first, and with `nested` each followed by
+ * its subcategories, largest first. A category the tree doesn't know stands at the top.
+ */
+function byCategory(months: CategoryMonths["months"], field: "spending" | "income", tree: CategoryTree, nested = false): CategoryRow[] {
+  const totals = new Map<string, { ref: CategoryRef; parent: string | null; amount: number }>();
+  const add = (key: string, ref: CategoryRef, parent: string | null, amount: number) => {
+    const t = totals.get(key);
+    if (t) t.amount += amount;
+    else totals.set(key, { ref, parent, amount });
+  };
+  for (const m of months) {
+    for (const c of m.categories) {
+      if (c[field] <= 0) continue;
+      const own = tree.get(c.categoryUuid);
+      if (!own) add(c.categoryUuid ?? c.category ?? "none", c, null, c[field]);
+      else for (const x of [own, ...tree.ancestors(own.uuid)]) add(x.uuid, { categoryUuid: x.uuid, category: x.preset ?? c.category }, x.parentUuid, c[field]);
+    }
+  }
+  const level = (parent: string | null, depth: number): CategoryRow[] => [...totals]
+    .filter(([, t]) => t.parent === parent)
+    .sort((a, b) => b[1].amount - a[1].amount)
+    .flatMap(([key, t]) => [{ key, ref: t.ref, amount: t.amount, depth }, ...(nested ? level(key, depth + 1) : [])]);
+  return level(null, 0);
 }
 
 /**
@@ -75,11 +95,12 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
   const last = summary?.months.at(-1)?.month;
   const current = useInsights(scope, first, last);
   const read = current?.read ?? null;
+  const { categories } = useWallets();
   const currency = read?.categories.currency ?? summary?.currency ?? "EUR";
   const eur = (v: number, d = 0) => formatCurrency(v, currency, d);
 
-  const spending = useMemo(() => byCategory(read?.categories.months ?? [], "spending"), [read]);
-  const income = useMemo(() => byCategory(read?.categories.months ?? [], "income"), [read]);
+  const spending = useMemo(() => byCategory(read?.categories.months ?? [], "spending", categories), [read, categories]);
+  const income = useMemo(() => byCategory(read?.categories.months ?? [], "income", categories), [read, categories]);
 
   if (summary === undefined) {
     return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 text-slate-300 animate-spin" /></div>;
@@ -109,8 +130,8 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
           </div>
           <ul className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {read.observations.observations.slice(0, 6).map((o, i) => (
-              <li key={`${o.kind}:${o.category ?? o.name ?? i}`} className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-[13px] text-stone-300 leading-relaxed">
-                {observationText(o, read.observations.currency)}
+              <li key={`${o.kind}:${o.categoryUuid ?? o.category ?? o.name ?? i}`} className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-[13px] text-stone-300 leading-relaxed">
+                {observationText(o, read.observations.currency, categories)}
               </li>
             ))}
           </ul>
@@ -283,16 +304,17 @@ function BalanceModule({ months, eur }: { months: Months; eur: Eur }) {
 
 /** The largest few of `rows` (`all`: every one) as bars, by their share of `total`. */
 function CategoryBars({ rows, total, eur, all = false }: { rows: CategoryRow[]; total: number; eur: Eur; all?: boolean }) {
+  const { categories } = useWallets();
   return (
     <HBars
       max={100}
       rows={(all ? rows : rows.slice(0, MODULE_ROWS)).map((r) => ({
-        key: r.category ?? "none",
-        label: categoryLabel(r.category),
+        key: r.key,
+        label: categories.label(r.ref),
         value: (r.amount / total) * 100,
         figure: eur(r.amount),
-        color: categoryColor(r.category),
-        title: `${categoryLabel(r.category)} · ${((r.amount / total) * 100).toFixed(0)}%`,
+        color: categories.color(r.ref),
+        title: `${categories.label(r.ref)} · ${((r.amount / total) * 100).toFixed(0)}%`,
       }))}
     />
   );
@@ -306,18 +328,22 @@ function CategoryBars({ rows, total, eur, all = false }: { rows: CategoryRow[]; 
 function SpendingModule({ read, rows, total, scope, eur }: { read: Read; rows: CategoryRow[]; total: number; scope: string | null; eur: Eur }) {
   const [exploring, setExploring] = useState(false);
   const [fixedCosts, setFixedCosts] = useState(false);
-  const top = useMemo(() => rows.slice(0, TOP).map((c) => c.category), [rows]);
-  const stacked = useMemo(() => read.categories.months.map(({ month, categories }) => {
-    const row: Record<string, string | number> = { label: monthLabel(month) };
-    for (const c of top) row[categoryLabel(c)] = categories.find((x) => x.category === c)?.spending ?? 0;
-    row.Other = categories.filter((x) => !top.includes(x.category)).reduce((s, x) => s + x.spending, 0);
+  const { categories } = useWallets();
+  // Every category, each followed by its subcategories, for the detail.
+  const all = useMemo(() => byCategory(read.categories.months, "spending", categories, true), [read, categories]);
+  const top = useMemo(() => rows.slice(0, TOP), [rows]);
+  const stacked = useMemo(() => read.categories.months.map((m) => {
+    const month = new Map(byCategory([m], "spending", categories).map((r) => [r.key, r.amount]));
+    const row: Record<string, string | number> = { label: monthLabel(m.month) };
+    for (const c of top) row[categories.label(c.ref)] = month.get(c.key) ?? 0;
+    row.Other = [...month].filter(([key]) => !top.some((c) => c.key === key)).reduce((s, [, v]) => s + v, 0);
     return row;
-  }), [read, top]);
+  }), [read, top, categories]);
   const recurring = read.recurring;
   const merchants = read.merchants.merchants.filter((m) => fixedCosts || !FIXED_COSTS.includes(m.category));
   const merchantColumns: DataColumn<Merchants["merchants"][number]>[] = [
     { key: "name", label: "Merchant", sortValue: (m) => m.name, render: (m) => <span className="font-bold text-slate-800">{m.name}</span>, grow: true },
-    { key: "category", label: "Category", sortValue: (m) => categoryLabel(m.category), render: (m) => categoryLabel(m.category) },
+    { key: "category", label: "Category", sortValue: (m) => categories.label(m), render: (m) => categories.label(m) },
     { key: "payments", label: "Payments", align: "right", sortValue: (m) => m.payments, render: (m) => m.payments },
     { key: "last", label: "Last", align: "right", sortValue: (m) => m.lastBookedOn, render: (m) => dayLabel(m.lastBookedOn) },
     { key: "spent", label: "Spent", align: "right", sortValue: (m) => m.spent, render: (m) => <span className="font-bold tabular-nums">{formatCurrency(m.spent, read.merchants.currency, 0)}</span> },
@@ -343,7 +369,7 @@ function SpendingModule({ read, rows, total, scope, eur }: { read: Read; rows: C
         <ExploreView title="Spending" onClose={() => setExploring(false)}>
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-6">
             <ExplorePanel title="By category" desc={NOTE} right={<span className="text-[13px] font-black tabular-nums text-slate-900">{eur(total)}</span>}>
-              <CategoryBreakdown rows={rows} total={total} format={eur} />
+              <CategoryBreakdown rows={all} total={total} format={eur} />
             </ExplorePanel>
             <ExplorePanel title="Month by month" desc="Spending in the largest categories, the rest as Other.">
               <div className="px-6 pb-6 h-80">
@@ -353,7 +379,7 @@ function SpendingModule({ read, rows, total, scope, eur }: { read: Read; rows: C
                     <YAxis tickFormatter={(v) => formatCompact(Number(v))} tick={AXIS_TICK} axisLine={false} tickLine={false} width={44} />
                     <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "#f8fafc" }} formatter={(v, n) => [eur(Number(v)), n]} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
-                    {top.map((c) => <Bar key={c ?? "none"} dataKey={categoryLabel(c)} stackId="s" fill={categoryColor(c)} maxBarSize={26} isAnimationActive={false} />)}
+                    {top.map((c) => <Bar key={c.key} dataKey={categories.label(c.ref)} stackId="s" fill={categories.color(c.ref)} maxBarSize={26} isAnimationActive={false} />)}
                     <Bar dataKey="Other" stackId="s" fill="#cbd5e1" radius={[4, 4, 0, 0]} maxBarSize={26} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -430,21 +456,25 @@ function MiniFig({ label, value, tone }: { label: string; value: string; tone?: 
   );
 }
 
-type CategoryRow = { category: MovementCategory | null; amount: number };
+// `key`: the category's uuid ("none": uncategorised); `depth`: 0 at the top level.
+type CategoryRow = { key: string; ref: CategoryRef; amount: number; depth: number };
 
-// Where the money went: a bar split by category, each its colour, over the categories with
-// their amount and share.
+// Where the money went: a bar split by top-level category, each its colour, over the categories
+// (each followed by its subcategories, indented) with their amount and share.
 function CategoryBreakdown({ rows, total, format }: { rows: CategoryRow[]; total: number; format: (v: number) => string }) {
+  const { categories } = useWallets();
   return (
     <div className="p-6 md:p-7 space-y-4">
       <div className="flex h-3 rounded-full overflow-hidden">
-        {rows.map((r) => <span key={r.category ?? "none"} title={categoryLabel(r.category)} style={{ width: `${(r.amount / total) * 100}%`, background: categoryColor(r.category) }} />)}
+        {rows.filter((r) => r.depth === 0).map((r) => (
+          <span key={r.key} title={categories.label(r.ref)} style={{ width: `${(r.amount / total) * 100}%`, background: categories.color(r.ref) }} />
+        ))}
       </div>
       <ul className="w-full space-y-1.5">
         {rows.map((r) => (
-          <li key={r.category ?? "none"} className="flex items-center justify-between gap-3 text-[13px]">
-            <span className="flex items-center gap-2 font-semibold text-slate-700">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: categoryColor(r.category) }} />{categoryLabel(r.category)}
+          <li key={r.key} className="flex items-center justify-between gap-3 text-[13px]" style={{ paddingLeft: `${r.depth * 18}px` }}>
+            <span className={`flex items-center gap-2 ${r.depth === 0 ? "font-semibold text-slate-700" : "font-medium text-slate-500"}`}>
+              <span className={`${r.depth === 0 ? "h-2.5 w-2.5" : "h-2 w-2"} rounded-full`} style={{ background: categories.color(r.ref) }} />{categories.label(r.ref)}
             </span>
             <span className="tabular-nums font-bold text-slate-900">
               {format(r.amount)} <span className="text-slate-400 font-semibold">{((r.amount / total) * 100).toFixed(0)}%</span>

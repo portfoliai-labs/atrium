@@ -4,13 +4,12 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeftRight, Loader2, Pencil, Plus, X } from "lucide-react";
+import { useWallets } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
-import {
-  CATEGORY_LABELS, COMMON_CURRENCIES, INCOME_CATEGORIES, KIND_LABELS, SPENDING_CATEGORIES, WALLET_COLORS, WALLET_KINDS,
-  errorText, today,
-} from "../../../lib/wallets";
-import type { Movement, MovementCategory, Wallet, WalletKind } from "../../../models/Wallet";
+import { COMMON_CURRENCIES, KIND_LABELS, WALLET_COLORS, WALLET_KINDS, errorText, today } from "../../../lib/wallets";
+import type { Movement, Wallet, WalletKind } from "../../../models/Wallet";
 import { WalletBankSync } from "./WalletBanks";
+import { CategoryOptions } from "./WalletCategories";
 
 // ── The pieces every dialog here is made of ──
 
@@ -228,7 +227,7 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
 
 /**
  * A movement added by hand to a wallet, or one changed: money in or out, the amount, the day,
- * what it was, its category (offered by direction), the counterparty and a note. A transfer's leg
+ * what it was, its category (the user's tree of its direction's kind), the counterparty and a note. A transfer's leg
  * keeps its day, amount and category (unlink it first); a category is cleared with categorize.
  */
 export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
@@ -244,7 +243,9 @@ export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
   const [amount, setAmount] = useState(movement ? amountText(movement.amount) : "");
   const [bookedOn, setBookedOn] = useState(movement?.bookedOn ?? (today() < wallet.openingDate ? wallet.openingDate : today()));
   const [description, setDescription] = useState(movement?.description ?? "");
-  const [category, setCategory] = useState<MovementCategory | "">(movement?.category ?? "");
+  const { categories } = useWallets();
+  // A category's uuid, or "" for none.
+  const [category, setCategory] = useState(movement?.categoryUuid ?? "");
   const [counterparty, setCounterparty] = useState(movement?.counterparty ?? "");
   const [note, setNote] = useState(movement?.note ?? "");
   const [busy, setBusy] = useState(false);
@@ -253,7 +254,7 @@ export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
   const parsed = parseAmount(amount);
   const signed = parsed === null || Number(parsed) === 0 ? null : `${direction === "out" ? "-" : ""}${parsed.replace(/^-/, "")}`;
   const valid = signed !== null && description.trim().length > 0 && !!bookedOn && bookedOn >= wallet.openingDate;
-  const offered = direction === "in" ? INCOME_CATEGORIES : SPENDING_CATEGORIES;
+  const kindOf = (d: "in" | "out") => (d === "in" ? "income" : "spending");
 
   const submit = async () => {
     setBusy(true);
@@ -262,7 +263,7 @@ export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
     try {
       if (!movement) {
         await walletService.addMovements(wallet.uuid, [{
-          bookedOn, description: description.trim(), amount: signed!, category: chosen,
+          bookedOn, description: description.trim(), amount: signed!, categoryUuid: chosen,
           counterparty: counterparty.trim() || null, note: note.trim() || null,
         }]);
       } else {
@@ -273,10 +274,10 @@ export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
           ...(note.trim() !== (movement.note ?? "") ? { note: note.trim() } : {}),
           ...(!leg && bookedOn !== movement.bookedOn ? { bookedOn } : {}),
           ...(!leg && Number(signed) !== movement.amount ? { amount: signed! } : {}),
-          ...(!leg && chosen && chosen !== movement.category ? { category: chosen } : {}),
+          ...(!leg && chosen && chosen !== movement.categoryUuid ? { categoryUuid: chosen } : {}),
         };
         if (Object.keys(changes).length > 0) await walletService.updateMovement(movement.uuid, changes);
-        if (!leg && !chosen && movement.category) await walletService.categorize([movement.uuid], null);
+        if (!leg && !chosen && movement.categoryUuid) await walletService.categorize([movement.uuid], null);
       }
       onSaved();
     } catch (err) {
@@ -312,7 +313,7 @@ export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
             aria-pressed={direction === d}
             onClick={() => {
               setDirection(d);
-              if (category && !(d === "in" ? INCOME_CATEGORIES : SPENDING_CATEGORIES).includes(category)) setCategory("");
+              if (category && categories.get(category)?.kind !== kindOf(d)) setCategory("");
             }}
             className={`h-10 rounded-xl text-sm font-bold border transition-colors disabled:opacity-60 ${
               direction === d
@@ -335,9 +336,9 @@ export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
           <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} placeholder="Groceries at the market" className={INPUT} />
         </Field>
         <Field label="Category">
-          <select value={category} onChange={(e) => setCategory(e.target.value as MovementCategory | "")} disabled={leg} className={INPUT}>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={leg} className={INPUT}>
             <option value="">Uncategorised</option>
-            {offered.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+            <CategoryOptions kind={kindOf(direction)} />
           </select>
         </Field>
         <Field label="Counterparty">
