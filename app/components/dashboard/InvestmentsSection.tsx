@@ -469,7 +469,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
 
   // ── Its activity ──
   const counters: PageCounter[] = [
-    { key: "transactions", label: "transactions", count: counts.transactions, onClick: () => open("transactions") },
+    // All portfolios' only counts them: its transactions are each portfolio's, on its own page.
+    { key: "transactions", label: "transactions", count: counts.transactions, onClick: portfolio.isAggregate ? undefined : () => open("transactions") },
     ...(backtest ? [] : [
       { key: "alerts", label: "alerts", count: counts.rules, attention: { count: counts.triggered, label: "triggered" }, onClick: () => open("alerts") },
       { key: "reports", label: "reports", count: counts.reports, onClick: () => open("reports") },

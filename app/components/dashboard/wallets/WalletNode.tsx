@@ -126,7 +126,8 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         { label: "Manage wallets", primary: true, onClick: () => onOpen(ALL_WALLETS, "manage") },
       ];
   const counters = [
-    { key: "transactions", label: "transactions", count, onClick: () => onOpen(id, "transactions") },
+    // All wallets' only counts them: their movements are each wallet's, on its own page.
+    { key: "transactions", label: "transactions", count, onClick: wallet ? () => onOpen(id, "transactions") : undefined },
     {
       key: "budgets", label: "budgets", count: attention?.budgets ?? null, onClick: () => onOpen(id, "budgets"),
       attention: attention?.over ? { count: attention.over, label: "over" } : undefined,
