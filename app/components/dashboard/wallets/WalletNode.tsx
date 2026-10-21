@@ -21,7 +21,7 @@ import { WalletsComposition } from "./WalletsComposition";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { PreviewBadge } from "../../preview/PreviewKit";
 import { WalletAlerts } from "./WalletAlerts";
-import { WalletBanks } from "./WalletBanks";
+import { WalletBankDialog, WalletBanks } from "./WalletBanks";
 import { WalletBudgets } from "./WalletBudgets";
 import { AddMovementDialog, WalletFormDialog } from "./WalletDialogs";
 import { ManageWallets } from "./ManageWallets";
@@ -38,7 +38,11 @@ export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
 
 const ARCHIVED_TITLE = "An archived wallet is read only";
 
-type Dialog = "new" | "edit" | "movement" | "import" | "archive" | "delete";
+type Dialog = "new" | "edit" | "movement" | "import" | "archive" | "delete" | "bank";
+
+// Back from the bank with more than one account to choose (see /dashboard/bank-link): the wallet's
+// bank dialog opens on it.
+const CONNECT_PARAM = "connectBank";
 
 /**
  * WALLET NODE — every wallet together (ALL_WALLETS), or one, in Wealth, built like a portfolio's
@@ -63,7 +67,15 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   const summary = useWalletSummary(scope, !loading);
   const active = useMemo(() => wallets.filter((w) => !w.archived), [wallets]);
   const archivedWallets = useMemo(() => wallets.map((w, i) => ({ wallet: w, color: walletColor(w, i) })).filter(({ wallet: w }) => w.archived), [wallets]);
-  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [dialog, setDialog] = useState<Dialog | null>(() =>
+    typeof window !== "undefined" && id !== ALL_WALLETS && new URLSearchParams(window.location.search).get(CONNECT_PARAM) ? "bank" : null);
+  // Once: the dialog isn't opened again by a reload.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(CONNECT_PARAM)) return;
+    url.searchParams.delete(CONNECT_PARAM);
+    window.history.replaceState(window.history.state, "", url);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const count = useMovementCount(scope, version);
@@ -99,11 +111,10 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   // ── What can be done with it ──
   const actions: PageAction[] = wallet
     ? [
-        { label: "Add movement", primary: true, onClick: () => setDialog("movement"), ...locked },
-        { label: "Reports", onClick: () => onOpen(id, "reports") },
-        // Budgets are across the wallets, but they can be set from any wallet's page.
-        { label: "Budgets", onClick: () => onOpen(id, "budgets") },
-        { label: "Import statement", onClick: () => setDialog("import"), ...locked },
+        // Its movements' page, where they're added (by hand or from a statement), as a portfolio's Transactions.
+        { label: "Movements", primary: true, plus: false, onClick: () => onOpen(id, "transactions") },
+        // Its own bank account: one of the banks connected, or another bank connected for it.
+        { label: "Connect a bank", onClick: () => setDialog("bank"), ...locked },
         { label: "Edit wallet", onClick: () => setDialog("edit"), ...locked },
         { label: wallet.archived ? "Unarchive" : "Archive", onClick: () => setDialog("archive"), ...sampleLock },
         { label: "Delete wallet", danger: true, onClick: () => setDialog("delete"), ...sampleLock },
@@ -111,11 +122,9 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     : [
         // Manage wallets is where a wallet is added, and where each one's bank account is linked.
         { label: "Manage wallets", primary: true, onClick: () => onOpen(ALL_WALLETS, "manage") },
-        { label: "Budgets", onClick: () => onOpen(ALL_WALLETS, "budgets") },
         // Its page lists the banks connected, a demo account's sample one included.
         { label: "Connect a bank", onClick: () => onOpen(ALL_WALLETS, "banks") },
       ];
-
   const counters = [
     { key: "transactions", label: "transactions", count, onClick: () => onOpen(id, "transactions") },
     {
@@ -126,8 +135,8 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
       key: "alerts", label: "alerts", count: attention?.rules ?? null, onClick: () => onOpen(id, "alerts"),
       attention: attention?.found ? { count: attention.found, label: "found" } : undefined,
     },
-    // A report is one wallet's: its Reports are on its own page only.
-    ...(wallet ? [{ key: "reports", label: "reports", count: null, onClick: () => onOpen(id, "reports") }] : []),
+    // Its Reports (every wallet's on All wallets), counted nowhere: the page lists them.
+    { key: "reports", label: "reports", count: undefined, onClick: () => onOpen(id, "reports") },
   ];
 
   const currency = wallet?.currency ?? summary?.currency ?? "EUR";
@@ -156,6 +165,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         />
       )}
       {dialog === "edit" && wallet && <WalletFormDialog wallet={wallet} onClose={close} onSaved={done} />}
+      {dialog === "bank" && wallet && <WalletBankDialog wallet={wallet} onClose={close} />}
       {/* A transfer is a tab of it, from this wallet to another. */}
       {/* From All wallets (its Transactions), the wallet is asked. */}
       {dialog === "movement" && (wallet ?? active[0]) && (

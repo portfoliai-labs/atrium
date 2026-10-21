@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Landmark, Link2, Plus, RefreshCw, Search, Trash2, Unlink } from "lucide-react";
+import { Check, Landmark, Link2, Plus, RefreshCw, Search, Trash2, Unlink } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
 import { bankingService } from "../../../services/bankingService";
 import { formatCurrency } from "../../../lib/format";
@@ -22,6 +22,40 @@ const COUNTRIES: { code: string; name: string }[] = [
 ];
 // A consent ending within these many days can be renewed before it does.
 const RENEW_WITHIN_DAYS = 14;
+
+// The wallet a bank is being connected for, kept across the trip to the bank's page (this tab's
+// session): back on /dashboard/bank-link, its account goes into that wallet.
+const PENDING_KEY = "atrium.bankLink.wallet";
+
+export interface PendingBankWallet {
+  walletUuid: string;
+  currency: string;
+  // The link started, as POST /v1/banking/links answered it.
+  linkUuid: string;
+}
+
+function rememberBankWallet(pending: PendingBankWallet) {
+  try { sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch { /* the account is then chosen on the Banks page */ }
+}
+
+/** The wallet a bank was being connected for, once: it's forgotten as it's read. */
+export function takeBankWallet(): PendingBankWallet | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_KEY);
+    sessionStorage.removeItem(PENDING_KEY);
+    return raw ? (JSON.parse(raw) as PendingBankWallet) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Reads a link now, worded for one of its accounts. */
+export const syncTextFor = async (linkUuid: string, accountUuid: string) =>
+  syncText((await bankingService.sync(linkUuid)).accounts.filter((a) => a.accountUuid === accountUuid));
+
+/** A wallet's page, from outside the dashboard; `connect` opens its bank dialog (WalletBankDialog). */
+export const walletPageUrl = (walletUuid: string, connect = false) =>
+  `/dashboard?section=wallets&wallet=${encodeURIComponent(walletUuid)}${connect ? "&connectBank=1" : ""}`;
 
 const daysLeft = (link: BankLink) =>
   link.validUntil ? Math.ceil((new Date(link.validUntil).getTime() - Date.now()) / 86_400_000) : 0;
@@ -389,8 +423,9 @@ export function IconButton({ label, onClick, danger, spinning, disabled, title, 
 /**
  * CONNECT A BANK — a country, a bank of it, then off to the bank's own page to give the consent;
  * the bank sends the caller back to /dashboard/bank-link. Renewing a link goes straight to its bank.
+ * For a wallet (`wallet`, from its page), its account goes into that wallet once back.
  */
-function ConnectBankDialog({ renew, onClose }: { renew?: BankLink; onClose: () => void }) {
+function ConnectBankDialog({ renew, wallet, onClose }: { renew?: BankLink; wallet?: Wallet; onClose: () => void }) {
   const [country, setCountry] = useState(renew?.country ?? "IT");
   const [banks, setBanks] = useState<{ country: string; list: Bank[] | null; error: string | null } | null>(null);
   const [query, setQuery] = useState("");
@@ -416,6 +451,7 @@ function ConnectBankDialog({ renew, onClose }: { renew?: BankLink; onClose: () =
     setError(null);
     try {
       const started = await bankingService.start(picked, renew?.country ?? country, renew?.uuid);
+      if (wallet) rememberBankWallet({ walletUuid: wallet.uuid, currency: wallet.currency, linkUuid: started.uuid });
       window.location.assign(started.authorizationUrl);
     } catch (err) {
       setError(errorText(err, "Unable to reach the bank now."));
@@ -426,7 +462,7 @@ function ConnectBankDialog({ renew, onClose }: { renew?: BankLink; onClose: () =
   return (
     <DialogShell
       icon={<Landmark className="h-5 w-5" />}
-      title={renew ? `Renew ${renew.bankName}` : "Connect a bank"}
+      title={renew ? `Renew ${renew.bankName}` : wallet ? `Connect a bank to ${wallet.name}` : "Connect a bank"}
       subtitle="You give the consent on your bank's own page: read only, for up to 180 days."
       busy={busy}
       error={error ?? (banks?.country === country ? banks.error : null)}
@@ -441,6 +477,11 @@ function ConnectBankDialog({ renew, onClose }: { renew?: BankLink; onClose: () =
         </p>
       ) : (
         <>
+          {wallet && (
+            <p className="text-[13px] text-slate-600">
+              Once the bank sends you back, its {wallet.currency} account comes into {wallet.name}; with more than one, you choose which.
+            </p>
+          )}
           <Field label="Country">
             <select value={country} onChange={(e) => { setCountry(e.target.value); setPicked(null); }} className={INPUT}>
               {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
@@ -473,6 +514,172 @@ function ConnectBankDialog({ renew, onClose }: { renew?: BankLink; onClose: () =
             ))}
           </div>
         </>
+      )}
+    </DialogShell>
+  );
+}
+
+/**
+ * A WALLET'S BANK — from a wallet's page: the bank account it takes its movements from. Linked,
+ * the account and reading it now, or unlinking it; not yet, every account at the banks connected,
+ * the one picked going straight into this wallet and read at once (only a free one of the wallet's
+ * currency, at a bank whose consent holds, can be), or another bank to connect for it
+ * (ConnectBankDialog, its account coming into this wallet once back).
+ */
+export function WalletBankDialog({ wallet, onClose }: { wallet: Wallet; onClose: () => void }) {
+  const { wallets, changed } = useWallets();
+  const [links, setLinks] = useState<BankLink[] | null | undefined>(undefined);
+  const [reload, setReload] = useState(0);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    bankingService.links()
+      .then((list) => { if (!cancelled) setLinks(list); })
+      .catch((err) => {
+        if (cancelled) return;
+        setLinks(null);
+        setError(errorText(err, "Unable to load your banks."));
+      });
+    return () => { cancelled = true; };
+  }, [reload]);
+
+  const linkOf = (account: BankAccount) => links?.find((l) => l.uuid === account.linkUuid);
+  const own = links?.flatMap((l) => l.accounts).find((a) => a.walletUuid === wallet.uuid);
+  // Why an account can't go into this wallet; null when it can.
+  const blocked = (account: BankAccount) => {
+    if (account.walletUuid) return `In ${wallets.find((w) => w.uuid === account.walletUuid)?.name ?? "another wallet"}`;
+    if (account.currency !== wallet.currency) return `In ${account.currency}, the wallet's in ${wallet.currency}`;
+    if (linkOf(account)?.status !== "active") return "Consent ended: renew it on the Banks page";
+    return null;
+  };
+
+  const run = async (action: () => Promise<void>, fallback: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      setReload((n) => n + 1);
+      changed();
+    } catch (err) {
+      setError(errorText(err, fallback));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const read = async (account: BankAccount) => {
+    const result = await bankingService.sync(account.linkUuid);
+    setNote(syncText(result.accounts.filter((a) => a.accountUuid === account.uuid)));
+  };
+  // Linked, it's read at once, not at the next of the twice-a-day reads.
+  const link = () => run(async () => {
+    const account = links?.flatMap((l) => l.accounts).find((a) => a.uuid === picked);
+    if (!account) return;
+    await bankingService.linkAccount(account.uuid, wallet.uuid);
+    setPicked(null);
+    await read(account);
+  }, "Unable to link this account.");
+
+  if (connecting) return <ConnectBankDialog wallet={wallet} onClose={() => setConnecting(false)} />;
+
+  const ownLink = own ? linkOf(own) : undefined;
+  return (
+    <DialogShell
+      icon={<Landmark className="h-5 w-5" />}
+      title={`${wallet.name}'s bank`}
+      subtitle="Read only, through open banking: the account's movements come into the wallet twice a day."
+      busy={busy}
+      error={error}
+      submitLabel={own ? "Done" : `Link to ${wallet.name}`}
+      canSubmit={own ? true : !!picked}
+      onSubmit={() => (own ? onClose() : void link())}
+      onClose={onClose}
+      wide
+    >
+      {links === undefined ? (
+        <p className="text-[12.5px] text-slate-400">Loading…</p>
+      ) : own && ownLink ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 rounded-xl border border-[#EEE9DD] px-3 py-2.5">
+            <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${ownLink.status === "active" ? "bg-[#C49A3C]/10 text-[#C49A3C]" : "bg-rose-50 text-rose-600"}`}>
+              <Landmark className="h-3.5 w-3.5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[12.5px] font-bold text-slate-700">{ownLink.bankName} · {accountLabel(own)}</span>
+              <span className="block text-[11px] text-slate-500">
+                {[
+                  ownLink.lastSyncedAt ? `read ${dayLabel(ownLink.lastSyncedAt.slice(0, 10))}` : "not read yet",
+                  own.syncFrom && `from ${dayLabel(own.syncFrom)}`,
+                ].filter(Boolean).join(" · ")}
+              </span>
+            </span>
+            {ownLink.status === "active" && (
+              <IconButton label="Read now" onClick={() => void run(() => read(own), "Unable to read this bank now.")} spinning={busy}>
+                <RefreshCw className="h-3.5 w-3.5" />
+              </IconButton>
+            )}
+            <IconButton label="Unlink from the wallet" onClick={() => void run(async () => { await bankingService.unlinkAccount(own.uuid); setNote(null); }, "Unable to unlink this account.")} disabled={busy}>
+              <Unlink className="h-3.5 w-3.5" />
+            </IconButton>
+          </div>
+          {note && <p className="text-[11.5px] font-semibold text-emerald-700">{note}</p>}
+          <p className="text-[11.5px] text-slate-500">A wallet takes one account: unlink it to link another. The movements it brought stay.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {(links ?? []).length === 0 ? (
+            <p className="text-[13px] text-slate-600">No bank connected yet: connect yours, and choose the account to bring into {wallet.name}.</p>
+          ) : (
+            <div className="space-y-3">
+              <span className="block text-[11px] font-black uppercase tracking-widest text-slate-400">Which account</span>
+              {(links ?? []).map((l) => (
+                <div key={l.uuid} className="space-y-1.5">
+                  <p className="text-[12px] font-bold text-slate-600">{l.bankName}</p>
+                  <ul className="space-y-1.5">
+                    {l.accounts.map((account) => {
+                      const why = blocked(account);
+                      const on = picked === account.uuid;
+                      const balance = account.reportedBalance === null ? null : formatCurrency(account.reportedBalance, account.currency, 2);
+                      return (
+                        <li key={account.uuid}>
+                          <button
+                            type="button"
+                            onClick={() => setPicked(account.uuid)}
+                            disabled={!!why}
+                            aria-pressed={on}
+                            className={`w-full flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                              on ? "border-[#C49A3C] bg-[#C49A3C]/5" : "border-[#EEE9DD] enabled:hover:border-[#C49A3C]/50"
+                            }`}
+                          >
+                            <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${on ? "bg-[#C49A3C] border-[#C49A3C] text-white" : "border-slate-300 text-transparent"}`}>
+                              <Check className="h-3 w-3" strokeWidth={3} />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[12.5px] font-bold text-slate-700">{accountLabel(account)}</span>
+                              <span className="block text-[11px] text-slate-500">{why ?? [account.currency, balance && `bank balance ${balance}`].filter(Boolean).join(" · ")}</span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+          {note && <p className="text-[11.5px] font-semibold text-emerald-700">{note}</p>}
+          <button
+            type="button"
+            onClick={() => setConnecting(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-600 hover:border-slate-300 transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" /> {(links ?? []).length === 0 ? "Connect a bank" : "Connect another bank"}
+          </button>
+        </div>
       )}
     </DialogShell>
   );
