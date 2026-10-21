@@ -2,7 +2,7 @@
 
 import { Loader2, Sparkles } from "lucide-react";
 import { ApiError } from "../../../services/apiClient";
-import type { AnswerPiece, AnswerStop, ChatMessage, MessageBlock } from "../../../models/Conversation";
+import type { ActionBlock, AnswerPiece, AnswerStop, AssistantAction, ChatMessage, MessageBlock } from "../../../models/Conversation";
 import { MessageBlocks } from "./AnswerBlocks";
 
 // The longest question the server takes.
@@ -39,10 +39,28 @@ export function withPiece(before: Draft | undefined, messageUuid: string, piece:
     blocks = [...blocks, { ...piece.chart, type: "chart" }];
   } else if (piece.type === "table" && piece.table) {
     blocks = [...blocks, { ...piece.table, type: "table" }];
+  } else if (piece.type === "action" && piece.action) {
+    blocks = [...blocks, actionBlock(piece.action)];
   } else {
     return before;
   }
   return { messageUuid, blocks, progress };
+}
+
+// The blocks with the action in place of the one of the same actionId; the same blocks when
+// none is (so a caller can tell nothing changed).
+export function withAction(blocks: MessageBlock[], action: AssistantAction): MessageBlock[] {
+  if (!blocks.some((block) => block.type === "action" && block.actionId === action.actionId)) return blocks;
+  return blocks.map((block) => (block.type === "action" && block.actionId === action.actionId ? actionBlock(action) : block));
+}
+
+// The stream leaves null fields out: an action from it fills them back.
+function actionBlock(action: AssistantAction): ActionBlock {
+  return {
+    ...action, type: "action", details: action.details ?? [], failureReason: action.failureReason ?? null,
+    failureMessage: action.failureMessage ?? null, documentId: action.documentId ?? null,
+    downloadPath: action.downloadPath ?? null,
+  };
 }
 
 export function answerFailedText(reason: string | undefined): string {
@@ -73,18 +91,19 @@ export function Question({ message }: { message: ChatMessage }) {
 
 // An answer, as the other party's message in Messages, marked as written by AI (AI Act, art. 50):
 // whole, or being written (with what it's reading meanwhile).
-export function Answer({ blocks, sentAt, stop, progress, writing = false }: {
+export function Answer({ blocks, sentAt, stop, progress, writing = false, renderAction }: {
   blocks: MessageBlock[];
   sentAt?: string;
   stop?: AnswerStop | null;
   progress?: string | null;
   writing?: boolean;
+  renderAction?: (action: ActionBlock) => React.ReactNode;
 }) {
   const note = stop ? STOP_NOTES[stop] : undefined;
   return (
     <div className="flex flex-col items-start">
       <div className="max-w-[80%] min-w-0 rounded-2xl px-4 py-2.5 text-sm bg-white border border-[rgba(196,154,60,0.2)] text-[#1c1917] space-y-3">
-        {blocks.length > 0 && <MessageBlocks blocks={blocks} markdown />}
+        {blocks.length > 0 && <MessageBlocks blocks={blocks} markdown renderAction={renderAction} />}
         {writing && (
           <p className="flex items-center gap-2 text-xs text-[#78716c]">
             <Loader2 className="w-3.5 h-3.5 animate-spin text-[#C49A3C]" />
