@@ -20,10 +20,9 @@ import { ALL_PROPERTIES, RealEstateTransactions } from "./RealEstateTransactions
 import { RealEstateInsights } from "./RealEstateInsights";
 import { PropertyPage } from "./PropertyPage";
 import { RealEstateAlerts, alertsCounter, useAlertRules } from "./RealEstateAlerts";
-import { RealEstateReports } from "./RealEstateReports";
 
 // The real estate's pages: its own, a property's, and those its header leads to.
-export type RealEstatePage = "home" | "property" | "insights" | "transactions" | "alerts" | "reports";
+export type RealEstatePage = "home" | "property" | "insights" | "transactions" | "alerts";
 
 const VALUE_COLOR = "#C49A3C";
 
@@ -91,7 +90,6 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
         trail={trail}
         onOpenTransactions={() => onOpen("transactions", property.uuid)}
         onOpenAlerts={() => onOpen("alerts", property.uuid)}
-        onOpenReports={() => onOpen("reports", property.uuid)}
         onGone={() => onOpen("home")}
       />
     );
@@ -129,16 +127,6 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
     return <RealEstateAlerts key={property?.uuid ?? "all"} trail={trail} property={property} onOpenProperty={(uuid) => onOpen("property", uuid)} />;
   }
 
-  if (page === "reports") {
-    const scoped = property ? [...trail, { label: property.name, onClick: () => onOpen("property", property.uuid) }] : trail;
-    return (
-      <div className="space-y-6 pb-12">
-        <Breadcrumb trail={scoped} current="Reports" />
-        <RealEstateReports key={property?.uuid ?? ALL_PROPERTIES} propertyUuid={property?.uuid} readOnly={sample} />
-      </div>
-    );
-  }
-
   const money = (v: number) => formatCurrency(v, currency, 0);
   const gain = overview && overview.invested > 0 ? ((overview.value - overview.invested) / overview.invested) * 100 : null;
   const figures: PageFigure[] = overview ? [
@@ -149,7 +137,6 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
   ] : [];
   // One way in for everything: a purchase adds a property, anything else is one of theirs.
   const actions: PageAction[] = [{ label: "Add transaction", primary: true, onClick: addEntry }];
-  // No reports: a report is one property's, on its own page.
   const counters: PageCounter[] = [
     { key: "transactions", label: "transactions", count, onClick: () => onOpen("transactions") },
     { key: "insights", label: "insights", onClick: () => onOpen("insights") },

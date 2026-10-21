@@ -7,7 +7,6 @@ import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { portfoliosService } from "../../services/portfoliosService";
 import { transactionService } from "../../services/transactionService";
-import { reportService } from "../../services/reportService";
 import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
 import { portfolioColorMap } from "../../lib/chartColors";
 import { formatCurrency } from "../../lib/format";
@@ -24,7 +23,6 @@ import { PageHeader, type PageAction, type PageCounter, type PageFigure } from "
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { FileUploader } from "./FileUploader";
 import { AlertsSettings } from "./AlertsSettings";
-import { ReportsBrowser } from "./ReportsBrowser";
 import { PortfoliosCompare } from "./PortfoliosCompare";
 import type { CompareStrategy } from "./ComparisonView";
 import { ManagePortfolios } from "./ManagePortfolios";
@@ -53,7 +51,7 @@ import { StrategiesNode, strategiesViewOf, type BacktestPage, type StrategiesVie
 // "manualAssets": the investments with no market price, valued by hand (the investments'). Both it and
 // "categories" are reached from links (an old history entry, adopting on a client): their buttons are
 // in Settings (the user's) and Client settings (a client's).
-export type PortfolioPage = "overview" | "transactions" | "alerts" | "reports" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "stress" | "projection" | "manualAssets";
+export type PortfolioPage = "overview" | "transactions" | "alerts" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "stress" | "projection" | "manualAssets";
 
 export type InvestmentsView =
   // A portfolio, "All portfolios" (the investments) included. A strategy's backtest is Strategies'.
@@ -67,11 +65,10 @@ export type InvestmentsView =
 
 const NO_SCOPE: Record<string, string> = {};
 const NO_TRAIL: Crumb[] = [];
-const PORTFOLIO_PAGES: PortfolioPage[] = ["overview", "transactions", "alerts", "reports", "compare", "portfolios", "categories", "strategy", "taxes", "stress", "projection", "manualAssets"];
+const PORTFOLIO_PAGES: PortfolioPage[] = ["overview", "transactions", "alerts", "compare", "portfolios", "categories", "strategy", "taxes", "stress", "projection", "manualAssets"];
 const PAGE_LABELS: Record<Exclude<PortfolioPage, "overview">, string> = {
   transactions: "Transactions",
   alerts: "Alerts",
-  reports: "Reports",
   compare: "Compare",
   portfolios: "Manage portfolios",
   categories: "Asset categories",
@@ -137,7 +134,8 @@ function viewFromHistory(hasStrategies: boolean, portfolios: Portfolio[], sectio
     case "compare":
     case "portfolios": {
       if (!investments) return top;
-      const page = view.kind === "investments" ? "overview" : (view.kind as PortfolioPage);
+      // Reports are gone for now: their old entries land on the investments' own page.
+      const page = view.kind === "investments" || view.kind === "reports" ? "overview" : (view.kind as PortfolioPage);
       return { kind: "portfolio", uuid: investments.uuid, page };
     }
     // Strategies, and its name when it was Explore.
@@ -308,17 +306,14 @@ function useHasAdoption(portfolio: Portfolio) {
 
 /**
  * How much activity a portfolio has, for its header's counters: its transactions (All portfolios'
- * read every portfolio's), its alert rules and theirs (All portfolios' own, then every
- * portfolio's) and its reports (every real portfolio's on All portfolios, which takes none).
+ * read every portfolio's) and its alert rules and theirs (All portfolios' own, then every
+ * portfolio's).
  */
 function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
   const backtest = isBacktest(portfolio);
   const ruleScope = backtest ? [] : portfolio.isAggregate ? [portfolio.uuid, ...real.map((p) => p.uuid)] : [portfolio.uuid];
-  const reportScope = backtest ? [] : portfolio.isAggregate ? real.map((p) => p.uuid) : [portfolio.uuid];
-  const reportKey = reportScope.join(",");
   const { rules } = usePortfoliosAlertRules(ruleScope);
   const [transactions, setTransactions] = useState<{ uuid: string; total: number | null } | null>(null);
-  const [reports, setReports] = useState<{ key: string; total: number | null } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -328,22 +323,10 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
     return () => { cancelled = true; };
   }, [portfolio.uuid]);
 
-  useEffect(() => {
-    if (!reportKey) return;
-    let cancelled = false;
-    Promise.allSettled(reportKey.split(",").map((u) => reportService.getAllDocuments(u))).then((results) => {
-      if (cancelled) return;
-      const loaded = results.filter((r) => r.status === "fulfilled");
-      setReports({ key: reportKey, total: loaded.length ? loaded.reduce((sum, r) => sum + r.value.length, 0) : null });
-    });
-    return () => { cancelled = true; };
-  }, [reportKey]);
-
   return {
     transactions: transactions?.uuid === portfolio.uuid ? transactions.total : null,
     rules: rules === null ? null : rules.length,
     triggered: rules === null ? 0 : rules.filter((r) => r.enabled && r.isTriggered).length,
-    reports: reports?.key === reportKey ? reports.total : null,
   };
 }
 
@@ -473,7 +456,6 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
     { key: "transactions", label: "transactions", count: counts.transactions, onClick: portfolio.isAggregate ? undefined : () => open("transactions") },
     ...(backtest ? [] : [
       { key: "alerts", label: "alerts", count: counts.rules, attention: { count: counts.triggered, label: "triggered" }, onClick: () => open("alerts") },
-      { key: "reports", label: "reports", count: counts.reports, onClick: () => open("reports") },
     ]),
   ];
 
@@ -754,9 +736,6 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           {portfolio.name} reads every portfolio&apos;s transactions. A new one goes in the portfolio you pick for it; to change one, open its portfolio.
         </ReadOnlyNote>
       )}
-      {portfolio.isAggregate && page === "reports" && (
-        <ReadOnlyNote>Reports are made for one portfolio at a time: pick which when you generate one.</ReadOnlyNote>
-      )}
       {page === "transactions" && (
         portfolio.isAggregate
           ? <FileUploader key="all" />
@@ -771,9 +750,6 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           onOpenCategories={openCategories}
           onOpenAdoption={(uuid) => onOpen(uuid, "strategy")}
         />
-      )}
-      {page === "reports" && (
-        portfolio.isAggregate ? <ReportsBrowser key="all" /> : <ReportsBrowser key={portfolio.uuid} portfolioUuid={portfolio.uuid} />
       )}
     </div>
   );
