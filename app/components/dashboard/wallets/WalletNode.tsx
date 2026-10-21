@@ -100,6 +100,8 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     ? [
         { label: "Add movement", primary: true, onClick: () => setDialog("movement"), ...locked },
         { label: "Reports", onClick: () => onOpen(id, "reports") },
+        // Budgets are across the wallets, but they can be set from any wallet's page.
+        { label: "Budgets", onClick: () => onOpen(id, "budgets") },
         { label: "Import statement", onClick: () => setDialog("import"), ...locked },
         ...(active.length > 1 ? [{ label: "Transfer", onClick: () => setDialog("transfer"), ...locked }] : []),
         { label: "Edit wallet", onClick: () => setDialog("edit"), ...locked },
@@ -109,6 +111,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     : [
         // Manage wallets is also where each one's bank account is linked.
         { label: "Manage wallets", primary: true, onClick: () => onOpen(ALL_WALLETS, "manage") },
+        { label: "Budgets", onClick: () => onOpen(ALL_WALLETS, "budgets") },
         { label: "Add wallet", onClick: () => setDialog("new"), ...sampleLock },
         // Its page lists the banks connected, a demo account's sample one included.
         { label: "Connect a bank", onClick: () => onOpen(ALL_WALLETS, "banks") },
