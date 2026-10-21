@@ -6,6 +6,8 @@
 export type WalletKind = "current_account" | "credit_card" | "savings" | "cash";
 
 // Whether a movement is income or spending is its sign (money in positive), never its category.
+// The 16 presets every user's categories start from (see Category). As a field next to a
+// `categoryUuid`, deprecated: the preset of the category or of its nearest ancestor.
 export type MovementCategory =
   | "salary" | "freelance" | "refunds" | "interest" | "other_income"
   | "housing" | "groceries" | "restaurants" | "transport" | "utilities" | "subscriptions"
@@ -18,6 +20,46 @@ export type MovementSource = "manual" | "import" | "bank";
 export type CategorySource = "user" | "rule";
 
 export type Amount = number | string;
+
+// ── Categories ──
+
+export type CategoryKind = "income" | "spending";
+
+/**
+ * One of the user's own categories: a tree per kind, up to 3 levels and 200 categories, a parent
+ * always of the same kind. Every user starts with the presets, which can be renamed, moved and
+ * deleted like any other. Deleting one moves its children, movements, rules and income alerts to
+ * its parent (a top-level one's movements become uncategorised, its rules and alerts go).
+ */
+export interface Category {
+  uuid: string;
+  kind: CategoryKind;
+  parentUuid: string | null;
+  // null: a preset never renamed (worded from `preset`).
+  name: string | null;
+  // null: made by the user.
+  preset: MovementCategory | null;
+  // #RRGGBB; null: the preset's colour, else the parent's.
+  color: string | null;
+  deletedAt: string | null;
+}
+
+export interface CategoryCreateRequest {
+  kind: CategoryKind;
+  parentUuid?: string | null;
+  // 1-40 characters, unique among its siblings (case aside).
+  name: string;
+  color?: string | null;
+}
+
+// Only the fields sent change: "" clears the colour; `parentUuid` moves it under another of its
+// kind, `moveToTop` to the top level, its children with it. The kind never changes.
+export interface CategoryUpdateRequest {
+  name?: string;
+  color?: string;
+  parentUuid?: string;
+  moveToTop?: boolean;
+}
 
 export interface Wallet {
   uuid: string;
@@ -59,6 +101,7 @@ export interface Movement {
   description: string;
   counterparty: string | null;
   // null: not categorised yet, and always on a transfer's leg.
+  categoryUuid: string | null;
   category: MovementCategory | null;
   // null exactly when the category is.
   categorySource: CategorySource | null;
@@ -82,6 +125,7 @@ export interface CategoryRule {
   // As the movement it was learnt from names it.
   payee: string;
   incoming: boolean;
+  categoryUuid: string;
   category: MovementCategory;
   createdAt: string;
   updatedAt: string;
@@ -91,7 +135,7 @@ export interface MovementInput {
   bookedOn: string;
   description: string;
   amount: Amount;
-  category?: MovementCategory | null;
+  categoryUuid?: string | null;
   counterparty?: string | null;
   note?: string | null;
 }
@@ -111,7 +155,8 @@ export interface MovementList {
 export interface MovementFilters {
   bookedFrom?: string;
   bookedTo?: string;
-  categories?: MovementCategory[];
+  // Their subcategories' movements included.
+  categoryUuids?: string[];
   uncategorizedOnly?: boolean;
   // In the description, the counterparty or the note.
   text?: string;
@@ -165,7 +210,9 @@ export interface WalletSummary {
 // wallet's in the user's reference currency.
 
 export interface CategoryFigures {
-  // null: not categorised yet.
+  // null: not categorised yet. The movements' own category: a parent's figures leave its
+  // subcategories' out (see rollUp).
+  categoryUuid: string | null;
   category: MovementCategory | null;
   // A positive amount.
   spending: number;
@@ -182,6 +229,7 @@ export interface Merchant {
   name: string;
   spent: number;
   payments: number;
+  categoryUuid: string | null;
   category: MovementCategory | null;
   lastBookedOn: string;
 }
@@ -206,6 +254,7 @@ export interface RecurringPayment {
   firstBookedOn: string;
   lastBookedOn: string;
   nextExpectedOn: string;
+  categoryUuid: string | null;
   category: MovementCategory | null;
   yearlyAmount: number;
 }
@@ -223,6 +272,8 @@ export type ObservationKind = "category_up" | "category_down" | "savings_rate" |
 /** A fact that stands out about last month, its kind's fields set: worded by observationText. */
 export interface Observation {
   kind: ObservationKind;
+  // category_up/down: a top-level spending category, its subcategories included.
+  categoryUuid: string | null;
   category: MovementCategory | null;
   // YYYY-MM.
   month: string | null;
@@ -244,8 +295,12 @@ export interface Observations {
 
 // ── Budgets ──
 
-/** A spending category's monthly limit, across every non-archived wallet. */
+/**
+ * A spending category's monthly limit (at any level), across every non-archived wallet: its
+ * spending is its own and its subcategories'.
+ */
 export interface Budget {
+  categoryUuid: string;
   category: MovementCategory;
   monthlyLimit: number;
   // The user's reference currency when the limit was set.
@@ -255,7 +310,7 @@ export interface Budget {
 }
 
 export interface BudgetInput {
-  category: MovementCategory;
+  categoryUuid: string;
   // Above 0; a decimal string stays exact.
   monthlyLimit: string;
 }
@@ -265,6 +320,7 @@ export type BudgetStatus = "over" | "almost_used" | "ahead_of_pace" | "on_track"
 
 export interface BudgetProgress {
   // null for the total.
+  categoryUuid: string | null;
   category: MovementCategory | null;
   limit: number;
   // Money out less money in, never below 0.
@@ -284,8 +340,9 @@ export interface BudgetMonth {
   daysInMonth: number;
   // Every day of a past month; today included, for the current one.
   daysElapsed: number;
-  // In the categories' order.
+  // In the categories' tree order, a budget's parent before it.
   budgets: BudgetProgress[];
+  // Of the outermost budgets only: one under a budgeted category is counted in that one's.
   total: BudgetProgress;
 }
 
@@ -299,7 +356,8 @@ export type WalletAlertParams =
   | { type: "low_balance"; threshold: string }
   | { type: "budget_threshold"; thresholdPct: string }
   | { type: "large_payment"; threshold: string }
-  | { type: "income_received"; category: MovementCategory };
+  // Its subcategories' money in included; `category` (deprecated) is answered, never sent.
+  | { type: "income_received"; categoryUuid: string; category?: MovementCategory | null };
 
 /** A fact a rule finds; amounts in `currency` (the wallet's, or the reference one for a budget). */
 export interface WalletAlertFinding {
@@ -316,6 +374,9 @@ export interface WalletAlertFinding {
   bookedOn: string | null;
   description: string | null;
   counterparty: string | null;
+  categoryUuid: string | null;
+  // The category's name when found; null for a preset never renamed (worded from `category`).
+  categoryName: string | null;
   category: MovementCategory | null;
   // budget_threshold: the limit and the month (YYYY-MM).
   limit: number | null;

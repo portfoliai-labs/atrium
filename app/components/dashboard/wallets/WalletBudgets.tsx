@@ -3,16 +3,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Target, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ListPlus, Loader2, Pencil, Plus, Target, Trash2 } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
 import { formatCompact, formatCurrency } from "../../../lib/format";
-import { CATEGORY_LABELS, SPENDING_CATEGORIES, errorText, monthName, walletColor } from "../../../lib/wallets";
-import type { BudgetMonth, BudgetProgress, BudgetStatus, MovementCategory } from "../../../models/Wallet";
+import { errorText, monthName, walletColor } from "../../../lib/wallets";
+import type { BudgetMonth, BudgetProgress, BudgetStatus } from "../../../models/Wallet";
 import { walletService } from "../../../services/walletService";
 import { AXIS_TICK, Panel, TOOLTIP_STYLE } from "../../preview/PreviewKit";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { DialogShell, Field, INPUT, parseAmount } from "./WalletDialogs";
 import { CategoryChip } from "./WalletTransactions";
+import { CategoryOptions } from "./WalletCategories";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 
 // How far back the months go: the year the rest of the wallets' pages show.
@@ -32,18 +33,21 @@ function shiftMonth(month: string, delta: number) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-type Dialog = { kind: "new" } | { kind: "edit"; budget: BudgetProgress } | { kind: "remove"; budget: BudgetProgress };
+// `within`: a new budget offered inside that category (on one of its subcategories).
+type Dialog = { kind: "new"; within?: string } | { kind: "edit"; budget: BudgetProgress } | { kind: "remove"; budget: BudgetProgress };
 
 /**
- * BUDGETS — a monthly limit per spending category, across every non-archived wallet, in the
- * user's reference currency (arca's): a month's spending against the limits it had, each with
- * where it should be by today at an even pace. They are set, changed and removed from any page
- * (from this month on: the months before keep theirs); on a wallet, the same budgets show what
- * that wallet spent of each. A demo account reads its sample's, read only: its buttons show,
+ * BUDGETS — a monthly limit on any spending category, at any level of the user's tree, across
+ * every non-archived wallet, in the user's reference currency (arca's): a month's spending against
+ * the limits it had, each with where it should be by today at an even pace. A budget counts its
+ * subcategories' spending too, so one inside another (Gym inside Leisure) shows within that one's
+ * card, and the month's total counts the outermost only. They are set, changed and removed from
+ * any page (from this month on: the months before keep theirs); on a wallet, the same budgets show
+ * what that wallet spent of each. A demo account reads its sample's, read only: its buttons show,
  * disabled, so it's clear where budgets are set.
  */
 export function WalletBudgets({ scope, onManage }: { scope: string | null; onManage: () => void }) {
-  const { wallets, source, version, sample, changed } = useWallets();
+  const { wallets, categories, source, version, sample, changed } = useWallets();
   // undefined: this month, as the API counts it.
   const [month, setMonth] = useState<string | undefined>(undefined);
   const key = `${month ?? "now"}:${version}`;
@@ -71,6 +75,14 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
 
   const colors = useMemo(() => new Map(wallets.map((w, i) => [w.uuid, walletColor(w, i)])), [wallets]);
   const names = useMemo(() => new Map(wallets.map((w) => [w.uuid, w.name])), [wallets]);
+  // Each budget's nearest budgeted ancestor (null: an outermost one), as the tree has it.
+  const outer = useMemo(() => {
+    const budgeted = new Set((data?.budgets ?? []).map((b) => b.categoryUuid));
+    return new Map((data?.budgets ?? []).map((b) => [
+      b.categoryUuid,
+      categories.ancestors(b.categoryUuid!).find((a) => budgeted.has(a.uuid))?.uuid ?? null,
+    ]));
+  }, [data, categories]);
 
   if (!current) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
   if (!data) return <p className="text-sm font-semibold text-rose-600">{current.error}</p>;
@@ -84,15 +96,20 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
   const pace = data.daysElapsed / data.daysInMonth;
   const share = (b: BudgetProgress) => (all ? b.spent : b.wallets.find((w) => w.walletUuid === scope)?.spent ?? 0);
   const totalShown = share(data.total);
-  const free = SPENDING_CATEGORIES.filter((c) => !data.budgets.some((b) => b.category === c));
+  const budgeted = new Set(data.budgets.map((b) => b.categoryUuid));
+  const free = categories.active("spending").filter((c) => !budgeted.has(c.uuid));
+  const freeWithin = (uuid: string) => categories.descendants(uuid).filter((c) => !budgeted.has(c.uuid));
+  const outermost = data.budgets.filter((b) => !outer.get(b.categoryUuid));
+  const inside = (b: BudgetProgress) => data.budgets.filter((x) => outer.get(x.categoryUuid) === b.categoryUuid);
+  const nameOf = (b: BudgetProgress) => categories.label(b);
   const earliest = latest ? shiftMonth(latest, -MONTHS_BACK) : data.month;
 
   const close = () => { setDialog(null); setDialogError(null); };
-  const remove = async (category: MovementCategory) => {
+  const remove = async (categoryUuid: string) => {
     setBusy(true);
     setDialogError(null);
     try {
-      await walletService.deleteBudgets([category]);
+      await walletService.deleteBudgets([categoryUuid]);
       close();
       changed();
     } catch (err) {
@@ -102,7 +119,37 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
     }
   };
 
-  const chart = data.budgets.map((b) => ({ name: CATEGORY_LABELS[b.category!], spent: Math.round(share(b)), limit: b.limit }));
+  // The outermost only: a budget inside another is in that one's bar.
+  const chart = outermost.map((b) => ({ name: nameOf(b), spent: Math.round(share(b)), limit: b.limit }));
+  const actions = (b: BudgetProgress) => editable && (
+    <>
+      {freeWithin(b.categoryUuid!).length > 0 && (
+        <IconButton label="Add a budget inside" onClick={() => setDialog({ kind: "new", within: b.categoryUuid! })}><ListPlus className="h-3.5 w-3.5" /></IconButton>
+      )}
+      <IconButton label="Change the limit" onClick={() => setDialog({ kind: "edit", budget: b })}><Pencil className="h-3.5 w-3.5" /></IconButton>
+      <IconButton label="Remove the budget" onClick={() => setDialog({ kind: "remove", budget: b })}><Trash2 className="h-3.5 w-3.5" /></IconButton>
+    </>
+  );
+  // The budgets inside `b`, each with those inside it, indented.
+  const nested = (b: BudgetProgress, depth: number): React.ReactNode => inside(b).map((x) => (
+    <div key={x.categoryUuid} style={{ marginLeft: `${depth * 14}px` }}>
+      <div className="flex items-center justify-between gap-3 pt-3">
+        <span className="flex items-center gap-2 min-w-0">
+          <span className="h-3 w-2.5 -mt-2 border-l-2 border-b-2 border-slate-200 rounded-bl shrink-0" />
+          <CategoryChip category={x} />
+        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${STATUS[x.status].tone}`}>{STATUS[x.status].label}</span>
+          {actions(x)}
+        </div>
+      </div>
+      <p className="text-[13px] font-black tabular-nums text-slate-800 mt-1.5 ml-[18px]">
+        {money(share(x))} <span className="text-[11px] text-slate-400 font-bold">/ {money(x.limit)}</span>
+      </p>
+      <div className="ml-[18px]"><BudgetBar spent={share(x)} limit={x.limit} pace={pace} status={x.status} small /></div>
+      {nested(x, depth + 1)}
+    </div>
+  ));
 
   return (
     <>
@@ -127,7 +174,7 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
               <p className="text-[12px] font-semibold text-slate-500 mt-1">from this wallet · {money(data.total.spent)} across all of them</p>
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {all && data.budgets.length > 0 && (
               <p className="text-[13px] font-bold text-slate-500">
                 {data.total.spent <= data.total.limit
@@ -161,8 +208,8 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
         <section className="bg-white rounded-3xl border border-dashed border-slate-300 p-8 md:p-10 text-center space-y-3">
           <p className="text-lg font-black text-slate-900">{isCurrent ? "No budgets yet" : `No budgets in ${monthName(data.month)}`}</p>
           <p className="text-[13px] text-slate-500 max-w-md mx-auto">
-            A monthly limit for groceries, restaurants or any other spending, across all your wallets: see each month where you
-            stand, and where you should be by today.
+            A monthly limit for groceries, restaurants or any other spending (a subcategory too, the gym inside leisure), across
+            all your wallets: see each month where you stand, and where you should be by today.
           </p>
           {isCurrent ? (
             <button
@@ -182,18 +229,13 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {data.budgets.map((b) => (
-              <div key={b.category} className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+            {outermost.map((b) => (
+              <div key={b.categoryUuid} className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
                 <div className="flex items-center justify-between gap-3">
-                  <CategoryChip category={b.category} />
+                  <CategoryChip category={b} />
                   <div className="flex items-center gap-1">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${STATUS[b.status].tone}`}>{STATUS[b.status].label}</span>
-                    {editable && (
-                      <>
-                        <IconButton label="Change the limit" onClick={() => setDialog({ kind: "edit", budget: b })}><Pencil className="h-3.5 w-3.5" /></IconButton>
-                        <IconButton label="Remove the budget" onClick={() => setDialog({ kind: "remove", budget: b })}><Trash2 className="h-3.5 w-3.5" /></IconButton>
-                      </>
-                    )}
+                    {actions(b)}
                   </div>
                 </div>
                 <p className="text-lg font-black tabular-nums text-slate-900 mt-3">
@@ -211,6 +253,11 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
                   </ul>
                 )}
                 {!all && <p className="text-[11px] font-semibold text-slate-400 mt-2">{money(b.spent)} across all your wallets</p>}
+                {inside(b).length > 0 && (
+                  <div className="mt-4 pt-1 border-t border-slate-100">
+                    {nested(b, 0)}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -236,7 +283,8 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
       {(dialog?.kind === "new" || dialog?.kind === "edit") && (
         <BudgetDialog
           budget={dialog.kind === "edit" ? dialog.budget : undefined}
-          free={free}
+          initial={dialog.kind === "new" ? (dialog.within ? freeWithin(dialog.within)[0] : free[0])?.uuid : undefined}
+          budgeted={budgeted}
           currency={data.currency}
           onClose={close}
           onSaved={() => { close(); changed(); }}
@@ -244,12 +292,12 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
       )}
       {dialog?.kind === "remove" && (
         <ConfirmDialog
-          title={`Remove the ${CATEGORY_LABELS[dialog.budget.category!].toLowerCase()} budget?`}
-          description="From this month on. The months before keep it, as they were."
+          title={`Remove the ${nameOf(dialog.budget)} budget?`}
+          description={`From this month on. The months before keep it, as they were.${inside(dialog.budget).length > 0 ? " The budgets inside it stay." : ""}`}
           confirmLabel="Remove"
           confirming={busy}
           error={dialogError}
-          onConfirm={() => remove(dialog.budget.category!)}
+          onConfirm={() => remove(dialog.budget.categoryUuid!)}
           onClose={close}
         />
       )}
@@ -258,10 +306,10 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
 }
 
 /** The pace marker shows where spending should be this far into the month. */
-function BudgetBar({ spent, limit, pace, status, big }: { spent: number; limit: number; pace: number; status: BudgetStatus; big?: boolean }) {
+function BudgetBar({ spent, limit, pace, status, big, small }: { spent: number; limit: number; pace: number; status: BudgetStatus; big?: boolean; small?: boolean }) {
   const pct = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0;
   return (
-    <div className={`relative ${big ? "h-3 mt-5" : "h-2 mt-3"} rounded-full bg-slate-100`}>
+    <div className={`relative ${big ? "h-3 mt-5" : small ? "h-1.5 mt-2" : "h-2 mt-3"} rounded-full bg-slate-100`}>
       <div className={`h-full rounded-full ${STATUS[status].bar}`} style={{ width: `${pct}%` }} />
       {pace < 1 && <span className="absolute -top-1 -bottom-1 w-0.5 bg-slate-400 rounded" style={{ left: `${pace * 100}%` }} title="Where spending should be by today" />}
     </div>
@@ -291,15 +339,21 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
   );
 }
 
-/** A new budget (a spending category without one) or a budget's limit, from this month on. */
-function BudgetDialog({ budget, free, currency, onClose, onSaved }: {
+/**
+ * A new budget (on a spending category without one, at any level: `initial` first offered) or a
+ * budget's limit, from this month on.
+ */
+function BudgetDialog({ budget, initial, budgeted, currency, onClose, onSaved }: {
   budget?: BudgetProgress;
-  free: MovementCategory[];
+  initial?: string;
+  // The categories with a budget already.
+  budgeted: Set<string | null>;
   currency: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [category, setCategory] = useState<MovementCategory | "">(budget?.category ?? free[0] ?? "");
+  const { categories } = useWallets();
+  const [category, setCategory] = useState(budget?.categoryUuid ?? initial ?? "");
   const [limit, setLimit] = useState(budget ? String(budget.limit) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -311,7 +365,7 @@ function BudgetDialog({ budget, free, currency, onClose, onSaved }: {
     setBusy(true);
     setError(null);
     try {
-      await walletService.setBudgets([{ category: category as MovementCategory, monthlyLimit: parsed! }]);
+      await walletService.setBudgets([{ categoryUuid: category, monthlyLimit: parsed! }]);
       onSaved();
     } catch (err) {
       setError(errorText(err, "Unable to save this budget."));
@@ -322,7 +376,7 @@ function BudgetDialog({ budget, free, currency, onClose, onSaved }: {
   return (
     <DialogShell
       icon={budget ? <Pencil className="h-5 w-5" /> : <Target className="h-5 w-5" />}
-      title={budget ? `${CATEGORY_LABELS[budget.category!]} budget` : "New budget"}
+      title={budget ? `${categories.label(budget)} budget` : "New budget"}
       subtitle={`Across all your wallets, in ${currency}, from this month on`}
       busy={busy}
       error={error}
@@ -332,9 +386,9 @@ function BudgetDialog({ budget, free, currency, onClose, onSaved }: {
       onClose={onClose}
     >
       {!budget && (
-        <Field label="Category">
-          <select className={INPUT} value={category} onChange={(e) => setCategory(e.target.value as MovementCategory)}>
-            {free.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+        <Field label="Category" hint="Its subcategories' spending counts in it too. One with a budget already can't take another.">
+          <select className={INPUT} value={category} onChange={(e) => setCategory(e.target.value)}>
+            <CategoryOptions kind="spending" disabled={(c) => budgeted.has(c.uuid)} />
           </select>
         </Field>
       )}

@@ -33,7 +33,8 @@ import { WalletTransactions } from "./WalletTransactions";
 export type WalletPage = "insights" | "transactions" | "budgets" | "reports" | "alerts" | "banks" | "manage";
 
 export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
-  insights: "Insights", transactions: "Transactions", budgets: "Budgets", reports: "Reports", alerts: "Alerts", banks: "Banks", manage: "Manage wallets",
+  insights: "Insights", transactions: "Transactions", budgets: "Budgets", reports: "Reports", alerts: "Alerts", banks: "Banks",
+  manage: "Manage wallets",
 };
 
 const ARCHIVED_TITLE = "An archived wallet is read only";
@@ -215,7 +216,9 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
             onImport={() => setDialog("import")}
           />
         )}
-        {page === "budgets" && <WalletBudgets scope={scope} onManage={() => onOpen(ALL_WALLETS, "budgets")} />}
+        {page === "budgets" && (
+          <WalletBudgets scope={scope} onManage={() => onOpen(ALL_WALLETS, "budgets")} />
+        )}
         {page === "reports" && <WalletReports key={scopeKey} walletUuid={wallet?.uuid} readOnly={sample} />}
         {page === "alerts" && <WalletAlerts scope={scope} />}
         {page === "banks" && <WalletBanks />}

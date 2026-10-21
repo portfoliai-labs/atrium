@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, Landmark } from "lucide-react";
+import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, Landmark, FolderTree } from "lucide-react";
 import { userService } from "../../services/userService";
 import { supabase } from "../../lib/supabaseClient";
 import type { NotificationPreferences } from "../../models/User";
@@ -11,6 +11,7 @@ import { useUser } from "../../context/UserContext";
 import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
 import { WalletBanks } from "./wallets/WalletBanks";
+import { WalletCategories } from "./wallets/WalletCategories";
 import { useWallets } from "../../context/WalletsContext";
 
 function PreferenceRow({
@@ -55,7 +56,9 @@ function ReadOnlyField({ label, value, className = "" }: { label: string; value:
 const TABS = [
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "assets", label: "Assets", icon: Shapes },
-  // The banks connected through open banking: an investor's, where they have wallets.
+  // The wallets' categories (money in and out), and the banks connected through open banking: an
+  // investor's, where they have wallets.
+  { id: "categories", label: "Categories", icon: FolderTree },
   { id: "banks", label: "Banks", icon: Landmark },
   { id: "account", label: "Account", icon: UserIcon },
 ] as const;
@@ -86,15 +89,16 @@ export const openAssetSettings = (onNavigate: (section: string) => void) => {
 export function SettingsSection() {
   const { user, logout, refreshUser, isDemo } = useUser();
   const { available: walletsAvailable } = useWallets();
-  // Banks only where the wallets are (a backend with them, a demo account's sample data).
+  // Categories and Banks only where the wallets are (a backend with them, a demo account's sample data).
   const hasBanks = user?.role !== "ADVISOR" && (isDemo || walletsAvailable);
-  const tabs = TABS.filter((t) => t.id !== "banks" || hasBanks);
+  const walletTab = (id: TabId) => id === "banks" || id === "categories";
+  const tabs = TABS.filter((t) => !walletTab(t.id) || hasBanks);
   const [chosenTab, setActiveTab] = useState<TabId>(() => {
     const tab = requestedTab ?? linkedTab() ?? "notifications";
     requestedTab = null;
     return tab;
   });
-  const activeTab: TabId = chosenTab === "banks" && !hasBanks ? "notifications" : chosenTab;
+  const activeTab: TabId = walletTab(chosenTab) && !hasBanks ? "notifications" : chosenTab;
 
   // The link's tab is read once: Settings opened again later starts on its first tab.
   useEffect(() => {
@@ -499,6 +503,16 @@ export function SettingsSection() {
       )}
 
       {/* A demo account's is a sample bank, read only (WalletBanks locks its own changes). */}
+      {activeTab === "categories" && (
+        <div className="space-y-4">
+          <p className="text-[13px] text-[#78716c] leading-relaxed max-w-3xl">
+            What your wallets&apos; movements are sorted into, money in and money out, across all your wallets: a category can have
+            subcategories, three levels deep, and a budget can be set on any spending one. You can also add one as you pick a
+            movement&apos;s category.
+          </p>
+          <WalletCategories />
+        </div>
+      )}
       {activeTab === "banks" && <WalletBanks />}
 
       {message && (
