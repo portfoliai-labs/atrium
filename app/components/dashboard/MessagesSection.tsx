@@ -8,13 +8,15 @@ import { useUser } from "../../context/UserContext";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useWallets } from "../../context/WalletsContext";
 import type {
-  AnswerPiece, AssistantConversation, ChatMessage, Conversation, ConversationEvent, Participant,
+  ActionBlock, AnswerPiece, AssistantAction, AssistantConversation, ChatMessage, Conversation, ConversationEvent,
+  Participant,
 } from "../../models/Conversation";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
 import { readAiChatView } from "../../lib/dashboardNav";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { ActionCard } from "./assistant/ActionCard";
 import {
-  Answer, Draft, Question, QUESTION_MAX_LENGTH, answerFailedText, askErrorText, withPiece,
+  Answer, Draft, Question, QUESTION_MAX_LENGTH, answerFailedText, askErrorText, withAction, withPiece,
 } from "./assistant/AssistantMessage";
 
 const SERIF = { fontFamily: "'Playfair Display', Georgia, serif" };
@@ -139,6 +141,23 @@ export function MessagesSection() {
     setDrafts((all) => {
       const next = withPiece(all[conversationUuid], messageUuid, piece);
       return next && next !== all[conversationUuid] ? { ...all, [conversationUuid]: next } : all;
+    });
+  }, []);
+
+  // An action as it is now (the user's click, or `action_changed`): in place of its block, in the
+  // open chat's answers or in the answer being written.
+  const applyAction = useCallback((conversationUuid: string, action: AssistantAction) => {
+    if (selectedRef.current?.uuid === conversationUuid) {
+      setMessages((shown) => shown.map((message) => {
+        const blocks = withAction(message.blocks, action);
+        return blocks === message.blocks ? message : { ...message, blocks };
+      }));
+    }
+    setDrafts((all) => {
+      const draft = all[conversationUuid];
+      if (!draft) return all;
+      const blocks = withAction(draft.blocks, action);
+      return blocks === draft.blocks ? all : { ...all, [conversationUuid]: { ...draft, blocks } };
     });
   }, []);
 
@@ -285,6 +304,10 @@ export function MessagesSection() {
           if (!isChat(event.conversationUuid) || !event.piece) return;
           applyPiece(event.conversationUuid, event.messageUuid, event.piece);
           return;
+        case "action_changed":
+          if (!isChat(event.conversationUuid) || !event.action) return;
+          applyAction(event.conversationUuid, event.action);
+          return;
         case "answer_failed":
           if (!isChat(event.conversationUuid)) return;
           failedRef.current.add(event.conversationUuid);
@@ -335,9 +358,16 @@ export function MessagesSection() {
       if (retry) clearTimeout(retry);
       window.removeEventListener("auth-unauthorized", handleUnauthorized);
     };
-  }, [me, isDemo, receivedFromPerson, receivedFromAi, applyPiece, dropDraft, patchChat, loadPeople, loadChats, loadThread]);
+  }, [me, isDemo, receivedFromPerson, receivedFromAi, applyPiece, applyAction, dropDraft, patchChat, loadPeople, loadChats, loadThread]);
 
   const isAi = selected?.kind === "ai";
+  // An answer's action, as a card the user confirms or cancels in this chat.
+  const renderAction = (action: ActionBlock, writing = false) => selected && (
+    <ActionCard
+      action={action} conversationUuid={selected.uuid} writing={writing}
+      onChange={(next) => applyAction(selected.uuid, next)}
+    />
+  );
   const person = selected?.kind === "people" ? people.find((c) => c.conversationUuid === selected.uuid) ?? null : null;
   const chat = isAi ? chats.find((c) => c.conversationUuid === selected.uuid) ?? null : null;
   const draft = isAi ? drafts[selected.uuid] ?? null : null;
@@ -620,7 +650,7 @@ export function MessagesSection() {
                 {messages.map((message) => {
                   if (isAi) {
                     return message.senderUuid === null
-                      ? <Answer key={message.messageUuid} blocks={message.blocks} sentAt={message.sentAt} stop={message.answerStop} />
+                      ? <Answer key={message.messageUuid} blocks={message.blocks} sentAt={message.sentAt} stop={message.answerStop} renderAction={renderAction} />
                       : <Question key={message.messageUuid} message={message} />;
                   }
                   const mine = message.senderUuid === me;
@@ -642,7 +672,7 @@ export function MessagesSection() {
                   );
                 })}
                 {draft ? (
-                  <Answer blocks={draft.blocks} progress={draft.progress} writing />
+                  <Answer blocks={draft.blocks} progress={draft.progress} writing renderAction={(action) => renderAction(action, true)} />
                 ) : chat?.answering ? (
                   <Answer blocks={[]} writing />
                 ) : null}

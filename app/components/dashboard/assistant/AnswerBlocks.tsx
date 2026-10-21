@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import { CATEGORICAL_PALETTE } from "../../../lib/chartColors";
 import { formatCompact, formatCurrency } from "../../../lib/format";
-import type { ChartBlock, MessageBlock, TableBlock } from "../../../models/Conversation";
+import type { ActionBlock, ChartBlock, MessageBlock, TableBlock } from "../../../models/Conversation";
 import { AXIS_TICK, TOOLTIP_STYLE } from "../../preview/PreviewKit";
 import { Markdown } from "./Markdown";
 
@@ -14,10 +14,15 @@ const colorOf = (i: number) => CATEGORICAL_PALETTE[i] ?? FALLBACK_COLOR;
 
 /**
  * A message's blocks, in order: an answer's text as markdown, a person's as the plain text it is;
- * charts and tables. Every figure in them is the user's own data, shown as it is: a missing value
- * is a gap or "—", never 0.
+ * charts and tables; an action the assistant proposed, as `renderAction` draws it (none without).
+ * Every figure in them is the user's own data, shown as it is: a missing value is a gap or "—",
+ * never 0.
  */
-export function MessageBlocks({ blocks, markdown }: { blocks: MessageBlock[]; markdown: boolean }) {
+export function MessageBlocks({ blocks, markdown, renderAction }: {
+  blocks: MessageBlock[];
+  markdown: boolean;
+  renderAction?: (action: ActionBlock) => React.ReactNode;
+}) {
   return (
     <div className="space-y-4">
       {blocks.map((block, i) => {
@@ -28,6 +33,7 @@ export function MessageBlocks({ blocks, markdown }: { blocks: MessageBlock[]; ma
         }
         if (block.type === "chart") return <AnswerChart key={i} chart={block} />;
         if (block.type === "table") return <AnswerTable key={i} table={block} />;
+        if (block.type === "action") return <div key={block.actionId}>{renderAction?.(block)}</div>;
         return null;
       })}
     </div>

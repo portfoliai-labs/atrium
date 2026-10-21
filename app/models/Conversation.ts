@@ -48,7 +48,38 @@ export interface TextBlock {
   text: string;
 }
 
-export type MessageBlock = TextBlock | ChartBlock | TableBlock;
+// proposed → running (confirmed) → done or failed; proposed → cancelled, or expired once
+// `expiresAt` passed unconfirmed.
+export type ActionState = "proposed" | "running" | "done" | "failed" | "cancelled" | "expired";
+
+// An action the assistant proposed (a report asked for): the model proposes, the user confirms,
+// the domain acts. As it is now: its state changes arrive as `action_changed`.
+export interface AssistantAction {
+  // What the confirm and cancel routes name it by.
+  actionId: string;
+  // The tool as the platform names it (e.g. "scriba_request_report").
+  tool: string;
+  title: string;
+  // What it would do, in the order a person reads it (e.g. "Portfolio": "Pension").
+  details: { label: string; value: string }[];
+  state: ActionState;
+  // The domain's reason (e.g. "REPORT_ALREADY_EXISTS"), "JOB_FAILED"; null unless failed.
+  failureReason: string | null;
+  // What the user reads about the failure, when the domain wrote one.
+  failureMessage: string | null;
+  // The report it made, once done.
+  documentId: string | null;
+  // The route giving the report's download link (GET → { url }), once done.
+  downloadPath: string | null;
+  proposedAt: string;
+  expiresAt: string;
+}
+
+export interface ActionBlock extends AssistantAction {
+  type: "action";
+}
+
+export type MessageBlock = TextBlock | ChartBlock | TableBlock | ActionBlock;
 
 // How an answer ended: answered; cut short; answered with what it could read. Null on a person's.
 export type AnswerStop = "answered" | "cut_short" | "out_of_reads";
@@ -122,7 +153,8 @@ export type AnswerPiece =
   | { type: "text"; text: string }
   | { type: "progress"; tool: string; title?: string }
   | { type: "chart"; chart: ChartBlock }
-  | { type: "table"; table: TableBlock };
+  | { type: "table"; table: TableBlock }
+  | { type: "action"; action: AssistantAction };
 
 // One event of the live stream (GET /conversations/stream): its `type` names which fields are set.
 // Both kinds' events arrive on it; null fields are left out. New types may come: ignore them.
@@ -132,4 +164,6 @@ export type ConversationEvent =
   | { type: "conversation_changed"; conversationUuid: string; kind?: ConversationKind; status?: ConversationStatus; title?: string; answering?: boolean }
   | { type: "conversation_deleted"; conversationUuid: string }
   | { type: "answer_piece"; conversationUuid: string; messageUuid: string; piece: AnswerPiece }
-  | { type: "answer_failed"; conversationUuid: string; messageUuid: string; reason?: string };
+  | { type: "answer_failed"; conversationUuid: string; messageUuid: string; reason?: string }
+  // An action changed (confirmed, done, failed...): it replaces the answer's block of the same actionId.
+  | { type: "action_changed"; conversationUuid: string; messageUuid: string; action: AssistantAction };

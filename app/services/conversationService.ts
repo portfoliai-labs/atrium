@@ -1,5 +1,7 @@
 // services/conversationService.ts
-import type { AssistantConversation, ChatMessage, Conversation, MessagePage, ReadReceipt, UnreadCount } from "../models/Conversation";
+import type {
+  AssistantAction, AssistantConversation, ChatMessage, Conversation, MessagePage, ReadReceipt, UnreadCount,
+} from "../models/Conversation";
 import { apiFetch } from "./apiClient";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -64,6 +66,23 @@ export const conversationService = {
       method: "POST",
       body: JSON.stringify({ messageUuid }),
     });
+  },
+
+  // POST /conversations/{uuid}/actions/{id}/confirm — runs an action the assistant proposed, once:
+  // the action as it is after (done, failed, or running while its report is made). 409
+  // ActionAlreadySettledError (its `state`), ActionExpiredError.
+  async confirmAction(conversationUuid: string, actionId: string): Promise<AssistantAction> {
+    return apiFetch<AssistantAction>(`/v1/conversations/${conversationUuid}/actions/${actionId}/confirm`, { method: "POST" });
+  },
+
+  // POST /conversations/{uuid}/actions/{id}/cancel — the action, cancelled.
+  async cancelAction(conversationUuid: string, actionId: string): Promise<AssistantAction> {
+    return apiFetch<AssistantAction>(`/v1/conversations/${conversationUuid}/actions/${actionId}/cancel`, { method: "POST" });
+  },
+
+  // GET an action's downloadPath — an hour's link to the report it made.
+  async actionDownload(downloadPath: string): Promise<{ url: string }> {
+    return apiFetch<{ url: string }>(downloadPath);
   },
 
   // The live stream's URL, behind a one-time ticket (an EventSource can't send the token).
