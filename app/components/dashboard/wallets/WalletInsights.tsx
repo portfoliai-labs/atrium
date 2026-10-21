@@ -124,11 +124,8 @@ export function WalletInsights({ scope, summary }: { scope: string | null; summa
         </div>
       )}
 
-      {empty ? (
-        <p className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-500">
-          Nothing came in or went out in the last 12 months. Add movements, or import a statement, to see where the money goes.
-        </p>
-      ) : !current ? (
+      {/* Nothing in or out in the 12 months: no modules, and nothing said in their place. */}
+      {empty ? null : !current ? (
         <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 text-slate-300 animate-spin" /></div>
       ) : !read ? (
         <p className="text-sm font-semibold text-rose-600">{current.error}</p>

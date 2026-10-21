@@ -131,8 +131,10 @@ export function TaxesPage({ trail, onOpenSettings, onOpenPortfolios }: {
       <Breadcrumb trail={trail} current="Taxes" right={right} />
 
       <div className="flex flex-col gap-2">
-        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">{client ? `${client.name} · ` : ""}Taxes on investments</p>
-        <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>{year}</h1>
+        {/* The page's name, as the other pages have it; the year is the picker's, beside the trail. */}
+        <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>
+          {client ? `${client.name}'s taxes on investments` : "Taxes on investments"}
+        </h1>
         <p className="flex items-start gap-2 text-[12.5px] text-[#78716c] max-w-3xl">
           <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
           {TAX_DISCLAIMER}
