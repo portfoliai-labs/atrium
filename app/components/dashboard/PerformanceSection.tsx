@@ -28,6 +28,7 @@ import { pushDashboardEntry, readDashboardEntry, type DashboardOverlay } from ".
 import { NoDataEmptyState } from "./NoDataEmptyState";
 import { InstrumentProfileModule } from "./InstrumentProfileModule";
 import { DonutList, type DonutItem } from "./DonutList";
+import { CompareModule } from "./CompareModule";
 import { AssetArticlesModule } from "./journal/AssetArticlesModule";
 import { AssetNewsModule } from "./AssetNewsModule";
 import { BondRatesModule } from "./MarketRates";
@@ -82,7 +83,7 @@ export const TOOLTIP_STYLE: React.CSSProperties = {
  * in as they arrive. Stale modules are followed through /insights/status (see useInsights).
  */
 export function PerformanceSection({
-  portfolioUuid, isAggregate = false, backtest = false, strategyShown = false, onNavigate, trail, pageLabel = "Insights", trailInTop = false, top, onOpenPortfolio, comparison = null,
+  portfolioUuid, isAggregate = false, backtest = false, strategyShown = false, onNavigate, trail, pageLabel = "Insights", trailInTop = false, top, onOpenPortfolio, onCompare, comparison = null,
 }: {
   portfolioUuid: string; isAggregate?: boolean; onNavigate?: (section: string) => void;
   // A strategy's backtest (a virtual portfolio): its header carries BacktestBanner, and before
@@ -106,6 +107,8 @@ export function PerformanceSection({
   top?: React.ReactNode;
   // Opens one of the aggregate's portfolios, from its Composition.
   onOpenPortfolio?: (uuid: string) => void;
+  // Opens Compare: with it, All portfolios shows its Compare module (CompareModule) under its Portfolios.
+  onCompare?: () => void;
   // The portfolio's side-by-side figures (GET /v1/portfolios/comparison), which the page's header
   // already loads: the returns, the drawdown and the benchmark's excess the modules show next to
   // their own. null while loading or without one; those figures are then left out.
@@ -257,6 +260,7 @@ export function PerformanceSection({
               onSelectMonth={openMonth}
               isAggregate={isAggregate}
               onOpenPortfolio={onOpenPortfolio}
+              onCompare={onCompare}
               comparison={comparison}
               backtest={backtest}
               strategyShown={strategyShown}
@@ -4454,7 +4458,7 @@ function MonthPage({
  * correlations behind it). A month opens from Performance's detail (see PerformanceSection).
  */
 function HistoryPage({
-  insights, performance, value, portfolioUuid, onSelectMonth, isAggregate, onOpenPortfolio, comparison, backtest, strategyShown,
+  insights, performance, value, portfolioUuid, onSelectMonth, isAggregate, onOpenPortfolio, onCompare, comparison, backtest, strategyShown,
 }: {
   insights: Insights;
   // The Performance section, already loaded, and its value (PerformanceSection checks both).
@@ -4466,6 +4470,8 @@ function HistoryPage({
   isAggregate: boolean;
   // Opens one of the aggregate's portfolios (from the Composition).
   onOpenPortfolio?: (uuid: string) => void;
+  // Opens Compare, from the aggregate's Compare module.
+  onCompare?: () => void;
   comparison: PortfolioComparisonEntry | null;
   // A strategy's backtest: a simulation, so only what it says about the strategy — its returns
   // against the benchmark, its mix, what trading cost it at the costs set for it, its risk. Its
@@ -4576,6 +4582,9 @@ function HistoryPage({
           <ThisMonthCard slot={slotOf(insights.performance, timedOut, (d) => d.thisMonth, (_, d) => d.historyIsStale)} currency={currency} onOpen={onSelectMonth} />
         )}
       </Tile>
+      {/* All portfolios: how they did next to each other, across the page under them, their
+          colours the donut's. */}
+      {aggregate && onCompare && <Tile><CompareModule onOpen={onCompare} /></Tile>}
       {/* What was made, sold (realized, dividends) and still held (gains & losses), beside what
           trading cost; then the risk. */}
       <Tile span="narrow" id={moduleAnchor("realized")}>
