@@ -8,6 +8,7 @@ import { Landmark, Loader2 } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
 import { bankingService } from "../../../services/bankingService";
 import { errorText } from "../../../lib/wallets";
+import { syncTextFor, takeBankWallet, walletPageUrl } from "../../../components/dashboard/wallets/WalletBanks";
 
 // Where the user goes once the link is done: Settings' Banks, to choose each account's wallet.
 const BANKS_PAGE = "/dashboard?section=settings&settingsTab=banks";
@@ -15,7 +16,9 @@ const BANKS_PAGE = "/dashboard?section=settings&settingsTab=banks";
 /**
  * BANK LINK — the page the bank sends the user back to after the consent (registered with the open
  * banking aggregator: arca's `[banking] REDIRECT_URL`), with `state` and `code`, or an `error` when
- * the consent wasn't given. The link is completed once, then the user lands on the Banks page.
+ * the consent wasn't given. The link is completed once, then the user lands on the Banks page; or,
+ * connected from a wallet's page (takeBankWallet), on that wallet's, its account in it: the only
+ * free one of its currency linked and read at once, or, with more, its bank dialog to choose.
  */
 function BankLinkContent() {
   const params = useSearchParams();
@@ -33,8 +36,21 @@ function BankLinkContent() {
     if (loading || !user || sent.current) return;
     if (refused || !state || !code) return;
     sent.current = true;
+    const pending = takeBankWallet();
     bankingService.complete(state, code)
-      .then(() => router.replace(BANKS_PAGE))
+      .then(async (link) => {
+        if (!pending || pending.linkUuid !== link.uuid) return router.replace(BANKS_PAGE);
+        const free = link.accounts.filter((a) => !a.walletUuid && a.currency === pending.currency);
+        if (free.length !== 1) return router.replace(walletPageUrl(pending.walletUuid, true));
+        try {
+          await bankingService.linkAccount(free[0].uuid, pending.walletUuid);
+          await syncTextFor(link.uuid, free[0].uuid);
+          router.replace(walletPageUrl(pending.walletUuid));
+        } catch {
+          // Linked by hand then, from its dialog.
+          router.replace(walletPageUrl(pending.walletUuid, true));
+        }
+      })
       .catch((err) => setFailure(errorText(err, "Unable to finish linking the bank.")));
   }, [loading, user, state, code, refused, router]);
 

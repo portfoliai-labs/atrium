@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowUpRight, Check, ChevronLeft, ChevronRight, Info, Loader2, X } from "lucide-react";
+import { AlertCircle, ArrowUpRight, ChevronLeft, ChevronRight, Info, Loader2, X } from "lucide-react";
 import { portfoliosService } from "../../services/portfoliosService";
 import { ApiError } from "../../services/apiClient";
 import { usePortfolio } from "../../context/PortfolioContext";
@@ -14,9 +14,6 @@ import { CompareMetrics } from "./CompareMetrics";
 import { AllocationModule, CumulativeReturnsModule } from "./CompareCharts";
 import type { Portfolio } from "../../models/Portfolio";
 import type { PortfolioComparisonEntry } from "../../models/PortfolioData";
-
-// More columns than this stop fitting a comparison table a person can read across.
-export const MAX_COMPARED = 4;
 
 // A strategy compared though it isn't the user's: a published strategy of the catalog (its
 // portfolioUuid), or the backtest a strategy their advisor shared came from. The backend reads
@@ -32,29 +29,23 @@ const STALE_POLL_INTERVAL_MS = 15_000;
 const STALE_TIMEOUT_MS = 5 * 60_000;
 
 /**
- * COMPARISON VIEW — the investments' Compare (see PortfoliosCompare): every candidate (`candidates`: the
- * user's portfolios) as a card on top (CompareCards), picked or not with a click, up
- * to MAX_COMPARED; the picked ones side
- * by side under them (GET /v1/portfolios/comparison): a module per subject (CompareMetrics), the cumulative
- * returns and the allocation (CompareCharts), all following the cards. Each portfolio keeps its colour
- * (portfolioColorMap), so changing the selection never repaints the others. Columns follow the
- * portfolio list's order, not the order they were picked in, so they don't shuffle.
+ * COMPARISON VIEW — the investments' Compare (see PortfoliosCompare): every one of the user's
+ * portfolios (`candidates`), nothing to pick, as a card on top (CompareCards) that says whose
+ * colour is whose, and all of them side by side under them (GET /v1/portfolios/comparison): a
+ * module per subject (CompareMetrics), the cumulative returns and the allocation (CompareCharts).
+ * Each portfolio keeps its colour (portfolioColorMap), the same as on the Compare module of its
+ * page (CompareModule), in the portfolio list's order.
  *
  * Strategies that aren't the user's (`strategies`: one from the catalog, or the simulation a strategy
- * their advisor shared came from) are compared beside them: picked for as long as they're there,
- * after the user's portfolios, each a card with a cross to take it out and a colour past theirs.
- * They count towards MAX_COMPARED, so they leave fewer of the user's picks; with none of those,
- * the strategies are compared among themselves. A strategy no longer
- * readable (withdrawn, no longer shared: 403, 404) is said, with the way to take it out.
+ * their advisor shared came from) are compared beside them, after the user's portfolios, each a
+ * card with a cross to take it out and a colour past theirs. A strategy no longer readable
+ * (withdrawn, no longer shared: 403, 404) is said, with the way to take it out.
  */
 export function ComparisonView({
-  candidates, selection, onToggle, trail, onOpen, strategies = [], onRemoveStrategy,
+  candidates, trail, onOpen, strategies = [], onRemoveStrategy,
 }: {
-  // The user's portfolios that can be picked, in their order; all but the aggregate unless said.
+  // The user's portfolios compared, in their order; all but the aggregate unless said.
   candidates?: Portfolio[];
-  selection: string[];
-  // Adds a portfolio to the comparison, or takes it out.
-  onToggle: (uuid: string) => void;
   // The pages above Compare.
   trail: Crumb[];
   // Opens one portfolio's own Insights, from its column head.
@@ -75,17 +66,11 @@ export function ComparisonView({
     const i = external.findIndex((s) => s.uuid === uuid);
     return i < 0 ? portfolioColors(uuid) : CATEGORICAL_PALETTE[(comparable.length + i) % CATEGORICAL_PALETTE.length];
   }, [portfolioColors, external, comparable.length]);
-  // The user's picks fill what the strategies leave of MAX_COMPARED.
-  const ownRoom = Math.max(0, MAX_COMPARED - external.length);
-  const ordered = useMemo(
-    () => [...comparable.filter((p) => selection.includes(p.uuid)).map((p) => p.uuid).slice(0, ownRoom), ...external.map((s) => s.uuid)],
-    [comparable, selection, ownRoom, external],
-  );
-  const cardFigures = useAllFigures(comparable.map((p) => p.uuid).join(","));
-  const picked = ordered.length;
-  const { entries, loading, failed, failedStatus, timedOut } = useComparison(ordered.join(","), picked >= 2);
-  // A strategy's card reads its figures from the comparison.
-  const strategyFigures = useMemo(() => new Map((entries ?? []).map((e) => [e.portfolio.uuid, e])), [entries]);
+  const ordered = useMemo(() => [...comparable.map((p) => p.uuid), ...external.map((s) => s.uuid)], [comparable, external]);
+  const compared = ordered.length;
+  const { entries, loading, failed, failedStatus, timedOut } = useComparison(ordered.join(","), compared >= 1);
+  // The cards read their figures from the comparison.
+  const figures = useMemo(() => (entries ? new Map(entries.map((e) => [e.portfolio.uuid, e])) : undefined), [entries]);
   // A stale column is hidden while its rebuild is expected any moment, then shown with a hint.
   const isUpdating = (e: PortfolioComparisonEntry) => e.isStale && !timedOut;
   const visible = useMemo(() => (entries ?? []).filter((e) => !(e.isStale && !timedOut)), [entries, timedOut]);
@@ -95,13 +80,10 @@ export function ComparisonView({
       <Breadcrumb trail={trail} current="Compare" />
       <CompareCards
         portfolios={comparable}
-        selection={ordered}
-        picked={picked}
-        figures={cardFigures}
+        figures={figures}
         colorOf={colorOf}
-        onToggle={onToggle}
         onOpen={onOpen}
-        strategies={external.map((s) => ({ ...s, entry: strategyFigures.get(s.uuid) }))}
+        strategies={external.map((s) => ({ ...s, entry: figures?.get(s.uuid) }))}
         onRemoveStrategy={onRemoveStrategy}
       />
       {external.length > 0 && (
@@ -122,13 +104,9 @@ export function ComparisonView({
             </button>
           )}
         </div>
-      ) : picked < 2 ? (
+      ) : compared < 2 ? (
         <div className="flex items-center justify-center text-center py-14 px-6 bg-white border border-slate-200 border-dashed rounded-4xl">
-          <p className="text-slate-500 text-sm max-w-sm">
-            {picked === 1
-              ? `Pick one more ${external.length > 0 ? "card" : "portfolio"} above to compare them.`
-              : "Pick at least two portfolios above to compare them."}
-          </p>
+          <p className="text-slate-500 text-sm max-w-sm">A comparison needs two portfolios at least: add another one to compare them.</p>
         </div>
       ) : loading && entries === null ? (
         <div className="flex h-64 items-center justify-center">
@@ -158,26 +136,20 @@ export function ComparisonView({
 }
 
 /**
- * COMPARE CARDS — every portfolio as a white card in its colour, in one row that scrolls sideways
- * (arrows above it move it too, when it doesn't all fit): its name, its value and return
- * since inception (`figures`: every portfolio's, from one call; undefined while loading), and a
- * check when it's compared. A click picks it or takes it out (none left to pick past
- * MAX_COMPARED); the arrow opens its Insights.
+ * COMPARE CARDS — every portfolio compared as a white card in its colour, the key to the modules
+ * under them, in one row that scrolls sideways (arrows above it move it too, when it doesn't all
+ * fit): its name, its value and return since inception (`figures`: the comparison's; undefined
+ * while loading). A click opens its Insights.
  */
-function CompareCards({ portfolios, selection, picked, figures, colorOf, onToggle, onOpen, strategies = [], onRemoveStrategy }: {
+function CompareCards({ portfolios, figures, colorOf, onOpen, strategies = [], onRemoveStrategy }: {
   portfolios: Portfolio[];
-  selection: string[];
-  // How many columns are picked.
-  picked: number;
   figures: Map<string, PortfolioComparisonEntry> | undefined;
   colorOf: (uuid: string) => string;
-  onToggle: (uuid: string) => void;
   onOpen: (uuid: string) => void;
   // The strategies compared that aren't the user's, each with its column's figures once loaded.
   strategies?: (CompareStrategy & { entry?: PortfolioComparisonEntry })[];
   onRemoveStrategy?: (uuid: string) => void;
 }) {
-  const full = picked >= MAX_COMPARED;
   const { ref, canLeft, canRight, scrollBy } = useSideScroll(portfolios.length + strategies.length);
   return (
     <div>
@@ -204,26 +176,21 @@ function CompareCards({ portfolios, selection, picked, figures, colorOf, onToggl
       <div className="relative">
       <div ref={ref} className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-px-1 px-1 pt-1 pb-3 -mx-1 [scrollbar-width:thin]">
         {portfolios.map((p) => {
-          const picked = selection.includes(p.uuid);
-          const blocked = !picked && full;
           const entry = figures?.get(p.uuid);
           const value = entry?.value ?? null;
           const total = entry?.performance?.totalReturnPct ?? null;
           return (
             <div
               key={p.uuid}
-              className={`group relative w-60 shrink-0 snap-start rounded-2xl border-2 bg-white overflow-hidden transition-all ${
-                picked ? "border-[#C49A3C] shadow-md" : "border-slate-200 hover:border-slate-300"
-              } ${blocked ? "opacity-50" : "hover:-translate-y-0.5 hover:shadow-md"}`}
+              className="group relative w-60 shrink-0 snap-start rounded-2xl border-2 border-slate-200 bg-white overflow-hidden transition-all hover:border-slate-300 hover:-translate-y-0.5 hover:shadow-md"
             >
               <div className="h-1.5" style={{ backgroundColor: colorOf(p.uuid), opacity: p.isAggregate ? 0.6 : 1 }} />
               <button
                 type="button"
-                onClick={() => onToggle(p.uuid)}
-                disabled={blocked}
-                aria-pressed={picked}
-                title={blocked ? `Up to ${MAX_COMPARED} at once: take one out to pick another` : undefined}
-                className="block w-full text-left p-4 pr-11 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C49A3C]/60 disabled:cursor-not-allowed"
+                onClick={() => onOpen(p.uuid)}
+                aria-label={`Open ${p.name}'s insights`}
+                title="Open its insights"
+                className="block w-full text-left p-4 pr-11 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C49A3C]/60"
               >
                 <span className="block text-base font-black text-slate-900 truncate" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>{p.name}</span>
                 {p.isVirtual && <span className="block mt-1"><VirtualBadge portfolio={p} /></span>}
@@ -236,20 +203,7 @@ function CompareCards({ portfolios, selection, picked, figures, colorOf, onToggl
                     : <><span className={total >= 0 ? "text-emerald-600" : "text-rose-600"}>{total >= 0 ? "+" : ""}{total.toFixed(2)}%</span><span className="text-slate-400 font-semibold"> since inception</span></>}
                 </span>
               </button>
-              <span className={`absolute top-4 right-3 w-6 h-6 rounded-full flex items-center justify-center border-2 pointer-events-none transition-colors ${
-                picked ? "bg-[#C49A3C] border-[#C49A3C] text-white" : "border-slate-300 text-transparent"
-              }`}>
-                <Check className="h-3.5 w-3.5" strokeWidth={3} />
-              </span>
-              <button
-                type="button"
-                onClick={() => onOpen(p.uuid)}
-                aria-label={`Open ${p.name}'s insights`}
-                title="Open its insights"
-                className="absolute bottom-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-[#C49A3C] hover:bg-[#C49A3C]/10 transition-colors"
-              >
-                <ArrowUpRight className="h-4 w-4" />
-              </button>
+              <ArrowUpRight className="absolute top-4 right-3 h-4 w-4 pointer-events-none text-slate-300 group-hover:text-[#C49A3C] transition-colors" />
             </div>
           );
         })}
@@ -265,7 +219,7 @@ function CompareCards({ portfolios, selection, picked, figures, colorOf, onToggl
 }
 
 /**
- * A strategy's card, compared though it isn't the user's: always picked, its name and return from
+ * A strategy's card, compared though it isn't the user's: its name and return from
  * its column (a simulation's, so no value of the user's), and a cross to take it out.
  */
 function StrategyCard({ strategy, color, onRemove }: {
@@ -276,7 +230,7 @@ function StrategyCard({ strategy, color, onRemove }: {
   const name = strategy.entry?.portfolio.name ?? strategy.name;
   const total = strategy.entry?.performance?.totalReturnPct ?? null;
   return (
-    <div className="relative w-60 shrink-0 snap-start rounded-2xl border-2 border-[#C49A3C] shadow-md bg-white overflow-hidden">
+    <div className="relative w-60 shrink-0 snap-start rounded-2xl border-2 border-slate-200 bg-white overflow-hidden">
       <div className="h-1.5" style={{ backgroundColor: color }} />
       <div className="p-4 pr-11">
         <span className="block text-base font-black text-slate-900 truncate" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>{name}</span>
@@ -336,27 +290,8 @@ function useSideScroll(itemCount: number) {
   return { ref, ...edges, scrollBy };
 }
 
-/** The cards' figures, from one call (GET /v1/portfolios/comparison, those listed). */
-function useAllFigures(uuidsKey: string) {
-  const { client } = usePortfolio();
-  const clientUuid = client?.uuid ?? null;
-  const [state, setState] = useState<{ key: string; byUuid: Map<string, PortfolioComparisonEntry> } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const uuids = uuidsKey ? uuidsKey.split(",") : [];
-    if (uuids.length === 0) return;
-    portfoliosService.compare(uuids, clientUuid)
-      .then((list) => { if (!cancelled) setState({ key: uuidsKey, byUuid: new Map(list.map((e) => [e.portfolio.uuid, e])) }); })
-      .catch(() => { if (!cancelled) setState({ key: uuidsKey, byUuid: new Map() }); });
-    return () => { cancelled = true; };
-  }, [uuidsKey, clientUuid]);
-  // The previous figures stay up while a changed list of portfolios reloads.
-  return state?.byUuid;
-}
-
 /**
- * Fetches the comparison for the given (comma-joined) uuids, once `enabled` (two columns picked),
- * refetching every
+ * Fetches the comparison for the given (comma-joined) uuids, once `enabled`, refetching every
  * STALE_POLL_INTERVAL_MS while any column is stale, for up to STALE_TIMEOUT_MS. `timedOut`
  * means stale columns should now be drawn anyway, with a hint.
  */
