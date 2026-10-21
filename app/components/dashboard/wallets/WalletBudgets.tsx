@@ -13,6 +13,7 @@ import { AXIS_TICK, Panel, TOOLTIP_STYLE } from "../../preview/PreviewKit";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { DialogShell, Field, INPUT, parseAmount } from "./WalletDialogs";
 import { CategoryChip } from "./WalletTransactions";
+import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 
 // How far back the months go: the year the rest of the wallets' pages show.
 const MONTHS_BACK = 11;
@@ -36,9 +37,10 @@ type Dialog = { kind: "new" } | { kind: "edit"; budget: BudgetProgress } | { kin
 /**
  * BUDGETS — a monthly limit per spending category, across every non-archived wallet, in the
  * user's reference currency (arca's): a month's spending against the limits it had, each with
- * where it should be by today at an even pace. On All wallets they are set, changed and removed
+ * where it should be by today at an even pace. They are set, changed and removed from any page
  * (from this month on: the months before keep theirs); on a wallet, the same budgets show what
- * that wallet spent of each. A demo account reads its sample's, read only.
+ * that wallet spent of each. A demo account reads its sample's, read only: its buttons show,
+ * disabled, so it's clear where budgets are set.
  */
 export function WalletBudgets({ scope, onManage }: { scope: string | null; onManage: () => void }) {
   const { wallets, source, version, sample, changed } = useWallets();
@@ -75,7 +77,9 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
 
   const isCurrent = latest === null || data.month === latest;
   const all = scope === null;
-  const editable = all && !sample && isCurrent;
+  const editable = !sample && isCurrent;
+  // Disabled rather than hidden on a demo account, so it's clear where a budget is set.
+  const demoLock = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
   const money = (v: number) => formatCurrency(v, data.currency, 0);
   const pace = data.daysElapsed / data.daysInMonth;
   const share = (b: BudgetProgress) => (all ? b.spent : b.wallets.find((w) => w.walletUuid === scope)?.spent ?? 0);
@@ -131,11 +135,12 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
                   : `${money(data.total.spent - data.total.limit)} over budget`}
               </p>
             )}
-            {editable && free.length > 0 && (
+            {isCurrent && free.length > 0 && data.budgets.length > 0 && (
               <button
                 type="button"
                 onClick={() => setDialog({ kind: "new" })}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors"
+                {...demoLock}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#1c1917]"
               >
                 <Plus className="h-3.5 w-3.5" /> New budget
               </button>
@@ -147,8 +152,8 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
 
       {!all && (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] font-semibold text-slate-600">
-          Budgets are across all your wallets: here, what this wallet spent of each.
-          <button type="button" onClick={onManage} className="font-bold text-[#C49A3C] hover:underline">Manage them on All wallets</button>
+          Budgets are across all your wallets: here, what this wallet spent of each. One set here counts for all of them.
+          <button type="button" onClick={onManage} className="font-bold text-[#C49A3C] hover:underline">See them on All wallets</button>
         </p>
       )}
 
@@ -159,9 +164,18 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
             A monthly limit for groceries, restaurants or any other spending, across all your wallets: see each month where you
             stand, and where you should be by today.
           </p>
-          {editable && (
-            <button type="button" onClick={() => setDialog({ kind: "new" })} className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1c1917] text-white text-sm font-bold hover:bg-[#C49A3C] transition-colors">
+          {isCurrent ? (
+            <button
+              type="button"
+              onClick={() => setDialog({ kind: "new" })}
+              {...demoLock}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1c1917] text-white text-sm font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#1c1917]"
+            >
               <Plus className="h-4 w-4" /> Set a budget
+            </button>
+          ) : (
+            <button type="button" onClick={() => setMonth(undefined)} className="text-[13px] font-bold text-[#C49A3C] hover:underline">
+              Back to {latest ? monthName(latest) : "this month"}, to set one
             </button>
           )}
         </section>
