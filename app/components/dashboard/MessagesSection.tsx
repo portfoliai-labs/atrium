@@ -5,6 +5,8 @@ import { AlertCircle, ArrowLeft, CheckCheck, Loader2, Lock, MessagesSquare, Send
 import { conversationService } from "../../services/conversationService";
 import { ApiError } from "../../services/apiClient";
 import { useUser } from "../../context/UserContext";
+import { usePortfolio } from "../../context/PortfolioContext";
+import { useWallets } from "../../context/WalletsContext";
 import type {
   AnswerPiece, AssistantConversation, ChatMessage, Conversation, ConversationEvent, Participant,
 } from "../../models/Conversation";
@@ -403,6 +405,7 @@ export function MessagesSection() {
   };
 
   const send = () => (isAi ? ask() : sendToPerson());
+  const suggestions = useSuggestions();
 
   // A widget's question, sent once the chats are known (StrictMode's second run sends nothing).
   const askedRef = useRef(false);
@@ -646,6 +649,23 @@ export function MessagesSection() {
                 <div ref={bottomRef} />
               </div>
 
+              {/* A new chat's first question, a click away: sent as it is. */}
+              {isNewChat && messages.length === 0 && !answering && suggestions.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-5 pt-3 bg-[#FBFAF6]">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => void ask(s)}
+                      disabled={sending}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[rgba(196,154,60,0.35)] bg-white text-xs font-semibold text-[#57534e] hover:border-[#C49A3C] hover:text-[#1c1917] transition-colors disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3 h-3 text-[#C49A3C]" />
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
               {person?.status === "closed" ? (
                 <p className="flex items-center gap-2 px-5 py-4 text-sm text-[#78716c] border-t border-[rgba(196,154,60,0.15)]">
                   <Lock className="w-4 h-4" /> This conversation is closed: the advisory relationship ended. You can still read it.
@@ -692,6 +712,23 @@ export function MessagesSection() {
       )}
     </div>
   );
+}
+
+/**
+ * What a new chat with the assistant offers to ask first, as the user's data allows: the investments
+ * (and, with two portfolios or more, comparing them), and with wallets the savings and the spending.
+ */
+function useSuggestions(): string[] {
+  const { portfolios } = usePortfolio();
+  const { wallets, available } = useWallets();
+  const real = portfolios.filter((p) => !p.isVirtual && !p.isAggregate);
+  const hasWallets = available && wallets.some((w) => !w.archived);
+  return [
+    ...(real.length > 0 ? ["How are my investments doing?"] : []),
+    ...(real.length > 1 ? ["Compare my portfolios"] : []),
+    ...(hasWallets ? ["How are my savings going?", "Where did my money go this month?"] : []),
+    ...(real.length > 0 ? ["Is my portfolio too concentrated?"] : []),
+  ];
 }
 
 // The thread with the message in it, once, in the order they were sent.
