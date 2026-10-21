@@ -7,7 +7,7 @@ import { useWallets, useWalletSummary } from "../../../context/WalletsContext";
 // The retired hub's (see below): import { useWalletSummaries } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
 import { formatCurrency } from "../../../lib/format";
-import { ALL_WALLETS, KIND_LABELS, currentAlertFindings, errorText, savingsRate, walletColor } from "../../../lib/wallets";
+import { ALL_WALLETS, currentAlertFindings, errorText, savingsRate, walletColor } from "../../../lib/wallets";
 import type { Wallet } from "../../../models/Wallet";
 // The retired hub's (see below): import type { WalletSummary } from "../../../models/Wallet";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
@@ -141,9 +141,6 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
 
   const currency = wallet?.currency ?? summary?.currency ?? "EUR";
   const money = (v: number) => formatCurrency(v, currency, 0);
-  const value = wallet
-    ? formatCurrency(wallet.balance, wallet.currency, 0)
-    : summary === undefined ? null : summary ? money(summary.months.at(-1)?.closingBalance ?? 0) : "—";
   const rate = summary ? savingsRate(summary.months) : null;
   const figures: PageFigure[] = summary ? [
     { label: "In, 12 months", value: money(summary.months.reduce((s, m) => s + m.income, 0)), tone: "gain" },
@@ -151,9 +148,6 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     { label: "Savings rate", value: rate === null ? "—" : `${rate.toFixed(0)}%`, tone: rate === null || rate === 0 ? undefined : rate > 0 ? "gain" : "loss" },
     ...(wallet ? [{ label: "Opened", value: `${formatCurrency(wallet.openingBalance, wallet.currency, 0)}`, sub: `on ${wallet.openingDate}` }] : []),
   ] : [];
-  const note = wallet
-    ? [KIND_LABELS[wallet.kind], wallet.institution, wallet.currency].filter(Boolean).join(" · ")
-    : sample ? "Sample data" : `${active.length} ${active.length === 1 ? "wallet" : "wallets"}`;
 
   const dialogs = (
     <>
@@ -244,8 +238,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         </>
       )}
       title={title}
-      value={value}
-      note={note}
+      // Nothing between the title and the counters, as a portfolio's page.
       counters={counters}
       actions={actions}
       figures={figures}

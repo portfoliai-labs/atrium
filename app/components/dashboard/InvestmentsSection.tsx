@@ -509,7 +509,6 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
     { label: "ROI", value: roi === null ? "—" : pct(roi), tone: toneOf(roi) },
   ];
 
-  const note = portfolio.isAggregate ? `${real.length} portfolios` : undefined;
 
   const header = (
     <PageHeader
@@ -518,7 +517,6 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       crumbs={trail}
       notice={backtest ? <BacktestBanner portfolioUuid={portfolio.uuid} /> : undefined}
       title={portfolio.name}
-      note={note}
       counters={counters}
       actions={actions}
       figures={figures}
@@ -704,11 +702,14 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       />
     );
   }
+  // A simulation on the portfolio it's opened from: its name (All portfolios' too, rather than
+  // "Investments"; a client's with the client's) is the trail's last step, nothing above the title.
+  const toolTrail = [...trail, { ...nodeCrumb, label: `${client ? `${client.name} · ` : ""}${portfolio.name}` }];
   if (page === "stress") {
-    return <StressTestPage key={portfolio.uuid} portfolioUuid={portfolio.uuid} trail={pageTrail} eyebrow={`${client ? `${client.name} · ` : ""}${portfolio.name}`} />;
+    return <StressTestPage key={portfolio.uuid} portfolioUuid={portfolio.uuid} trail={toolTrail} />;
   }
   if (page === "projection") {
-    return <ProjectionPage key={portfolio.uuid} portfolioUuid={portfolio.uuid} trail={pageTrail} eyebrow={`${client ? `${client.name} · ` : ""}${portfolio.name}`} />;
+    return <ProjectionPage key={portfolio.uuid} portfolioUuid={portfolio.uuid} trail={toolTrail} />;
   }
   // The user's, whichever portfolio it's opened from: a correction holds in all of them.
   if (page === "categories") {
