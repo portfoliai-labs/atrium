@@ -231,9 +231,11 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
  * what it was, its category (offered by direction), the counterparty and a note. A transfer's leg
  * keeps its day, amount and category (unlink it first); a category is cleared with categorize.
  */
-export function MovementDialog({ wallet, movement, onClose, onSaved }: {
+export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
   wallet: Wallet;
   movement?: Movement;
+  // Above the form, when it's a tab of AddMovementDialog.
+  tabs?: React.ReactNode;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -295,6 +297,7 @@ export function MovementDialog({ wallet, movement, onClose, onSaved }: {
       onSubmit={submit}
       onClose={onClose}
     >
+      {tabs}
       {leg && (
         <p className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-3 text-[13px] text-slate-600">
           This is one side of a transfer: its day and amount are the transfer&apos;s. To change them, unlink the transfer first.
@@ -348,16 +351,83 @@ export function MovementDialog({ wallet, movement, onClose, onSaved }: {
   );
 }
 
+// ── Add movement ──
+
+type AddTab = "movement" | "transfer";
+
+/**
+ * A wallet's "Add movement": a movement (MovementDialog) or, with another wallet to move money
+ * to, a transfer from this one (TransferDialog), each a tab of the same dialog. With `pick` (from
+ * All wallets) the movement's wallet is asked too, `wallet` the one first offered.
+ */
+export function AddMovementDialog({ wallet: initial, wallets, pick = false, onClose, onSaved }: {
+  wallet: Wallet;
+  // The wallets that take writes (not archived), this one among them.
+  wallets: Wallet[];
+  pick?: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [tab, setTab] = useState<AddTab>("movement");
+  const [uuid, setUuid] = useState(initial.uuid);
+  const wallet = wallets.find((w) => w.uuid === uuid) ?? initial;
+  const tabs = wallets.length > 1 ? <DialogTabs value={tab} onChange={setTab} /> : undefined;
+  if (tab === "transfer") return <TransferDialog wallets={wallets} from={wallet.uuid} tabs={tabs} onClose={onClose} onSaved={onSaved} />;
+  return (
+    <MovementDialog
+      wallet={wallet}
+      tabs={pick && wallets.length > 1 ? <>{tabs}<WalletPick wallets={wallets} value={wallet.uuid} onChange={setUuid} /></> : tabs}
+      onClose={onClose}
+      onSaved={onSaved}
+    />
+  );
+}
+
+/** Which wallet a movement or a statement goes into, asked from All wallets. */
+export function WalletPick({ wallets, value, onChange, disabled }: { wallets: Wallet[]; value: string; onChange: (uuid: string) => void; disabled?: boolean }) {
+  return (
+    <Field label="Wallet">
+      <select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} className={INPUT}>
+        {wallets.map((w) => <option key={w.uuid} value={w.uuid}>{w.name} · {w.currency}</option>)}
+      </select>
+    </Field>
+  );
+}
+
+function DialogTabs({ value, onChange }: { value: AddTab; onChange: (tab: AddTab) => void }) {
+  const labels: Record<AddTab, string> = { movement: "Movement", transfer: "Transfer" };
+  return (
+    <div role="tablist" className="flex gap-1 border-b border-slate-200">
+      {(["movement", "transfer"] as const).map((t) => (
+        <button
+          key={t}
+          type="button"
+          role="tab"
+          aria-selected={value === t}
+          onClick={() => onChange(t)}
+          className={`-mb-px px-4 py-2.5 text-sm font-bold border-b-2 transition-colors ${
+            value === t ? "border-[#C49A3C] text-slate-900" : "border-transparent text-slate-400 hover:text-slate-600"
+          }`}
+        >
+          {labels[t]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── A transfer ──
 
 /**
  * Money moved between two of the user's wallets: neither income nor spending across them. In two
  * currencies, what arrives is asked too.
  */
-export function TransferDialog({ wallets, from: initialFrom, onClose, onSaved }: {
+export function TransferDialog({ wallets, from: initialFrom, tabs, onClose, onSaved }: {
   // The wallets that take writes (not archived).
   wallets: Wallet[];
   from?: string;
+  // Above the form, when it's a tab of AddMovementDialog.
+  tabs?: React.ReactNode;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -407,6 +477,7 @@ export function TransferDialog({ wallets, from: initialFrom, onClose, onSaved }:
       onSubmit={submit}
       onClose={onClose}
     >
+      {tabs}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="From">
           <select value={from} onChange={(e) => setFrom(e.target.value)} className={INPUT}>

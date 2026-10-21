@@ -36,7 +36,7 @@ import { CompanyDescriptionModule } from "./CompanyDescriptionModule";
 import { MarketDataModule } from "./MarketDataModule";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { PageHeader } from "./PageHeader";
-import { ExploreView, ExploreHostContext, ExplorePanel, DataTable, type DataColumn, type ExploreHeader } from "./ExploreView";
+import { ExploreView, ExploreHostContext, ExplorePanel, DataTable, useExploreHost, type DataColumn } from "./ExploreView";
 import type {
   ExposureEntryResponse, RiskModelResponse, RiskPointResponse, RiskPortfolioEntry, RiskModelUnavailableReason, WeightGapEntry,
   BenchmarkResponse, BenchmarkComponentEntry, TimeSeries, HorizonEntry, DividendsResponse, TradingCostsResponse,
@@ -128,29 +128,8 @@ export function PerformanceSection({
   // A module's detail view (see ExploreView): the module draws it into `exploreSlot` and
   // reports it here, so the page can hide everything else and publish its trail instead of the
   // header's. The scroll position is kept for the way back, like the page itself.
-  const [explore, setExplore] = useState<ExploreHeader | null>(null);
-  const [exploreSlot, setExploreSlot] = useState<HTMLDivElement | null>(null);
-  const scrollBeforeExplore = useRef(0);
-  const exploreHost = useMemo(() => ({
-    slot: exploreSlot,
-    show: (header: ExploreHeader | null) => {
-      setExplore((current) => {
-        if (header && !current) scrollBeforeExplore.current = window.scrollY;
-        return header;
-      });
-    },
-  }), [exploreSlot]);
+  const { explore, host: exploreHost, setSlot: setExploreSlot } = useExploreHost();
   const exploring = explore !== null;
-
-  useEffect(() => {
-    if (exploring) {
-      window.scrollTo({ top: 0 });
-      return;
-    }
-    // After the page has been shown again, so there's something to scroll back down.
-    const frame = requestAnimationFrame(() => window.scrollTo({ top: scrollBeforeExplore.current }));
-    return () => cancelAnimationFrame(frame);
-  }, [exploring]);
 
   // A month opens from Performance's detail, one level further down, over it: the detail stays
   // mounted underneath (hidden), and the scroll position is kept for the way back to it.
