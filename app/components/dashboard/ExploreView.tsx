@@ -3,6 +3,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUp, ArrowDown } from "lucide-react";
+import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
+import { Breadcrumb, type Crumb } from "./Breadcrumb";
 
 export interface ExploreHeader {
   title: string;
@@ -18,6 +20,92 @@ export interface ExploreHeader {
  * hide the rest, and the browser's back button can close it), or that none is.
  */
 export const ExploreHostContext = createContext<{ slot: HTMLElement | null; show: (header: ExploreHeader | null) => void } | null>(null);
+
+/**
+ * The state behind an ExploreHostContext: the detail view open (`explore`, null for none), the
+ * element it's drawn into (`setSlot` is that element's ref) and `host`, the context's value. The
+ * page goes back to the top as a detail opens, and to where it was as the detail closes.
+ */
+export function useExploreHost() {
+  const [explore, setExplore] = useState<ExploreHeader | null>(null);
+  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  const scrollBefore = useRef(0);
+  const host = useMemo(() => ({
+    slot,
+    show: (header: ExploreHeader | null) => {
+      setExplore((current) => {
+        if (header && !current) scrollBefore.current = window.scrollY;
+        return header;
+      });
+    },
+  }), [slot]);
+  const exploring = explore !== null;
+
+  useEffect(() => {
+    if (exploring) {
+      window.scrollTo({ top: 0 });
+      return;
+    }
+    // After the page has been shown again, so there's something to scroll back down.
+    const frame = requestAnimationFrame(() => window.scrollTo({ top: scrollBefore.current }));
+    return () => cancelAnimationFrame(frame);
+  }, [exploring]);
+
+  return { explore, host, setSlot };
+}
+
+/**
+ * EXPLORE HOST — a page whose modules have detail views and nothing deeper (a wallet's Insights;
+ * a portfolio's, with its months, has its own in PerformanceSection): `top` (the page's header)
+ * and `children` (its modules) are hidden while a detail is open, with the trail `trail` › the
+ * detail's title above it (`trail`'s last crumb, the page itself, closing it). The browser's back button closes the detail (see lib/dashboardHistory).
+ */
+export function ExploreHost({ trail, top, children }: { trail: Crumb[]; top?: React.ReactNode; children: React.ReactNode }) {
+  const { explore, host, setSlot } = useExploreHost();
+  const exploring = explore !== null;
+
+  // Opening a detail adds a history entry, and landing below it closes it; closed from the page
+  // (Esc, the trail), it goes back past its entry.
+  const exploreRef = useRef(explore);
+  useEffect(() => {
+    exploreRef.current = explore;
+  }, [explore]);
+  const firstRun = useRef(true);
+  useEffect(() => {
+    const entry = readDashboardEntry();
+    if (firstRun.current) {
+      firstRun.current = false;
+      // An entry for a detail that can't be shown again (reached with forward, or a reload).
+      if (!exploring && entry?.overlay) pushDashboardEntry({ ...entry, overlay: undefined }, true);
+      return;
+    }
+    if (entry && exploring && !entry.overlay) pushDashboardEntry({ ...entry, overlay: "explore" });
+    else if (!exploring && entry?.overlay) window.history.back();
+  }, [exploring]);
+  useEffect(() => {
+    const onPopState = () => {
+      if (!readDashboardEntry()?.overlay) exploreRef.current?.onClose();
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  return (
+    <>
+      {explore && <Breadcrumb trail={trail.map((c, i) => (i === trail.length - 1 ? { ...c, onClick: explore.onClose } : c))} current={explore.title} hidden={explore.noTrail} />}
+      {!exploring && top}
+      <ExploreHostContext.Provider value={host}>
+        {/* Never display:none: the detail's charts are drawn here on its very first render,
+            before `explore` is set, and a chart measured in a hidden box comes out 0×0. */}
+        <div ref={setSlot} className="space-y-6 empty:hidden" />
+        {/* Hidden rather than unmounted while a detail is open (see PerformanceSection). */}
+        <div className={exploring ? "invisible h-0 overflow-hidden" : "space-y-6"} aria-hidden={exploring || undefined} inert={exploring || undefined}>
+          {children}
+        </div>
+      </ExploreHostContext.Provider>
+    </>
+  );
+}
 
 /**
  * EXPLORE VIEW — a module's detail view: everything behind its summary (the full tables, the

@@ -10,7 +10,7 @@ import {
 } from "../../../lib/import";
 import { errorText } from "../../../lib/wallets";
 import type { StatementColumnMapping, StatementField, StatementFieldMapping, StatementImportResult, Wallet } from "../../../models/Wallet";
-import { DialogShell, Field, INPUT } from "./WalletDialogs";
+import { DialogShell, Field, INPUT, WalletPick } from "./WalletDialogs";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -39,11 +39,15 @@ type Step = { kind: "pick" } | { kind: "analyzing" } | { kind: "mapping" } | { k
  * (analyze-columns), the user checks it, and the file goes up with the confirmed mapping (commit).
  * An overlapping statement only adds what's new; what's imported arrives uncategorised.
  */
-export function WalletImportDialog({ wallet, onClose, onImported }: {
+export function WalletImportDialog({ wallet: initial, wallets, onClose, onImported }: {
   wallet: Wallet;
+  // From All wallets: the wallets the statement can go into, asked before the file is.
+  wallets?: Wallet[];
   onClose: () => void;
   onImported: () => void;
 }) {
+  const [uuid, setUuid] = useState(initial.uuid);
+  const wallet = wallets?.find((w) => w.uuid === uuid) ?? initial;
   const inputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<Step>({ kind: "pick" });
   const [file, setFile] = useState<File | null>(null);
@@ -166,6 +170,9 @@ export function WalletImportDialog({ wallet, onClose, onImported }: {
       onClose={onClose}
       wide
     >
+      {step.kind !== "mapping" && wallets && wallets.length > 1 && (
+        <WalletPick wallets={wallets} value={wallet.uuid} onChange={setUuid} disabled={step.kind === "analyzing"} />
+      )}
       {step.kind !== "mapping" && (
         <button
           type="button"
