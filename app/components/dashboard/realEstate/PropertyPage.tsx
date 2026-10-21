@@ -44,12 +44,11 @@ type Dialog = "transaction" | "valuation" | "mortgage" | "edit" | "archive" | "d
  * reopened, a prepayment or a refinancing simulated), its valuations, its use over time and its details. Its amounts are in its own
  * currency. An archived property, and a demo account's, are read only.
  */
-export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts, onOpenReports, onGone }: {
+export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts, onGone }: {
   property: Property;
   trail: Crumb[];
   onOpenTransactions: () => void;
   onOpenAlerts: () => void;
-  onOpenReports: () => void;
   // After it's deleted.
   onGone: () => void;
 }) {
@@ -90,7 +89,6 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
 
   const actions: PageAction[] = [
     { label: "Add transaction", primary: true, onClick: () => setDialog("transaction"), ...(property.soldOn ? { disabled: true, title: "Sold: it takes no new transactions" } : locked) },
-    { label: "Reports", onClick: onOpenReports },
     { label: "Add valuation", onClick: () => setDialog("valuation"), ...locked },
     { label: "Add mortgage", onClick: () => setDialog("mortgage"), ...locked },
     { label: "Edit property", onClick: () => setDialog("edit"), ...locked },
@@ -133,7 +131,6 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
         counters={[
           { key: "transactions", label: "transactions", count, onClick: onOpenTransactions },
           ...(alertRules === null ? [] : [alertsCounter(alertRules, onOpenAlerts, property.uuid)]),
-          { key: "reports", label: "reports", onClick: onOpenReports },
         ]}
         actions={actions}
         figures={figures}

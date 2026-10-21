@@ -27,13 +27,12 @@ import { AddMovementDialog, WalletFormDialog } from "./WalletDialogs";
 import { ManageWallets } from "./ManageWallets";
 import { WalletImportDialog } from "./WalletImportDialog";
 import { WalletInsights } from "./WalletInsights";
-import { WalletReports } from "./WalletReports";
 import { WalletTransactions } from "./WalletTransactions";
 
-export type WalletPage = "insights" | "transactions" | "budgets" | "reports" | "alerts" | "banks" | "manage";
+export type WalletPage = "insights" | "transactions" | "budgets" | "alerts" | "banks" | "manage";
 
 export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
-  insights: "Insights", transactions: "Transactions", budgets: "Budgets", reports: "Reports", alerts: "Alerts", banks: "Banks",
+  insights: "Insights", transactions: "Transactions", budgets: "Budgets", alerts: "Alerts", banks: "Banks",
   manage: "Manage wallets",
 };
 
@@ -50,7 +49,7 @@ const CONNECT_PARAM = "connectBank";
  * page, All wallets standing to its wallets as All portfolios to its portfolios: a header with its
  * balance, its activity (each count opening its page), what can be done with it and its year in
  * figures; under it, on All wallets, its Composition, a row per wallet going down to that wallet
- * (the archived ones listed after it), then the Insights. Its Transactions, Budgets, Reports and Alerts are pages of
+ * (the archived ones listed after it), then the Insights. Its Transactions, Budgets and Alerts are pages of
  * their own, and All wallets' Banks (the banks connected through open banking) and Manage wallets (each
  * wallet's bank account linked there). A wallet that's gone (deleted, or from an old link) opens all
  * of them. Archived wallets are read only, and so is everything for a demo account.
@@ -126,7 +125,8 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         { label: "Manage wallets", primary: true, onClick: () => onOpen(ALL_WALLETS, "manage") },
       ];
   const counters = [
-    { key: "transactions", label: "transactions", count, onClick: () => onOpen(id, "transactions") },
+    // All wallets' only counts them: their movements are each wallet's, on its own page.
+    { key: "transactions", label: "transactions", count, onClick: wallet ? () => onOpen(id, "transactions") : undefined },
     {
       key: "budgets", label: "budgets", count: attention?.budgets ?? null, onClick: () => onOpen(id, "budgets"),
       attention: attention?.over ? { count: attention.over, label: "over" } : undefined,
@@ -135,8 +135,6 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
       key: "alerts", label: "alerts", count: attention?.rules ?? null, onClick: () => onOpen(id, "alerts"),
       attention: attention?.found ? { count: attention.found, label: "found" } : undefined,
     },
-    // Its Reports (every wallet's on All wallets), counted nowhere: the page lists them.
-    { key: "reports", label: "reports", count: undefined, onClick: () => onOpen(id, "reports") },
   ];
 
   const currency = wallet?.currency ?? summary?.currency ?? "EUR";
@@ -219,7 +217,6 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         {page === "budgets" && (
           <WalletBudgets scope={scope} onManage={() => onOpen(ALL_WALLETS, "budgets")} />
         )}
-        {page === "reports" && <WalletReports key={scopeKey} walletUuid={wallet?.uuid} readOnly={sample} />}
         {page === "alerts" && <WalletAlerts scope={scope} />}
         {page === "banks" && <WalletBanks />}
         {page === "manage" && <ManageWallets onOpenWallet={(uuid) => onOpen(uuid, "insights")} onOpenBanks={() => onOpen(ALL_WALLETS, "banks")} />}

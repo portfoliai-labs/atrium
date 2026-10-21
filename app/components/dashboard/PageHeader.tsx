@@ -26,7 +26,8 @@ export interface PageCounter {
   count?: number | null;
   // Some of them need a look (alerts triggered): drawn before the count, in red.
   attention?: { count: number; label: string };
-  onClick: () => void;
+  // Left out: a figure only, nothing to open.
+  onClick?: () => void;
 }
 
 export interface PageFigure {
@@ -105,24 +106,34 @@ export function PageHeader({
           )}
           {counters.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {counters.map((c) => (
-                <button
-                  key={c.key}
-                  type="button"
-                  onClick={c.onClick}
-                  className="inline-flex items-center gap-[7px] px-[11px] py-[5px] rounded-full border border-[#E0DACC] text-xs font-semibold text-[#78716c] hover:border-[#C49A3C] hover:text-[#1c1917] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40"
-                >
-                  {c.attention && c.attention.count > 0 && (
-                    <>
-                      <span className="h-[7px] w-[7px] rounded-full bg-[#e11d48]" />
-                      <b className="text-[#e11d48] tabular-nums">{c.attention.count}</b>
-                      <span className="text-[#e11d48]">{c.attention.label} ·</span>
-                    </>
-                  )}
-                  {c.count !== undefined && <b className="text-[#1c1917] tabular-nums">{c.count ?? "…"}</b>}
-                  {c.label}
-                </button>
-              ))}
+              {counters.map((c) => {
+                const body = (
+                  <>
+                    {c.attention && c.attention.count > 0 && (
+                      <>
+                        <span className="h-[7px] w-[7px] rounded-full bg-[#e11d48]" />
+                        <b className="text-[#e11d48] tabular-nums">{c.attention.count}</b>
+                        <span className="text-[#e11d48]">{c.attention.label} ·</span>
+                      </>
+                    )}
+                    {c.count !== undefined && <b className="text-[#1c1917] tabular-nums">{c.count ?? "…"}</b>}
+                    {c.label}
+                  </>
+                );
+                const pill = "inline-flex items-center gap-[7px] px-[11px] py-[5px] rounded-full border border-[#E0DACC] text-xs font-semibold text-[#78716c]";
+                return c.onClick ? (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={c.onClick}
+                    className={`${pill} hover:border-[#C49A3C] hover:text-[#1c1917] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40`}
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <span key={c.key} className={pill}>{body}</span>
+                );
+              })}
             </div>
           )}
         </div>
