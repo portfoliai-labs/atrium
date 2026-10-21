@@ -9,7 +9,7 @@ import { walletService } from "../../../services/walletService";
 import { COMMON_CURRENCIES, KIND_LABELS, WALLET_COLORS, WALLET_KINDS, errorText, today } from "../../../lib/wallets";
 import type { Movement, Wallet, WalletKind } from "../../../models/Wallet";
 import { WalletBankSync } from "./WalletBanks";
-import { CategoryOptions } from "./WalletCategories";
+import { CategoryPicker } from "./WalletCategories";
 
 // ── The pieces every dialog here is made of ──
 
@@ -227,7 +227,8 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
 
 /**
  * A movement added by hand to a wallet, or one changed: money in or out, the amount, the day,
- * what it was, its category (the user's tree of its direction's kind), the counterparty and a note. A transfer's leg
+ * what it was, its category (the user's tree of its direction's kind, a new one added there too),
+ * the counterparty and a note. A transfer's leg
  * keeps its day, amount and category (unlink it first); a category is cleared with categorize.
  */
 export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
@@ -335,12 +336,11 @@ export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
         <Field label="Description" className="sm:col-span-2">
           <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} placeholder="Groceries at the market" className={INPUT} />
         </Field>
-        <Field label="Category">
-          <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={leg} className={INPUT}>
-            <option value="">Uncategorised</option>
-            <CategoryOptions kind={kindOf(direction)} />
-          </select>
-        </Field>
+        {/* Not a label: a click on it would open the list again. */}
+        <div className="space-y-1.5">
+          <span className="block text-[11px] font-black uppercase tracking-widest text-slate-400">Category</span>
+          <CategoryPicker key={direction} kind={kindOf(direction)} value={category} onChange={setCategory} disabled={leg} />
+        </div>
         <Field label="Counterparty">
           <input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} placeholder="Optional" className={INPUT} />
         </Field>

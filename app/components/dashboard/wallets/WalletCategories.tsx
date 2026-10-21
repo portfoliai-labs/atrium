@@ -1,8 +1,9 @@
 // components/dashboard/wallets/WalletCategories.tsx
 "use client";
 
-import { useState } from "react";
-import { Check, FolderTree, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Check, ChevronDown, FolderTree, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
 import { CATEGORY_COLORS, CATEGORY_MAX_DEPTH, CATEGORY_PALETTE, CUSTOM_CATEGORY_COLOR, categoryOptionLabel, errorText, type CategoryTree } from "../../../lib/wallets";
@@ -28,14 +29,181 @@ export function CategoryOptions({ kind, disabled }: { kind: CategoryKind; disabl
   );
 }
 
+/**
+ * CATEGORY PICKER — a movement's category, as a list of its own (a <select> can't hold a field):
+ * the button shows the one picked, with its colour; open, its kind's tree (`value`: a uuid, "" for
+ * none), indented, and last "Add new category", which turns into a field in place, the list kept
+ * open, with ✓ beside it: the category is added at the top level of `kind` and picked at once.
+ * Enter adds it; Esc leaves the field, then the list, never the dialog. The list is drawn over the
+ * dialog (a portal, fixed under the button or above it with no room below), so its scrolling
+ * box doesn't clip it.
+ */
+export function CategoryPicker({ kind, value, onChange, disabled }: {
+  kind: CategoryKind;
+  value: string;
+  onChange: (uuid: string) => void;
+  disabled?: boolean;
+}) {
+  const { categories, categoryAdded, sample } = useWallets();
+  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+
+  const trimmed = name.trim();
+  const taken = categories.children(null, kind).some((c) => categories.label({ categoryUuid: c.uuid }).toLowerCase() === trimmed.toLowerCase());
+  const close = () => { setOpen(false); setAdding(false); setName(""); setError(null); };
+
+  // Kept under the button (above it, without room below) as the dialog scrolls or the window resizes.
+  useEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const r = button.current?.getBoundingClientRect();
+      if (!r) return;
+      const below = window.innerHeight - r.bottom > 300 || r.top < 300;
+      setPlace(below ? { left: r.left, width: r.width, top: r.bottom + 6 } : { left: r.left, width: r.width, bottom: window.innerHeight - r.top + 6 });
+    };
+    measure();
+    const outside = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!button.current?.contains(t) && !list.current?.contains(t)) close();
+    };
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    document.addEventListener("mousedown", outside);
+    return () => {
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+      document.removeEventListener("mousedown", outside);
+    };
+  }, [open]);
+
+  const pick = (uuid: string) => { onChange(uuid); close(); };
+  const add = async () => {
+    if (!trimmed || taken || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await walletService.createCategory({ kind, name: trimmed });
+      categoryAdded(created);
+      pick(created.uuid);
+    } catch (err) {
+      setError(errorText(err, "Unable to add this category."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const row = "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-[13px] transition-colors";
+  return (
+    <>
+      <button
+        ref={button}
+        type="button"
+        onClick={() => (open ? close() : setOpen(true))}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`${INPUT} flex items-center gap-2 text-left`}
+      >
+        {value ? <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: categories.color({ categoryUuid: value }) }} /> : null}
+        <span className={`flex-1 min-w-0 truncate ${value ? "" : "text-slate-400 font-normal"}`}>
+          {value ? categories.label({ categoryUuid: value }) : "Uncategorised"}
+        </span>
+        <ChevronDown className={`h-4 w-4 text-slate-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && place && createPortal(
+        <div
+          ref={list}
+          role="listbox"
+          onKeyDown={(e) => {
+            // The dialog's own Esc closes it: here it closes the field, then the list.
+            if (e.key !== "Escape") return;
+            e.stopPropagation();
+            if (adding) { setAdding(false); setError(null); } else close();
+          }}
+          style={{ position: "fixed", left: place.left, width: place.width, top: place.top, bottom: place.bottom }}
+          className="z-110 max-h-72 overflow-y-auto p-1.5 bg-white rounded-xl border border-slate-200 shadow-[0_18px_40px_-16px_rgba(28,25,23,0.3)]"
+        >
+          <button type="button" role="option" aria-selected={!value} onClick={() => pick("")} className={`${row} ${!value ? "bg-[#C49A3C]/10" : "hover:bg-slate-50"}`}>
+            <span className="h-2.5 w-2.5 rounded-full shrink-0 bg-slate-300" />
+            <span className="flex-1 text-slate-500">Uncategorised</span>
+            {!value && <Check className="h-3.5 w-3.5 text-[#C49A3C]" />}
+          </button>
+          {categories.active(kind).map((c) => {
+            const depth = categories.depth(c.uuid);
+            const on = value === c.uuid;
+            return (
+              <button
+                key={c.uuid}
+                type="button"
+                role="option"
+                aria-selected={on}
+                onClick={() => pick(c.uuid)}
+                style={{ paddingLeft: `${12 + depth * 18}px` }}
+                className={`${row} ${on ? "bg-[#C49A3C]/10" : "hover:bg-slate-50"}`}
+              >
+                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: categories.color({ categoryUuid: c.uuid }) }} />
+                <span className={`flex-1 min-w-0 truncate ${depth === 0 ? "font-semibold text-slate-800" : "text-slate-600"}`}>{categories.label({ categoryUuid: c.uuid })}</span>
+                {on && <Check className="h-3.5 w-3.5 text-[#C49A3C]" />}
+              </button>
+            );
+          })}
+          {!sample && (
+            <div className="mt-1 pt-1 border-t border-slate-100">
+              {adding ? (
+                <div className="px-1 py-1 space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      autoFocus
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void add(); } }}
+                      maxLength={40}
+                      placeholder={kind === "spending" ? "New spending category" : "New income category"}
+                      aria-label="New category's name"
+                      className="min-w-0 flex-1 h-9 px-3 rounded-lg border border-slate-200 text-[13px] font-semibold text-slate-900 outline-none placeholder:text-slate-400 placeholder:font-normal focus:border-[#C49A3C]/60 focus:ring-4 focus:ring-[#C49A3C]/10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void add()}
+                      disabled={!trimmed || taken || busy}
+                      aria-label="Add the category"
+                      title="Add the category"
+                      className="h-9 w-9 shrink-0 rounded-lg bg-[#1c1917] text-white hover:bg-[#C49A3C] flex items-center justify-center transition-colors disabled:opacity-40"
+                    >
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" strokeWidth={3} />}
+                    </button>
+                  </div>
+                  {(taken || error) && <p className="px-1 text-[11px] font-semibold text-rose-600">{taken ? "There's a category with this name already." : error}</p>}
+                </div>
+              ) : (
+                <button type="button" onClick={() => setAdding(true)} className={`${row} font-bold text-[#8A6A28] hover:bg-[#C49A3C]/10`}>
+                  <Plus className="h-3.5 w-3.5" /> Add new category
+                </button>
+              )}
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 type Dialog =
   | { kind: "new"; type: CategoryKind; parent: Category | null }
   | { kind: "edit"; category: Category }
   | { kind: "delete"; category: Category };
 
 /**
- * CATEGORIES — the user's own, money out and money in each a tree up to three levels deep, across
- * every wallet as budgets are. Every user starts with the presets, which are theirs like any other:
+ * CATEGORIES — Settings' Categories tab: the user's own, money out and money in each a tree up to
+ * three levels deep, across every wallet as budgets are (one is also added from a movement's
+ * dialog, see CategoryPicker). Every user starts with the presets, which are theirs like any other:
  * a category is added (at the top or under another), renamed, recoloured, moved (its subcategories
  * with it) and deleted, what it had going to its parent. A demo account's are its sample's, read
  * only: the buttons show, disabled, so it's clear where categories are changed.

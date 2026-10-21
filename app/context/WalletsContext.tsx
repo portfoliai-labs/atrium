@@ -23,6 +23,8 @@ interface WalletsContextType {
   categories: CategoryTree;
   // undefined while the first read is on, then the last read's error (null: read).
   categoriesError: string | null | undefined;
+  // A category just made (from a movement's dialog), in the tree at once, before the next read.
+  categoryAdded: (category: Category) => void;
   loading: boolean;
   error: string | null;
   // Whether the wallets can be shown at all: false while the API doesn't have them (a backend
@@ -83,6 +85,15 @@ export function WalletsProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [enabled, version]);
   const categories = useMemo(() => categoryTree(categoryList), [categoryList]);
+  // After its parent's last descendant, or last of its kind at the top: the tree's order.
+  const categoryAdded = useCallback((category: Category) => setCategoryList((list) => {
+    const tree = categoryTree(list);
+    const after = category.parentUuid
+      ? [category.parentUuid, ...tree.descendants(category.parentUuid).map((c) => c.uuid)].at(-1)
+      : tree.active(category.kind).at(-1)?.uuid;
+    const i = list.findIndex((c) => c.uuid === after);
+    return i < 0 ? [...list, category] : [...list.slice(0, i + 1), category, ...list.slice(i + 1)];
+  }), []);
 
   const loading = enabled && !loaded;
   const changed = useCallback(() => setVersion((v) => v + 1), []);
@@ -91,6 +102,7 @@ export function WalletsProvider({ children }: { children: React.ReactNode }) {
     wallets,
     categories,
     categoriesError,
+    categoryAdded,
     loading,
     error,
     available: enabled && !missing,
@@ -98,7 +110,7 @@ export function WalletsProvider({ children }: { children: React.ReactNode }) {
     source: apiWalletSource,
     version,
     changed,
-  }), [sample, wallets, categories, categoriesError, loading, error, enabled, missing, version, changed]);
+  }), [sample, wallets, categories, categoriesError, categoryAdded, loading, error, enabled, missing, version, changed]);
   return <WalletsContext.Provider value={value}>{children}</WalletsContext.Provider>;
 }
 

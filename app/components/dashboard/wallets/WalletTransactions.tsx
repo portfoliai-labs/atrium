@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, FileText, FolderTree, Link2, Loader2, PlusCircle, Search,
+  ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, FileText, Link2, Loader2, PlusCircle, Search,
   SlidersHorizontal, Trash2, Unlink, UploadCloud, Wand2, X,
 } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
@@ -56,14 +56,13 @@ type Direction = "all" | "in" | "out";
  * them, in and out of two wallets) linked as one transfer, which a transfer's leg can be unlinked
  * from. An archived wallet's, and a demo account's, are read only (`lock` says why).
  */
-export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport, onCategories }: {
+export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }: {
   initial: string;
   readOnly: boolean;
   // Why movements can't be added here (a demo account, an archived wallet); undefined when they can.
   lock?: string;
   onAdd: () => void;
   onImport: () => void;
-  onCategories: () => void;
 }) {
   const { wallets, source, version, changed } = useWallets();
   const [wallet, setWallet] = useState(initial);
@@ -205,13 +204,6 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport, o
           </h4>
           <div className="flex items-center gap-3">
             {loading && result && <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />}
-            <button
-              type="button"
-              onClick={onCategories}
-              className="flex items-center gap-1.5 px-3 h-9 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-500 hover:border-slate-300 hover:text-slate-700 transition-colors"
-            >
-              <FolderTree className="h-3.5 w-3.5" />Categories
-            </button>
             <button
               type="button"
               onClick={() => setShowRules(true)}

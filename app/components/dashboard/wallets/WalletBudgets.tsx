@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ChevronLeft, ChevronRight, FolderTree, ListPlus, Loader2, Pencil, Plus, Target, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ListPlus, Loader2, Pencil, Plus, Target, Trash2 } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
 import { formatCompact, formatCurrency } from "../../../lib/format";
 import { errorText, monthName, walletColor } from "../../../lib/wallets";
@@ -46,7 +46,7 @@ type Dialog = { kind: "new"; within?: string } | { kind: "edit"; budget: BudgetP
  * what that wallet spent of each. A demo account reads its sample's, read only: its buttons show,
  * disabled, so it's clear where budgets are set.
  */
-export function WalletBudgets({ scope, onManage, onCategories }: { scope: string | null; onManage: () => void; onCategories: () => void }) {
+export function WalletBudgets({ scope, onManage }: { scope: string | null; onManage: () => void }) {
   const { wallets, categories, source, version, sample, changed } = useWallets();
   // undefined: this month, as the API counts it.
   const [month, setMonth] = useState<string | undefined>(undefined);
@@ -192,13 +192,6 @@ export function WalletBudgets({ scope, onManage, onCategories }: { scope: string
                 <Plus className="h-3.5 w-3.5" /> New budget
               </button>
             )}
-            <button
-              type="button"
-              onClick={onCategories}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-600 hover:border-slate-300 transition-colors"
-            >
-              <FolderTree className="h-3.5 w-3.5" /> Categories
-            </button>
           </div>
         </div>
         {data.budgets.length > 0 && <BudgetBar spent={totalShown} limit={data.total.limit} pace={pace} status={data.total.status} big />}

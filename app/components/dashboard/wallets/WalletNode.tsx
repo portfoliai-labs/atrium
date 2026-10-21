@@ -23,7 +23,6 @@ import { PreviewBadge } from "../../preview/PreviewKit";
 import { WalletAlerts } from "./WalletAlerts";
 import { WalletBankDialog, WalletBanks } from "./WalletBanks";
 import { WalletBudgets } from "./WalletBudgets";
-import { WalletCategories } from "./WalletCategories";
 import { AddMovementDialog, WalletFormDialog } from "./WalletDialogs";
 import { ManageWallets } from "./ManageWallets";
 import { WalletImportDialog } from "./WalletImportDialog";
@@ -31,10 +30,10 @@ import { WalletInsights } from "./WalletInsights";
 import { WalletReports } from "./WalletReports";
 import { WalletTransactions } from "./WalletTransactions";
 
-export type WalletPage = "insights" | "transactions" | "budgets" | "categories" | "reports" | "alerts" | "banks" | "manage";
+export type WalletPage = "insights" | "transactions" | "budgets" | "reports" | "alerts" | "banks" | "manage";
 
 export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
-  insights: "Insights", transactions: "Transactions", budgets: "Budgets", categories: "Categories", reports: "Reports", alerts: "Alerts", banks: "Banks",
+  insights: "Insights", transactions: "Transactions", budgets: "Budgets", reports: "Reports", alerts: "Alerts", banks: "Banks",
   manage: "Manage wallets",
 };
 
@@ -52,7 +51,7 @@ const CONNECT_PARAM = "connectBank";
  * balance, its activity (each count opening its page), what can be done with it and its year in
  * figures; under it, on All wallets, its Composition, a row per wallet going down to that wallet
  * (the archived ones listed after it), then the Insights. Its Transactions, Budgets, Reports and Alerts are pages of
- * their own, and All wallets' Categories (the user's, across the wallets), Banks (the banks connected through open banking) and Manage wallets (each
+ * their own, and All wallets' Banks (the banks connected through open banking) and Manage wallets (each
  * wallet's bank account linked there). A wallet that's gone (deleted, or from an old link) opens all
  * of them. Archived wallets are read only, and so is everything for a demo account.
  */
@@ -215,13 +214,11 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
             lock={sample ? DEMO_DISABLED_TITLE : wallet?.archived ? ARCHIVED_TITLE : active.length === 0 ? "Add a wallet first" : undefined}
             onAdd={() => setDialog("movement")}
             onImport={() => setDialog("import")}
-            onCategories={() => onOpen(ALL_WALLETS, "categories")}
           />
         )}
         {page === "budgets" && (
-          <WalletBudgets scope={scope} onManage={() => onOpen(ALL_WALLETS, "budgets")} onCategories={() => onOpen(ALL_WALLETS, "categories")} />
+          <WalletBudgets scope={scope} onManage={() => onOpen(ALL_WALLETS, "budgets")} />
         )}
-        {page === "categories" && <WalletCategories />}
         {page === "reports" && <WalletReports key={scopeKey} walletUuid={wallet?.uuid} readOnly={sample} />}
         {page === "alerts" && <WalletAlerts scope={scope} />}
         {page === "banks" && <WalletBanks />}
