@@ -249,9 +249,12 @@ export const walletService = {
     return apiFetch<WalletReport[]>(`/v1/wallets/reports`);
   },
 
-  // POST /v1/wallets/reports — queues a wallet's full report, its whole history (needs the plan's
-  // reports); its outcome arrives as a notification. 409 while another of the same wallet's is in
-  // progress, unless `force`.
+  /**
+   * POST /v1/wallets/reports — queues a wallet's full report, its whole history (needs the plan's
+   * reports); its outcome arrives as a notification. 409 while another of the same wallet's is in
+   * progress, unless `force`.
+   * @deprecated Deprecated (2026-10-22): a report is asked for in the assistant's chat only (its action card); served until removed.
+   */
   async requestReport(payload: WalletReportRequest): Promise<{ jobId: string }> {
     return apiFetch<{ jobId: string }>(`/v1/wallets/reports`, { method: "POST", body: JSON.stringify(payload) });
   },

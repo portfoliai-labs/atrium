@@ -21,6 +21,7 @@ type RequestState =
  * Once queued, progress arrives as notifications and the PDF lands in Reports. A 409 means a
  * report is already being generated for this portfolio; the toast then offers to start this
  * one anyway (force).
+ * @deprecated Deprecated (2026-10-22): a report is asked for in the assistant's chat only (its action card); served until removed.
  */
 export function useGenerateReport() {
   const [state, setState] = useState<RequestState>({ kind: "idle" });
