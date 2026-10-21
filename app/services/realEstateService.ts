@@ -323,9 +323,12 @@ export const realEstateService = {
     return apiFetch<PropertyReport[]>(`${BASE}/reports`);
   },
 
-  // POST /v1/real-estate/reports — queues a property's full report, its whole history; its outcome
-  // arrives as a notification. 409 while another of the same property's is in progress, unless
-  // `force`.
+  /**
+   * POST /v1/real-estate/reports — queues a property's full report, its whole history; its outcome
+   * arrives as a notification. 409 while another of the same property's is in progress, unless
+   * `force`.
+   * @deprecated Deprecated (2026-10-22): a report is asked for in the assistant's chat only (its action card); served until removed.
+   */
   async requestReport(payload: PropertyReportRequest): Promise<{ jobId: string }> {
     return apiFetch<{ jobId: string }>(`${BASE}/reports`, { method: "POST", body: JSON.stringify(payload) });
   },

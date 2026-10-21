@@ -14,8 +14,11 @@ interface CreateReportPayload {
 }
 
 export const reportService = {
-  // POST /v1/portfolios/{p}/reports — queues the report; its progress arrives on the
-  // notification stream, and the finished PDF shows up in getAllDocuments.
+  /**
+   * POST /v1/portfolios/{p}/reports — queues the report; its progress arrives on the
+   * notification stream, and the finished PDF shows up in getAllDocuments.
+   * @deprecated Deprecated (2026-10-22): a report is asked for in the assistant's chat only (its action card); served until removed.
+   */
   async createReport(portfolioUuid: string, payload: CreateReportPayload): Promise<{ status: string; job_id: string }> {
     return apiFetch<{ status: string; job_id: string }>(`/v1/portfolios/${portfolioUuid}/reports`, {
       method: 'POST',
