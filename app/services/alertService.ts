@@ -1,6 +1,6 @@
 // services/alertService.ts
 import type {
-  AlertRuleResponse, AlertRuleCreateRequest, AlertRuleUpdateRequest, ClientAlertRuleResponse,
+  AlertRuleResponse, AlertRuleCreateRequest, AlertRuleUpdateRequest, ClientAlertRuleResponse, OwnAlertRuleResponse,
 } from "../models/Alert";
 import { apiFetch } from "./apiClient";
 
@@ -17,6 +17,13 @@ export const alertService = {
   async listRules(portfolioUuid: string, source?: string): Promise<AlertRuleResponse[]> {
     const query = source ? `?source=${encodeURIComponent(source)}` : "";
     return apiFetch<AlertRuleResponse[]>(`/v1/portfolios/${portfolioUuid}/alert-rules${query}`);
+  },
+
+  // GET /v1/portfolios/alert-rules — the caller's own rules on every portfolio they own, oldest
+  // first, each with the portfolio it watches: listRules on each of them, in one call. An
+  // advisor's rules on a client's portfolio aren't among them.
+  async listOwnRules(): Promise<OwnAlertRuleResponse[]> {
+    return apiFetch<OwnAlertRuleResponse[]>(`/v1/portfolios/alert-rules`);
   },
 
   // GET /v1/advisor/alert-rules — advisors only: every rule they put on any client's

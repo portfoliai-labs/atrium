@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { alertService } from "../services/alertService";
-import type { AlertRuleResponse, ClientAlertRuleResponse } from "../models/Alert";
+import type { AlertRuleResponse, ClientAlertRuleResponse, OwnAlertRuleResponse } from "../models/Alert";
 
 /**
  * A list of alert rules. `rules` is null until the first load. With `pollMs` the list is
@@ -66,6 +66,11 @@ export function useAlertRules(portfolioUuid: string, pollMs?: number) {
 /** Advisors only: every rule they put on any of their clients, each with its clientUuid. */
 export function useClientAlertRules(pollMs?: number) {
   return useRuleList<ClientAlertRuleResponse>(() => alertService.listClientRules(), "clients", pollMs);
+}
+
+/** The caller's own rules on every portfolio they own, in one call (the investor's Dashboard). */
+export function useOwnAlertRules(pollMs?: number) {
+  return useRuleList<OwnAlertRuleResponse>(() => alertService.listOwnRules(), "own", pollMs);
 }
 
 /** A rule plus the portfolio it's on, for lists that span several portfolios. */

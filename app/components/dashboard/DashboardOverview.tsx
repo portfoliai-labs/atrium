@@ -1,7 +1,7 @@
 // app/components/dashboard/DashboardOverview.tsx
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -18,7 +18,7 @@ import { AlertGaugeCard } from "./AlertGauge";
 import { openPortfolioPage, openRealEstatePage, openWalletPage } from "../../lib/dashboardNav";
 import { BudgetsSummaryModule, UpcomingPaymentsModule } from "./DashboardSummaries";
 import { DailyArticleModule } from "./NewsSection";
-import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
+import { useOwnAlertRules } from "../../hooks/useAlertRules";
 import { alertState, type AlertState, type AlertTone } from "../../lib/alerts";
 import { useWalletsOverview, type WalletsOverview } from "../../hooks/useWalletsOverview";
 import { useWallets } from "../../context/WalletsContext";
@@ -459,8 +459,7 @@ const SUMMARY_GROUPS: { tone: AlertTone; label: string; dot: string }[] = [
  * the alerts' page (`onManage`), as the Budgets beside it opens theirs.
  */
 function AlertsModule({ portfolios, onManage }: { portfolios: Portfolio[]; onManage?: () => void }) {
-  const uuids = useMemo(() => portfolios.map((p) => p.uuid), [portfolios]);
-  const { rules, loading, error } = usePortfoliosAlertRules(uuids, 60_000);
+  const { rules, loading, error } = useOwnAlertRules(60_000);
   const [showAll, setShowAll] = useState(false);
 
   const nameOf = (uuid: string) => portfolios.find((p) => p.uuid === uuid)?.name ?? "";

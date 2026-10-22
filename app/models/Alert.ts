@@ -117,6 +117,12 @@ interface AlertRuleResponse {
 
 // GET /v1/advisor/alert-rules (advisors only): a rule the advisor put on a client's portfolio,
 // with the portfolio it watches and the client who owns it.
+// One of the caller's own rules, with the portfolio it watches (GET /v1/portfolios/alert-rules).
+interface OwnAlertRuleResponse extends AlertRuleResponse {
+  portfolioUuid: string;
+  portfolioName: string;
+}
+
 interface ClientAlertRuleResponse extends AlertRuleResponse {
   portfolioUuid: string;
   portfolioName: string;
@@ -142,5 +148,5 @@ export type {
   AlertDirection, AlertWindow, PortfolioChangeParams, AssetSelector, GroupSelector, CategorySelector, AnyAssetSelector,
   WeightSelector, WeightParams, AlertParams, WeightBound,
   AlertReadingStatus, AlertUnavailableReason, AlertRuleReading, AlertRuleResponse,
-  ClientAlertRuleResponse, AlertRuleCreateRequest, AlertRuleUpdateRequest,
+  OwnAlertRuleResponse, ClientAlertRuleResponse, AlertRuleCreateRequest, AlertRuleUpdateRequest,
 };
