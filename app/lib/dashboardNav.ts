@@ -103,16 +103,3 @@ export const openStrategiesPage = (onNavigate: Navigate, view: StrategiesView = 
 /** A backtest's page, under Strategies. */
 export const openBacktestPage = (onNavigate: Navigate, portfolioUuid: string) =>
   openStrategiesPage(onNavigate, { page: "backtest", uuid: portfolioUuid, sub: "overview" });
-
-/**
- * Compare (on the investments, see PortfolioNode), from outside Investments: the user's
- * portfolios with these strategies that aren't theirs beside them (published strategies, by
- * their portfolioUuid; the backtest a strategy their advisor shared came from).
- */
-export const openCompareWith = (onNavigate: Navigate, strategies: { uuid: string; name: string } | { uuid: string; name: string }[]) =>
-  openInvestmentsView(onNavigate, {
-    kind: "portfolio",
-    uuid: "",
-    page: "compare",
-    compareWith: Array.isArray(strategies) ? strategies : [strategies],
-  });
