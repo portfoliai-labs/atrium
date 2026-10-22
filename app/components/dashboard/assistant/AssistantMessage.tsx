@@ -83,14 +83,14 @@ export function askErrorText(err: unknown): string {
 export function Question({ message }: { message: ChatMessage }) {
   return (
     <div className="flex flex-col items-end">
-      <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-line bg-[#1c1917] text-white">{message.text}</div>
+      <div className="max-w-[85%] rounded-3xl px-4 py-2.5 text-sm whitespace-pre-line bg-[#1c1917] text-white">{message.text}</div>
       <span className="text-[11px] text-[#78716c] mt-1">{formatTime(message.sentAt)}</span>
     </div>
   );
 }
 
-// An answer, as the other party's message in Messages, marked as written by AI (AI Act, art. 50):
-// whole, or being written (with what it's reading meanwhile).
+// An answer, marked as written by AI (AI Act, art. 50): whole, or being written (with what it's
+// reading meanwhile). Not a bubble: the thread's whole width, its charts and tables with room.
 export function Answer({ blocks, sentAt, stop, progress, writing = false, renderAction }: {
   blocks: MessageBlock[];
   sentAt?: string;
@@ -101,21 +101,25 @@ export function Answer({ blocks, sentAt, stop, progress, writing = false, render
 }) {
   const note = stop ? STOP_NOTES[stop] : undefined;
   return (
-    <div className="flex flex-col items-start">
-      <div className="max-w-[80%] min-w-0 rounded-2xl px-4 py-2.5 text-sm bg-white border border-[rgba(196,154,60,0.2)] text-[#1c1917] space-y-3">
-        {blocks.length > 0 && <MessageBlocks blocks={blocks} markdown renderAction={renderAction} />}
-        {writing && (
-          <p className="flex items-center gap-2 text-xs text-[#78716c]">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#C49A3C]" />
-            {progress ?? (blocks.length > 0 ? "Writing…" : "The assistant is writing…")}
-          </p>
-        )}
-        {note && <p className="text-xs italic text-[#78716c]">{note}</p>}
-      </div>
-      <span className="text-[11px] text-[#78716c] mt-1 flex items-center gap-1">
-        {sentAt && <>{formatTime(sentAt)} ·</>}
-        <Sparkles className="w-3 h-3 text-[#C49A3C]" /> Written by AI
+    <div className="flex gap-3">
+      <span className="w-7 h-7 rounded-full bg-[#C49A3C]/10 text-[#C49A3C] flex items-center justify-center shrink-0 mt-0.5">
+        <Sparkles className="w-3.5 h-3.5" />
       </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm text-[#1c1917] space-y-3">
+          {blocks.length > 0 && <MessageBlocks blocks={blocks} markdown renderAction={renderAction} />}
+          {writing && (
+            <p className="flex items-center gap-2 text-xs text-[#78716c]">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#C49A3C]" />
+              {progress ?? (blocks.length > 0 ? "Writing…" : "The assistant is writing…")}
+            </p>
+          )}
+          {note && <p className="text-xs italic text-[#78716c]">{note}</p>}
+        </div>
+        <span className="text-[11px] text-[#78716c] mt-1.5 flex items-center gap-1">
+          {sentAt && <>{formatTime(sentAt)} ·</>} Written by AI
+        </span>
+      </div>
     </div>
   );
 }

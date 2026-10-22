@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, CheckCheck, Loader2, Lock, MessagesSquare, Send, Sparkles, Trash2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCheck, Library, Loader2, Lock, MessagesSquare, Plus, Send, Sparkles, Trash2 } from "lucide-react";
 import { conversationService } from "../../services/conversationService";
 import { ApiError } from "../../services/apiClient";
 import { useUser } from "../../context/UserContext";
@@ -15,6 +15,7 @@ import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHisto
 import { readAiChatView } from "../../lib/dashboardNav";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ActionCard } from "./assistant/ActionCard";
+import { AssistantCollection, useCollection } from "./assistant/AssistantCollection";
 import {
   Answer, Draft, Question, QUESTION_MAX_LENGTH, answerFailedText, askErrorText, withAction, withPiece,
 } from "./assistant/AssistantMessage";
@@ -68,6 +69,10 @@ export function MessagesSection() {
   const [deleting, setDeleting] = useState<AssistantConversation | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // The collection open in place of a chat, read again once the assistant makes something.
+  const [showCollection, setShowCollection] = useState(false);
+  const [collectionVersion, setCollectionVersion] = useState(0);
+  const collection = useCollection(!isAdvisor && !isDemo, collectionVersion);
   const selectedRef = useRef<Selected | null>(selected);
   // The chats listed, by kind, for the stream.
   const peopleRef = useRef<Set<string>>(new Set());
@@ -77,6 +82,7 @@ export function MessagesSection() {
   // The AI chats whose answer failed while their question was being sent: not answering after all.
   const failedRef = useRef<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => { peopleRef.current = new Set(people.map((c) => c.conversationUuid)); }, [people]);
   useEffect(() => { chatsRef.current = new Set(chats.map((c) => c.conversationUuid)); }, [chats]);
@@ -147,6 +153,7 @@ export function MessagesSection() {
   // An action as it is now (the user's click, or `action_changed`): in place of its block, in the
   // open chat's answers or in the answer being written.
   const applyAction = useCallback((conversationUuid: string, action: AssistantAction) => {
+    if (action.state === "done") setCollectionVersion((v) => v + 1);
     if (selectedRef.current?.uuid === conversationUuid) {
       setMessages((shown) => shown.map((message) => {
         const blocks = withAction(message.blocks, action);
@@ -179,6 +186,7 @@ export function MessagesSection() {
   }, [markRead]);
 
   const select = (chat: Selected | null) => {
+    setShowCollection(false);
     selectedRef.current = chat;
     setSelected(chat);
     setMessages([]);
@@ -374,6 +382,13 @@ export function MessagesSection() {
   const answering = !!draft || !!chat?.answering;
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: "end" }); }, [messages.length, selected, draft]);
+  // The composer grows with what's typed, up to a few lines, and is one line again once sent.
+  useEffect(() => {
+    const field = composerRef.current;
+    if (!field) return;
+    field.style.height = "auto";
+    field.style.height = `${Math.min(field.scrollHeight, 160)}px`;
+  }, [text]);
 
   const sendToPerson = async () => {
     const message = text.trim();
@@ -498,18 +513,21 @@ export function MessagesSection() {
   ].sort((a, b) => b.at - a.at);
   const isNewChat = isAi && !chat;
 
+  // The open thread's, the composer's and the collection's column: centred, as wide as reads well.
+  const COLUMN = "w-full max-w-3xl mx-auto px-4 md:px-8";
+  const rowClass = (on: boolean) => `w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-sm transition-colors ${on ? "bg-[#F7F5EF]" : "hover:bg-[#FBFAF6]"}`;
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h2 className="text-2xl md:text-3xl font-bold text-[#1c1917] tracking-tight flex items-center gap-2.5" style={SERIF}>
-          <MessagesSquare className="w-6 h-6 text-[#C49A3C]" />
+    // As tall as the window leaves under the top bar: the thread scrolls, not the page.
+    <div className="flex flex-col gap-4 h-[calc(100dvh-6.5rem)] md:h-[calc(100dvh-8.75rem)] min-h-[30rem] animate-in fade-in duration-500">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <h2 className="text-2xl font-bold text-[#1c1917] tracking-tight flex items-center gap-2" style={SERIF}>
+          <MessagesSquare className="w-5 h-5 text-[#C49A3C]" />
           Messages
         </h2>
-        <p className="text-sm text-[#78716c] mt-1">
-          {isAdvisor
-            ? "Your conversations with your clients. One opens with each client you take on."
-            : "Your conversation with your advisor. It opens once an advisor accepts your request."}
-          {!isDemo && " You can also ask the AI assistant about your own data."}
+        <p className="text-sm text-[#78716c]">
+          {isAdvisor ? "Your conversations with your clients." : "Your advisor"}
+          {!isAdvisor && (isDemo ? ", once one accepts your request." : ", once one accepts your request, and the AI assistant on your own data.")}
         </p>
       </div>
 
@@ -526,101 +544,107 @@ export function MessagesSection() {
             : "No conversations yet. Find an advisor and send them a request: once they accept, you can write to each other here."}
         </p>
       ) : (
-        <div className={`${CARD_CLASS} overflow-hidden grid md:grid-cols-[18rem_1fr] min-h-[32rem]`}>
-          <ul className={`${selected ? "hidden md:block" : ""} border-r border-[rgba(196,154,60,0.15)] overflow-y-auto max-h-[40rem]`}>
-            {/* Always first: a new chat with the AI (lit while it's the one open, not yet asked in). */}
+        <div className={`${CARD_CLASS} flex-1 min-h-0 overflow-hidden grid md:grid-cols-[17rem_1fr]`}>
+          <aside className={`${selected || showCollection ? "hidden md:flex" : "flex"} flex-col min-h-0 border-r border-[rgba(196,154,60,0.15)]`}>
+            {/* What's always there, apart from the conversations: a new chat with the AI, and its collection. */}
             {!isDemo && (
-              <li>
-                <button
-                  onClick={newAiChat}
-                  className={`w-full flex items-center gap-2 px-5 py-4 border-b border-[rgba(196,154,60,0.1)] text-left transition-colors ${
-                    isNewChat ? "bg-[#F7F5EF]" : "hover:bg-[#FBFAF6]"
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5 shrink-0 text-[#C49A3C]" />
-                  <span className="font-bold text-[#1c1917] truncate">New chat with the assistant</span>
+              <div className="p-3 space-y-1">
+                <button onClick={newAiChat} className={rowClass(isNewChat)}>
+                  <Plus className="w-4 h-4 shrink-0 text-[#C49A3C]" />
+                  <span className="flex-1 font-semibold text-[#1c1917]">New chat</span>
                 </button>
-              </li>
+                {!isAdvisor && (
+                  <button onClick={() => { select(null); setShowCollection(true); }} className={rowClass(showCollection)}>
+                    <Library className="w-4 h-4 shrink-0 text-[#C49A3C]" />
+                    <span className="flex-1 font-semibold text-[#1c1917]">Collection</span>
+                    {collection && collection.items.length > 0 && (
+                      <span className="text-xs font-semibold text-[#78716c] tabular-nums">{collection.items.length}</span>
+                    )}
+                  </button>
+                )}
+              </div>
             )}
-            {rows.map((row) => {
-              const active = row.conversation.conversationUuid === selected?.uuid;
-              if (row.kind === "people") {
-                const conversation = row.conversation;
-                return (
-                  <li key={conversation.conversationUuid}>
-                    <button
-                      onClick={() => open({ kind: "people", uuid: conversation.conversationUuid })}
-                      className={`w-full text-left px-5 py-4 border-b border-[rgba(196,154,60,0.1)] transition-colors ${
-                        active ? "bg-[#F7F5EF]" : "hover:bg-[#FBFAF6]"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold text-[#1c1917] truncate">{fullName(conversation.counterpart)}</span>
-                        {conversation.unreadCount > 0 && (
-                          <span className="text-xs font-bold bg-[#C49A3C] text-white rounded-full px-2 py-0.5 leading-none">
-                            {conversation.unreadCount}
+            <div className={`flex-1 min-h-0 overflow-y-auto px-3 pb-3 ${isDemo ? "pt-3" : "border-t border-[rgba(196,154,60,0.15)] pt-3"}`}>
+              {!isDemo && rows.length > 0 && <p className="px-3 pb-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-[#857e78]">Recent</p>}
+              <ul className="space-y-0.5">
+                {rows.map((row) => {
+                  const active = row.conversation.conversationUuid === selected?.uuid;
+                  if (row.kind === "people") {
+                    const conversation = row.conversation;
+                    return (
+                      <li key={conversation.conversationUuid}>
+                        <button onClick={() => open({ kind: "people", uuid: conversation.conversationUuid })} className={`${rowClass(active)} items-start`}>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-[#1c1917] truncate">{fullName(conversation.counterpart)}</span>
+                              {conversation.unreadCount > 0 && (
+                                <span className="text-xs font-bold bg-[#C49A3C] text-white rounded-full px-2 py-0.5 leading-none">{conversation.unreadCount}</span>
+                              )}
+                            </span>
+                            <span className="block text-xs text-[#78716c] truncate mt-0.5">
+                              {conversation.status === "closed" && <Lock className="inline w-3 h-3 mr-1 -mt-0.5" />}
+                              {conversation.lastMessage
+                                ? `${conversation.lastMessage.senderUuid === me ? "You: " : ""}${conversation.lastMessage.text}`
+                                : "No messages yet"}
+                            </span>
                           </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-[#78716c] truncate mt-1">
-                        {conversation.status === "closed" && <Lock className="inline w-3 h-3 mr-1 -mt-0.5" />}
-                        {conversation.lastMessage
-                          ? `${conversation.lastMessage.senderUuid === me ? "You: " : ""}${conversation.lastMessage.text}`
-                          : "No messages yet"}
-                      </p>
-                    </button>
-                  </li>
-                );
-              }
-              const conversation = row.conversation;
-              return (
-                <li key={conversation.conversationUuid} className="group relative border-b border-[rgba(196,154,60,0.1)]">
-                  <button
-                    onClick={() => open({ kind: "ai", uuid: conversation.conversationUuid })}
-                    className={`w-full text-left pl-5 pr-12 py-4 transition-colors ${active ? "bg-[#F7F5EF]" : "hover:bg-[#FBFAF6]"}`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Sparkles className="w-3.5 h-3.5 shrink-0 text-[#C49A3C]" />
-                      <span className="font-bold text-[#1c1917] truncate">{conversation.title ?? "New chat"}</span>
-                    </span>
-                    <span className="block text-xs text-[#78716c] truncate mt-1">
-                      {conversation.answering
-                        ? "The assistant is writing…"
-                        : conversation.lastMessage
-                          ? `${conversation.lastMessage.senderUuid === null ? "" : "You: "}${conversation.lastMessage.text}`
-                          : "No messages yet"}
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => { setDeleteError(null); setDeleting(conversation); }}
-                    title="Delete this chat"
-                    aria-label="Delete this chat"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg text-[#857e78] hover:text-rose-600 hover:bg-rose-50 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+                        </button>
+                      </li>
+                    );
+                  }
+                  const conversation = row.conversation;
+                  return (
+                    <li key={conversation.conversationUuid} className="group relative">
+                      <button onClick={() => open({ kind: "ai", uuid: conversation.conversationUuid })} className={`${rowClass(active)} pr-10`}>
+                        <Sparkles className="w-3.5 h-3.5 shrink-0 text-[#C49A3C]" />
+                        <span className="min-w-0 flex-1 font-semibold text-[#1c1917] truncate">
+                          {conversation.answering ? "The assistant is writing…" : conversation.title ?? "New chat"}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => { setDeleteError(null); setDeleting(conversation); }}
+                        title="Delete this chat"
+                        aria-label="Delete this chat"
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-[#857e78] hover:text-rose-600 hover:bg-rose-50 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </aside>
 
-          {selected && (person || isAi) ? (
-            <div className="flex flex-col max-h-[40rem] min-w-0">
-              <div className="flex items-center gap-3 px-5 py-4 border-b border-[rgba(196,154,60,0.15)]">
+          {showCollection ? (
+            <div className="flex flex-col min-h-0 min-w-0">
+              <div className="flex items-center gap-3 px-5 py-3 border-b border-[rgba(196,154,60,0.15)]">
+                <button onClick={() => setShowCollection(false)} className="md:hidden text-[#78716c]" aria-label="Back to your conversations">
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <div className="min-w-0">
+                  <p className="font-bold text-[#1c1917]">Collection</p>
+                  <p className="text-xs text-[#78716c] truncate">What the assistant can make for you, kept in one place: for now, your reports.</p>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto bg-[#FBFAF6] py-6">
+                <div className={COLUMN}><AssistantCollection library={collection} /></div>
+              </div>
+            </div>
+          ) : selected && (person || isAi) ? (
+            <div className="flex flex-col min-h-0 min-w-0">
+              <div className="flex items-center gap-3 px-5 py-3 border-b border-[rgba(196,154,60,0.15)]">
                 <button onClick={() => select(null)} className="md:hidden text-[#78716c]" aria-label="Back to your conversations">
                   <ArrowLeft className="w-5 h-5" />
                 </button>
                 {person ? (
-                  <div>
-                    <p className="font-bold text-[#1c1917]">{fullName(person.counterpart)}</p>
+                  <div className="min-w-0">
+                    <p className="font-bold text-[#1c1917] truncate">{fullName(person.counterpart)}</p>
                     <p className="text-xs text-[#78716c]">{person.counterpart.role === "advisor" ? "Your advisor" : "Your client"}</p>
                   </div>
                 ) : (
                   <>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-[#1c1917] truncate">{chat?.title ?? "New chat"}</p>
-                      <p className="text-xs text-[#78716c] truncate">AI assistant · Its answers are written by AI: check what matters before acting on it.</p>
-                    </div>
+                    <p className="flex-1 min-w-0 font-bold text-[#1c1917] truncate">{chat?.title ?? "New chat"}</p>
                     {chat && (
                       <button
                         onClick={() => { setDeleteError(null); setDeleting(chat); }}
@@ -635,92 +659,112 @@ export function MessagesSection() {
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 bg-[#FBFAF6]">
-                {loadingThread && <Loader2 className="w-5 h-5 animate-spin text-[#C49A3C] mx-auto" />}
-                {hasMore && (
-                  <button onClick={loadEarlier} className="block mx-auto text-xs font-semibold text-[#C49A3C] hover:underline">
-                    Load earlier messages
-                  </button>
+              <div className="flex-1 min-h-0 overflow-y-auto bg-[#FBFAF6]">
+                {isNewChat && messages.length === 0 ? (
+                  // A new chat: what it's for, in the middle of the room it has.
+                  <div className={`${COLUMN} h-full flex flex-col items-center justify-center text-center py-10`}>
+                    <span className="w-12 h-12 rounded-2xl bg-[#C49A3C]/10 text-[#C49A3C] flex items-center justify-center mb-4">
+                      <Sparkles className="w-6 h-6" />
+                    </span>
+                    <p className="text-2xl font-bold text-[#1c1917]" style={SERIF}>What would you like to know?</p>
+                    <p className="text-sm text-[#78716c] mt-2 max-w-md">
+                      Ask about your portfolios, wallets, properties or spending: the assistant reads your own data to answer.
+                    </p>
+                  </div>
+                ) : (
+                  <div className={`${COLUMN} py-6 space-y-5`}>
+                    {loadingThread && <Loader2 className="w-5 h-5 animate-spin text-[#C49A3C] mx-auto" />}
+                    {hasMore && (
+                      <button onClick={loadEarlier} className="block mx-auto text-xs font-semibold text-[#C49A3C] hover:underline">
+                        Load earlier messages
+                      </button>
+                    )}
+                    {messages.map((message) => {
+                      if (isAi) {
+                        return message.senderUuid === null
+                          ? <Answer key={message.messageUuid} blocks={message.blocks} sentAt={message.sentAt} stop={message.answerStop} renderAction={renderAction} />
+                          : <Question key={message.messageUuid} message={message} />;
+                      }
+                      const mine = message.senderUuid === me;
+                      return (
+                        <div key={message.messageUuid} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+                          {message.advisorRequestUuid && (
+                            <span className="text-[11px] uppercase tracking-wide text-[#857e78] mb-1">Sent with the request</span>
+                          )}
+                          <div className={`max-w-[85%] rounded-3xl px-4 py-2.5 text-sm whitespace-pre-line ${
+                            mine ? "bg-[#1c1917] text-white" : "bg-white border border-[rgba(196,154,60,0.2)] text-[#1c1917]"
+                          }`}>
+                            {message.text}
+                          </div>
+                          <span className="text-[11px] text-[#857e78] mt-1 flex items-center gap-1">
+                            {formatTime(message.sentAt)}
+                            {message.messageUuid === seenUpTo && <><CheckCheck className="w-3 h-3" /> Seen</>}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {draft ? (
+                      <Answer blocks={draft.blocks} progress={draft.progress} writing renderAction={(action) => renderAction(action, true)} />
+                    ) : chat?.answering ? (
+                      <Answer blocks={[]} writing />
+                    ) : null}
+                    <div ref={bottomRef} />
+                  </div>
                 )}
-                {isNewChat && messages.length === 0 && (
-                  <p className="text-sm text-[#78716c] text-center py-10">
-                    Ask about your portfolios, wallets or spending: the assistant reads your data to answer.
-                  </p>
-                )}
-                {messages.map((message) => {
-                  if (isAi) {
-                    return message.senderUuid === null
-                      ? <Answer key={message.messageUuid} blocks={message.blocks} sentAt={message.sentAt} stop={message.answerStop} renderAction={renderAction} />
-                      : <Question key={message.messageUuid} message={message} />;
-                  }
-                  const mine = message.senderUuid === me;
-                  return (
-                    <div key={message.messageUuid} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
-                      {message.advisorRequestUuid && (
-                        <span className="text-[11px] uppercase tracking-wide text-[#857e78] mb-1">Sent with the request</span>
-                      )}
-                      <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-line ${
-                        mine ? "bg-[#1c1917] text-white" : "bg-white border border-[rgba(196,154,60,0.2)] text-[#1c1917]"
-                      }`}>
-                        {message.text}
-                      </div>
-                      <span className="text-[11px] text-[#857e78] mt-1 flex items-center gap-1">
-                        {formatTime(message.sentAt)}
-                        {message.messageUuid === seenUpTo && <><CheckCheck className="w-3 h-3" /> Seen</>}
-                      </span>
-                    </div>
-                  );
-                })}
-                {draft ? (
-                  <Answer blocks={draft.blocks} progress={draft.progress} writing renderAction={(action) => renderAction(action, true)} />
-                ) : chat?.answering ? (
-                  <Answer blocks={[]} writing />
-                ) : null}
-                <div ref={bottomRef} />
               </div>
 
-              {/* A new chat's first question, a click away: sent as it is. */}
-              {isNewChat && messages.length === 0 && !answering && suggestions.length > 0 && (
-                <div className="flex flex-wrap gap-2 px-5 pt-3 bg-[#FBFAF6]">
-                  {suggestions.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => void ask(s)}
-                      disabled={sending}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[rgba(196,154,60,0.35)] bg-white text-xs font-semibold text-[#57534e] hover:border-[#C49A3C] hover:text-[#1c1917] transition-colors disabled:opacity-50"
-                    >
-                      <Sparkles className="w-3 h-3 text-[#C49A3C]" />
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
               {person?.status === "closed" ? (
                 <p className="flex items-center gap-2 px-5 py-4 text-sm text-[#78716c] border-t border-[rgba(196,154,60,0.15)]">
                   <Lock className="w-4 h-4" /> This conversation is closed: the advisory relationship ended. You can still read it.
                 </p>
               ) : (
-                <div className="flex items-end gap-3 px-5 py-4 border-t border-[rgba(196,154,60,0.15)]">
-                  <textarea
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-                    }}
-                    maxLength={isAi ? QUESTION_MAX_LENGTH : MESSAGE_MAX_LENGTH}
-                    rows={2}
-                    disabled={isAi && answering}
-                    placeholder={isAi ? (answering ? "The assistant is writing…" : "Ask the assistant…") : "Write a message…"}
-                    className="flex-1 resize-none rounded-2xl border border-[rgba(196,154,60,0.3)] px-4 py-2.5 text-sm focus:outline-none focus:border-[#C49A3C] disabled:bg-[#F7F5EF] disabled:text-[#857e78]"
-                  />
-                  <button
-                    onClick={send}
-                    disabled={sending || (isAi && answering) || !text.trim()}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold text-white bg-[#C49A3C] hover:bg-[#b08930] disabled:opacity-50 transition-colors"
-                  >
-                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} {isAi ? "Ask" : "Send"}
-                  </button>
+                <div className="bg-[#FBFAF6] pb-4 pt-2">
+                  <div className={`${COLUMN} space-y-2`}>
+                    {/* A new chat's first question, a click away: sent as it is. */}
+                    {isNewChat && messages.length === 0 && !answering && suggestions.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {suggestions.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => void ask(s)}
+                            disabled={sending}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[rgba(196,154,60,0.35)] bg-white text-xs font-semibold text-[#57534e] hover:border-[#C49A3C] hover:text-[#1c1917] transition-colors disabled:opacity-50"
+                          >
+                            <Sparkles className="w-3 h-3 text-[#C49A3C]" />
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-end gap-2 rounded-3xl border border-[rgba(196,154,60,0.3)] bg-white pl-4 pr-1.5 py-1.5 focus-within:border-[#C49A3C] transition-colors">
+                      <textarea
+                        value={text}
+                        ref={composerRef}
+                        onChange={(e) => setText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+                        }}
+                        maxLength={isAi ? QUESTION_MAX_LENGTH : MESSAGE_MAX_LENGTH}
+                        rows={1}
+                        disabled={isAi && answering}
+                        placeholder={isAi ? (answering ? "The assistant is writing…" : "Ask the assistant…") : "Write a message…"}
+                        className="flex-1 resize-none bg-transparent py-2 text-sm text-[#1c1917] placeholder:text-[#857e78] focus:outline-none disabled:text-[#857e78]"
+                      />
+                      <button
+                        onClick={send}
+                        disabled={sending || (isAi && answering) || !text.trim()}
+                        aria-label={isAi ? "Ask" : "Send"}
+                        title={isAi ? "Ask" : "Send"}
+                        className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-white bg-[#C49A3C] hover:bg-[#b08930] disabled:opacity-40 transition-colors"
+                      >
+                        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    {isAi && (
+                      <p className="text-[11px] text-center text-[#857e78]">Answers are written by AI: check what matters before acting on it.</p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -746,18 +790,22 @@ export function MessagesSection() {
 
 /**
  * What a new chat with the assistant offers to ask first, as the user's data allows: the investments
- * (and, with two portfolios or more, comparing them), and with wallets the savings and the spending.
+ * (and, with two portfolios or more, comparing them), a report on them, and with wallets the
+ * savings and the spending.
  */
 function useSuggestions(): string[] {
   const { portfolios } = usePortfolio();
   const { wallets, available } = useWallets();
   const real = portfolios.filter((p) => !p.isVirtual && !p.isAggregate);
   const hasWallets = available && wallets.some((w) => !w.archived);
+  const main = real.find((p) => p.isDefault) ?? real[0];
   return [
     ...(real.length > 0 ? ["How are my investments doing?"] : []),
     ...(real.length > 1 ? ["Compare my portfolios"] : []),
     ...(hasWallets ? ["How are my savings going?", "Where did my money go this month?"] : []),
     ...(real.length > 0 ? ["Is my portfolio too concentrated?"] : []),
+    // On their main portfolio, by its name: the assistant proposes it, the user confirms it (ActionCard).
+    ...(main ? [`Generate a report on ${main.name}`] : []),
   ];
 }
 
