@@ -1,9 +1,9 @@
 // components/dashboard/AssetNewsModule.tsx
 "use client";
 
-import { useEffect, useState } from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { newsService } from "../../services/newsService";
+import { useInvestmentsRead } from "../../context/PortfolioContext";
 import type { NewsItem } from "../../models/News";
 import { MODULE_BODY, Module, ModuleHead } from "./PerformanceSection";
 
@@ -21,20 +21,9 @@ const dateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { m
  * — like an error — leaves the module out.
  */
 export function AssetNewsModule({ listingId, name }: { listingId: string; name: string }) {
-  const [state, setState] = useState<{ listingId: string; items: NewsItem[] | null } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    newsService.getAssetNews(listingId, NEWS_DAYS, NEWS_LIMIT)
-      .then((items) => { if (!cancelled) setState({ listingId, items }); })
-      .catch(() => { if (!cancelled) setState({ listingId, items: null }); });
-    return () => { cancelled = true; };
-  }, [listingId]);
-
-  const current = state?.listingId === listingId ? state : undefined;
-  if (current && (current.items === null || current.items.length === 0)) return null;
   // undefined while it's being searched.
-  const items = current?.items ?? undefined;
+  const items = useInvestmentsRead<NewsItem[]>(["asset", listingId, "news"], () => newsService.getAssetNews(listingId, NEWS_DAYS, NEWS_LIMIT));
+  if (items === null || items?.length === 0) return null;
 
   return (
     <Module className="md:col-span-2">

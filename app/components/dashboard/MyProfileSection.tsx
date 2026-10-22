@@ -9,6 +9,7 @@ import { TAX_REGIME_COUNTRIES, residenceOptions } from "../../lib/taxes";
 import { IPS_STEPS, completedSteps, policyToMarkdown } from "../../lib/ips";
 import { useInvestorPolicy } from "../../hooks/useInvestorPolicy";
 import { useUser } from "../../context/UserContext";
+import { usePortfolio } from "../../context/PortfolioContext";
 import { AdvisorMatchSection } from "./AdvisorMatchSection";
 import { InvestorPolicyEditor, riskToleranceLabel } from "./InvestorPolicyDialog";
 import { PROFILE_GRID, PolicyCards, ProfileCard, ProfileDialog, ProfileRows } from "./ips/PolicyCards";
@@ -127,6 +128,7 @@ export function MyProfileSection() {
  */
 function PreferencesCard() {
   const { user, refreshUser, isDemo } = useUser();
+  const { changed } = usePortfolio();
   const isAdvisor = user?.role === "ADVISOR";
   // The tax residence ("" until set) picks the regime the investor's taxes are computed by.
   const [saved, setSaved] = useState<{ language: string; currency: string; taxResidence: string } | null>(null);
@@ -158,6 +160,8 @@ function PreferencesCard() {
       await userService.updateUserProfile({ language: form.language, currency: form.currency, ...residence });
       localStorage.removeItem("user_profile");
       await refreshUser({ silent: true });
+      // The figures in the reference currency, the taxes by the residence's regime.
+      changed();
       setSaved({ ...form, taxResidence: form.taxResidence || saved.taxResidence });
       setEditing(false);
     } catch (err) {

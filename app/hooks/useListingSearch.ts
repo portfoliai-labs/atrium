@@ -1,5 +1,7 @@
 // hooks/useListingSearch.ts
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { investmentsKey } from "../context/PortfolioContext";
 import type { Listing } from "../models/Listing";
 import { LISTING_SEARCH_MIN_LENGTH, listingService } from "../services/listingService";
 
@@ -9,40 +11,38 @@ export type ListingSearchStatus = "idle" | "loading" | "done" | "error";
 
 /**
  * census' listings matching `query` (GET /v1/listings), searched once the typing pauses: what the
- * AssetPicker and the top bar's search list. A newer query cancels the pending search and drops
- * any answer still on its way; an answer is only ever shown for the query it was for.
+ * AssetPicker and the top bar's search list. A newer query cancels the pending search; an answer
+ * is only ever shown for the query it was for.
  * `onResults` hears each answer as it lands (the picker highlights its first row with it).
  */
 export function useListingSearch(query: string, onResults?: (found: Listing[]) => void) {
   const q = query.trim();
   const searchable = q.length >= LISTING_SEARCH_MIN_LENGTH;
-  const [answer, setAnswer] = useState<{ forQuery: string; results: Listing[]; error: string | null } | null>(null);
+  // The query once the typing pauses.
+  const [settled, setSettled] = useState(q);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(q), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [q]);
+  // Through the query cache (the same text searched again is answered at once); a search no longer
+  // asked for is cancelled.
+  const answer = useQuery({
+    queryKey: investmentsKey("listings", settled),
+    queryFn: ({ signal }) => listingService.search(settled, signal),
+    enabled: searchable && settled === q,
+  });
+
   const onResultsRef = useRef(onResults);
   useEffect(() => {
     onResultsRef.current = onResults;
   }, [onResults]);
-
+  const found = searchable && settled === q ? answer.data : undefined;
   useEffect(() => {
-    if (!searchable) return;
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      try {
-        const found = await listingService.search(q, controller.signal);
-        if (controller.signal.aborted) return;
-        setAnswer({ forQuery: q, results: found, error: null });
-        onResultsRef.current?.(found);
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        setAnswer({ forQuery: q, results: [], error: err instanceof Error ? err.message : "Search failed." });
-      }
-    }, SEARCH_DEBOUNCE_MS);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [q, searchable]);
+    if (found) onResultsRef.current?.(found);
+  }, [found]);
 
-  const current = searchable && answer?.forQuery === q ? answer : null;
-  const status: ListingSearchStatus = !searchable ? "idle" : !current ? "loading" : current.error ? "error" : "done";
-  return { searchable, status, results: current?.results ?? [], error: current?.error ?? null };
+  const current = searchable && settled === q && !answer.isPending;
+  const error = current && answer.isError ? (answer.error instanceof Error ? answer.error.message : "Search failed.") : null;
+  const status: ListingSearchStatus = !searchable ? "idle" : !current ? "loading" : error ? "error" : "done";
+  return { searchable, status, results: current && !error ? answer.data ?? [] : [], error };
 }

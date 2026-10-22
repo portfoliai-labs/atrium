@@ -1,10 +1,10 @@
 // components/dashboard/AdoptStrategyDialog.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, ArrowUpRight, Bell, Layers, Loader2, Mail, Target } from "lucide-react";
-import { usePortfolio } from "../../context/PortfolioContext";
+import { useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { clientDisplayName, useClients } from "../../context/ClientsContext";
 import { useClientPortfolios } from "../../hooks/useClientPortfolios";
@@ -43,7 +43,7 @@ export function AdoptStrategyDialog({ strategyUuid, strategyName, destination, o
   // The asset categories the destination's securities count in: the user's own, or the client's.
   onOpenCategories: (clientUuid: string | null) => void;
 }) {
-  const { portfolios, ownPortfolios, createPortfolio, client } = usePortfolio();
+  const { portfolios, ownPortfolios, createPortfolio, client, changed } = usePortfolio();
   const { user } = useUser();
   const { clients } = useClients();
   const isAdvisor = user?.role === "ADVISOR";
@@ -72,19 +72,11 @@ export function AdoptStrategyDialog({ strategyUuid, strategyName, destination, o
   const [error, setError] = useState<string | null>(null);
   // A security without a category, refused while adopting in categories.
   const [uncategorized, setUncategorized] = useState<string | null>(null);
-  // The destination's current adoption's origin, when it has one: adopting replaces it.
-  const [replacing, setReplacing] = useState<{ uuid: string; origin: string | null } | null>(null);
 
   const creating = target === NEW_PORTFOLIO;
-  useEffect(() => {
-    if (creating) return;
-    let cancelled = false;
-    adoptionService.get(target)
-      .then((a) => { if (!cancelled) setReplacing(a ? { uuid: target, origin: a.originPortfolioUuid } : null); })
-      .catch(() => { if (!cancelled) setReplacing(null); });
-    return () => { cancelled = true; };
-  }, [target, creating]);
-  const replaced = !creating && replacing?.uuid === target ? replacing : null;
+  // The destination's current adoption, when it has one: adopting replaces it.
+  const current = useInvestmentsQuery(["adoption", target, "current"], () => adoptionService.get(target), { enabled: !creating });
+  const replaced = !creating && !current.isError && current.data ? { origin: current.data.originPortfolioUuid } : null;
   const replacedOrigin = replaced?.origin ? ownPortfolios.find((p) => p.uuid === replaced.origin)?.name : undefined;
   // Whose portfolio it lands on: the client picked, or the one whose pages these are.
   const destinationClient = picksClient ? clientUuid || null : client?.uuid ?? null;
@@ -108,6 +100,8 @@ export function AdoptStrategyDialog({ strategyUuid, strategyName, destination, o
         notifyEmail,
         notifyInApp,
       });
+      // Its adoption, its alert rules, its figures.
+      changed();
       onAdopted(made.uuid, destinationClient);
     } catch (err) {
       // The new portfolio stays, empty: the next try adopts into it.

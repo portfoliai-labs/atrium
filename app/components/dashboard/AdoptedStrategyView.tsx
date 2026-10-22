@@ -1,9 +1,10 @@
 // components/dashboard/AdoptedStrategyView.tsx
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowUpRight, Loader2, Target, X } from "lucide-react";
-import { usePortfolio } from "../../context/PortfolioContext";
+import { investmentsKey, useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { adoptionService } from "../../services/adoptionService";
 import { alertService } from "../../services/alertService";
@@ -33,6 +34,8 @@ interface Draft {
   thresholdPct: number | null;
   relativeThresholdPct: number | null;
 }
+
+const NO_RULES: AlertRuleResponse[] = [];
 
 /**
  * ADOPTED STRATEGY — a portfolio's "Strategy" page in Wealth: the strategy adopted on it (GET
@@ -66,29 +69,27 @@ export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimul
   const { ownPortfolios, client } = usePortfolio();
   const { isDemo } = useUser();
   const [adopting, setAdopting] = useState(false);
-  const [adoption, setAdoption] = useState<AdoptedStrategy | null | undefined>(undefined);
-  const [rules, setRules] = useState<AlertRuleResponse[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const found = await adoptionService.get(portfolio.uuid);
-      setRules(found ? await alertService.listRules(portfolio.uuid, found.source) : []);
-      setAdoption(found);
-      setLoadError(null);
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Unable to load the adopted strategy.");
-    }
-  }, [portfolio.uuid]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // The adoption (shared with the Adopt dialog's), then the alert rules it put on the portfolio.
+  const queryClient = useQueryClient();
+  const adoptionKey = ["adoption", portfolio.uuid, "current"];
+  const current = useInvestmentsQuery(adoptionKey, () => adoptionService.get(portfolio.uuid));
+  const found = current.data;
+  const rulesRead = useInvestmentsQuery(
+    ["adoption", portfolio.uuid, "rules", found?.source], () => alertService.listRules(portfolio.uuid, found?.source),
+    { enabled: !!found, keepPrevious: true },
+  );
+  const failed = current.isError ? current.error : rulesRead.isError ? rulesRead.error : null;
+  const loadError = failed ? (failed instanceof Error ? failed.message : "Unable to load the adopted strategy.") : null;
+  // undefined until both are read.
+  const adoption = found === undefined || (found && rulesRead.data === undefined) ? undefined : found;
+  const rules = rulesRead.data ?? NO_RULES;
+  const setAdoption = (next: AdoptedStrategy | null) => queryClient.setQueryData(investmentsKey(...adoptionKey), next);
 
   const breadcrumb = <Breadcrumb trail={trail} current="Strategy" />;
   const sharedPanels = shared.map((s) => (
@@ -124,7 +125,6 @@ export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimul
       onClose={() => setAdopting(false)}
       onAdopted={() => {
         setAdopting(false);
-        void load();
         onChanged();
       }}
       onOpenCategories={() => setAdopting(false)}
@@ -201,8 +201,9 @@ export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimul
         targets: draftTargets.map((t) => ({ ...t, weightPct: draft.weights[targetKey(t)] })),
         rebalancing: { ...strategy.rebalancing, thresholdPct: draft.thresholdPct, relativeThresholdPct: draft.relativeThresholdPct },
       });
-      setRules(await alertService.listRules(portfolio.uuid, updated.source));
       setAdoption(updated);
+      // Its rules, with the new ranges.
+      await queryClient.invalidateQueries({ queryKey: investmentsKey("adoption", portfolio.uuid, "rules") });
       setDraft(null);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Unable to save these ranges.");

@@ -1,10 +1,10 @@
 // components/dashboard/BacktestMarks.tsx
 "use client";
 
-import { useEffect, useState } from "react";
 import { History, Layers } from "lucide-react";
 import { portfoliosService } from "../../services/portfoliosService";
 import { useUser } from "../../context/UserContext";
+import { useInvestmentsRead } from "../../context/PortfolioContext";
 import { formatCurrency } from "../../lib/format";
 import {
   simulatedPeriod,
@@ -98,16 +98,10 @@ export function BacktestBanner({ portfolioUuid, showStrategy = false }: { portfo
   // A strategy's amounts are in its owner's reference currency: the user's own, unless it's
   // someone else's (shared, published).
   const userCurrency = useUser().user?.currency ?? "EUR";
-  const [strategy, setStrategy] = useState<StrategyResponse | null>(null);
-
-  useEffect(() => {
-    if (!showStrategy) return;
-    let cancelled = false;
-    portfoliosService.getStrategy(portfolioUuid)
-      .then((s) => { if (!cancelled) setStrategy(s); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [portfolioUuid, showStrategy]);
+  // The same read as the backtest's Insights' strategy modules.
+  const strategy = useInvestmentsRead<StrategyResponse>(
+    ["strategy", portfolioUuid], () => portfoliosService.getStrategy(portfolioUuid), showStrategy,
+  ) ?? null;
 
   return (
     <div className="flex items-start gap-3 rounded-2xl border border-dashed border-sky-300 bg-sky-50/70 px-4 py-3.5">

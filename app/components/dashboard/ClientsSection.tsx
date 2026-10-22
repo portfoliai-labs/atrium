@@ -548,6 +548,7 @@ function ClientSettingsDialog({ client, initialTab = "profile", onClose, onSaved
   onClose: () => void;
   onSaved: (client: Client) => void;
 }) {
+  const { changed } = usePortfolio();
   const [tab, setTab] = useState<ClientSettingsTab>(initialTab);
   const [form, setForm] = useState({ currency: client.currency ?? "EUR", language: client.language ?? "it", taxResidence: client.tax_residence ?? "" });
   const [busy, setBusy] = useState(false);
@@ -567,6 +568,8 @@ function ClientSettingsDialog({ client, initialTab = "profile", onClose, onSaved
         ...(residenceChanged && form.taxResidence ? { tax_residence: form.taxResidence } : {}),
       };
       await advisorService.updateClientProfile(client.uuid, payload);
+      // Their figures in the reference currency, their taxes by the residence's regime.
+      changed();
       onSaved({
         ...client,
         currency: payload.currency ?? client.currency,
