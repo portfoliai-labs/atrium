@@ -1,7 +1,7 @@
 // app/(reserved)/dashboard/page.tsx
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useSyncExternalStore, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useUser } from "../../context/UserContext";
 import { usePortfolio } from "../../context/PortfolioContext";
@@ -45,6 +45,24 @@ import {
 // relocate, below): 'discover' (its News, Journal and Explore), 'plan' (its Projection and Stress
 // test are each portfolio's, its Strategy is Strategies), 'explore' (the strategies catalog, once,
 // then the Journal and News together).
+// Whether the Sidebar is drawn as its icons only (see Sidebar): kept on this browser, the page
+// drawn again as it changes. Unreadable storage leaves it whole, and a change for this visit only.
+const SIDEBAR_COLLAPSED_KEY = "atrium.sidebar.collapsed";
+const sidebarListeners = new Set<() => void>();
+let sidebarFallback = false;
+const subscribeSidebar = (listener: () => void) => {
+  sidebarListeners.add(listener);
+  return () => { sidebarListeners.delete(listener); };
+};
+const readSidebarCollapsed = () => {
+  try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1"; } catch { return sidebarFallback; }
+};
+const writeSidebarCollapsed = (collapsed: boolean) => {
+  sidebarFallback = collapsed;
+  try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0"); } catch { /* sidebarFallback holds it */ }
+  sidebarListeners.forEach((listener) => listener());
+};
+
 const VALID_SECTIONS = [
   'overview', 'clients', 'requests', 'advisor', 'messages', 'upload', INVESTMENTS_SECTION, WALLETS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, JOURNAL_SECTION,
   NEWS_SECTION, ASSET_SECTION, PROFILE_SECTION, SUBSCRIPTION_SECTION, 'settings', 'notifications', PLAN_SECTION, EXPLORE_SECTION, 'discover',
@@ -126,6 +144,9 @@ function DashboardPageContent() {
     return fromHistory && VALID_SECTIONS.includes(fromHistory) ? fromHistory : 'overview';
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
+  // On a wide screen, the Sidebar drawn as its icons only: the user's choice, kept on this browser.
+  const sidebarCollapsed = useSyncExternalStore(subscribeSidebar, readSidebarCollapsed, () => false);
+  const toggleSidebar = () => writeSidebarCollapsed(!sidebarCollapsed);
   // Bumped when the section already open is opened again (from the sidebar, or a link to one of
   // its pages), so a section with pages of its own (Portfolios' hub and what's under it) starts
   // over, as a fresh visit would.
@@ -301,10 +322,13 @@ function DashboardPageContent() {
           onClose={() => setIsSidebarOpen(false)}
           role={user?.role}
           subscriptionTier={user.subscription_tier}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={toggleSidebar}
         />
 
-        <main className="flex-1 min-w-0 lg:ml-80 bg-[#F7F5EF] p-4 md:p-8 transition-all duration-300">
-          <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <main className={`flex-1 min-w-0 ${sidebarCollapsed ? "lg:ml-20" : "lg:ml-80"} bg-[#F7F5EF] p-4 md:p-8 transition-all duration-300`}>
+          {/* As wide again as the Sidebar gives up when it's narrow (15rem): the modules grow with it. */}
+          <div className={`${sidebarCollapsed ? "lg:max-w-[79rem]" : ""} max-w-5xl mx-auto transition-[max-width] animate-in fade-in slide-in-from-bottom-4 duration-700`}>
             {isDemo && <DemoBanner />}
             <DashboardPageContext.Provider value={openPage}>{renderContent}</DashboardPageContext.Provider>
           </div>

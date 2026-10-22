@@ -1,6 +1,8 @@
 "use client";
 
-import { LayoutDashboard, ChevronRight, Sparkles, Users, Newspaper, BookOpen, LineChart, Wallet, Building2, History, Inbox } from "lucide-react";
+import {
+  LayoutDashboard, ChevronLeft, ChevronRight, Sparkles, Users, Newspaper, BookOpen, LineChart, Wallet, Building2, History, Inbox,
+} from "lucide-react";
 import { useUser } from "../../context/UserContext";
 import { CLIENTS_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, SUBSCRIPTION_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
 import { useWallets } from "../../context/WalletsContext";
@@ -14,6 +16,10 @@ interface SidebarProps {
   onClose?: () => void;
   role?: UserRole;
   subscriptionTier?: SubscriptionTier | null;
+  // On a wide screen: drawn as its icons only, each named on hover. The drawer on a narrow one is
+  // always whole.
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
 type NavItem = { id: string; label: string; icon: typeof LayoutDashboard };
@@ -21,9 +27,13 @@ type NavItem = { id: string; label: string; icon: typeof LayoutDashboard };
 /**
  * SIDEBAR — the dashboard's sections, one row each. Nothing under them: a section's own pages
  * (a portfolio, a wallet, a property, a client) are opened from its page (All portfolios'
- * Portfolios, All wallets' Wallets, the properties' table, the clients' list).
+ * Portfolios, All wallets' Wallets, the properties' table, the clients' list). On a wide screen it
+ * can be drawn narrow (`collapsed`), its icons only, the round button on its edge, at the top,
+ * switching between the two.
  */
-export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClose, role, subscriptionTier }: SidebarProps) {
+export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClose, role, subscriptionTier, collapsed = false, onToggleCollapsed }: SidebarProps) {
+  // What's left out while it's narrow: on a wide screen only.
+  const wide = collapsed ? "lg:hidden" : "";
   const isAdvisor = role === 'ADVISOR';
   const { isDemo } = useUser();
   const { available: walletsAvailable } = useWallets();
@@ -66,17 +76,21 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
       <button
         key={item.id}
         onClick={() => handleNavClick(item.id)}
+        title={collapsed ? item.label : undefined}
+        aria-label={item.label}
         className={`group relative flex items-center justify-between rounded-xl font-semibold transition-all duration-200 active:scale-[0.98] px-4 py-3 ${
+          collapsed ? "lg:justify-center lg:px-0" : ""
+        } ${
           isActive
             ? "bg-[#C49A3C]/15 text-[#C49A3C] border border-[#C49A3C]/30"
             : "text-[#857e78] hover:bg-white/5 hover:text-white border border-transparent"
         }`}
       >
         <div className="flex items-center gap-3">
-          <item.icon className={`h-5 w-5 transition-transform duration-200 ${isActive ? "" : "group-hover:scale-110"}`} />
-          <span className="text-sm">{item.label}</span>
+          <item.icon className={`h-5 w-5 shrink-0 transition-transform duration-200 ${isActive ? "" : "group-hover:scale-110"}`} />
+          <span className={`text-sm whitespace-nowrap ${wide}`}>{item.label}</span>
         </div>
-        {isActive && <ChevronRight className="h-4 w-4 opacity-50" />}
+        {isActive && <ChevronRight className={`h-4 w-4 opacity-50 ${wide}`} />}
       </button>
     );
   };
@@ -92,20 +106,47 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
 
       <aside className={`
         fixed top-0 left-0 z-40
-        w-80 bg-[#1c1917]
+        w-80 ${collapsed ? "lg:w-20" : ""} bg-[#1c1917]
         flex flex-col h-screen
-        transition-transform duration-300 ease-in-out
+        transition-[transform,width] duration-300 ease-in-out
         ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         ${isOpen ? "pointer-events-auto" : "pointer-events-none lg:pointer-events-auto"}
       `}>
 
-        <nav className="flex flex-col gap-1 p-5 pt-[100px] flex-1 overflow-y-auto custom-scrollbar">
+        {/* Narrow or whole, on a wide screen (the drawer on a narrow one closes instead): a half-moon
+            tab sticking out of its edge, just under the top bar, clear of the rows. */}
+        {onToggleCollapsed && (
+          <button
+            onClick={onToggleCollapsed}
+            title={collapsed ? "Expand the sidebar" : "Collapse the sidebar"}
+            aria-label={collapsed ? "Expand the sidebar" : "Collapse the sidebar"}
+            className="hidden lg:flex absolute left-full top-[96px] z-10 w-6 h-12 rounded-r-full items-center justify-center pr-0.5 bg-[#1c1917] text-[#857e78] border border-l-0 border-[#C49A3C]/40 shadow-[4px_0_10px_-4px_rgba(28,25,23,0.35)] hover:text-[#C49A3C] hover:border-[#C49A3C] transition-colors"
+          >
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
+        )}
+
+        <nav className={`flex flex-col gap-1 p-5 ${collapsed ? "lg:px-3" : ""} pt-[100px] flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar`}>
           {(isAdvisor ? consultantItems : investorItems).map((item) => renderItem(item))}
         </nav>
 
+
         {/* Nothing to upgrade for a tester, nor for a demo account (see lib/demo). */}
+        {subscriptionTier !== 'TESTER' && subscriptionTier !== 'DEMO' && collapsed && (
+          // Narrow: the upgrade as its icon.
+          <div className="hidden lg:flex justify-center p-3 border-t border-white/10">
+            <button
+              onClick={() => handleNavClick(SUBSCRIPTION_SECTION)}
+              title="Upgrade to Pro"
+              aria-label="Upgrade to Pro"
+              className="w-11 h-11 rounded-xl bg-[#C49A3C]/15 text-[#C49A3C] border border-[#C49A3C]/30 flex items-center justify-center hover:bg-[#C49A3C]/25 transition-colors"
+            >
+              <Sparkles className="h-5 w-5" />
+            </button>
+          </div>
+        )}
         {subscriptionTier !== 'TESTER' && subscriptionTier !== 'DEMO' && (
-          <div className="p-5 border-t border-white/10">
+          <div className={`p-5 border-t border-white/10 ${wide}`}>
             <div className="bg-[#131210] p-5 rounded-[1.5rem] border border-[#C49A3C]/20 text-white relative overflow-hidden">
               <div className="absolute -top-10 -right-10 w-24 h-24 bg-[#C49A3C]/10 blur-2xl rounded-full" />
 
