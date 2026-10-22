@@ -23,6 +23,8 @@ import { formatCompact, formatCurrency, formatQuantity } from "../../lib/format"
 import { toChartPoints, type SeriesPoint } from "../../lib/series";
 import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
 import { usePortfolio } from "../../context/PortfolioContext";
+import { investmentsOf } from "../../models/Portfolio";
+import { PortfolioTaxYear, TaxesByYearPanel } from "./taxes/RealizedTaxes";
 import { useDetail, useInsights, type Insights, type SectionState } from "../../hooks/useInsights";
 import { pushDashboardEntry, readDashboardEntry, type DashboardOverlay } from "../../lib/dashboardHistory";
 import { NoDataEmptyState } from "./NoDataEmptyState";
@@ -83,7 +85,7 @@ export const TOOLTIP_STYLE: React.CSSProperties = {
  * in as they arrive. Stale modules are followed through /insights/status (see useInsights).
  */
 export function PerformanceSection({
-  portfolioUuid, isAggregate = false, backtest = false, strategyShown = false, onNavigate, trail, pageLabel = "Insights", trailInTop = false, top, onOpenPortfolio, onCompare, comparison = null,
+  portfolioUuid, isAggregate = false, backtest = false, strategyShown = false, onNavigate, trail, pageLabel = "Insights", trailInTop = false, top, onOpenPortfolio, onCompare, onOpenTaxes, comparison = null,
 }: {
   portfolioUuid: string; isAggregate?: boolean; onNavigate?: (section: string) => void;
   // A strategy's backtest (a virtual portfolio): its header carries BacktestBanner, and before
@@ -109,6 +111,9 @@ export function PerformanceSection({
   onOpenPortfolio?: (uuid: string) => void;
   // Opens Compare: with it, All portfolios shows its Compare module (CompareModule) under its Portfolios.
   onCompare?: () => void;
+  // Opens the investments' Taxes page, on a year: with it, the Realized P&L shows the taxes (the
+  // investments' year by year in its detail, a portfolio's this year's under it).
+  onOpenTaxes?: (year?: number) => void;
   // The portfolio's side-by-side figures (GET /v1/portfolios/comparison), which the page's header
   // already loads: the returns, the drawdown and the benchmark's excess the modules show next to
   // their own. null while loading or without one; those figures are then left out.
@@ -261,6 +266,7 @@ export function PerformanceSection({
               isAggregate={isAggregate}
               onOpenPortfolio={onOpenPortfolio}
               onCompare={onCompare}
+              onOpenTaxes={onOpenTaxes}
               comparison={comparison}
               backtest={backtest}
               strategyShown={strategyShown}
@@ -2610,43 +2616,23 @@ function MonthlyReturnsHeatmap({
   );
 }
 
-// One of the realized P&L module's headline figures: a label with its explanation, the figure,
-// and a line under it.
-function RealizedFigure({ label, info, value, note, tone, emphasis = false }: {
-  label: string; info: string; value: string; note: string; tone?: "gain" | "loss"; emphasis?: boolean;
-}) {
-  return (
-    <div className="px-6 md:px-7 py-5">
-      <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
-        {label}
-        <InfoTip text={info}>
-          <Info className="h-3.5 w-3.5 text-slate-400 hover:text-slate-600 cursor-help transition-colors" />
-        </InfoTip>
-      </p>
-      <p
-        className={`font-black tabular-nums mt-1.5 ${emphasis ? "text-3xl" : "text-xl"} ${
-          tone === "gain" ? "text-emerald-600" : tone === "loss" ? "text-rose-600" : "text-slate-900"
-        }`}
-        style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-      >
-        {value}
-      </p>
-      <p className="text-[11px] font-semibold text-slate-400 mt-1">{note}</p>
-    </div>
-  );
-}
-
 /**
  * REALIZED P&L MODULE — the Income & Costs section's realized P&L: what selling has locked in
  * since inception and the dividends received (just the one from sales when no dividend ever
  * was), in the reference currency, each sale converted at its own date. Its detail is Profit &
- * Loss's (ProfitLossExplore): every realized and dividend figure, then every asset in one table.
+ * Loss's (ProfitLossExplore): every realized and dividend figure, the investments' taxes year by
+ * year, then every asset in one table. With `onOpenTaxes`, a portfolio that isn't the investments
+ * has this year's taxes under its figures (PortfolioTaxYear).
  */
-function RealizedPnlModule({ slot, currency, portfolioUuid }: {
+function RealizedPnlModule({ slot, currency, portfolioUuid, onOpenTaxes }: {
   slot: ModuleSlot<InsightsRealizedPnlModule>;
   currency: string;
   portfolioUuid: string;
+  onOpenTaxes?: (year?: number) => void;
 }) {
+  const { portfolios } = usePortfolio();
+  // The investments (All portfolios, or the only portfolio): their taxes are the taxpayer's.
+  const isInvestments = investmentsOf(portfolios)?.uuid === portfolioUuid;
   const [exploring, setExploring] = useState(false);
   const data = slot.module;
   const hasAny = data !== null && (data.topAssets.length > 0 || data.totalRealizedPnl !== 0);
@@ -2676,11 +2662,12 @@ function RealizedPnlModule({ slot, currency, portfolioUuid }: {
               ]}
             />
           )}
+          {onOpenTaxes && !isInvestments && <PortfolioTaxYear portfolioUuid={portfolioUuid} onOpen={onOpenTaxes} />}
         </div>
       )}
       {canExplore && exploring && (
         <ExploreView title="Profit & Loss" onClose={() => setExploring(false)}>
-          <ProfitLossExplore portfolioUuid={portfolioUuid} revision={slot.revision} />
+          <ProfitLossExplore portfolioUuid={portfolioUuid} revision={slot.revision} onOpenTaxes={onOpenTaxes && isInvestments ? onOpenTaxes : undefined} />
         </ExploreView>
       )}
     </Module>
@@ -2691,9 +2678,10 @@ function RealizedPnlModule({ slot, currency, portfolioUuid }: {
  * PROFIT & LOSS EXPLORE — the Realized P&L module's detail: what selling has locked in
  * (/insights/realized-pnl) and every dividend figure (/insights/dividends), then every asset in one
  * table (AssetPnlTable). The two load on their own, and the table shows as soon as either has.
- * Without any dividend ever received, the dividends' panel and columns are left out.
+ * Without any dividend ever received, the dividends' panel and columns are left out. With
+ * `onOpenTaxes` (the investments'), the taxes year by year last, each year opening its page.
  */
-function ProfitLossExplore({ portfolioUuid, revision }: { portfolioUuid: string; revision: number }) {
+function ProfitLossExplore({ portfolioUuid, revision, onOpenTaxes }: { portfolioUuid: string; revision: number; onOpenTaxes?: (year?: number) => void }) {
   const realized = useDetail(() => portfolioService.getRealizedPnl(portfolioUuid), portfolioUuid, revision);
   const dividends = useDetail(() => portfolioService.getDividends(portfolioUuid), portfolioUuid, revision);
   const loading = realized.loading || dividends.loading;
@@ -2706,6 +2694,7 @@ function ProfitLossExplore({ portfolioUuid, revision }: { portfolioUuid: string;
       {!loading && (realized.data || dividends.data) && (
         <AssetPnlTable realized={realized.data} dividends={dividends.data} withDividends={!noDividends} />
       )}
+      {onOpenTaxes && <TaxesByYearPanel portfolioUuid={portfolioUuid} onOpen={onOpenTaxes} />}
     </>
   );
 }
@@ -2719,14 +2708,12 @@ function RealizedPnlFigures({ data }: { data: RealizedPnlResponse }) {
         title="Realized P&L"
         desc={`What selling has locked in since inception, each sale converted at its own date${hasDividends ? ", plus the dividends received" : ""}.`}
       >
-        {/* The same band of figures as the module on the page. */}
-        <div className="@container">
-          <div className={`grid grid-cols-1 ${hasDividends ? "@xl:grid-cols-3" : ""} divide-y @xl:divide-y-0 @xl:divide-x divide-slate-100`}>
-            {hasDividends && <RealizedFigure label="Total" info="From sales plus dividends, since inception." value={formatSignedCurrency(data.totalRealizedPnl, currency)} note="Sales and dividends together" tone={data.totalRealizedPnl >= 0 ? "gain" : "loss"} emphasis />}
-            <RealizedFigure label="From sales" info="Sale proceeds minus what those units cost, each sale converted at its own date." value={formatSignedCurrency(data.totalRealizedTradingPnl, currency)} note="Proceeds minus what the units cost" tone={data.totalRealizedTradingPnl >= 0 ? "gain" : "loss"} emphasis={!hasDividends} />
-            {hasDividends && <RealizedFigure label="From dividends" info="Dividends received since inception, from the holdings you still have and the ones you sold." value={formatCurrency(data.totalDividendIncome, currency, 0)} note="Received, held or sold since" />}
-          </div>
-        </div>
+        {/* The same figures as the module on the page, the size of the other panels' (FigureList). */}
+        <FigureList>
+          {hasDividends && <Fig label="Total" info="From sales plus dividends, since inception." value={formatSignedCurrency(data.totalRealizedPnl, currency)} sub="Sales and dividends together" tone={data.totalRealizedPnl >= 0 ? "gain" : "loss"} />}
+          <Fig label="From sales" info="Sale proceeds minus what those units cost, each sale converted at its own date." value={formatSignedCurrency(data.totalRealizedTradingPnl, currency)} sub="Proceeds minus what the units cost" tone={data.totalRealizedTradingPnl >= 0 ? "gain" : "loss"} />
+          {hasDividends && <Fig label="From dividends" info="Dividends received since inception, from the holdings you still have and the ones you sold." value={formatCurrency(data.totalDividendIncome, currency, 0)} sub="Received, held or sold since" />}
+        </FigureList>
       </ExplorePanel>
   );
 }
@@ -3717,11 +3704,14 @@ function DrawdownExplore({
 // How many rows the per-asset / per-platform lists below show before the rest would just be
 // noise on a summary tab.
 // Every dividend figure, in Profit & Loss's detail.
+// Profit & Loss's dividends, as two panels side by side once there's room (their four figures two
+// by two): what was paid, and what it yields.
 function DividendsFigures({ data }: { data: DividendsResponse }) {
   return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-[22px] [&>section]:h-full">
       <ExplorePanel eyebrow={data.currency} title="Dividends" desc="Cash paid out by your holdings.">
-        <FigureList>
-          <FigureRow label="Since inception" info="All the dividends you've received, since your first transaction." value={formatCurrency(data.totalLifetimeIncome, data.currency, 0)} emphasis />
+        <FigureList pairs>
+          <FigureRow label="Since inception" info="All the dividends you've received, since your first transaction." value={formatCurrency(data.totalLifetimeIncome, data.currency, 0)} />
           <FigureRow label="Last 12 months" info="The dividends received over the last 12 months." value={formatCurrency(data.totalTrailing12MIncome, data.currency, 0)} />
           <FigureRow label="Previous 12 months" info="The dividends received in the 12 months before that." value={formatCurrency(data.totalPrior12MIncome, data.currency, 0)} />
           <FigureRow
@@ -3730,12 +3720,17 @@ function DividendsFigures({ data }: { data: DividendsResponse }) {
             value={formatPctOrDash(data.portfolioGrowthYoyPct)}
             tone={data.portfolioGrowthYoyPct === null ? undefined : data.portfolioGrowthYoyPct >= 0 ? "gain" : "loss"}
           />
+        </FigureList>
+      </ExplorePanel>
+      <ExplorePanel title="Yield" desc="What the last 12 months' dividends yield, on the portfolio's value and on what was paid.">
+        <FigureList pairs>
           <FigureRow label="Yield" info="The last 12 months' dividends over what the whole portfolio is worth today." value={plainPctOrDash(data.wholePortfolioYieldPct)} />
           <FigureRow label="Yield of paying holdings" info="The same, counting only the holdings that pay dividends." value={plainPctOrDash(data.portfolioYieldPct)} />
           <FigureRow label="Paying holdings" info="How much of the portfolio's value is in holdings that paid a dividend over the last 12 months." value={plainPctOrDash(data.payersShareOfPortfolioPct)} />
           <FigureRow label="Yield on cost" info="The last 12 months' dividends over what you paid for the holdings that pay them." value={plainPctOrDash(data.portfolioYieldOnCostPct)} />
         </FigureList>
       </ExplorePanel>
+    </div>
   );
 }
 
@@ -3765,8 +3760,8 @@ function SignedPct({ pct }: { pct: number | null }) {
  * follows the module's width, not the screen's). Each tile is lean — a label, its explanation
  * behind the info icon, the value — so two still fit a half-width tile.
  */
-function FigureList({ children }: { children: React.ReactNode }) {
-  return <Figs className={MODULE_BODY}>{children}</Figs>;
+function FigureList({ children, pairs = false }: { children: React.ReactNode; pairs?: boolean }) {
+  return <Figs className={MODULE_BODY} pairs={pairs}>{children}</Figs>;
 }
 
 // `emphasis` for the headline figure of the list, a size up. `tone` colours a value that reads
@@ -4458,7 +4453,7 @@ function MonthPage({
  * correlations behind it). A month opens from Performance's detail (see PerformanceSection).
  */
 function HistoryPage({
-  insights, performance, value, portfolioUuid, onSelectMonth, isAggregate, onOpenPortfolio, onCompare, comparison, backtest, strategyShown,
+  insights, performance, value, portfolioUuid, onSelectMonth, isAggregate, onOpenPortfolio, onCompare, onOpenTaxes, comparison, backtest, strategyShown,
 }: {
   insights: Insights;
   // The Performance section, already loaded, and its value (PerformanceSection checks both).
@@ -4472,6 +4467,8 @@ function HistoryPage({
   onOpenPortfolio?: (uuid: string) => void;
   // Opens Compare, from the aggregate's Compare module.
   onCompare?: () => void;
+  // Opens the investments' Taxes page, from the Realized P&L.
+  onOpenTaxes?: (year?: number) => void;
   comparison: PortfolioComparisonEntry | null;
   // A strategy's backtest: a simulation, so only what it says about the strategy — its returns
   // against the benchmark, its mix, what trading cost it at the costs set for it, its risk. Its
@@ -4592,6 +4589,7 @@ function HistoryPage({
           slot={own(incomeCosts, (d) => d.realizedPnl)}
           currency={currency}
           portfolioUuid={portfolioUuid}
+          onOpenTaxes={onOpenTaxes}
         />
       </Tile>
       <Tile span="narrow">

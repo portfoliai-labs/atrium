@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Calculator, History, LineChart, ShieldAlert } from "lucide-react";
+import { History, LineChart, ShieldAlert } from "lucide-react";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { portfoliosService } from "../../services/portfoliosService";
@@ -57,8 +57,9 @@ export type InvestmentsView =
   // A portfolio, "All portfolios" (the investments) included. A strategy's backtest is Strategies'.
   // `simulation`: on its Strategy page, the advisor's strategy portfolio a shared strategy came
   // from, opened read-only. `compareWith`: on Compare, strategies that aren't the user's compared
-  // beside their portfolios (one from the catalog, one an advisor shared).
-  | { kind: "portfolio"; uuid: string; page: PortfolioPage; simulation?: string; compareWith?: CompareStrategy[] }
+  // beside their portfolios (one from the catalog, one an advisor shared). `taxYear`: on Taxes,
+  // the year it opens on (a year of the Realized P&L's), this one without.
+  | { kind: "portfolio"; uuid: string; page: PortfolioPage; simulation?: string; compareWith?: CompareStrategy[]; taxYear?: number }
   // Strategies, beside All portfolios: the user's strategies (backtests) and the published ones.
   // An investor's own, not a client's (an advisor's Strategies is a section of its own).
   | ({ kind: "strategies" } & StrategiesView);
@@ -106,14 +107,15 @@ function viewFromHistory(hasStrategies: boolean, portfolios: Portfolio[], sectio
   if (!view) return top;
   switch (view.kind) {
     case "portfolio": {
-      const v = view as { uuid?: string; page?: string; simulation?: unknown; compareWith?: unknown };
+      const v = view as { uuid?: string; page?: string; simulation?: unknown; compareWith?: unknown; taxYear?: unknown };
       // A portfolio had tabs (`tab`), then Insights as its first page, before its own page.
       const page = PORTFOLIO_PAGES.includes(v.page as PortfolioPage) ? (v.page as PortfolioPage) : "overview";
       const compareWith = page === "compare" ? compareStrategiesOf(v.compareWith) : undefined;
       const compare = compareWith ? { compareWith } : {};
+      const taxYear = page === "taxes" && typeof v.taxYear === "number" ? { taxYear: v.taxYear } : {};
       // No portfolio named (""): the investments, on that page (a link from outside, which
       // doesn't know which portfolio stands for them).
-      if (v.uuid === "" && investments) return { kind: "portfolio", uuid: investments.uuid, page, ...compare };
+      if (v.uuid === "" && investments) return { kind: "portfolio", uuid: investments.uuid, page, ...compare, ...taxYear };
       const found = portfolios.find((p) => p.uuid === v.uuid);
       if (!found) return top;
       // A backtest is Strategies' (a link to one from before it was).
@@ -121,10 +123,10 @@ function viewFromHistory(hasStrategies: boolean, portfolios: Portfolio[], sectio
         return hasStrategies ? { kind: "strategies", ...strategiesViewOf({ page: "backtest", uuid: found.uuid, sub: page }) } : top;
       }
       // The taxes are all the investments'.
-      if (page === "taxes" && investments && v.uuid !== investments.uuid) return { kind: "portfolio", uuid: investments.uuid, page };
+      if (page === "taxes" && investments && v.uuid !== investments.uuid) return { kind: "portfolio", uuid: investments.uuid, page, ...taxYear };
       return page === "strategy" && typeof v.simulation === "string"
         ? { kind: "portfolio", uuid: v.uuid!, page, simulation: v.simulation }
-        : { kind: "portfolio", uuid: v.uuid!, page, ...compare };
+        : { kind: "portfolio", uuid: v.uuid!, page, ...compare, ...taxYear };
     }
     // The investments' own pages before they were the investments' (Manage / Investments / Alerts…).
     case "investments":
@@ -158,8 +160,8 @@ function viewFromHistory(hasStrategies: boolean, portfolios: Portfolio[], sectio
  * its Insights (PerformanceSection), whose Composition leads down to each portfolio (from All
  * portfolios) or holding. Its activity and its actions open pages of its own, always on that
  * portfolio, so none of them asks which one: Transactions, Alerts and Reports, and on All
- * portfolios Compare and Manage portfolios, and on each its Stress test and Projection (All
- * portfolios' Taxes too). Beside All portfolios, Strategies (StrategiesNode): the user's
+ * portfolios Compare and Manage portfolios, and on each its Stress test and Projection; the
+ * investments' Taxes from the Realized P&L of their Insights. Beside All portfolios, Strategies (StrategiesNode): the user's
  * strategies, each a backtest opening the same page as a portfolio's, and the ones advisors publish.
  *
  * Every page is a browser history entry, so back and forward move between them (see
@@ -224,6 +226,7 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
   const page = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.page : "overview";
   const simulation = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.simulation : undefined;
   const compareWith = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.compareWith : undefined;
+  const taxYear = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.taxYear : undefined;
   // A backtest is a simulation, not something owned: it's Strategies' (a client's have none).
   if (isBacktest(portfolio)) {
     if (!hasStrategies) return null;
@@ -248,6 +251,8 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
       onOpen={openPortfolio}
       simulation={simulation}
       compareWith={compareWith}
+      taxYear={taxYear}
+      onOpenTaxes={investments ? (year) => go({ kind: "portfolio", uuid: investments.uuid, page: "taxes", ...(year ? { taxYear: year } : {}) }) : undefined}
       onCompareWith={investments ? (strategy) => go({ kind: "portfolio", uuid: investments.uuid, page: "compare", compareWith: [strategy] }) : undefined}
       onOpenSimulation={(uuid) => go({ kind: "portfolio", uuid: portfolio.uuid, page: "strategy", simulation: uuid })}
       onOpenTaxSettings={onOpenTaxSettings ?? (() => openProfilePreferences(onNavigate))}
@@ -340,13 +345,13 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  * - a backtest: adopt its strategy, delete. Its figures are a simulation's (returns and risk over
  *   its run), its transactions generated and read only, and its Insights leave out what a
  *   simulation doesn't have (see PerformanceSection's `backtest`).
- * Under the header, what to plan with it (PlanningTools: its Stress test and Projection, the
- * investments' Taxes; a backtest's are its actions), then its Insights (PerformanceSection), whose
- * Composition opens each portfolio of All portfolios. A demo account sees everything but can't change anything. An advisor on a
+ * Under the header, what to plan with it (PlanningTools: its Stress test and Projection; a
+ * backtest's are its actions), then its Insights (PerformanceSection), whose Composition opens
+ * each portfolio of All portfolios and whose Realized P&L the investments' Taxes. A demo account sees everything but can't change anything. An advisor on a
  * client's (PortfolioContext's `client`) can't rename or delete it; its alerts are the advisor's,
  * its asset categories the client's, and its Strategy page says whether the client sees it.
  */
-export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, compareWith, onCompareWith, onOpenSimulation, onOpenTaxSettings, onOpenAssetSettings, onOpenStrategies, onBacktestGone, onNavigate }: {
+export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, compareWith, onCompareWith, taxYear, onOpenTaxes, onOpenSimulation, onOpenTaxSettings, onOpenAssetSettings, onOpenStrategies, onBacktestGone, onNavigate }: {
   portfolio: Portfolio;
   page: PortfolioPage;
   trail: Crumb[];
@@ -359,6 +364,9 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   compareWith?: CompareStrategy[];
   // Opens Compare with a strategy that isn't the user's beside their portfolios.
   onCompareWith?: (strategy: CompareStrategy) => void;
+  // On Taxes: the year it opens on. And the way there, on a year, from the Realized P&L.
+  taxYear?: number;
+  onOpenTaxes?: (year?: number) => void;
   // On its Strategy page: the advisor's simulation a shared strategy came from, open read-only,
   // and the way to open one.
   simulation?: string;
@@ -611,11 +619,12 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           top={backtest ? header : (
             <>
               {header}
-              <PlanningTools taxes={isInvestments} onOpen={open} onOpenStrategies={onOpenStrategies} />
+              <PlanningTools onOpen={open} onOpenStrategies={onOpenStrategies} />
             </>
           )}
           // All portfolios (with two or more): how they did next to each other, its Compare module.
           onCompare={!backtest && real.length > 1 && portfolio.isAggregate ? () => open("compare") : undefined}
+          onOpenTaxes={backtest ? undefined : onOpenTaxes}
           onOpenPortfolio={(uuid) => onOpen(uuid)}
           onNavigate={onNavigate}
           comparison={entry ?? null}
@@ -677,8 +686,9 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
     const investments = investmentsOf(portfolios);
     return (
       <TaxesPage
-        key={client?.uuid ?? "own"}
+        key={`${client?.uuid ?? "own"}:${taxYear ?? ""}`}
         trail={pageTrail}
+        initialYear={taxYear}
         onOpenSettings={onOpenTaxSettings}
         // Manage portfolios, where each one's taxation mode is set (the only portfolio's list too).
         onOpenPortfolios={() => investments && onOpen(investments.uuid, "portfolios")}
@@ -756,14 +766,13 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
 }
 
 /**
- * PLANNING TOOLS — what a portfolio's page plans with, under its header: the investments' Taxes
- * (the owner's, on every portfolio), its Stress test and Projection, each its own page, and
+ * PLANNING TOOLS — what a portfolio's page plans with, under its header: its Stress test and
+ * Projection, each its own page, and
  * Strategies (the user's backtests and the published ones; not on a client's). Its Alerts and
  * Reports are reached from the header's counters.
  */
-function PlanningTools({ taxes, onOpen, onOpenStrategies }: { taxes: boolean; onOpen: (page: PortfolioPage) => void; onOpenStrategies?: () => void }) {
+function PlanningTools({ onOpen, onOpenStrategies }: { onOpen: (page: PortfolioPage) => void; onOpenStrategies?: () => void }) {
   const tools: Tool[] = [
-    ...(taxes ? [{ key: "taxes", onClick: () => onOpen("taxes"), icon: Calculator, title: "Taxes", text: "The tax on sales and income, year by year, and the losses carried forward." }] : []),
     { key: "stress", onClick: () => onOpen("stress"), icon: ShieldAlert, title: "Stress test", text: "How a past crisis, or the shocks picked, would hit it as it is today." },
     { key: "projection", onClick: () => onOpen("projection"), icon: LineChart, title: "Projection", text: "Where it could go from here: a goal, withdrawals, the safe withdrawal." },
     ...(onOpenStrategies ? [{ key: "strategies", onClick: onOpenStrategies, icon: History, title: "Strategies", text: "Your strategies tested on the past, and the ones advisors publish." }] : []),

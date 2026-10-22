@@ -28,12 +28,13 @@ export function WealthBreakdown() {
   if (!hasWallets) return null;
 
   return (
-    <Module>
+    // A column, so the chart sits at the bottom when the card is stretched to its neighbour's height.
+    <Module className="flex flex-col">
       <ModuleHead
         title="Cash Flow"
         desc={`What came into your wallets and what went out, month by month, transfers between them left out.${sample ? " Sample data." : ""}`}
       />
-      <div className={`${MODULE_BODY} space-y-4`}>
+      <div className={`${MODULE_BODY} flex-1 flex flex-col gap-4`}>
         {recent.length === 0 ? (
           <p className="text-[12.5px] text-[#857e78]">
             {overview === undefined ? "Loading…" : walletCount === 0 ? "Add a wallet to see what comes in and goes out." : "Can't be added up right now: an exchange rate is missing."}
@@ -41,11 +42,11 @@ export function WealthBreakdown() {
         ) : (
           <>
             <Figs>
-              <Fig label="In · 6 months" value={formatCurrency(recent.reduce((sum, m) => sum + m.income, 0), walletsCurrency, 0)} tone="gain" strong />
+              <Fig label="In · 6 months" value={formatCurrency(recent.reduce((sum, m) => sum + m.income, 0), walletsCurrency, 0)} tone="gain" />
               <Fig label="Out · 6 months" value={formatCurrency(recent.reduce((sum, m) => sum + m.spending, 0), walletsCurrency, 0)} />
               <Fig label="Savings rate" value={rateText(savingsRate(recent))} />
             </Figs>
-            <div className="h-[150px]">
+            <div className="h-[150px] mt-auto">
               <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 400, height: 150 }}>
                 <BarChart data={recent.map((m) => ({ label: monthLabel(m.month), income: m.income, expenses: -m.spending }))} stackOffset="sign" margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
                   <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#857e78" }} axisLine={false} tickLine={false} />
