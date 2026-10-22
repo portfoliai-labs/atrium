@@ -24,4 +24,10 @@ export const taxService = {
   async year(year: number, clientUuid?: string | null): Promise<TaxYear> {
     return apiFetch<TaxYear>(`${base(clientUuid)}/years/${year}`);
   },
+
+  // GET /v1/taxes/years?fromYear= — every year's, from the first transaction's (fromYear if
+  // later) to this one, oldest first, in one call; [] without any transaction. 409 as year's.
+  async years(fromYear: number, clientUuid?: string | null): Promise<TaxYear[]> {
+    return apiFetch<TaxYear[]>(`${base(clientUuid)}/years?fromYear=${fromYear}`);
+  },
 };

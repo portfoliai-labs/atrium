@@ -1,13 +1,13 @@
 // components/dashboard/AdoptedStrategyView.tsx
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowUpRight, Loader2, Target, X } from "lucide-react";
 import { investmentsKey, useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { adoptionService } from "../../services/adoptionService";
-import { alertService } from "../../services/alertService";
+import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
 import { openBacktestPage, openStrategiesPage } from "../../lib/dashboardNav";
 import { formatAlertPct, formatRange } from "../../lib/alerts";
 import { exchangeLabel } from "../../models/Listing";
@@ -75,20 +75,22 @@ export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimul
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
 
-  // The adoption (shared with the Adopt dialog's), then the alert rules it put on the portfolio.
+  // The adoption (shared with the Adopt dialog's) and, read alongside it, the alert rules it put
+  // on the portfolio: those with its `source`, out of the list the alert pages share.
   const queryClient = useQueryClient();
   const adoptionKey = ["adoption", portfolio.uuid, "current"];
   const current = useInvestmentsQuery(adoptionKey, () => adoptionService.get(portfolio.uuid));
   const found = current.data;
-  const rulesRead = useInvestmentsQuery(
-    ["adoption", portfolio.uuid, "rules", found?.source], () => alertService.listRules(portfolio.uuid, found?.source),
-    { enabled: !!found, keepPrevious: true },
-  );
-  const failed = current.isError ? current.error : rulesRead.isError ? rulesRead.error : null;
-  const loadError = failed ? (failed instanceof Error ? failed.message : "Unable to load the adopted strategy.") : null;
+  const rulesRead = usePortfoliosAlertRules([portfolio.uuid]);
+  const loadError = current.isError
+    ? (current.error instanceof Error ? current.error.message : "Unable to load the adopted strategy.")
+    : found ? rulesRead.error : null;
   // undefined until both are read.
-  const adoption = found === undefined || (found && rulesRead.data === undefined) ? undefined : found;
-  const rules = rulesRead.data ?? NO_RULES;
+  const adoption = found === undefined || (found && rulesRead.rules === null) ? undefined : found;
+  const rules = useMemo(
+    () => (found && rulesRead.rules ? rulesRead.rules.filter((r) => r.source === found.source) : NO_RULES),
+    [found, rulesRead.rules],
+  );
   const setAdoption = (next: AdoptedStrategy | null) => queryClient.setQueryData(investmentsKey(...adoptionKey), next);
 
   const breadcrumb = <Breadcrumb trail={trail} current="Strategy" />;
@@ -203,7 +205,7 @@ export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimul
       });
       setAdoption(updated);
       // Its rules, with the new ranges.
-      await queryClient.invalidateQueries({ queryKey: investmentsKey("adoption", portfolio.uuid, "rules") });
+      await queryClient.invalidateQueries({ queryKey: investmentsKey("alertRules") });
       setDraft(null);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Unable to save these ranges.");

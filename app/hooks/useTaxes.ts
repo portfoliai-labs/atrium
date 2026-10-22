@@ -4,7 +4,8 @@
 import { useQuery, type Query, type QueryClient } from "@tanstack/react-query";
 import { investmentsKey, useInvestmentsQuery, usePortfolio } from "../context/PortfolioContext";
 import { taxService } from "../services/taxService";
-import type { CostMethod, RealizedGains } from "../models/Tax";
+import { FIRST_TAX_YEAR } from "../lib/taxes";
+import type { CostMethod, RealizedGains, TaxYear } from "../models/Tax";
 
 /**
  * The investments' taxes, in the query cache under ["investments", "taxes", client, ...]: a year
@@ -48,9 +49,15 @@ export function useRealizedGains(year: number, method: CostMethod | null, { enab
   });
 }
 
-/** A year's taxes through the cache, for a read made of several years (see TaxesByYearPanel). */
-export const fetchTaxYear = (queryClient: QueryClient, clientUuid: string | null, year: number) =>
-  queryClient.fetchQuery(yearQuery(clientUuid, year));
+/**
+ * Every year's taxes since the first transaction (no earlier than the Taxes page's first year),
+ * in one call; each also goes in the cache as its year's, for the Taxes page (see TaxesByYearPanel).
+ */
+export async function fetchTaxYears(queryClient: QueryClient, clientUuid: string | null): Promise<TaxYear[]> {
+  const years = await taxService.years(FIRST_TAX_YEAR, clientUuid);
+  for (const year of years) queryClient.setQueryData(yearQuery(clientUuid, year.year).queryKey, year);
+  return years;
+}
 
 /** Profit & Loss's taxes by year's key (see TaxesByYearPanel). */
-export const taxesByYearKey = (clientUuid: string | null, portfolioUuid: string) => taxesKey(clientUuid, "byYear", portfolioUuid);
+export const taxYearsKey = (clientUuid: string | null) => taxesKey(clientUuid, "years");

@@ -68,9 +68,11 @@ export function residenceOptions(current?: string | null) {
 
 // The calendar years a taxes page offers: this one back to 2015, the earliest a loss carried
 // forward four years could still reach into today's.
+export const FIRST_TAX_YEAR = 2015;
+
 export function taxYears(now = new Date()): number[] {
   const current = now.getFullYear();
-  return Array.from({ length: current - 2015 + 1 }, (_, i) => current - i);
+  return Array.from({ length: current - FIRST_TAX_YEAR + 1 }, (_, i) => current - i);
 }
 
 export const ratePct = (rate: number) => `${(rate * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
