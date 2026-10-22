@@ -21,7 +21,7 @@ import { WalletsComposition } from "./WalletsComposition";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { PreviewBadge } from "../../preview/PreviewKit";
 import { WalletAlerts } from "./WalletAlerts";
-import { WalletBankDialog, WalletBanks } from "./WalletBanks";
+import { WalletBankDialog, WalletBanks, useWalletLinked } from "./WalletBanks";
 import { WalletBudgets } from "./WalletBudgets";
 import { AddMovementDialog, WalletFormDialog } from "./WalletDialogs";
 import { ManageWallets } from "./ManageWallets";
@@ -80,6 +80,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   const [dialogError, setDialogError] = useState<string | null>(null);
   const count = useMovementCount(scope, version);
   const attention = useAttention(scope, version);
+  const linked = useWalletLinked(wallet?.uuid);
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
 
@@ -114,7 +115,8 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         // Its movements' page, where they're added (by hand or from a statement), as a portfolio's Transactions.
         { label: "Movements", primary: true, plus: false, onClick: () => onOpen(id, "transactions") },
         // Its own bank account: one of the banks connected, or another bank connected for it.
-        { label: "Connect a bank", onClick: () => setDialog("bank"), ...locked },
+        // Not once it takes one's movements (nor while that's being read): its account is in its settings.
+        ...(linked === false ? [{ label: "Connect a bank", onClick: () => setDialog("bank"), ...locked }] : []),
         { label: "Edit wallet", onClick: () => setDialog("edit"), ...locked },
         { label: wallet.archived ? "Unarchive" : "Archive", onClick: () => setDialog("archive"), ...sampleLock },
         { label: "Delete wallet", danger: true, onClick: () => setDialog("delete"), ...sampleLock },
