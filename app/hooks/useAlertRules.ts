@@ -1,9 +1,9 @@
 // app/hooks/useAlertRules.ts
 "use client";
 
-import type { SetStateAction } from "react";
+import { useMemo, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { investmentsKey, useInvestmentsQuery } from "../context/PortfolioContext";
+import { investmentsKey, useInvestmentsQuery, usePortfolio } from "../context/PortfolioContext";
 import { alertService } from "../services/alertService";
 import type { AlertRuleResponse, ClientAlertRuleResponse, OwnAlertRuleResponse } from "../models/Alert";
 
@@ -61,19 +61,36 @@ export function useOwnAlertRules(pollMs?: number) {
 export type PortfolioAlertRule = AlertRuleResponse & { portfolioUuid: string };
 
 /**
- * The rules on every one of the given portfolios (the investor's own, aggregate included),
- * backend order within each portfolio. One portfolio failing to load doesn't hide the others'
- * rules; only all of them failing counts as an error.
+ * The rules on every one of the given portfolios (aggregate included), backend order within each
+ * portfolio: the PortfolioProvider's own (useOwnAlertRules) or, on an advisor's client, the
+ * advisor's (useClientAlertRules), read in one call and filtered — the same list the Dashboard
+ * reads, so it's shared. `setRules` sees and changes only the given portfolios' rules.
  */
 export function usePortfoliosAlertRules(portfolioUuids: string[], pollMs?: number) {
-  return useRuleList<PortfolioAlertRule>(async () => {
-    const results = await Promise.allSettled(
-      portfolioUuids.map(async (portfolioUuid) =>
-        (await alertService.listRules(portfolioUuid)).map((rule) => ({ ...rule, portfolioUuid })),
-      ),
-    );
-    const loaded = results.filter((r) => r.status === "fulfilled");
-    if (loaded.length === 0 && results.length > 0) throw (results[0] as PromiseRejectedResult).reason;
-    return loaded.flatMap((r) => r.value);
-  }, ["portfolios", ...portfolioUuids], pollMs);
+  const { client, portfolios } = usePortfolio();
+  const all = useRuleList<OwnAlertRuleResponse | ClientAlertRuleResponse>(
+    client ? () => alertService.listClientRules() : () => alertService.listOwnRules(),
+    [client ? "clients" : "own"], pollMs,
+  );
+  const scope = portfolioUuids.join(",");
+  const rules = useMemo(() => {
+    const wanted = new Set(scope.split(","));
+    return all.rules === null ? null : all.rules.filter((r) => wanted.has(r.portfolioUuid));
+  }, [all.rules, scope]);
+
+  // The whole list's entries carry what the given rules may lack (a rule just created or saved).
+  const complete = (rule: PortfolioAlertRule) => ({
+    portfolioName: portfolios.find((p) => p.uuid === rule.portfolioUuid)?.name ?? "",
+    ...(client ? { clientUuid: client.uuid } : {}),
+    ...rule,
+  }) as OwnAlertRuleResponse & ClientAlertRuleResponse;
+  const setRules = (next: SetStateAction<PortfolioAlertRule[] | null>) => all.setRules((prev) => {
+    const wanted = new Set(portfolioUuids);
+    const mine = prev === null ? null : prev.filter((r) => wanted.has(r.portfolioUuid));
+    const updated = typeof next === "function" ? next(mine) : next;
+    if (updated === null) return prev;
+    return [...(prev ?? []).filter((r) => !wanted.has(r.portfolioUuid)), ...updated.map(complete)];
+  });
+
+  return { ...all, rules, setRules };
 }
