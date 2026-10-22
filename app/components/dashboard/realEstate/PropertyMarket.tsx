@@ -1,10 +1,10 @@
 // components/dashboard/realEstate/PropertyMarket.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronDown, ChevronUp, MapPin } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useRealEstate } from "../../../context/RealEstateContext";
+import { useRealEstate, useRealEstateRead } from "../../../context/RealEstateContext";
 import { formatCurrency } from "../../../lib/format";
 import { SALES_SEGMENT_LABELS, VALUATION_SOURCE_LABELS } from "../../../lib/realEstate";
 import type { MarketQuotation, MarketSales, MarketSemester, MarketTrend, Property, PropertyMarket } from "../../../models/RealEstate";
@@ -33,18 +33,9 @@ const surfaceText = (s: MarketQuotation["saleSurface"]) => (s === "net" ? "net m
  * sales show whatever the zone's status, as they need only the municipality.
  */
 export function PropertyMarketModule({ property, readOnly, onEdit }: { property: Property; readOnly: boolean; onEdit: () => void }) {
-  const { source, version, sample } = useRealEstate();
-  const key = `${property.uuid}:${version}`;
-  const [state, setState] = useState<{ key: string; market: PropertyMarket | null } | null>(null);
+  const { sample } = useRealEstate();
+  const market = useRealEstateRead<PropertyMarket>(["market", property.uuid], (source) => source.market(property.uuid));
   const [allTypes, setAllTypes] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    source.market(property.uuid)
-      .then((market) => { if (!cancelled) setState({ key, market }); })
-      .catch(() => { if (!cancelled) setState({ key, market: null }); });
-    return () => { cancelled = true; };
-  }, [source, property.uuid, key]);
-  const market = state?.key === key ? state.market : undefined;
   // Nothing to say where there's no source (or the API has no market yet).
   if (market === null || market?.status === "no_source") return null;
 

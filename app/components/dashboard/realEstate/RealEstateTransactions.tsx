@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Pencil, Search, Trash2 } from "lucide-react";
-import { useRealEstate } from "../../../context/RealEstateContext";
+import { useRealEstate, useRealEstateQuery } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { formatCurrency } from "../../../lib/format";
 import {
@@ -78,7 +78,7 @@ function detailOf(t: PropertyTransaction) {
  * archived property's, and a demo account's, are read only.
  */
 export function RealEstateTransactions({ initial, readOnly }: { initial: string; readOnly: boolean }) {
-  const { properties, source, version, changed } = useRealEstate();
+  const { properties, changed } = useRealEstate();
   const [propertyUuid, setPropertyUuid] = useState(initial);
   const scope = propertyUuid === ALL_PROPERTIES ? null : propertyUuid;
   const [query, setQuery] = useState("");
@@ -86,11 +86,6 @@ export function RealEstateTransactions({ initial, readOnly }: { initial: string;
   const [kind, setKind] = useState<"all" | PropertyTransactionKind>("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [rows, setRows] = useState<PropertyTransaction[]>([]);
-  const [total, setTotal] = useState<number | null>(null);
-  const [totals, setTotals] = useState<{ currency: string; amount: number }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [pages, setPages] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<PropertyTransaction | null>(null);
@@ -118,24 +113,19 @@ export function RealEstateTransactions({ initial, readOnly }: { initial: string;
     setSelected(new Set());
   }, [filterKey]);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    // Page by page (the API reads at most 200 at once), all of them again after a change.
-    Promise.all(Array.from({ length: pages }, (_, i) => source.transactions(scope, { ...filters, limit: PAGE, offset: i * PAGE })))
-      .then((lists) => {
-        if (cancelled) return;
-        setRows(lists.flatMap((l) => l.items));
-        setTotal(lists[0].total);
-        setTotals(lists[0].totals);
-        setLoadError(null);
-      })
-      .catch((err) => { if (!cancelled) setLoadError(errorText(err, "Unable to load the transactions.")); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-    // filters is read through filterKey.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, filterKey, pages, version]);
+  // Page by page (the API reads at most 200 at once), all of them again after a change; the rows
+  // stay up while the next answer loads.
+  const read = useRealEstateQuery(
+    ["transactions", scope ?? "all", filters, pages],
+    (source) => Promise.all(Array.from({ length: pages }, (_, i) => source.transactions(scope, { ...filters, limit: PAGE, offset: i * PAGE }))),
+    { keepPrevious: true },
+  );
+  const lists = read.data;
+  const rows = useMemo(() => lists?.flatMap((l) => l.items) ?? [], [lists]);
+  const total = lists ? lists[0].total : null;
+  const totals = lists?.[0].totals ?? [];
+  const loading = read.isFetching;
+  const loadError = read.isError ? errorText(read.error, "Unable to load the transactions.") : null;
 
   const byUuid = useMemo(() => new Map(properties.map((p) => [p.uuid, p])), [properties]);
   const editable = (t: PropertyTransaction) => !readOnly && !byUuid.get(t.propertyUuid)?.archived;

@@ -1,10 +1,10 @@
 // components/dashboard/realEstate/RealEstateTransactionForm.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, Building2, Hammer, HandCoins, Home, KeyRound, Landmark, Loader2, Receipt, X, type LucideIcon } from "lucide-react";
-import { useRealEstate } from "../../../context/RealEstateContext";
+import { useRealEstate, useRealEstateQuery } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { EXPENSE_KIND_LABELS, INCENTIVE_KIND_LABELS, PREPAYMENT_EFFECT_LABELS, fieldErrorText } from "../../../lib/realEstate";
 import { today } from "../../../lib/wallets";
@@ -68,7 +68,7 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
   // The property the transaction went to (the new one, for a purchase).
   onSaved: (propertyUuid: string) => void;
 }) {
-  const { properties, source, changed } = useRealEstate();
+  const { properties, changed } = useRealEstate();
   const [kind, setKind] = useState<RealEstateEntryKind>(taxPayment ? "expense" : initialKind);
   const open = useMemo(() => properties.filter((p) => !p.archived && !p.soldOn), [properties]);
   const [propertyUuid, setPropertyUuid] = useState(initialPropertyUuid ?? open[0]?.uuid ?? "");
@@ -111,7 +111,7 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
   const [error, setError] = useState<string | null>(null);
 
   // The property's mortgages still open: for an instalment, a prepayment, or a sale's payoff.
-  const mortgages = usePropertyMortgages(kind !== "purchase" ? property?.uuid : undefined, source);
+  const mortgages = usePropertyMortgages(kind !== "purchase" ? property?.uuid : undefined);
   const mortgage = mortgages?.find((m) => m.uuid === mortgageUuid) ?? mortgages?.[0];
 
   const currency = property?.currency ?? "EUR";
@@ -483,20 +483,10 @@ function SalePreview({ propertyUuid, currency, request }: {
   );
 }
 
-/** A property's open mortgages: undefined while loading (or with no property). */
-function usePropertyMortgages(propertyUuid: string | undefined, source: ReturnType<typeof useRealEstate>["source"]) {
-  const { version } = useRealEstate();
-  const key = `${propertyUuid}:${version}`;
-  const [state, setState] = useState<{ key: string; list: Mortgage[] } | null>(null);
-  useEffect(() => {
-    if (!propertyUuid) return;
-    let cancelled = false;
-    source.mortgages(propertyUuid)
-      .then((list) => { if (!cancelled) setState({ key, list: list.filter((m) => !m.closedOn) }); })
-      .catch(() => { if (!cancelled) setState({ key, list: [] }); });
-    return () => { cancelled = true; };
-  }, [source, propertyUuid, key]);
-  return state?.key === key ? state.list : undefined;
+/** A property's open mortgages: undefined while loading (or with no property). The property page's read. */
+function usePropertyMortgages(propertyUuid: string | undefined) {
+  const read = useRealEstateQuery<Mortgage[]>(["mortgages", propertyUuid], (source) => source.mortgages(propertyUuid!), { enabled: !!propertyUuid });
+  return useMemo(() => (read.isError ? [] : read.data?.filter((m) => !m.closedOn)), [read.isError, read.data]);
 }
 
 /**

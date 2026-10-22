@@ -1,9 +1,9 @@
 // components/dashboard/realEstate/PropertyTaxes.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CheckCircle2, Loader2, Percent as PercentIcon, Repeat, Trash2 } from "lucide-react";
-import { useRealEstate } from "../../../context/RealEstateContext";
+import { useRealEstate, useRealEstateRead } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { formatCurrency } from "../../../lib/format";
 import {
@@ -37,29 +37,16 @@ export function PropertyTaxModule({ property, readOnly, onEdit, onEditTaxpayer, 
   onEditTaxpayer: (year: number) => void;
   onRecordPayment: (prefill: TaxPaymentPrefill) => void;
 }) {
-  const { source, version } = useRealEstate();
   const thisYear = Number(today().slice(0, 4));
   const firstYear = Math.max(2020, Number((property.purchasedOn ?? property.createdAt).slice(0, 4)));
   const lastYear = property.soldOn ? Number(property.soldOn.slice(0, 4)) : thisYear;
   const years = Array.from({ length: Math.max(0, lastYear - firstYear + 1) }, (_, i) => lastYear - i);
   const [year, setYear] = useState(Math.min(thisYear, lastYear));
-  const key = `${property.uuid}:${year}:${version}`;
-  const [state, setState] = useState<{ key: string; list: TaxList | null } | null>(null);
-  const [leases, setLeases] = useState<{ key: string; list: RentalContract[] } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    source.taxes(property.uuid, year)
-      .then((list) => { if (!cancelled) setState({ key, list }); })
-      .catch(() => { if (!cancelled) setState({ key, list: null }); });
-    source.rentalContracts(property.uuid)
-      .then((list) => { if (!cancelled) setLeases({ key, list }); })
-      .catch(() => { if (!cancelled) setLeases({ key, list: [] }); });
-    return () => { cancelled = true; };
-  }, [source, property.uuid, year, key]);
+  const list = useRealEstateRead<TaxList>(["taxes", property.uuid, year], (source) => source.taxes(property.uuid, year));
+  // The same read as the Leases module's.
+  const leases = useRealEstateRead<RentalContract[]>(["rentalContracts", property.uuid], (source) => source.rentalContracts(property.uuid));
 
   if (property.address.country !== "IT") return null;
-  const list = state?.key === key ? state.list : undefined;
   const imu = list?.taxes.find((t) => t.kind === "property_tax");
   const rents = list?.taxes.find((t) => t.kind === "rental_income_tax");
   const sale = list?.taxes.find((t) => t.kind === "capital_gains_tax");
@@ -77,7 +64,7 @@ export function PropertyTaxModule({ property, readOnly, onEdit, onEditTaxpayer, 
         <RentalTaxCard
           {...common}
           tax={rents}
-          leases={leases?.key === key ? leases.list : []}
+          leases={leases ?? []}
           right={!imu ? yearPicker || undefined : undefined}
           onEditTaxpayer={() => onEditTaxpayer(year)}
         />

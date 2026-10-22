@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { FileSignature, Pencil, Receipt, Trash2 } from "lucide-react";
-import { useRealEstate } from "../../../context/RealEstateContext";
+import { useRealEstate, useRealEstateRead } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { formatCurrency } from "../../../lib/format";
 import {
@@ -29,23 +29,12 @@ const flatRateAllowed = (property: Property, kind: RentalContractKind) =>
  * lowers IMU to 75%.
  */
 export function LeasesModule({ property, readOnly, onChanged }: { property: Property; readOnly: boolean; onChanged: () => void }) {
-  const { source, version } = useRealEstate();
-  const key = `${property.uuid}:${version}`;
-  const [state, setState] = useState<{ key: string; list: RentalContract[] | null } | null>(null);
+  const list = useRealEstateRead<RentalContract[]>(["rentalContracts", property.uuid], (source) => source.rentalContracts(property.uuid));
   const [editing, setEditing] = useState<RentalContract | "new" | null>(null);
   const [deleting, setDeleting] = useState<RentalContract | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    source.rentalContracts(property.uuid)
-      .then((list) => { if (!cancelled) setState({ key, list }); })
-      .catch(() => { if (!cancelled) setState({ key, list: null }); });
-    return () => { cancelled = true; };
-  }, [source, property.uuid, key]);
-
-  const list = state?.key === key ? state.list : undefined;
   const now = today();
   const remove = async () => {
     if (!deleting) return;
