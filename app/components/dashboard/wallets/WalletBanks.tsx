@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Check, Landmark, Link2, Plus, RefreshCw, Search, Trash2, Unlink } from "lucide-react";
-import { useWallets } from "../../../context/WalletsContext";
+import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
 import { bankingService } from "../../../services/bankingService";
 import { formatCurrency } from "../../../lib/format";
 import { dayLabel, errorText } from "../../../lib/wallets";
@@ -58,18 +58,17 @@ export const syncTextFor = async (linkUuid: string, accountUuid: string) =>
  * none), then true or false. A read that fails says false: the way to link one stays offered.
  */
 export function useWalletLinked(walletUuid: string | undefined) {
-  const { version } = useWallets();
-  const [state, setState] = useState<{ key: string; linked: boolean } | null>(null);
-  const key = `${walletUuid ?? ""}:${version}`;
-  useEffect(() => {
-    if (!walletUuid) return;
-    let cancelled = false;
-    bankingService.links()
-      .then((links) => { if (!cancelled) setState({ key, linked: links.some((l) => l.accounts.some((a) => a.walletUuid === walletUuid)) }); })
-      .catch(() => { if (!cancelled) setState({ key, linked: false }); });
-    return () => { cancelled = true; };
-  }, [walletUuid, key]);
-  return state?.key === key ? state.linked : undefined;
+  const links = useBankLinks(!!walletUuid);
+  if (!walletUuid || links.isPending) return undefined;
+  return !!links.data?.some((l) => l.accounts.some((a) => a.walletUuid === walletUuid));
+}
+
+/**
+ * The bank links, oldest first, each with its accounts: one read for every module and dialog that
+ * wants them, read again with the rest of the wallets after `changed()`.
+ */
+export function useBankLinks(enabled = true) {
+  return useWalletQuery(["bankLinks"], () => bankingService.links(), { enabled });
 }
 
 /** A wallet's page, from outside the dashboard; `connect` opens its bank dialog (WalletBankDialog). */
@@ -102,24 +101,15 @@ export const syncText = (accounts: AccountSync[]) => {
  * account's link is to a sample bank, read only.
  */
 export function WalletBanks() {
-  const { wallets, sample, version, changed } = useWallets();
-  const [state, setState] = useState<{ links: BankLink[] | null; error: string | null } | null>(null);
-  const [reload, setReload] = useState(0);
+  const { wallets, sample, changed } = useWallets();
+  const read = useBankLinks();
   const [connecting, setConnecting] = useState<{ renew?: BankLink } | null>(null);
   const [removing, setRemoving] = useState<BankLink | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    let cancelled = false;
-    bankingService.links()
-      .then((links) => { if (!cancelled) setState({ links, error: null }); })
-      .catch((err) => { if (!cancelled) setState({ links: null, error: errorText(err, "Unable to load your banks.") }); });
-    return () => { cancelled = true; };
-  }, [version, reload]);
-
-  const links = state?.links;
+  const links = read.isError ? null : read.data;
   // A wallet takes one account: those linked already aren't offered again.
   const taken = useMemo(() => new Set((links ?? []).flatMap((l) => l.accounts.map((a) => a.walletUuid)).filter(Boolean)), [links]);
 
@@ -128,11 +118,11 @@ export function WalletBanks() {
     setError(null);
     try {
       await action();
-      setReload((n) => n + 1);
+      void read.refetch();
       changed();
     } catch (err) {
       setError(errorText(err, fallback));
-      setReload((n) => n + 1);
+      void read.refetch();
     } finally {
       setBusy(null);
     }
@@ -154,7 +144,7 @@ export function WalletBanks() {
   };
 
   if (links === undefined) return <p className="text-[13px] text-[#857e78]">Loading…</p>;
-  if (links === null) return <p className="text-[13px] font-semibold text-rose-600">{state?.error}</p>;
+  if (links === null) return <p className="text-[13px] font-semibold text-rose-600">{errorText(read.error, "Unable to load your banks.")}</p>;
 
   return (
     <>
@@ -351,32 +341,19 @@ function BankAccountRow({ account, wallets, taken, readOnly, busy, onLink, onUnl
  * this account's.
  */
 export function WalletBankSync({ wallet }: { wallet: Wallet }) {
-  const { sample, version, changed } = useWallets();
-  const [state, setState] = useState<{ found: { link: BankLink; account: BankAccount } | null; error: string | null } | null>(null);
+  const { sample, changed } = useWallets();
+  const read = useBankLinks();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    bankingService.links()
-      .then((links) => {
-        if (cancelled) return;
-        const link = links.find((l) => l.accounts.some((a) => a.walletUuid === wallet.uuid));
-        const account = link?.accounts.find((a) => a.walletUuid === wallet.uuid);
-        setState({ found: link && account ? { link, account } : null, error: null });
-      })
-      .catch((err) => { if (!cancelled) setState({ found: null, error: errorText(err, "Unable to load your banks.") }); });
-    return () => { cancelled = true; };
-  }, [wallet.uuid, version]);
-
-  if (state === null) return null;
-  const found = state.found;
-  if (!found) {
-    return state.error ? <p className="text-[11.5px] font-semibold text-rose-600">{state.error}</p> : null;
+  if (read.isPending) return null;
+  const link = read.data?.find((l) => l.accounts.some((a) => a.walletUuid === wallet.uuid));
+  const account = link?.accounts.find((a) => a.walletUuid === wallet.uuid);
+  if (!link || !account) {
+    return read.isError ? <p className="text-[11.5px] font-semibold text-rose-600">{errorText(read.error, "Unable to load your banks.")}</p> : null;
   }
 
-  const { link, account } = found;
   const active = link.status === "active";
   const lock = sample ? DEMO_DISABLED_TITLE : wallet.archived ? "An archived wallet isn't read" : !active ? "The consent ended: renew it on the Banks page" : null;
   const balance = account.reportedBalance === null ? null : formatCurrency(account.reportedBalance, account.currency, 2);
@@ -547,25 +524,13 @@ function ConnectBankDialog({ renew, wallet, onClose }: { renew?: BankLink; walle
  */
 export function WalletBankDialog({ wallet, onClose }: { wallet: Wallet; onClose: () => void }) {
   const { wallets, changed } = useWallets();
-  const [links, setLinks] = useState<BankLink[] | null | undefined>(undefined);
-  const [reload, setReload] = useState(0);
+  const linksRead = useBankLinks();
+  const links = linksRead.isError ? null : linksRead.data;
   const [picked, setPicked] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    bankingService.links()
-      .then((list) => { if (!cancelled) setLinks(list); })
-      .catch((err) => {
-        if (cancelled) return;
-        setLinks(null);
-        setError(errorText(err, "Unable to load your banks."));
-      });
-    return () => { cancelled = true; };
-  }, [reload]);
 
   const linkOf = (account: BankAccount) => links?.find((l) => l.uuid === account.linkUuid);
   const own = links?.flatMap((l) => l.accounts).find((a) => a.walletUuid === wallet.uuid);
@@ -582,7 +547,6 @@ export function WalletBankDialog({ wallet, onClose }: { wallet: Wallet; onClose:
     setError(null);
     try {
       await action();
-      setReload((n) => n + 1);
       changed();
     } catch (err) {
       setError(errorText(err, fallback));
@@ -612,7 +576,7 @@ export function WalletBankDialog({ wallet, onClose }: { wallet: Wallet; onClose:
       title={`${wallet.name}'s bank`}
       subtitle="Read only, through open banking: the account's movements come into the wallet twice a day."
       busy={busy}
-      error={error}
+      error={error ?? (linksRead.isError ? errorText(linksRead.error, "Unable to load your banks.") : null)}
       submitLabel={own ? "Done" : `Link to ${wallet.name}`}
       canSubmit={own ? true : !!picked}
       onSubmit={() => (own ? onClose() : void link())}

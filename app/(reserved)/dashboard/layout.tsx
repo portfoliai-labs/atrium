@@ -2,6 +2,7 @@
 "use client";
 
 import React from "react";
+import { QueryProvider } from "../../context/QueryContext";
 import { NotificationsProvider } from "../../context/NotificationsContext";
 import { PortfolioProvider } from "../../context/PortfolioContext";
 import { ClientsProvider } from "../../context/ClientsContext";
@@ -22,20 +23,22 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
-    <PortfolioProvider>
-      <ClientsProvider>
-        <WalletsProvider>
-          <RealEstateProvider>
-            <JournalProvider>
-              <NotificationsProvider>
-                <div className="dashboard-container">
-                  {children}
-                </div>
-              </NotificationsProvider>
-            </JournalProvider>
-          </RealEstateProvider>
-        </WalletsProvider>
-      </ClientsProvider>
-    </PortfolioProvider>
+    <QueryProvider>
+      <PortfolioProvider>
+        <ClientsProvider>
+          <WalletsProvider>
+            <RealEstateProvider>
+              <JournalProvider>
+                <NotificationsProvider>
+                  <div className="dashboard-container">
+                    {children}
+                  </div>
+                </NotificationsProvider>
+              </JournalProvider>
+            </RealEstateProvider>
+          </WalletsProvider>
+        </ClientsProvider>
+      </PortfolioProvider>
+    </QueryProvider>
   );
 }

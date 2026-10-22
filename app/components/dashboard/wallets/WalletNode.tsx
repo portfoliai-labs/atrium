@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Archive, Landmark, Loader2, Plus } from "lucide-react";
-import { useWallets, useWalletSummary } from "../../../context/WalletsContext";
+import { useWalletQuery, useWalletRead, useWallets, useWalletSummary } from "../../../context/WalletsContext";
 // The retired hub's (see below): import { useWalletSummaries } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
 import { formatCurrency } from "../../../lib/format";
@@ -60,7 +60,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   rootTrail: Crumb[];
   onOpen: (id: string, page: WalletPage) => void;
 }) {
-  const { wallets, loading, error, sample, version, changed } = useWallets();
+  const { wallets, loading, error, sample, changed } = useWallets();
   const wallet = id === ALL_WALLETS ? undefined : wallets.find((w) => w.uuid === id);
   const all = !wallet;
   const scope = wallet?.uuid ?? null;
@@ -78,8 +78,8 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   }, []);
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
-  const count = useMovementCount(scope, version);
-  const attention = useAttention(scope, version);
+  const count = useMovementCount(scope);
+  const attention = useAttention(scope);
   const linked = useWalletLinked(wallet?.uuid);
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
@@ -263,48 +263,35 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   );
 }
 
-/** How many movements there are (one wallet's, or every wallet's): undefined → null while loading. */
-function useMovementCount(walletUuid: string | null, version: number) {
-  const { source } = useWallets();
-  const key = `${walletUuid ?? "all"}:${version}`;
-  const [state, setState] = useState<{ key: string; total: number | null } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    source.movements(walletUuid, { limit: 1 })
-      .then((list) => { if (!cancelled) setState({ key, total: list.total }); })
-      .catch(() => { if (!cancelled) setState({ key, total: null }); });
-    return () => { cancelled = true; };
-  }, [source, walletUuid, key]);
-  return state?.key === key ? state.total : null;
+/** How many movements there are (one wallet's, or every wallet's): null while loading. */
+function useMovementCount(walletUuid: string | null) {
+  const list = useWalletRead(["movements", walletUuid ?? "all", "count"], (source) => source.movements(walletUuid, { limit: 1 }));
+  return list?.total ?? null;
 }
 
 /**
  * What the header's Budgets and Alerts counters show: how many budgets (across the wallets) and how
  * many over this month, how many rules (the wallet's and those on every wallet) and what they find
- * today. null while loading; a read that fails counts nothing rather than failing the page.
+ * today. null while loading; a read that fails counts nothing rather than failing the page. The
+ * same reads as the Budgets and Alerts pages', shared with them.
  */
-function useAttention(walletUuid: string | null, version: number) {
-  const { source } = useWallets();
-  const key = `${walletUuid ?? "all"}:${version}`;
-  const [state, setState] = useState<{ key: string; budgets: number; over: number; rules: number; found: number } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([source.budgetMonth().catch(() => null), source.alertRules(walletUuid).catch(() => null)]).then(([month, rules]) => {
-      if (cancelled) return;
-      const budgets = month?.budgets ?? [];
-      // A wallet's page counts only the budgets it spent in.
-      const counted = walletUuid ? budgets.filter((b) => b.wallets.some((w) => w.walletUuid === walletUuid)) : budgets;
-      setState({
-        key,
-        budgets: month ? budgets.length : 0,
-        over: counted.filter((b) => b.status === "over").length,
-        rules: rules?.length ?? 0,
-        found: rules ? currentAlertFindings(rules).filter((f) => !walletUuid || f.walletUuid === walletUuid || f.walletUuid === null).length : 0,
-      });
-    });
-    return () => { cancelled = true; };
-  }, [source, walletUuid, key]);
-  return state?.key === key ? state : null;
+function useAttention(walletUuid: string | null) {
+  const monthRead = useWalletQuery(["budgetMonth", "now"], (source) => source.budgetMonth());
+  const rulesRead = useWalletQuery(["alertRules", walletUuid ?? "all"], (source) => source.alertRules(walletUuid));
+  return useMemo(() => {
+    if (monthRead.isPending || rulesRead.isPending) return null;
+    const month = monthRead.isError ? null : monthRead.data;
+    const rules = rulesRead.isError ? null : rulesRead.data;
+    const budgets = month?.budgets ?? [];
+    // A wallet's page counts only the budgets it spent in.
+    const counted = walletUuid ? budgets.filter((b) => b.wallets.some((w) => w.walletUuid === walletUuid)) : budgets;
+    return {
+      budgets: month ? budgets.length : 0,
+      over: counted.filter((b) => b.status === "over").length,
+      rules: rules?.length ?? 0,
+      found: rules ? currentAlertFindings(rules).filter((f) => !walletUuid || f.walletUuid === walletUuid || f.walletUuid === null).length : 0,
+    };
+  }, [walletUuid, monthRead.isPending, monthRead.isError, monthRead.data, rulesRead.isPending, rulesRead.isError, rulesRead.data]);
 }
 
 function ArchivedNote() {

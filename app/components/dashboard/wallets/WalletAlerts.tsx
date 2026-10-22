@@ -1,9 +1,10 @@
 // components/dashboard/wallets/WalletAlerts.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowDownLeft, BellRing, CircleCheck, Pencil, Plus, Receipt, Target, Trash2, Wallet as WalletIcon } from "lucide-react";
-import { useWallets } from "../../../context/WalletsContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { useWalletQuery, useWallets, walletKey } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
 import {
   ALERT_TYPES, ALERT_TYPE_LIST, alertFindingText, alertRuleText, currentAlertFindings, dayLabel, errorText, type CategoryTree,
@@ -35,27 +36,22 @@ const channelsText = (r: Pick<WalletAlertRule, "notifyEmail" | "notifyInApp">) =
  * findings. A demo account's are sample rules, read only.
  */
 export function WalletAlerts({ scope }: { scope: string | null }) {
-  const { wallets, categories, source, version, sample } = useWallets();
-  const key = `${scope ?? "all"}:${version}`;
-  // The list as read, then as the writes left it (no refetch for a toggle).
-  const [state, setState] = useState<{ key: string; rules: WalletAlertRule[] | null; error: string | null } | null>(null);
-  const [reload, setReload] = useState(0);
+  const { wallets, categories, sample } = useWallets();
+  const queryClient = useQueryClient();
+  // The list as read (shared with the header's counters), then as the writes left it (no refetch
+  // for a toggle).
+  const read = useWalletQuery(["alertRules", scope ?? "all"], (source) => source.alertRules(scope));
   const [editing, setEditing] = useState<WalletAlertRule | "new" | null>(null);
   const [deleting, setDeleting] = useState<WalletAlertRule | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    source.alertRules(scope)
-      .then((rules) => { if (!cancelled) setState({ key, rules, error: null }); })
-      .catch((err) => { if (!cancelled) setState({ key, rules: null, error: errorText(err, "Unable to load the alerts.") }); });
-    return () => { cancelled = true; };
-  }, [source, scope, key, reload]);
-
-  const rules = state?.key === key ? state.rules : undefined;
-  const replace = (rule: WalletAlertRule) =>
-    setState((s) => s && { ...s, rules: s.rules?.map((r) => (r.uuid === rule.uuid ? rule : r)) ?? null });
+  const rules = read.isError ? null : read.data;
+  // Every list it's in (all of them, each wallet's).
+  const replace = (rule: WalletAlertRule) => queryClient.setQueriesData<WalletAlertRule[]>(
+    { queryKey: walletKey("alertRules") }, (list) => list?.map((r) => (r.uuid === rule.uuid ? rule : r)),
+  );
+  const reload = () => { void queryClient.invalidateQueries({ queryKey: walletKey("alertRules") }); };
   const walletOf = (uuid: string | null) => (uuid ? wallets.find((w) => w.uuid === uuid) : undefined);
   const nameOf = (uuid: string | null) => (uuid ? walletOf(uuid)?.name ?? "A wallet" : "Every wallet");
   const ruleText = (r: Pick<WalletAlertRule, "params" | "walletUuid">) => alertRuleText(r.params, walletOf(r.walletUuid)?.currency ?? "EUR", categories);
@@ -80,7 +76,7 @@ export function WalletAlerts({ scope }: { scope: string | null }) {
     try {
       await walletService.removeAlertRule(deleting.uuid);
       setDeleting(null);
-      setReload((n) => n + 1);
+      reload();
     } catch (err) {
       setError(errorText(err, "Unable to delete this rule."));
     } finally {
@@ -89,7 +85,7 @@ export function WalletAlerts({ scope }: { scope: string | null }) {
   };
 
   if (rules === undefined) return <p className="text-[13px] text-[#857e78]">Loading…</p>;
-  if (rules === null) return <p className="text-[13px] font-semibold text-rose-600">{state?.error}</p>;
+  if (rules === null) return <p className="text-[13px] font-semibold text-rose-600">{errorText(read.error, "Unable to load the alerts.")}</p>;
 
   const archived = !!walletOf(scope)?.archived;
   return (
@@ -201,7 +197,7 @@ export function WalletAlerts({ scope }: { scope: string | null }) {
           wallets={wallets.filter((w) => !w.archived)}
           initialWalletUuid={scope}
           onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); setReload((n) => n + 1); }}
+          onSaved={() => { setEditing(null); reload(); }}
         />
       )}
       {deleting && (

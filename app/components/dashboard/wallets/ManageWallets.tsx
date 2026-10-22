@@ -1,7 +1,7 @@
 // components/dashboard/wallets/ManageWallets.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowUpRight, Landmark, Pencil, RefreshCw, Unlink } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
 import { bankingService } from "../../../services/bankingService";
@@ -10,7 +10,7 @@ import { KIND_LABELS, dayLabel, errorText, walletColor } from "../../../lib/wall
 import type { BankAccount, BankLink } from "../../../models/Banking";
 import type { Wallet } from "../../../models/Wallet";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
-import { IconButton, accountLabel, syncText } from "./WalletBanks";
+import { IconButton, accountLabel, syncText, useBankLinks } from "./WalletBanks";
 import { WalletFormDialog } from "./WalletDialogs";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
@@ -30,23 +30,14 @@ export function ManageWallets({ onOpenWallet, onOpenBanks }: {
   // All wallets' Banks, where a bank is connected.
   onOpenBanks: () => void;
 }) {
-  const { wallets, sample, version, changed } = useWallets();
-  const [links, setLinks] = useState<{ list: BankLink[] | null; error: string | null } | null>(null);
-  const [reload, setReload] = useState(0);
+  const { wallets, sample, changed } = useWallets();
+  const links = useBankLinks();
   const [busy, setBusy] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Wallet | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    bankingService.links()
-      .then((list) => { if (!cancelled) setLinks({ list, error: null }); })
-      .catch((err) => { if (!cancelled) setLinks({ list: null, error: errorText(err, "Unable to load your banks.") }); });
-    return () => { cancelled = true; };
-  }, [version, reload]);
-
-  const list = links?.list ?? [];
+  const list = links.data ?? [];
   const linkedOf = (w: Wallet): Linked | null => {
     for (const link of list) {
       const account = link.accounts.find((a) => a.walletUuid === w.uuid);
@@ -68,7 +59,7 @@ export function ManageWallets({ onOpenWallet, onOpenBanks }: {
       changed();
     } catch (err) {
       setErrors((e) => ({ ...e, [walletUuid]: errorText(err, fallback) }));
-      setReload((n) => n + 1);
+      void links.refetch();
     } finally {
       setBusy(null);
     }
@@ -89,7 +80,7 @@ export function ManageWallets({ onOpenWallet, onOpenBanks }: {
         key={wallet.uuid}
         wallet={wallet}
         color={color}
-        banks={links === null ? undefined : list.length}
+        banks={links.isPending ? undefined : list.length}
         linked={linked}
         choices={free.filter((c) => c.account.currency === wallet.currency)}
         readOnly={sample}
@@ -110,7 +101,7 @@ export function ManageWallets({ onOpenWallet, onOpenBanks }: {
 
   return (
     <>
-      {links?.error && <p className="text-sm font-semibold text-rose-600">{links.error}</p>}
+      {links.isError && <p className="text-sm font-semibold text-rose-600">{errorText(links.error, "Unable to load your banks.")}</p>}
       <ManageGroup
         title="Wallets"
         note={`${active.length} ${active.length === 1 ? "wallet" : "wallets"} · each takes one bank account of its currency, read twice a day`}
