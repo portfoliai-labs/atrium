@@ -5,6 +5,8 @@ import { BellRing, Bell, Mail, Plus, Pencil, Trash2, Loader2, AlertCircle, Check
 import { alertService } from "../../services/alertService";
 import { portfolioService } from "../../services/portfolioService";
 import { usePortfoliosAlertRules, type PortfolioAlertRule } from "../../hooks/useAlertRules";
+import { insightsKey } from "../../hooks/useInsights";
+import { useQuery } from "@tanstack/react-query";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Toggle } from "./Toggle";
 import { TONE_STYLES } from "./AlertGauge";
@@ -89,32 +91,24 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
   const { isDemo } = useUser();
   // null = form closed; { rule: null } = creating on `portfolioUuid`; { rule } = editing that rule.
   const [form, setForm] = useState<{ rule: PortfolioAlertRule | null; portfolioUuid: string } | null>(null);
-  // The asset picker's options per portfolio, from its current holdings, fetched the first time
-  // the form needs them.
-  const [assetOptions, setAssetOptions] = useState<Record<string, AssetOption[]>>({});
   const [toDelete, setToDelete] = useState<PortfolioAlertRule | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const formPortfolio = form?.portfolioUuid ?? null;
-  useEffect(() => {
-    if (!formPortfolio || assetOptions[formPortfolio]) return;
-    let cancelled = false;
-    portfolioService.getInsightsComposition(formPortfolio)
-      .then((res) => {
-        if (cancelled) return;
-        setAssetOptions((prev) => ({
-          ...prev,
-          [formPortfolio]: (res.holdings?.holdings ?? []).map((h) => ({
-            assetId: h.assetId,
-            label: h.ticker ? `${h.ticker} — ${h.name}` : h.name,
-          })),
-        }));
-      })
-      .catch(() => { if (!cancelled) setAssetOptions((prev) => ({ ...prev, [formPortfolio]: [] })); });
-    return () => { cancelled = true; };
-  }, [formPortfolio, assetOptions]);
+  // The asset picker's options, from the form's portfolio's current holdings: the Insights'
+  // composition, read the first time the form needs it (and shared with the Insights page).
+  const formPortfolio = form?.portfolioUuid ?? "";
+  const composition = useQuery({
+    queryKey: insightsKey(formPortfolio, "composition"),
+    queryFn: () => portfolioService.getInsightsComposition(formPortfolio),
+    enabled: formPortfolio !== "",
+  });
+  const holdings = composition.data?.holdings?.holdings;
+  const assetOptions = useMemo<AssetOption[] | null>(() => (
+    composition.isError ? [] : holdings === undefined && composition.isPending ? null
+      : (holdings ?? []).map((h) => ({ assetId: h.assetId, label: h.ticker ? `${h.ticker} — ${h.name}` : h.name }))
+  ), [composition.isError, composition.isPending, holdings]);
 
   useEffect(() => {
     if (!message) return;
@@ -286,7 +280,7 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
       portfolio={p}
       named={grouped}
       clientName={clientName}
-      holdings={assetOptions[p.uuid] ?? null}
+      holdings={assetOptions}
       onOpenCategories={onOpenCategories}
       onSaved={handleSaved}
       onCancel={() => setForm(null)}

@@ -22,10 +22,10 @@ import { ApiError } from "../../services/apiClient";
 import { formatCompact, formatCurrency, formatQuantity } from "../../lib/format";
 import { toChartPoints, type SeriesPoint } from "../../lib/series";
 import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
-import { usePortfolio } from "../../context/PortfolioContext";
+import { investmentsKey, usePortfolio, useInvestmentsQuery } from "../../context/PortfolioContext";
 import { investmentsOf } from "../../models/Portfolio";
 import { PortfolioTaxYear, TaxesByYearPanel } from "./taxes/RealizedTaxes";
-import { useDetail, useInsights, type Insights, type SectionState } from "../../hooks/useInsights";
+import { insightsKey, useDetail, useInsights, type Insights, type SectionState } from "../../hooks/useInsights";
 import { pushDashboardEntry, readDashboardEntry, type DashboardOverlay } from "../../lib/dashboardHistory";
 import { NoDataEmptyState } from "./NoDataEmptyState";
 import { InstrumentProfileModule } from "./InstrumentProfileModule";
@@ -129,8 +129,7 @@ export function PerformanceSection({
   const [selected, setSelected] = useState<{ year: number; month: number } | null>(null);
   const month = useDetail(
     selected ? () => portfolioService.getMonth(portfolioUuid, selected.year, selected.month) : null,
-    selected ? `${selected.year}-${selected.month}` : "",
-    performance.revision,
+    insightsKey(portfolioUuid, "performance", "month", selected?.year, selected?.month),
   );
 
   // A module's detail view (see ExploreView): the module draws it into `exploreSlot` and
@@ -884,11 +883,11 @@ function riskModelUnavailableMessage(model: { status: RiskModelResponse["status"
  * aggregate, how the portfolios move together. The risk model has its own (RiskModelModule).
  */
 function RiskDetail({
-  portfolioUuid, revision, returnsRevision, aggregate,
-}: { portfolioUuid: string; revision: number; returnsRevision: number; aggregate: AggregateSlots | null }) {
+  portfolioUuid, aggregate,
+}: { portfolioUuid: string; aggregate: AggregateSlots | null }) {
   return (
     <>
-      <VolatilityExplore portfolioUuid={portfolioUuid} revision={revision + returnsRevision} />
+      <VolatilityExplore portfolioUuid={portfolioUuid} />
       {aggregate && <PortfolioCorrelationModule slot={aggregate.comovement} members={aggregate.portfolios.module?.members ?? []} />}
     </>
   );
@@ -967,7 +966,7 @@ function RiskModelModule({ slot, portfolioUuid }: { slot: ModuleSlot<InsightsFro
       ))}
       {ready(slot) && exploring && (
         <ExploreView title="Risk Model" onClose={() => setExploring(false)}>
-          <RiskModelExplore portfolioUuid={portfolioUuid} revision={slot.revision} />
+          <RiskModelExplore portfolioUuid={portfolioUuid} />
         </ExploreView>
       )}
     </Module>
@@ -983,8 +982,8 @@ function RiskModelModule({ slot, portfolioUuid }: { slot: ModuleSlot<InsightsFro
  * and solver_failed too, since correlations need only returns). Everything here is built from
  * past returns, so it says so and avoids recommendation wording.
  */
-function RiskModelExplore({ portfolioUuid, revision }: { portfolioUuid: string; revision: number }) {
-  const detail = useDetail(() => portfolioService.getRiskModel(portfolioUuid), portfolioUuid, revision);
+function RiskModelExplore({ portfolioUuid }: { portfolioUuid: string }) {
+  const detail = useDetail(() => portfolioService.getRiskModel(portfolioUuid), insightsKey(portfolioUuid, "risk", "riskModel"));
   return (
     <DetailBody detail={detail}>
       {(data) => {
@@ -1754,7 +1753,7 @@ function HoldingsExplorer({
       )}
       {exploringAsset?.listingId && (
         <ExploreView title={exploringAsset.ticker ?? exploringAsset.name} onClose={() => setExploringAsset(null)} noTrail>
-          <AssetExplore listingId={exploringAsset.listingId} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={slot.revision} />
+          <AssetExplore listingId={exploringAsset.listingId} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} />
         </ExploreView>
       )}
     </Module>
@@ -2067,33 +2066,22 @@ function tradeMarkers(trades: TransactionResponse[], points: SeriesPoint[]): Tra
   return [...marks.values()];
 }
 
-export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { listingId: string; assetId: string; portfolioUuid?: string; revision: number }) {
-  const position = useDetail(portfolioUuid ? () => portfolioService.getPosition(portfolioUuid, assetId) : null, assetId, revision);
+export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId: string; assetId: string; portfolioUuid?: string }) {
+  const position = useDetail(
+    portfolioUuid ? () => portfolioService.getPosition(portfolioUuid, assetId) : null,
+    insightsKey(portfolioUuid ?? "", "composition", "position", assetId),
+  );
   const [range, setRange] = useState<AssetChartRange>("1Y");
   const [inQuoteCurrency, setInQuoteCurrency] = useState(false);
-  // `forRange`: the range the last answer (data or error) was for — loading while it isn't the
-  // one selected. `data` is kept across a range change so the old chart stays up meanwhile.
-  const [state, setState] = useState<{ data: AssetDetailResponse | null; error: string | null; forRange: AssetChartRange | null }>({
-    data: null, error: null, forRange: null,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    portfolioService.getAssetDetail(listingId, range)
-      .then((data) => { if (!cancelled) setState({ data, error: null, forRange: range }); })
-      .catch((err) => {
-        if (cancelled) return;
-        const error = err instanceof ApiError && err.status === 404
-          ? "No market data is available for this asset."
-          : "Unable to load this right now. Try again in a moment.";
-        setState((prev) => ({ ...prev, error, forRange: range }));
-      });
-    return () => { cancelled = true; };
-  }, [listingId, range]);
-
-  const loading = state.forRange !== range;
-  const error = loading ? null : state.error;
-  const { data } = state;
+  // The last range's answer stays up while another range's loads (keepPrevious).
+  const detail = useInvestmentsQuery<AssetDetailResponse>(
+    ["asset", listingId, range], () => portfolioService.getAssetDetail(listingId, range), { keepPrevious: true },
+  );
+  const loading = detail.isPending || detail.isPlaceholderData;
+  const error = loading || !detail.isError ? null
+    : detail.error instanceof ApiError && detail.error.status === 404 ? "No market data is available for this asset."
+    : "Unable to load this right now. Try again in a moment.";
+  const data = detail.data ?? null;
   const hasQuoteToggle = data !== null && data.quoteCurrency !== data.currency;
   const showQuote = hasQuoteToggle && inQuoteCurrency;
   const series = data ? (showQuote ? data.quotePrices : data.prices) : null;
@@ -2104,7 +2092,7 @@ export function AssetExplore({ listingId, assetId, portfolioUuid, revision }: { 
   const tradeFilter = data?.isin ? { isin: data.isin } : position.data?.holding?.ticker ? { ticker: position.data.holding.ticker } : null;
   const trades = useDetail(
     portfolioUuid && tradeFilter ? () => transactionService.getUserTransactions(portfolioUuid, TRADES_READ, 0, tradeFilter) : null,
-    `${assetId}:${JSON.stringify(tradeFilter)}`, revision,
+    insightsKey(portfolioUuid ?? "", "composition", "trades", assetId, tradeFilter),
   );
   const tradeMarks = useMemo(
     () => tradeMarkers((trades.data?.items ?? []).filter((t) => t.asset_id === assetId), points),
@@ -2667,7 +2655,7 @@ function RealizedPnlModule({ slot, currency, portfolioUuid, onOpenTaxes }: {
       )}
       {canExplore && exploring && (
         <ExploreView title="Profit & Loss" onClose={() => setExploring(false)}>
-          <ProfitLossExplore portfolioUuid={portfolioUuid} revision={slot.revision} onOpenTaxes={onOpenTaxes && isInvestments ? onOpenTaxes : undefined} />
+          <ProfitLossExplore portfolioUuid={portfolioUuid} onOpenTaxes={onOpenTaxes && isInvestments ? onOpenTaxes : undefined} />
         </ExploreView>
       )}
     </Module>
@@ -2681,9 +2669,9 @@ function RealizedPnlModule({ slot, currency, portfolioUuid, onOpenTaxes }: {
  * Without any dividend ever received, the dividends' panel and columns are left out. With
  * `onOpenTaxes` (the investments'), the taxes year by year last, each year opening its page.
  */
-function ProfitLossExplore({ portfolioUuid, revision, onOpenTaxes }: { portfolioUuid: string; revision: number; onOpenTaxes?: (year?: number) => void }) {
-  const realized = useDetail(() => portfolioService.getRealizedPnl(portfolioUuid), portfolioUuid, revision);
-  const dividends = useDetail(() => portfolioService.getDividends(portfolioUuid), portfolioUuid, revision);
+function ProfitLossExplore({ portfolioUuid, onOpenTaxes }: { portfolioUuid: string; onOpenTaxes?: (year?: number) => void }) {
+  const realized = useDetail(() => portfolioService.getRealizedPnl(portfolioUuid), insightsKey(portfolioUuid, "incomeCosts", "realizedPnl"));
+  const dividends = useDetail(() => portfolioService.getDividends(portfolioUuid), insightsKey(portfolioUuid, "incomeCosts", "dividends"));
   const loading = realized.loading || dividends.loading;
   // No dividend ever received: nothing about them, here or in the table.
   const noDividends = dividends.data !== null && dividends.data.totalLifetimeIncome === 0 && !dividends.data.byAsset.some((a) => a.lifetimeIncome > 0);
@@ -2834,7 +2822,7 @@ const formatPctOrDash = (pct: number | null) => (pct === null ? "—" : formatPc
  * `updating` while useInsights is still waiting for it — the caller hides its figures behind
  * StaleUpdatingState, since old and new numbers would describe two different portfolios — and
  * `lagging` once it has stopped waiting: the figures are drawn with an UpdatingNote.
- * `revision` goes up with each fetch of the section, so an open detail view fetches again too.
+ * An open detail view is read again with its section (see insightsKey).
  */
 interface ModuleSlot<M> {
   module: M | null;
@@ -2842,7 +2830,6 @@ interface ModuleSlot<M> {
   failed: boolean;
   updating: boolean;
   lagging: boolean;
-  revision: number;
 }
 
 function slotOf<S, M>(
@@ -2857,7 +2844,6 @@ function slotOf<S, M>(
     failed: data === null && section.failed,
     updating: stale && !timedOut,
     lagging: stale && timedOut,
-    revision: section.revision,
   };
 }
 
@@ -2969,11 +2955,10 @@ function RollingVolatilityChart({ series, className = "h-64" }: { series: TimeSe
  * page: its detail (RiskDetail) holds the rest of it.
  */
 function VolatilityModule({
-  slot, portfolioUuid, returnsRevision, aggregate, maxDrawdownPct,
+  slot, portfolioUuid, aggregate, maxDrawdownPct,
 }: {
   slot: ModuleSlot<InsightsVolatilityModule>;
   portfolioUuid: string;
-  returnsRevision: number;
   aggregate: AggregateSlots | null;
   // Since inception, from the comparison; null to leave it out.
   maxDrawdownPct: number | null;
@@ -3013,7 +2998,7 @@ function VolatilityModule({
       )}
       {ready(slot) && exploring && (
         <ExploreView title="Risk" onClose={() => setExploring(false)}>
-          <RiskDetail portfolioUuid={portfolioUuid} revision={slot.revision} returnsRevision={returnsRevision} aggregate={aggregate} />
+          <RiskDetail portfolioUuid={portfolioUuid} aggregate={aggregate} />
         </ExploreView>
       )}
     </Module>
@@ -3029,10 +3014,11 @@ const daysBetween = (start: string, end: string) => Math.round((new Date(end).ge
  * rolling chart, then the turbulent stretches the backend picked out of it (riskEvents), most
  * recent first, with what the portfolio did through each and what it held at the time; then the
  * drawdown (DrawdownSection): how far below its previous high it fell, and its deepest falls.
- * `revision` follows both documents it's built from (volatility and returns).
+ * Read again with the Risk section and with the Performance one, as it follows both documents
+ * it's built from (volatility and returns, see useInsights).
  */
-function VolatilityExplore({ portfolioUuid, revision }: { portfolioUuid: string; revision: number }) {
-  const detail = useDetail(() => portfolioService.getVolatility(portfolioUuid), portfolioUuid, revision);
+function VolatilityExplore({ portfolioUuid }: { portfolioUuid: string }) {
+  const detail = useDetail(() => portfolioService.getVolatility(portfolioUuid), insightsKey(portfolioUuid, "risk", "volatility"));
   return <DetailBody detail={detail}>{(data) => <VolatilityDetail data={data} />}</DetailBody>;
 }
 
@@ -3217,8 +3203,8 @@ interface BenchmarkPairRow {
  * again, the portfolio and the benchmark figure by figure (return and risk side by side), the
  * relative statistics, and the whole basket.
  */
-function BenchmarkExplore({ portfolioUuid, revision }: { portfolioUuid: string; revision: number }) {
-  const detail = useDetail(() => portfolioService.getBenchmark(portfolioUuid), portfolioUuid, revision);
+function BenchmarkExplore({ portfolioUuid }: { portfolioUuid: string }) {
+  const detail = useDetail(() => portfolioService.getBenchmark(portfolioUuid), insightsKey(portfolioUuid, "performance", "benchmark"));
   return <DetailBody detail={detail}>{(data) => <BenchmarkDetail data={data} />}</DetailBody>;
 }
 
@@ -3405,8 +3391,8 @@ const horizonLabel = (period: string) => (period === "Inception" ? "Since incept
  * headline figure is the end of, the return of each calendar year beside how steady they were,
  * every horizon with the risk taken to earn it, and the best and worst month.
  */
-function ReturnsExplore({ portfolioUuid, revision }: { portfolioUuid: string; revision: number }) {
-  const detail = useDetail(() => portfolioService.getReturns(portfolioUuid), portfolioUuid, revision);
+function ReturnsExplore({ portfolioUuid }: { portfolioUuid: string }) {
+  const detail = useDetail(() => portfolioService.getReturns(portfolioUuid), insightsKey(portfolioUuid, "performance", "returns"));
   return <DetailBody detail={detail}>{(data) => <ReturnsDetail data={data} />}</DetailBody>;
 }
 
@@ -3822,7 +3808,7 @@ function TradingCostsModule({ slot, currency, portfolioUuid }: { slot: ModuleSlo
       )}
       {canExplore && exploring && (
         <ExploreView title="Trading Costs" onClose={() => setExploring(false)}>
-          <TradingCostsExplore portfolioUuid={portfolioUuid} revision={slot.revision} focus={null} />
+          <TradingCostsExplore portfolioUuid={portfolioUuid} focus={null} />
         </ExploreView>
       )}
     </Module>
@@ -3836,8 +3822,8 @@ const bpsOrDash = (bps: number | null) => (bps === null ? "—" : `${bps.toFixed
  * how the total splits into commissions and spread, how it built up over time, and where it
  * went, by platform and by asset.
  */
-function TradingCostsExplore({ portfolioUuid, revision, focus }: { portfolioUuid: string; revision: number; focus: string | null }) {
-  const detail = useDetail(() => portfolioService.getTradingCosts(portfolioUuid), portfolioUuid, revision);
+function TradingCostsExplore({ portfolioUuid, focus }: { portfolioUuid: string; focus: string | null }) {
+  const detail = useDetail(() => portfolioService.getTradingCosts(portfolioUuid), insightsKey(portfolioUuid, "incomeCosts", "tradingCosts"));
   return <DetailBody detail={detail}>{(data) => <TradingCostsDetail data={data} focus={focus} />}</DetailBody>;
 }
 
@@ -4004,7 +3990,7 @@ function PortfoliosModule({ slot, holdings, sector, region, classifications, ove
       )}
       {exploringAsset?.listingId && (
         <ExploreView title={exploringAsset.ticker ?? exploringAsset.name} onClose={() => setExploringAsset(null)} noTrail>
-          <AssetExplore listingId={exploringAsset.listingId} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} revision={holdings.revision} />
+          <AssetExplore listingId={exploringAsset.listingId} assetId={exploringAsset.assetId} portfolioUuid={portfolioUuid} />
         </ExploreView>
       )}
     </Module>
@@ -4185,7 +4171,7 @@ const STRATEGY_REBALANCE_EVERY: Record<StrategyFrequency, string> = {
  * Returns the three tiles, for the page's grid.
  */
 function StrategyModules({ portfolioUuid, currency: viewCurrency }: { portfolioUuid: string; currency: string }) {
-  const detail = useDetail(() => portfoliosService.getStrategy(portfolioUuid), portfolioUuid, 0);
+  const detail = useDetail(() => portfoliosService.getStrategy(portfolioUuid), investmentsKey("strategy", portfolioUuid));
   const s: StrategyResponse | null = detail.data;
   // Its amounts and fixed fee are in its owner's currency.
   const currency = s?.currency ?? viewCurrency;
@@ -4503,7 +4489,6 @@ function HistoryPage({
       historyUpdating={historyUpdating}
       currency={currency}
       portfolioUuid={portfolioUuid}
-      revision={insights.performance.revision}
       onSelectMonth={onSelectMonth}
     />
   );
@@ -4527,7 +4512,6 @@ function HistoryPage({
     <VolatilityModule
       slot={own(risk, (d) => d.volatility)}
       portfolioUuid={portfolioUuid}
-      returnsRevision={insights.performance.revision}
       aggregate={aggregate}
       maxDrawdownPct={comparison?.performance?.maxDrawdownPct ?? null}
     />
@@ -4665,18 +4649,17 @@ function ValueModule({ value, currency, comparison, children }: {
  * (/insights/benchmark).
  */
 function PerformanceDetail({
-  heatmap, historyUpdating, currency, portfolioUuid, revision, onSelectMonth,
+  heatmap, historyUpdating, currency, portfolioUuid, onSelectMonth,
 }: {
   heatmap: MonthlyMarketEffectEntry[];
   historyUpdating: boolean;
   currency: string;
   portfolioUuid: string;
-  revision: number;
   onSelectMonth: (year: number, month: number) => void;
 }) {
   return (
     <>
-      <ReturnsExplore portfolioUuid={portfolioUuid} revision={revision} />
+      <ReturnsExplore portfolioUuid={portfolioUuid} />
       <Module>
         <ModuleHead
           eyebrow={currency}
@@ -4685,7 +4668,7 @@ function PerformanceDetail({
         />
         {historyUpdating ? <StaleUpdatingState /> : <MonthlyReturnsHeatmap entries={heatmap} onSelectMonth={onSelectMonth} />}
       </Module>
-      <BenchmarkExplore portfolioUuid={portfolioUuid} revision={revision} />
+      <BenchmarkExplore portfolioUuid={portfolioUuid} />
     </>
   );
 }

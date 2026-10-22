@@ -1,9 +1,9 @@
 // components/dashboard/ManagePortfolios.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowUpRight, Bell, Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
-import { usePortfolio } from "../../context/PortfolioContext";
+import { useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { portfoliosService } from "../../services/portfoliosService";
 import { formatCurrency } from "../../lib/format";
@@ -50,15 +50,12 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
   const colorOf = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
 
   const uuidsKey = portfolios.map((p) => p.uuid).join(",");
-  const [entries, setEntries] = useState<{ key: string; byUuid: Map<string, PortfolioComparisonEntry> }>({ key: "", byUuid: new Map() });
-  useEffect(() => {
-    let cancelled = false;
-    portfoliosService.compare([], client?.uuid)
-      .then((list) => { if (!cancelled) setEntries({ key: uuidsKey, byUuid: new Map(list.map((e) => [e.portfolio.uuid, e])) }); })
-      .catch(() => { if (!cancelled) setEntries({ key: uuidsKey, byUuid: new Map() }); });
-    return () => { cancelled = true; };
-  }, [uuidsKey, client?.uuid]);
-  const loaded = entries.key === uuidsKey;
+  // Read again when the set of portfolios changes (one made or deleted), not on a rename.
+  const list = useInvestmentsRead<PortfolioComparisonEntry[]>(
+    ["comparison", client?.uuid ?? "own", "all", uuidsKey], () => portfoliosService.compare([], client?.uuid),
+  );
+  const loaded = list !== undefined;
+  const byUuid = useMemo(() => new Map((list ?? []).map((e) => [e.portfolio.uuid, e])), [list]);
 
   const real = portfolios.filter((p) => !p.isVirtual).sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
   const backtests = portfolios.filter((p) => p.isVirtual && !p.isAggregate);
@@ -84,7 +81,7 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
       key={p.uuid}
       portfolio={p}
       color={color}
-      entry={loaded ? entries.byUuid.get(p.uuid) ?? null : undefined}
+      entry={loaded ? byUuid.get(p.uuid) ?? null : undefined}
       readOnly={isDemo}
       manageable={canManage}
       // Backtests take no alerts; undefined while they load.
