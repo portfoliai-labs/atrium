@@ -188,7 +188,7 @@ function FlowModule({ months, scope, eur }: { months: Months; scope: string | nu
     <Figs>
       <Fig label="In" value={eur(yearIn)} tone="gain" strong />
       <Fig label="Out" value={eur(yearOut)} tone="loss" strong />
-      <Fig label="Saved" value={rateText(rate)} sub="of what came in" />
+      <Fig label="Saved" value={rateText(rate)} strong />
     </Figs>
   );
   const chart = (height: string) => (
