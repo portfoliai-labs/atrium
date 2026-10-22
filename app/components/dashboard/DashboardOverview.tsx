@@ -146,7 +146,7 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
 
       {/* CASH FLOW — the wallets' last months; beside it, the payments coming up. */}
       <div className={pair}>
-        {!noDataAtAll && headlineState.status === "ready" && <WealthBreakdown />}
+        {!noDataAtAll && headlineState.status === "ready" && <WealthBreakdown overview={overview} />}
         <UpcomingPaymentsModule onOpen={onNavigate ? () => openWalletPage(onNavigate, "all") : undefined} />
       </div>
 

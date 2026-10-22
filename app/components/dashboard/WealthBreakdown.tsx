@@ -4,7 +4,7 @@
 import { Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useUser } from "../../context/UserContext";
 import { useWallets } from "../../context/WalletsContext";
-import { useWalletsOverview } from "../../hooks/useWalletsOverview";
+import type { WalletsOverview } from "../../hooks/useWalletsOverview";
 import { formatCompact, formatCurrency } from "../../lib/format";
 import { monthLabel, savingsRate } from "../../lib/wallets";
 import { Module, ModuleHead, MODULE_BODY, Figs, Fig } from "./PerformanceSection";
@@ -14,13 +14,13 @@ const rateText = (rate: number | null) => (rate === null ? "—" : `${Math.round
 /**
  * WEALTH BREAKDOWN — on the Dashboard, under the net worth: the wallets' cash flow over the last six
  * months, where the user has wallets to have (a demo account's are sample data). Nothing otherwise.
+ * `overview` is the Dashboard's (useWalletsOverview), read once there for the net worth and this.
  */
-export function WealthBreakdown() {
+export function WealthBreakdown({ overview }: { overview: WalletsOverview | null | undefined }) {
   const { isDemo } = useUser();
   const { available: walletsAvailable, sample } = useWallets();
   // The wallets are a demo account's sample data, or the user's own where the backend has them.
   const hasWallets = isDemo || walletsAvailable;
-  const overview = useWalletsOverview();
   const walletsCurrency = overview?.currency ?? "EUR";
   const walletCount = overview?.wallets.length ?? 0;
   const recent = (overview?.months ?? []).slice(-6);
