@@ -52,8 +52,10 @@ const toneClass = (v: number) => (v > 0 ? "text-[#047857]" : v < 0 ? "text-[#e11
  * with the way to set it (`onOpenSettings`). Every figure is an estimate on the recorded transactions: the page says
  * so, the backend doesn't. Who pays a portfolio's taxes is set in Manage portfolios (`onOpenPortfolios`).
  */
-export function TaxesPage({ trail, onOpenSettings, onOpenPortfolios }: {
+export function TaxesPage({ trail, initialYear, onOpenSettings, onOpenPortfolios }: {
   trail: Crumb[];
+  // The year it opens on (one the Realized P&L's taxes opened): this one without, or if not offered.
+  initialYear?: number;
   // Where the tax residence is set: the user's Settings, a client's settings.
   onOpenSettings?: () => void;
   // Where each portfolio's taxation mode is set.
@@ -62,7 +64,7 @@ export function TaxesPage({ trail, onOpenSettings, onOpenPortfolios }: {
   const { portfolios, client } = usePortfolio();
   const clientUuid = client?.uuid ?? null;
   const years = useMemo(() => taxYears(), []);
-  const [year, setYear] = useState(years[0]);
+  const [year, setYear] = useState(() => (initialYear !== undefined && years.includes(initialYear) ? initialYear : years[0]));
   // null: the regime's own.
   const [method, setMethod] = useState<CostMethod | null>(null);
   const [taxYear, setTaxYear] = useState<Loaded<TaxYear> | null>(null);
