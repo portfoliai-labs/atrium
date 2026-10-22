@@ -53,6 +53,25 @@ export function takeBankWallet(): PendingBankWallet | null {
 export const syncTextFor = async (linkUuid: string, accountUuid: string) =>
   syncText((await bankingService.sync(linkUuid)).accounts.filter((a) => a.accountUuid === accountUuid));
 
+/**
+ * Whether a wallet takes its movements from a bank account: undefined while the links load (and for
+ * none), then true or false. A read that fails says false: the way to link one stays offered.
+ */
+export function useWalletLinked(walletUuid: string | undefined) {
+  const { version } = useWallets();
+  const [state, setState] = useState<{ key: string; linked: boolean } | null>(null);
+  const key = `${walletUuid ?? ""}:${version}`;
+  useEffect(() => {
+    if (!walletUuid) return;
+    let cancelled = false;
+    bankingService.links()
+      .then((links) => { if (!cancelled) setState({ key, linked: links.some((l) => l.accounts.some((a) => a.walletUuid === walletUuid)) }); })
+      .catch(() => { if (!cancelled) setState({ key, linked: false }); });
+    return () => { cancelled = true; };
+  }, [walletUuid, key]);
+  return state?.key === key ? state.linked : undefined;
+}
+
 /** A wallet's page, from outside the dashboard; `connect` opens its bank dialog (WalletBankDialog). */
 export const walletPageUrl = (walletUuid: string, connect = false) =>
   `/dashboard?section=wallets&wallet=${encodeURIComponent(walletUuid)}${connect ? "&connectBank=1" : ""}`;

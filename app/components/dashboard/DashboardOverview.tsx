@@ -15,7 +15,8 @@ import { formatCurrency } from "../../lib/format";
 import { NoDataEmptyState } from "./NoDataEmptyState";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { AlertGaugeCard } from "./AlertGauge";
-import { openPortfolioPage, openRealEstatePage, openWalletPage } from "../../lib/dashboardNav";
+import { SUBSCRIPTION_SECTION, openPortfolioPage, openProfilePreferences, openRealEstatePage, openWalletPage } from "../../lib/dashboardNav";
+import { BudgetsSummaryModule, ProfileSummaryModule, UpcomingPaymentsModule } from "./DashboardSummaries";
 import { DailyArticleModule } from "./NewsSection";
 import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
 import { alertState, type AlertState, type AlertTone } from "../../lib/alerts";
@@ -39,8 +40,9 @@ type SnapshotState =
  * on top (every portfolio's market value, from the aggregate "All portfolios" or the only
  * portfolio, plus the wallets' balance and the real estate's equity; a demo account's wallets and
  * properties are sample data, see lib/mock), with the portfolios, the wallets and the properties
- * under it as totals; the wallets' cash flow (WealthBreakdown); then every portfolio's alerts and
- * the article of the day. Headline figures
+ * under it as totals, and beside it on a wide enough page the wallets' cash flow (WealthBreakdown);
+ * a row of summaries (the user's profile and plan, the month's budgets, the payments coming up);
+ * then every portfolio's alerts and the article of the day. Headline figures
  * only: the rest lives in Investments, Wallets and Real estate, which the summaries open. The overview endpoint never mixes history
  * with fresh data (no isStale).
  */
@@ -115,7 +117,10 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
   }
 
   return (
-    <div className="space-y-6 pb-12">
+    // Sized by the room the page has (the Sidebar collapsed gives it more), not the window's.
+    <div className="@container space-y-6 pb-12">
+    {/* Side by side once there's room for both (56rem), one under the other otherwise. */}
+    <div className="grid grid-cols-1 @[56rem]:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-6 items-stretch">
 
       {/* NET WORTH — a lone portfolio with no data yet gets the full-page "no data" window
           instead (unless there are wallets or properties to add up), since there's nothing else on the page. */}
@@ -143,6 +148,17 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
 
       {/* CASH FLOW — the wallets' last months. */}
       {!noDataAtAll && headlineState.status === "ready" && <WealthBreakdown />}
+    </div>
+
+      {/* SUMMARIES — the user, the month's budgets and what's due: each only where it has something to say. */}
+      <div className="grid grid-cols-1 @[40rem]:grid-cols-2 @[56rem]:grid-cols-3 gap-6 items-stretch">
+        <ProfileSummaryModule
+          onOpenProfile={onNavigate ? () => openProfilePreferences(onNavigate) : undefined}
+          onUpgrade={onNavigate ? () => onNavigate(SUBSCRIPTION_SECTION) : undefined}
+        />
+        <BudgetsSummaryModule onOpen={onNavigate ? () => openWalletPage(onNavigate, "all", "budgets") : undefined} />
+        <UpcomingPaymentsModule onOpen={onNavigate ? () => openWalletPage(onNavigate, "all") : undefined} />
+      </div>
 
       {/* ALERTS — every portfolio's, aggregate included, as one list sorted by urgency. */}
       {!noDataAtAll && (
@@ -588,7 +604,7 @@ function AlertsModule({ portfolios, onManage }: { portfolios: Portfolio[]; onMan
  */
 function Module({ children }: { children: React.ReactNode }) {
   return (
-    <section className="bg-white rounded-4xl border border-slate-200 shadow-sm overflow-hidden">
+    <section className="h-full bg-white rounded-4xl border border-slate-200 shadow-sm overflow-hidden">
       {children}
     </section>
   );
