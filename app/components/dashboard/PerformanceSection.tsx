@@ -2682,7 +2682,7 @@ function ProfitLossExplore({ portfolioUuid, onOpenTaxes }: { portfolioUuid: stri
       {!loading && (realized.data || dividends.data) && (
         <AssetPnlTable realized={realized.data} dividends={dividends.data} withDividends={!noDividends} />
       )}
-      {onOpenTaxes && <TaxesByYearPanel portfolioUuid={portfolioUuid} onOpen={onOpenTaxes} />}
+      {onOpenTaxes && <TaxesByYearPanel onOpen={onOpenTaxes} />}
     </>
   );
 }

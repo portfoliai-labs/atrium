@@ -6,12 +6,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Bar, BarChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Hourglass, Info } from "lucide-react";
 import { useInvestmentsRead, usePortfolio } from "../../../context/PortfolioContext";
-import { fetchTaxYear, taxesByYearKey, useRealizedGains, useTaxYear } from "../../../hooks/useTaxes";
-import { transactionService } from "../../../services/transactionService";
+import { fetchTaxYears, taxYearsKey, useRealizedGains, useTaxYear } from "../../../hooks/useTaxes";
 import { ApiError } from "../../../services/apiClient";
 import { formatCompact, formatCurrency } from "../../../lib/format";
 import { CATEGORICAL_PALETTE } from "../../../lib/chartColors";
-import { TAX_DISCLAIMER, taxYears } from "../../../lib/taxes";
+import { TAX_DISCLAIMER } from "../../../lib/taxes";
 import { TAX_REGIME_UNAVAILABLE, type TaxYear } from "../../../models/Tax";
 import { ExplorePanel } from "../ExploreView";
 import { AXIS_TICK_COLOR, FigRows, TOOLTIP_STYLE } from "../PerformanceSection";
@@ -29,42 +28,25 @@ const SERIES = [
 const sum = (values: number[]) => values.reduce((s, v) => s + v, 0);
 
 /**
- * The calendar years the investments have been taxed in: from the year of their first
- * transaction (the list comes newest first, so the last one is the oldest), but no earlier than
- * the Taxes page's first year, to this one. [] without any transaction.
- */
-async function yearsWithTransactions(portfolioUuid: string): Promise<number[]> {
-  const first = await transactionService.getUserTransactions(portfolioUuid, 1, 0);
-  if (first.total === 0) return [];
-  const oldest = first.total > 1 ? (await transactionService.getUserTransactions(portfolioUuid, 1, first.total - 1)).items[0] : first.items[0];
-  const from = Number(oldest?.date.slice(0, 4));
-  return taxYears().filter((y) => !(y < from)).reverse();
-}
-
-/**
  * TAXES BY YEAR — Profit & Loss's (the investments': All portfolios, or the only portfolio): the
  * estimated tax of each calendar year since the first transaction, by the regime of the tax
  * residence, as stacked bars (what goes in the tax return on the gains and on the income, what the
  * brokers withhold) over a table that adds the losses carried forward. A year (its bar, its row)
  * opens the Taxes page on it (`onOpen`). Without a residence (or a regime for it), the way there.
  */
-export function TaxesByYearPanel({ portfolioUuid, onOpen }: { portfolioUuid: string; onOpen: (year?: number) => void }) {
+export function TaxesByYearPanel({ onOpen }: { onOpen: (year?: number) => void }) {
   const { client } = usePortfolio();
   const clientUuid = client?.uuid ?? null;
   const queryClient = useQueryClient();
-  // undefined loading; "noRegime" without a residence or a regime for it; null failed. Each year
-  // through the cache, shared with the Taxes page's.
-  const data = useInvestmentsRead<TaxYear[] | "noRegime" | null>(taxesByYearKey(clientUuid, portfolioUuid), async () => {
-    const years = await yearsWithTransactions(portfolioUuid);
-    if (years.length === 0) return [];
-    const year = (y: number) => fetchTaxYear(queryClient, clientUuid, y);
-    // The latest year first: without a regime, none of them has one, so no more asking.
-    const latest = await Promise.allSettled([year(years[years.length - 1])]);
-    if (latest[0].status === "rejected" && isNoRegime(latest[0].reason)) return "noRegime";
-    const results = [...await Promise.allSettled(years.slice(0, -1).map(year)), ...latest];
-    const read = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
-    // Some years missing (a currency without rates): the others still read.
-    return read.length > 0 ? read : null;
+  // undefined loading; "noRegime" without a residence or a regime for it; null failed. [] without
+  // any transaction. Each year also goes in the cache, for the Taxes page's.
+  const data = useInvestmentsRead<TaxYear[] | "noRegime">(taxYearsKey(clientUuid), async () => {
+    try {
+      return await fetchTaxYears(queryClient, clientUuid);
+    } catch (err) {
+      if (isNoRegime(err)) return "noRegime";
+      throw err;
+    }
   });
 
   const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
