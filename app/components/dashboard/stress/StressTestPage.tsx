@@ -1,8 +1,9 @@
 // components/dashboard/stress/StressTestPage.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlertTriangle, Info, Loader2, Plus, X } from "lucide-react";
+import { useInvestmentsQuery } from "../../../context/PortfolioContext";
 import { stressTestService } from "../../../services/stressTestService";
 import { formatCurrency } from "../../../lib/format";
 import { STRATEGY_CATEGORIES, STRATEGY_CATEGORY_LABELS, type StrategyCategory } from "../../../models/Strategy";
@@ -29,11 +30,6 @@ type Row<K extends string> = { key: K; text: string };
 interface Draft {
   categories: Row<StrategyCategory>[];
   currencies: Row<string>[];
-}
-interface Loaded {
-  key: string;
-  data: StressTest | null;
-  error: string | null;
 }
 
 const TH = "py-2 pr-4 text-left text-[10px] font-black uppercase tracking-[0.12em] text-[#857e78] whitespace-nowrap";
@@ -76,32 +72,22 @@ export function StressTestPanel({ portfolioUuid }: { portfolioUuid: string }) {
   const [draft, setDraft] = useState<Draft>({ categories: [{ key: "equity", text: "-30" }], currencies: [] });
   // The custom shocks last run: they run again only when asked.
   const [customRun, setCustomRun] = useState<CustomShocks | null>(null);
-  const [result, setResult] = useState<Loaded | null>(null);
   // The reference currency, once a run has said it.
   const [currency, setCurrency] = useState<string | null>(null);
 
   const request: StressTestRequest | null = choice === "custom" ? (customRun ? { custom: customRun } : null) : { crisis: choice };
-  const requestKey = request ? `${portfolioUuid}:${JSON.stringify(request)}` : null;
-
-  useEffect(() => {
-    if (!request || !requestKey) return;
-    let cancelled = false;
-    stressTestService.run(portfolioUuid, request)
-      .then((data) => {
-        if (cancelled) return;
-        setResult({ key: requestKey, data, error: null });
-        setCurrency(data.currency);
-      })
-      .catch((err) => { if (!cancelled) setResult({ key: requestKey, data: null, error: err instanceof Error ? err.message : "Unable to run the stress test." }); });
-    return () => { cancelled = true; };
-    // The request is requestKey's.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portfolioUuid, requestKey]);
-
-  const current = result && result.key === requestKey ? result : null;
-  // The last result stays on screen, dimmed, while the next one loads.
-  const shown = current ?? (requestKey ? result : null);
-  const loading = requestKey !== null && current === null;
+  // In the cache by the portfolio and the scenario, read again after a write to the portfolio:
+  // a scenario picked again shows at once. The last result stays on screen, dimmed, while the next one loads.
+  const read = useInvestmentsQuery(
+    ["stressTest", portfolioUuid, request],
+    () => stressTestService.run(portfolioUuid, request!),
+    { enabled: request !== null, keepPrevious: true },
+  );
+  if (read.data && read.data.currency !== currency) setCurrency(read.data.currency);
+  const shown = request === null ? null : read.isError
+    ? { data: null, error: read.error instanceof Error ? read.error.message : "Unable to run the stress test." }
+    : read.data ? { data: read.data, error: null } : null;
+  const loading = request !== null && (read.isPending || read.isPlaceholderData);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] gap-6 items-start">
@@ -134,9 +120,9 @@ export function StressTestPanel({ portfolioUuid }: { portfolioUuid: string }) {
           </div>
         ) : (
           <Module>
-            <ModuleHead title="Impact on the portfolio" desc={requestKey ? "Running the scenario…" : "Set your shocks and run them"} />
+            <ModuleHead title="Impact on the portfolio" desc={request ? "Running the scenario…" : "Set your shocks and run them"} />
             <div className={`${MODULE_BODY} flex items-center justify-center py-16`}>
-              {requestKey
+              {request
                 ? <Loader2 className="h-6 w-6 animate-spin text-[#C49A3C]" />
                 : <p className="text-[12.5px] text-[#78716c] text-center max-w-sm">The value before and after, what each category adds to the change, and every position.</p>}
             </div>

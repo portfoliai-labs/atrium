@@ -2,7 +2,9 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { CornerDownRight, Eye, EyeOff, Flag, Loader2, MessageCircle, PenLine, Trash2 } from "lucide-react";
+import { journalKey, useJournal } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
 import type { Article, Comment } from "../../../models/Journal";
 import { COMMENT_MAX, REASON_LABELS, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
@@ -92,6 +94,7 @@ function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemov
   onRemove: (comment: Comment) => void;
   onReport: (target: ReportTarget) => void;
 }) {
+  const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [replying, setReplying] = useState(false);
   const [showReplies, setShowReplies] = useState(false);
@@ -199,6 +202,8 @@ function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemov
                 onDone={() => {
                   setReplying(false);
                   setShowReplies(true);
+                  // The thread is read again, the newest reply at its end.
+                  void queryClient.invalidateQueries({ queryKey: journalKey("comments", article.uuid, comment.uuid) });
                   onChange({ ...comment, replyCount: comment.replyCount + 1 });
                 }}
                 onCancel={() => setReplying(false)}
@@ -212,8 +217,6 @@ function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemov
           )}
           {showReplies && (
             <CommentThread
-              // A reply sent reloads the thread, the newest at its end.
-              key={comment.replyCount}
               article={article}
               parentUuid={comment.uuid}
               canWrite={canWrite}
@@ -237,13 +240,18 @@ function CommentThread({ article, parentUuid, canWrite, ownArticle, onReport, on
   // The thread's total, as it changes (the article's count is the top-level page's to say).
   onCount?: (delta: number) => void;
 }) {
+  const { changed } = useJournal();
   const list = usePaged(
+    ["comments", article.uuid, parentUuid ?? null],
     (offset) => journalService.comments(article.uuid, parentUuid, PAGE_SIZE, offset),
-    `comments:${article.uuid}:${parentUuid ?? ""}`,
   );
-  const replace = (next: Comment) => list.update((items) => items.map((c) => (c.uuid === next.uuid ? next : c)));
+  const replace = (next: Comment) => {
+    list.update((items) => items.map((c) => (c.uuid === next.uuid ? next : c)));
+    changed();
+  };
   const remove = (gone: Comment) => {
     list.update((items) => items.filter((c) => c.uuid !== gone.uuid));
+    changed();
     onCount?.(-(1 + gone.replyCount));
   };
 
@@ -284,8 +292,7 @@ export function ArticleComments({ article, canWrite, ownArticle, onCount }: {
   ownArticle: boolean;
   onCount: (delta: number) => void;
 }) {
-  // A new top-level comment reloads the list, the newest at its top.
-  const [version, setVersion] = useState(0);
+  const queryClient = useQueryClient();
   const [reporting, setReporting] = useState<ReportTarget | null>(null);
 
   return (
@@ -300,11 +307,14 @@ export function ArticleComments({ article, canWrite, ownArticle, onCount }: {
             articleUuid={article.uuid}
             placeholder="What do you think?"
             submitLabel="Comment"
-            onDone={() => { setVersion((v) => v + 1); onCount(1); }}
+            onDone={() => {
+              // The list is read again, the new comment at its top.
+              void queryClient.invalidateQueries({ queryKey: journalKey("comments", article.uuid, null) });
+              onCount(1);
+            }}
           />
         )}
         <CommentThread
-          key={version}
           article={article}
           canWrite={canWrite}
           ownArticle={ownArticle}

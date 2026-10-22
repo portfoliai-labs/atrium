@@ -1,7 +1,8 @@
 // app/context/JournalContext.tsx
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useMemo } from "react";
+import { keepPreviousData, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useUser } from "./UserContext";
 import { journalService } from "../services/journalService";
 import { apiJournalSource, isJournalMissing, readerLanguage, type JournalSource } from "../lib/journal";
@@ -18,6 +19,10 @@ import type { ArticleLanguage } from "../models/Journal";
  *   reporting. Unlike other backend-less features it isn't a demo account's preview (Matteo,
  *   2026-10-12): the articles are real ones.
  * - `loading` until the first answer.
+ * Every Journal read is in the query cache (context/QueryContext) under a ["journal", ...] key
+ * (useJournalQuery, usePaged), shared by the pages and modules that ask for it. A write patches
+ * what's on screen in place, then `changed()` marks every other Journal read stale: each is read
+ * again when it's next shown.
  */
 type JournalMode = "loading" | "api" | "static";
 
@@ -30,37 +35,42 @@ interface JournalContextType {
   editor: boolean;
   // The reader's language: the lists put its articles first, and a new article starts in it.
   language: ArticleLanguage;
+  changed: () => void;
 }
 
 const JournalContext = createContext<JournalContextType | undefined>(undefined);
 
+/** A Journal read's key in the query cache: everything under it goes stale with `changed()`. */
+export const journalKey = (...parts: unknown[]) => ["journal", ...parts];
+
 export function JournalProvider({ children }: { children: React.ReactNode }) {
   const { user, isDemo } = useUser();
   const signedIn = !!user;
-  const [mode, setMode] = useState<JournalMode>("loading");
-  const [editor, setEditor] = useState(false);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!signedIn) return;
-    let cancelled = false;
-    (async () => {
+  const probe = useQuery({
+    queryKey: journalKey("mode"),
+    queryFn: async (): Promise<{ mode: JournalMode; editor: boolean }> => {
       try {
         await journalService.list({ limit: 1 });
-        if (cancelled) return;
-        setMode("api");
-        // Only an editor sees the moderation pages; anyone else's answer is false.
-        if (!isDemo) {
-          const status = await journalService.editorStatus().catch(() => ({ editor: false }));
-          if (!cancelled) setEditor(status.editor);
-        }
       } catch (err) {
-        if (cancelled) return;
         // A Journal that failed to answer is still there: its pages say what went wrong.
-        setMode(isJournalMissing(err) ? "static" : "api");
+        return { mode: isJournalMissing(err) ? "static" : "api", editor: false };
       }
-    })();
-    return () => { cancelled = true; };
-  }, [signedIn, isDemo]);
+      // Only an editor sees the moderation pages; anyone else's answer is false.
+      if (isDemo) return { mode: "api", editor: false };
+      const status = await journalService.editorStatus().catch(() => ({ editor: false }));
+      return { mode: "api", editor: status.editor };
+    },
+    enabled: signedIn,
+  });
+  const mode = probe.data?.mode ?? "loading";
+  const editor = probe.data?.editor ?? false;
+
+  // What's on screen was patched by the write itself: the rest is only marked stale, not read again now.
+  const changed = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: journalKey(), refetchType: "none" });
+  }, [queryClient]);
 
   const value = useMemo<JournalContextType>(() => ({
     mode,
@@ -68,7 +78,8 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
     canWrite: mode === "api" && !isDemo,
     editor: mode === "api" && editor,
     language: readerLanguage(user?.language),
-  }), [mode, isDemo, editor, user?.language]);
+    changed,
+  }), [mode, isDemo, editor, user?.language, changed]);
   return <JournalContext.Provider value={value}>{children}</JournalContext.Provider>;
 }
 
@@ -77,3 +88,26 @@ export const useJournal = (): JournalContextType => {
   if (context === undefined) throw new Error("useJournal must be used within a JournalProvider");
   return context;
 };
+
+/**
+ * A Journal read through the query cache, under `journalKey(...key)`: asked for once however many
+ * modules want it, and again once stale (30s, or a write's `changed()`). Off until the Journal's
+ * mode is known. With `keepPrevious`, a new key keeps the last answer up until its own.
+ */
+export function useJournalQuery<T>(
+  key: unknown[], read: (source: JournalSource) => Promise<T>, { enabled = true, keepPrevious = false } = {},
+): UseQueryResult<T> {
+  const { source, mode } = useJournal();
+  return useQuery({
+    queryKey: journalKey(...key),
+    queryFn: () => read(source),
+    enabled: mode !== "loading" && enabled,
+    placeholderData: keepPrevious ? keepPreviousData : undefined,
+  });
+}
+
+/** useJournalQuery's answer alone: undefined while loading, null when it couldn't be read. */
+export function useJournalRead<T>(key: unknown[], read: (source: JournalSource) => Promise<T>, enabled = true): T | null | undefined {
+  const query = useJournalQuery(key, read, { enabled });
+  return query.isError ? null : query.data;
+}

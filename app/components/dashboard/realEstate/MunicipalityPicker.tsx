@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Search, X } from "lucide-react";
-import { useRealEstate } from "../../../context/RealEstateContext";
+import { useRealEstateQuery, useRealEstateRead } from "../../../context/RealEstateContext";
 import type { Municipality } from "../../../models/RealEstate";
 import { INPUT } from "../wallets/WalletDialogs";
 
@@ -13,38 +13,24 @@ import { INPUT } from "../wallets/WalletDialogs";
  * which nobody knows by heart. A code already set is shown by its name.
  */
 export function MunicipalityPicker({ code, onChange }: { code: string; onChange: (code: string) => void }) {
-  const { source } = useRealEstate();
   const [picked, setPicked] = useState<Municipality | null>(null);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Municipality[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState("");
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
-  // A code set before (an existing property's): its name.
-  useEffect(() => {
-    if (!code || picked?.code === code) return;
-    let cancelled = false;
-    source.municipalities({ codes: [code] })
-      .then((list) => { if (!cancelled) setPicked(list[0] ?? null); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [code, picked?.code, source]);
+  // A code set before (an existing property's): its name, read as its property's page reads it.
+  const named = useRealEstateRead(["municipality", code], (source) => source.municipalities({ codes: [code] }), !!code && picked?.code !== code);
+  const municipality = picked?.code === code ? picked : named?.[0] ?? null;
 
   // The search goes out once typing stops, from 2 characters.
   useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) return;
-    let cancelled = false;
-    const t = setTimeout(() => {
-      setLoading(true);
-      source.municipalities({ search: q })
-        .then((list) => { if (!cancelled) setResults(list); })
-        .catch(() => { if (!cancelled) setResults([]); })
-        .finally(() => { if (!cancelled) setLoading(false); });
-    }, 250);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [query, source]);
+    const t = setTimeout(() => setSearched(query.trim()), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+  const search = useRealEstateQuery(["municipalities", searched], (source) => source.municipalities({ search: searched }), { enabled: searched.length >= 2 });
+  const results = search.data ?? [];
+  const loading = search.isFetching;
 
   // Closes on a click outside.
   useEffect(() => {
@@ -57,10 +43,10 @@ export function MunicipalityPicker({ code, onChange }: { code: string; onChange:
     return (
       <div className={`${INPUT} flex items-center justify-between gap-2`}>
         <span className="truncate">
-          {picked && picked.code === code ? `${picked.name} (${picked.province})` : code}
+          {municipality ? `${municipality.name} (${municipality.province})` : code}
           <span className="ml-1.5 text-[11px] font-bold text-slate-400">{code}</span>
         </span>
-        <button type="button" onClick={() => { onChange(""); setPicked(null); setQuery(""); setResults([]); }} aria-label="Change municipality" className="text-slate-400 hover:text-slate-700">
+        <button type="button" onClick={() => { onChange(""); setPicked(null); setQuery(""); }} aria-label="Change municipality" className="text-slate-400 hover:text-slate-700">
           <X className="h-4 w-4" />
         </button>
       </div>

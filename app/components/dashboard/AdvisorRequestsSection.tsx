@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlertCircle, Check, ClipboardList, Inbox, Loader2, X } from "lucide-react";
 import { advisorRequestService } from "../../services/advisorRequestService";
 import { ApiError } from "../../services/apiClient";
+import { useClients, useClientsQuery, useClientsRead } from "../../context/ClientsContext";
 import { policySections } from "../../lib/ips";
 import type { AdvisorRequest, AdvisorRequestStatus } from "../../models/AdvisorRequest";
 import type { InvestorPolicy } from "../../models/InvestorPolicy";
@@ -11,6 +12,8 @@ import { TextArea } from "./ips/fields";
 
 const SERIF = { fontFamily: "'Playfair Display', Georgia, serif" };
 const CARD_CLASS = "bg-white p-6 md:p-8 rounded-4xl border border-[rgba(196,154,60,0.2)] shadow-sm";
+
+const NO_REQUESTS: AdvisorRequest[] = [];
 
 const STATUS_LABELS: Record<AdvisorRequestStatus, string> = {
   pending: "Pending",
@@ -27,38 +30,28 @@ const STATUS_LABELS: Record<AdvisorRequestStatus, string> = {
  * advisor out of that investor's suggestions. A request left unanswered expires after a week.
  */
 export function AdvisorRequestsSection() {
-  const [loading, setLoading] = useState(true);
-  const [requests, setRequests] = useState<AdvisorRequest[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const query = useClientsQuery(["requests", "incoming"], () => advisorRequestService.getIncomingRequests());
+  // Read again after an answer, with the clients (an accepted investor is one now).
+  const { reload } = useClients();
+  const [actionError, setActionError] = useState<string | null>(null);
   const [reading, setReading] = useState<AdvisorRequest | null>(null);
   const [declining, setDeclining] = useState<AdvisorRequest | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  // Bumped to read the requests again after an answer.
-  const [version, setVersion] = useState(0);
-
-  useEffect(() => {
-    let current = true;
-    advisorRequestService.getIncomingRequests()
-      .then((found) => { if (current) setRequests(found); })
-      .catch((err) => {
-        console.error(err);
-        if (current) setError("We couldn't load your requests. Please try again.");
-      })
-      .finally(() => { if (current) setLoading(false); });
-    return () => { current = false; };
-  }, [version]);
+  const requests = query.data ?? NO_REQUESTS;
+  const loading = query.isPending;
+  const error = actionError ?? (query.isError ? "We couldn't load your requests. Please try again." : null);
 
   const act = async (request: AdvisorRequest, action: () => Promise<unknown>) => {
     setBusy(request.requestUuid);
-    setError(null);
+    setActionError(null);
     try {
       await action();
     } catch (err) {
       console.error(err);
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+      setActionError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     } finally {
       setBusy(null);
-      setVersion((v) => v + 1);
+      void reload();
     }
   };
 
@@ -170,14 +163,13 @@ export function AdvisorRequestsSection() {
 
 /** The investor's policy as they shared it with the request, read-only. */
 function SharedPolicyDialog({ request, onClose }: { request: AdvisorRequest; onClose: () => void }) {
-  const [policy, setPolicy] = useState<InvestorPolicy | null | undefined>(undefined);
-
-  useEffect(() => {
-    advisorRequestService.getSharedPolicy(request.requestUuid).then(setPolicy).catch((err) => {
+  const policy = useClientsRead<InvestorPolicy | null>(
+    ["requests", request.requestUuid, "policy"],
+    () => advisorRequestService.getSharedPolicy(request.requestUuid).catch((err) => {
       console.error(err);
-      setPolicy(null);
-    });
-  }, [request.requestUuid]);
+      return null;
+    }),
+  );
 
   return (
     <Dialog title={`${fullName(request.investor)}'s Investment Policy`} onClose={onClose} wide>

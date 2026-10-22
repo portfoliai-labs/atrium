@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowRight, Loader2, Scale } from "lucide-react";
+import { useInvestmentsQuery } from "../../context/PortfolioContext";
 import { adoptionService } from "../../services/adoptionService";
 import { ApiError } from "../../services/apiClient";
 import { formatCurrency, formatQuantity } from "../../lib/format";
@@ -31,44 +32,36 @@ type Loaded = Record<RebalancingMode, RebalancingOrders>;
 export function RebalancingOrdersPanel({ portfolioUuid }: { portfolioUuid: string }) {
   const [mode, setMode] = useState<RebalancingMode>("full");
   const [contributionText, setContributionText] = useState("");
-  const [data, setData] = useState<Loaded | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // The contribution the shown orders were computed for: another one is on its way while they differ.
-  const [answeredFor, setAnsweredFor] = useState<number | null>(null);
+  // The contribution asked for: it follows the field once the typing stops.
+  const [asked, setAsked] = useState(0);
 
   const parsed = contributionText.trim() === "" ? 0 : Number(contributionText.replace(",", "."));
   const contributionProblem = !Number.isFinite(parsed) || parsed < 0 ? "Enter an amount of 0 or more." : null;
   const contribution = contributionProblem ? null : parsed;
-  const loading = contribution !== null && answeredFor !== contribution;
 
   useEffect(() => {
     if (contribution === null) return;
-    let cancelled = false;
-    // Waits for the typing to stop before asking.
-    const timer = setTimeout(async () => {
-      try {
-        const [full, buyOnly] = await Promise.all([
-          adoptionService.rebalancingOrders(portfolioUuid, "full", contribution),
-          adoptionService.rebalancingOrders(portfolioUuid, "buy_only", contribution),
-        ]);
-        if (cancelled) return;
-        setData({ full, buy_only: buyOnly });
-        setError(null);
-      } catch (err) {
-        if (cancelled) return;
-        setError(
-          err instanceof ApiError && err.status === 409 ? "Orders are computed on a single portfolio, not on a backtest or on all of them together."
-            : err instanceof Error ? err.message : "Unable to compute the orders.",
-        );
-      } finally {
-        if (!cancelled) setAnsweredFor(contribution);
-      }
-    }, 400);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [portfolioUuid, contribution]);
+    const timer = setTimeout(() => setAsked(contribution), 400);
+    return () => clearTimeout(timer);
+  }, [contribution]);
+
+  // Both modes at once; the orders shown stay up while another contribution's are on their way.
+  const read = useInvestmentsQuery(
+    ["rebalancingOrders", portfolioUuid, asked],
+    async (): Promise<Loaded> => {
+      const [full, buyOnly] = await Promise.all([
+        adoptionService.rebalancingOrders(portfolioUuid, "full", asked),
+        adoptionService.rebalancingOrders(portfolioUuid, "buy_only", asked),
+      ]);
+      return { full, buy_only: buyOnly };
+    },
+    { keepPrevious: true },
+  );
+  const data = read.data ?? null;
+  const error = !read.isError ? null
+    : read.error instanceof ApiError && read.error.status === 409 ? "Orders are computed on a single portfolio, not on a backtest or on all of them together."
+      : read.error instanceof Error ? read.error.message : "Unable to compute the orders.";
+  const loading = contribution !== null && (contribution !== asked || read.isPending || read.isPlaceholderData);
 
   const shown = data?.[mode];
   const money = (v: number) => formatCurrency(v, shown?.currency ?? "EUR");

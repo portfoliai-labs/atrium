@@ -3,7 +3,10 @@
 
 import { useState } from "react";
 import { BookmarkX, Loader2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { journalKey, useJournal } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
+import type { Article } from "../../../models/Journal";
 import { dateLabel, journalErrorText } from "../../../lib/journal";
 import { ArticleCard, EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE, Spinner, usePaged } from "./JournalKit";
 
@@ -12,7 +15,9 @@ import { ArticleCard, EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE
  * (unpublished, hidden, deleted) drops out on its own.
  */
 export function SavedArticles({ onOpen }: { onOpen: (slug: string) => void }) {
-  const list = usePaged((offset) => journalService.saved(PAGE_SIZE, offset), "saved");
+  const { changed } = useJournal();
+  const queryClient = useQueryClient();
+  const list = usePaged(["saved"], (offset) => journalService.saved(PAGE_SIZE, offset));
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,6 +27,9 @@ export function SavedArticles({ onOpen }: { onOpen: (slug: string) => void }) {
     try {
       await journalService.unsave(uuid);
       list.update((items) => items.filter((s) => s.article.uuid !== uuid));
+      // Its page, if it was read, says it isn't saved anymore.
+      queryClient.setQueriesData<Article>({ queryKey: journalKey("article") }, (a) => (a?.uuid === uuid ? { ...a, saved: false } : a));
+      changed();
     } catch (err) {
       setError(journalErrorText(err, "That didn't work. Try again."));
     } finally {

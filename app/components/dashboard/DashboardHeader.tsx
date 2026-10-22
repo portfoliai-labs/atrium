@@ -12,8 +12,9 @@ import { TopbarSearch } from "./TopbarSearch";
 import type { AssetView } from "./AssetSection";
 import { ASSET_SECTION, SUBSCRIPTION_SECTION, aiChatView } from "../../lib/dashboardNav";
 import { userService } from "../../services/userService";
+import { useAccountQuery } from "../../hooks/useAccountQuery";
 import { BetaBadge } from "../common/BetaBadge";
-import type { SubscriptionTier, SubscriptionResponse } from "../../models/User";
+import type { SubscriptionTier } from "../../models/User";
 import { JUST_SIGNED_IN_KEY } from "../../lib/completeAuth";
 
 // How long the greeting stays after signing in before it leaves.
@@ -47,8 +48,8 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
-  const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
-  const [isSubscriptionLoading, setIsSubscriptionLoading] = useState(false);
+  // Read as the menu opens, shared with the Subscription page.
+  const subscription = useAccountQuery(["subscription"], () => userService.getSubscription(), { enabled: isSubscriptionOpen });
 
   const { user, isDemo } = useUser();
 
@@ -89,15 +90,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
   }
 
   function handleProfileClick() {
-    const opening = !isSubscriptionOpen;
-    setIsSubscriptionOpen(opening);
-    if (opening) {
-      setIsSubscriptionLoading(true);
-      userService.getSubscription()
-        .then(setSubscription)
-        .catch((error) => console.error("Failed to fetch subscription:", error))
-        .finally(() => setIsSubscriptionLoading(false));
-    }
+    setIsSubscriptionOpen(!isSubscriptionOpen);
   }
 
   return (
@@ -227,8 +220,8 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
 
           {isSubscriptionOpen && (
             <AccountMenu
-              subscription={subscription}
-              isLoading={isSubscriptionLoading}
+              subscription={subscription.data ?? null}
+              isLoading={subscription.isPending}
               onClose={() => setIsSubscriptionOpen(false)}
               onNavigate={onNavigate}
               onOpenPage={onOpenPage}

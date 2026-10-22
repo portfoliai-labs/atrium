@@ -15,10 +15,7 @@ type Filter = "all" | ArticleStatus;
 /** YOUR ARTICLES — the caller's own, in any state, the last updated first; each opens its editor. */
 export function MyArticles({ onOpen, onNew }: { onOpen: (uuid: string) => void; onNew: () => void }) {
   const [filter, setFilter] = useState<Filter>("all");
-  const list = usePaged(
-    (offset) => journalService.mine(filter === "all" ? undefined : filter, PAGE_SIZE, offset),
-    filter,
-  );
+  const list = usePaged(["mine", filter], (offset) => journalService.mine(filter === "all" ? undefined : filter, PAGE_SIZE, offset));
 
   return (
     <div className="space-y-6 pb-12">

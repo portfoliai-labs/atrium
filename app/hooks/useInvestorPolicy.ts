@@ -2,6 +2,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { clientsKey, useClientsQuery } from "../context/ClientsContext";
 import { ipsService } from "../services/ipsService";
 import type { InvestorPolicy } from "../models/InvestorPolicy";
 
@@ -12,61 +14,66 @@ const SAVE_DELAY_MS = 500;
 /**
  * The user's investor policy, saved as they fill it in: every change is written after a short
  * pause, and anything still pending is written when the component unmounts, so no step is ever
- * lost. `policy` is null until the first load (or while it fails: `status` is then "error").
+ * lost. `policy` is null until the first load (or while it fails: `status` is then "error"). It's
+ * in the query cache under ["clients", "policy"], each change too (Profile and its Investment
+ * Policy page show the same one); a save reads the suggested advisors again, matched on it.
  */
 export function useInvestorPolicy(userUuid: string | undefined) {
-  const [policy, setPolicy] = useState<InvestorPolicy | null>(null);
+  const queryClient = useQueryClient();
+  const query = useClientsQuery(["policy"], () => ipsService.getPolicy().catch((err) => {
+    console.error("Failed to load the investor policy:", err);
+    throw err;
+  }), { enabled: Boolean(userUuid) });
   const [status, setStatus] = useState<IpsSaveStatus>("idle");
   const latest = useRef<InvestorPolicy | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    if (!userUuid) return;
-    let cancelled = false;
-    ipsService.getPolicy().then((loaded) => {
-      if (cancelled) return;
-      latest.current = loaded;
-      setPolicy(loaded);
-    }).catch((err) => {
-      console.error("Failed to load the investor policy:", err);
-      if (!cancelled) setStatus("error");
-    });
-    return () => { cancelled = true; };
-  }, [userUuid]);
+  // The policy as edited here, in the cache for every module showing it.
+  const show = useCallback((policy: InvestorPolicy) => {
+    latest.current = policy;
+    queryClient.setQueryData(clientsKey("policy"), policy);
+  }, [queryClient]);
+  const saved = useCallback(() => { void queryClient.invalidateQueries({ queryKey: clientsKey("matches") }); }, [queryClient]);
 
   const persist = useCallback(async () => {
     if (!userUuid || !latest.current) return;
     setStatus("saving");
     try {
-      const saved = await ipsService.savePolicy(latest.current);
+      const result = await ipsService.savePolicy(latest.current);
       // Only the version: edits made while the request was out stay, and are saved next.
-      latest.current = { ...latest.current, ...saved };
-      setPolicy(latest.current);
+      show({ ...latest.current, ...result });
       setStatus("saved");
+      saved();
     } catch (err) {
       console.error("Failed to save the investor policy:", err);
       setStatus("error");
     }
-  }, [userUuid]);
+  }, [userUuid, show, saved]);
 
   const update = useCallback((change: (current: InvestorPolicy) => InvestorPolicy) => {
-    if (!latest.current) return;
-    latest.current = change(latest.current);
-    setPolicy(latest.current);
+    const current = latest.current ?? queryClient.getQueryData<InvestorPolicy>(clientsKey("policy"));
+    if (!current) return;
+    show(change(current));
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       timer.current = null;
       persist();
     }, SAVE_DELAY_MS);
-  }, [persist]);
+  }, [persist, show, queryClient]);
 
   useEffect(() => () => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
-      if (userUuid && latest.current) ipsService.savePolicy(latest.current).catch(() => {});
+      if (userUuid && latest.current) {
+        ipsService.savePolicy(latest.current).then((result) => {
+          queryClient.setQueryData<InvestorPolicy>(clientsKey("policy"), (prev) => prev && { ...prev, ...result });
+          saved();
+        }, () => {});
+      }
     }
-  }, [userUuid]);
+  }, [userUuid, saved, queryClient]);
 
-  return { policy, status, update };
+  const policy = userUuid ? query.data ?? null : null;
+  return { policy, status: query.isError && !policy ? "error" as const : status, update };
 }

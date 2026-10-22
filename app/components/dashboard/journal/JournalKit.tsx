@@ -1,9 +1,10 @@
 // components/dashboard/journal/JournalKit.tsx
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { ArrowLeft, ArrowUpRight, Clock, HandHeart, Loader2, MessageCircle } from "lucide-react";
-import type { ArticleAuthor, ArticleStatus, ArticleSummary, Page } from "../../../models/Journal";
+import { journalKey, useJournal } from "../../../context/JournalContext";
+import type { ArticleAuthor, ArticleFilters, ArticleStatus, ArticleSummary, Page } from "../../../models/Journal";
 import { CATEGORY_LABELS, STATUS_LABELS, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
 import { serif } from "../../preview/PreviewKit";
 import { JournalMenu } from "./JournalMenu";
@@ -176,58 +177,55 @@ export function Spinner() {
 export const PAGE_SIZE = 20;
 
 /**
- * A list read a page at a time: the first page whenever `key` changes, the next on `more()`.
- * `items` is undefined until the first page answers.
+ * A list read a page at a time, through the query cache under `journalKey(...key)`: the first page
+ * when it's first shown, the next on `more()`. `items` is undefined until the first page answers.
  */
-export function usePaged<T>(fetchPage: (offset: number) => Promise<Page<T>>, key: string) {
-  const [state, setState] = useState<{ key: string; items: T[]; total: number } | null>(null);
-  const [error, setError] = useState<{ key: string; message: string } | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [attempt, setAttempt] = useState(0);
+export function usePaged<T>(key: unknown[], fetchPage: (offset: number) => Promise<Page<T>>, enabled = true) {
+  const { mode } = useJournal();
+  const queryClient = useQueryClient();
+  const queryKey = journalKey(...key);
+  const query = useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam }) => fetchPage(pageParam),
+    initialPageParam: 0,
+    // The next page starts after every item read so far.
+    getNextPageParam: (last, pages) => {
+      const read = pages.reduce((n, p) => n + p.items.length, 0);
+      return read < last.total ? read : undefined;
+    },
+    enabled: mode !== "loading" && enabled,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchPage(0)
-      .then((page) => { if (!cancelled) { setState({ key, items: page.items, total: page.total }); setError(null); } })
-      .catch((err) => { if (!cancelled) setError({ key, message: journalErrorText(err, "This list couldn't be loaded.") }); });
-    return () => { cancelled = true; };
-    // fetchPage is read through `key`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, attempt]);
+  /** Changes the items in place (an article unsaved, deleted…), in the cache. */
+  const update = (change: (items: T[]) => T[]) => queryClient.setQueryData<InfiniteData<Page<T>, number>>(queryKey, (data) => {
+    if (!data) return data;
+    const pages = data.pages.map((p) => ({ ...p, items: change(p.items) }));
+    const removed = data.pages.reduce((n, p, i) => n + p.items.length - pages[i].items.length, 0);
+    return { ...data, pages: pages.map((p) => ({ ...p, total: p.total - removed })) };
+  });
 
-  const current = state?.key === key ? state : null;
-  const more = useCallback(async () => {
-    if (!current) return;
-    setLoadingMore(true);
-    try {
-      const page = await fetchPage(current.items.length);
-      setState((s) => (s && s.key === key ? { key, items: [...s.items, ...page.items], total: page.total } : s));
-    } catch (err) {
-      setError({ key, message: journalErrorText(err, "More couldn't be loaded.") });
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [current, fetchPage, key]);
-
-  /** Changes the items in place (an article unsaved, deleted…). */
-  const update = useCallback((change: (items: T[]) => T[]) => {
-    setState((s) => {
-      if (!s) return s;
-      const items = change(s.items);
-      return { ...s, items, total: s.total - (s.items.length - items.length) };
-    });
-  }, []);
-
+  const pages = query.data?.pages;
   return {
-    items: current?.items,
-    total: current?.total ?? 0,
-    hasMore: !!current && current.items.length < current.total,
-    error: error?.key === key ? error.message : null,
-    loadingMore,
-    more,
+    items: pages?.flatMap((p) => p.items),
+    total: pages?.[pages.length - 1].total ?? 0,
+    hasMore: query.hasNextPage,
+    error: query.isError
+      ? journalErrorText(query.error, query.isFetchNextPageError ? "More couldn't be loaded." : "This list couldn't be loaded.")
+      : null,
+    loadingMore: query.isFetchingNextPage,
+    more: () => query.fetchNextPage(),
     update,
-    retry: () => setAttempt((n) => n + 1),
+    retry: () => void query.refetch(),
   };
+}
+
+/**
+ * The Journal's articles narrowed by `filters` (without limit or offset), a page at a time: the
+ * Journal's list and an asset's "From the Journal" read the same pages.
+ */
+export function useArticles(filters: ArticleFilters, enabled = true) {
+  const { source } = useJournal();
+  return usePaged(["articles", filters], (offset) => source.list({ ...filters, limit: PAGE_SIZE, offset }), enabled);
 }
 
 export function LoadMore({ onClick, loading }: { onClick: () => void; loading: boolean }) {

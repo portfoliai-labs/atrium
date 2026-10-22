@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Globe, ShieldAlert, Save,
   Loader2, CheckCircle2, AlertCircle, ChevronDown, Banknote,
@@ -9,7 +10,8 @@ import {
 } from "lucide-react";
 import { userService } from "../../services/userService";
 import { useUser } from "../../context/UserContext";
-import type { FinancialKnowledgeLevel } from "../../models/User";
+import type { FinancialKnowledgeLevel, UserProfile } from "../../models/User";
+import { accountKey, useAccountRead } from "../../hooks/useAccountQuery";
 import { useInvestorPolicy } from "../../hooks/useInvestorPolicy";
 import { IPS_STEPS, completedSteps } from "../../lib/ips";
 import { InvestorPolicyDialog } from "./InvestorPolicyDialog";
@@ -126,9 +128,21 @@ export function ProfileSection() {
   );
 }
 
-// `leading` sits on the top row, across from Save Changes.
+// `leading` sits on the top row, across from Save Changes. The form starts from the profile (shared
+// with Settings and Profile's preferences), or from the defaults when it can't be read.
 function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
-  const [loading, setLoading] = useState(true);
+  const profile = useAccountRead(["profile"], () => userService.getUserProfile());
+
+  if (profile === undefined) return (
+    <div className="flex justify-center py-20">
+      <Loader2 className="animate-spin text-[#C49A3C]" />
+    </div>
+  );
+  return <ProfileForm leading={leading} profile={profile} />;
+}
+
+function ProfileForm({ leading, profile }: { leading?: React.ReactNode; profile: UserProfile | null }) {
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const { refreshUser } = useUser();
@@ -138,16 +152,18 @@ function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
   const [isRiskOpen, setIsRiskOpen] = useState(false);
 
   const [formData, setFormData] = useState({
-    language: "en",
-    currency: "USD",
-    estimated_wealth: "0",
-    annual_income: "0",
-    savings_rate: "0",
-    risk_tolerance: "medium",
-    financial_knowledge_level: "BEGINNER",
+    language: profile?.language || "en",
+    currency: profile?.currency || "USD",
+    estimated_wealth: String(profile?.estimated_wealth || 0),
+    annual_income: String(profile?.annual_income || 0),
+    savings_rate: profile?.savings_rate != null ? String(Math.round(profile.savings_rate * 100)) : "0",
+    risk_tolerance: profile?.risk_tolerance || "medium",
+    financial_knowledge_level: profile?.financial_knowledge_level as string || "BEGINNER",
   });
 
-  const [goals, setGoals] = useState<{ text: string; templateId?: string }[]>([]);
+  const [goals, setGoals] = useState<{ text: string; templateId?: string }[]>(
+    () => (profile?.financial_goals || []).map((text) => ({ text }))
+  );
   const [goalInput, setGoalInput] = useState("");
   const [isAddingCustomGoal, setIsAddingCustomGoal] = useState(false);
   const customGoalInputRef = useRef<HTMLInputElement>(null);
@@ -198,30 +214,6 @@ function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
     }
   ];
 
-  useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        const user = await userService.getUserProfile();
-        setFormData({
-          language: user.language || "en",
-          currency: user.currency || "USD",
-          estimated_wealth: String(user.estimated_wealth || 0),
-          annual_income: String(user.annual_income || 0),
-          savings_rate: user.savings_rate != null ? String(Math.round(user.savings_rate * 100)) : "0",
-          risk_tolerance: user.risk_tolerance || "medium",
-          financial_knowledge_level: user.financial_knowledge_level || "BEGINNER",
-        });
-
-        setGoals((user.financial_goals || []).map((text) => ({ text })));
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadProfile();
-  }, []);
-
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -240,6 +232,8 @@ function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
         financial_knowledge_level: (formData.financial_knowledge_level || null) as FinancialKnowledgeLevel | null,
       });
 
+      // The profile read again wherever it's shown.
+      void queryClient.invalidateQueries({ queryKey: accountKey("profile") });
       localStorage.removeItem("user_profile");
       // Silent: a full refetch flips UserContext's `loading`, which would swap this whole page
       // for the dashboard's full-page spinner and take the toast below down with it.
@@ -254,12 +248,6 @@ function GeneralProfile({ leading }: { leading?: React.ReactNode }) {
       setTimeout(() => setMessage(null), 3000);
     }
   };
-
-  if (loading) return (
-    <div className="flex justify-center py-20">
-      <Loader2 className="animate-spin text-[#C49A3C]" />
-    </div>
-  );
 
   const inputClass = "w-full p-3.5 bg-white border border-[rgba(196,154,60,0.25)] rounded-xl font-medium text-[#1c1917] outline-none focus:border-[#C49A3C] focus:ring-4 focus:ring-[#C49A3C]/10 transition-all";
   const dropdownBtnClass = "w-full flex items-center justify-between p-3.5 bg-white border border-[rgba(196,154,60,0.25)] rounded-xl font-medium text-[#1c1917] hover:border-[#C49A3C] transition-all focus:ring-4 focus:ring-[#C49A3C]/10";

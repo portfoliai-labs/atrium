@@ -1,17 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle, BadgeCheck, Check, ClipboardList, Clock, Handshake, Loader2, Send, X,
 } from "lucide-react";
 import { advisorRequestService } from "../../services/advisorRequestService";
 import { ApiError } from "../../services/apiClient";
+import { clientsKey, useClientsQuery } from "../../context/ClientsContext";
 import { FEE_OPTIONS, LANGUAGE_OPTIONS, TOPIC_OPTIONS } from "../../lib/ips";
 import type { AdvisorCard, AdvisorMatch, AdvisorRequest, AdvisorRequestStatus, MatchReasons } from "../../models/AdvisorRequest";
 import { TextArea } from "./ips/fields";
 
 const SERIF = { fontFamily: "'Playfair Display', Georgia, serif" };
 const CARD_CLASS = "bg-white p-6 md:p-8 rounded-4xl border border-[rgba(196,154,60,0.2)] shadow-sm";
+
+const NO_REQUESTS: AdvisorRequest[] = [];
+const NO_MATCHES: AdvisorMatch[] = [];
 
 const STATUS_LABELS: Record<AdvisorRequestStatus, string> = {
   pending: "Waiting for an answer",
@@ -30,51 +35,41 @@ const STATUS_LABELS: Record<AdvisorRequestStatus, string> = {
  */
 // `onOpenPolicy`: where the Investment Policy is filled in (Profile's).
 export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void }) {
-  const [loading, setLoading] = useState(true);
-  const [matches, setMatches] = useState<AdvisorMatch[]>([]);
-  const [needsPolicy, setNeedsPolicy] = useState(false);
-  const [requests, setRequests] = useState<AdvisorRequest[]>([]);
   const [asking, setAsking] = useState<AdvisorCard | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  // Bumped to read the requests and the matches again after a change.
-  const [version, setVersion] = useState(0);
-  const reload = () => setVersion((v) => v + 1);
-
-  useEffect(() => {
-    let current = true;
-    Promise.all([
+  // The investor's requests and their suggested advisors (null: no policy to match on yet), read
+  // together; again after a request, and after a save of the policy (useInvestorPolicy).
+  const query = useClientsQuery(["matches"], async () => {
+    const [mine, found] = await Promise.all([
       advisorRequestService.getMyRequests(),
       advisorRequestService.getMatches().catch((err: unknown) => {
         if (err instanceof ApiError && err.errorType === "InvestorPolicyRequiredError") return null;
         throw err;
       }),
-    ])
-      .then(([mine, found]) => {
-        if (!current) return;
-        setRequests(mine);
-        setNeedsPolicy(found === null);
-        setMatches(found ?? []);
-      })
-      .catch((err) => {
-        console.error(err);
-        if (current) setError("We couldn't load your advisors. Please try again.");
-      })
-      .finally(() => { if (current) setLoading(false); });
-    return () => { current = false; };
-  }, [version]);
+    ]);
+    return { requests: mine, matches: found };
+  });
+  const queryClient = useQueryClient();
+  const reload = () => { void queryClient.invalidateQueries({ queryKey: clientsKey("matches") }); };
+
+  const loading = query.isPending;
+  const requests = query.data?.requests ?? NO_REQUESTS;
+  const matches = query.data?.matches ?? NO_MATCHES;
+  const needsPolicy = query.data?.matches === null;
+  const error = actionError ?? (query.isError ? "We couldn't load your advisors. Please try again." : null);
 
   const pending = requests.find((r) => r.status === "pending") ?? null;
   const accepted = requests.filter((r) => r.status === "accepted");
   const past = requests.filter((r) => r !== pending && r.status !== "accepted");
 
   const withdraw = async (request: AdvisorRequest) => {
-    setError(null);
+    setActionError(null);
     try {
       await advisorRequestService.withdrawRequest(request.requestUuid);
     } catch (err) {
       console.error(err);
-      setError(err instanceof ApiError ? err.message : "We couldn't withdraw the request.");
+      setActionError(err instanceof ApiError ? err.message : "We couldn't withdraw the request.");
     }
     reload();
   };

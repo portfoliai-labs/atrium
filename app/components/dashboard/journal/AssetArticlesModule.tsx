@@ -1,16 +1,14 @@
 // components/dashboard/journal/AssetArticlesModule.tsx
 "use client";
 
-import { useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { useJournal } from "../../../context/JournalContext";
 import { JOURNAL_SECTION, useOpenDashboardPage } from "../../../lib/dashboardNav";
 import { authorName } from "../../../lib/journal";
-import type { ArticleSummary } from "../../../models/Journal";
 import type { JournalView } from "../JournalSection";
 import { serif } from "../../preview/PreviewKit";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
-import { Meta } from "./JournalKit";
+import { Meta, useArticles } from "./JournalKit";
 
 // How many the module lists; the rest are on the Journal, narrowed to the asset.
 const SHOWN = 3;
@@ -22,25 +20,17 @@ const SHOWN = 3;
  * only (the written articles name no instrument), and not shown when none is tagged with it.
  */
 export function AssetArticlesModule({ instrumentId, ticker, isin }: { instrumentId: string | null; ticker: string; isin: string | null }) {
-  const { mode, source, language } = useJournal();
+  const { mode, language } = useJournal();
   const openPage = useOpenDashboardPage();
-  const [page, setPage] = useState<{ items: ArticleSummary[]; total: number } | null>(null);
+  // The Journal's first page narrowed to the asset, as its "All" opens it: one read for both.
+  const list = useArticles({
+    ...(instrumentId ? { instrumentId } : { ticker, isin: isin ?? undefined }),
+    preferredLanguage: language,
+  }, mode === "api");
 
-  useEffect(() => {
-    if (mode !== "api") return;
-    let cancelled = false;
-    source.list({
-      ...(instrumentId ? { instrumentId } : { ticker, isin: isin ?? undefined }),
-      preferredLanguage: language,
-      limit: SHOWN,
-    })
-      .then((p) => { if (!cancelled) setPage({ items: p.items, total: p.total }); })
-      // An extra on the asset's page: without it the page is whole.
-      .catch(() => { if (!cancelled) setPage(null); });
-    return () => { cancelled = true; };
-  }, [mode, source, language, instrumentId, ticker, isin]);
-
-  if (mode !== "api" || !page || page.items.length === 0) return null;
+  // An extra on the asset's page: without it (or while it loads) the page is whole.
+  if (mode !== "api" || list.error || !list.items || list.items.length === 0) return null;
+  const page = { items: list.items.slice(0, SHOWN), total: list.total };
   const open = (view: JournalView) => openPage?.(JOURNAL_SECTION, view);
   const all: JournalView = { page: "journal", filters: { instrument: { ticker, isin, instrumentId } } };
 

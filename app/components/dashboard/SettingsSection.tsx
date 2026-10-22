@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, Landmark, FolderTree } from "lucide-react";
 import { userService } from "../../services/userService";
 import { supabase } from "../../lib/supabaseClient";
-import type { NotificationPreferences } from "../../models/User";
+import type { NotificationPreferences, UserProfile } from "../../models/User";
+import { accountKey, useAccountQuery, useAccountRead } from "../../hooks/useAccountQuery";
 import { DeleteAccountModal } from "./DeleteAccountModal";
 import { Toggle } from "./Toggle";
 import { useUser } from "../../context/UserContext";
@@ -109,12 +111,19 @@ export function SettingsSection() {
   }, []);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
-  const [preferencesLoading, setPreferencesLoading] = useState(true);
+  const queryClient = useQueryClient();
+  // The preferences as read, then as toggled here until saved.
+  const preferencesRead = useAccountQuery(["notificationPreferences"], () => userService.getNotificationPreferences());
+  const [draft, setDraft] = useState<NotificationPreferences | null>(null);
+  const preferences = draft ?? preferencesRead.data ?? null;
+  const preferencesLoading = preferencesRead.isPending;
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const [nameForm, setNameForm] = useState({ first_name: "", last_name: "" });
+  // The name as read (the profile, shared with Profile), then as typed here.
+  const profile = useAccountRead(["profile"], () => userService.getUserProfile());
+  const [nameDraft, setNameForm] = useState<{ first_name: string; last_name: string } | null>(null);
+  const nameForm = nameDraft ?? { first_name: profile?.first_name ?? "", last_name: profile?.last_name ?? "" };
   const [savingName, setSavingName] = useState(false);
 
   const [newEmail, setNewEmail] = useState("");
@@ -124,19 +133,8 @@ export function SettingsSection() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
 
-  useEffect(() => {
-    userService.getNotificationPreferences()
-      .then(setPreferences)
-      .catch((error) => console.error("Failed to load notification preferences:", error))
-      .finally(() => setPreferencesLoading(false));
-
-    userService.getUserProfile()
-      .then((profile) => setNameForm({ first_name: profile.first_name ?? "", last_name: profile.last_name ?? "" }))
-      .catch((error) => console.error("Failed to load the account information:", error));
-  }, []);
-
   const setPreference = (field: keyof Omit<NotificationPreferences, "updated_at">) => (value: boolean) => {
-    setPreferences((prev) => (prev ? { ...prev, [field]: value } : prev));
+    if (preferences) setDraft({ ...preferences, [field]: value });
   };
 
   const handleSavePreferences = async () => {
@@ -149,7 +147,8 @@ export function SettingsSection() {
         product_updates_email: preferences.product_updates_email,
         in_app_notifications: preferences.in_app_notifications,
       });
-      setPreferences(updated);
+      queryClient.setQueryData(accountKey("notificationPreferences"), updated);
+      setDraft(null);
       setMessage({ type: "success", text: "Notification preferences updated" });
     } catch (error) {
       console.error("Failed to update notification preferences:", error);
@@ -174,6 +173,7 @@ export function SettingsSection() {
     setSavingName(true);
     try {
       await userService.updateUserProfile({ first_name: firstName, last_name: lastName });
+      queryClient.setQueryData<UserProfile>(accountKey("profile"), (prev) => prev && { ...prev, first_name: firstName, last_name: lastName });
       localStorage.removeItem("user_profile");
       await refreshUser();
       setMessage({ type: "success", text: "Account information updated" });

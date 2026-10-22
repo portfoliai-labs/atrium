@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowLeft, CheckCheck, Library, Loader2, Lock, MessagesSquare, Plus, Send, Sparkles, Trash2 } from "lucide-react";
 import { conversationService } from "../../services/conversationService";
 import { ApiError } from "../../services/apiClient";
@@ -15,7 +16,7 @@ import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHisto
 import { readAiChatView } from "../../lib/dashboardNav";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ActionCard } from "./assistant/ActionCard";
-import { AssistantCollection, useCollection } from "./assistant/AssistantCollection";
+import { AssistantCollection, collectionChanged, useCollection } from "./assistant/AssistantCollection";
 import {
   Answer, Draft, Question, QUESTION_MAX_LENGTH, answerFailedText, askErrorText, withAction, withPiece,
 } from "./assistant/AssistantMessage";
@@ -28,6 +29,16 @@ const MESSAGE_MAX_LENGTH = 4000;
 // The chat open: with a person (an advisor or a client), or with the AI (one of the list's, or a
 // new one, not opened on the server until asked in).
 type Selected = { kind: "people" | "ai"; uuid: string };
+
+/**
+ * The chats' lists' key in the query cache: ["messages", "people"] and ["messages", "assistant"].
+ * The stream keeps them current only while this page is open, so they're read again on every
+ * visit (staleTime 0), the cached ones shown meanwhile.
+ */
+const messagesKey = (...parts: unknown[]) => ["messages", ...parts];
+
+const NO_PEOPLE: Conversation[] = [];
+const NO_CHATS: AssistantConversation[] = [];
 
 type Row =
   | { kind: "people"; conversation: Conversation; at: number }
@@ -51,10 +62,22 @@ export function MessagesSection() {
   const me = user?.uuid ?? "";
   const isAdvisor = user?.role === "ADVISOR";
 
-  const [people, setPeople] = useState<Conversation[]>([]);
-  const [chats, setChats] = useState<AssistantConversation[]>([]);
-  const [loadingPeople, setLoadingPeople] = useState(true);
-  const [loadingChats, setLoadingChats] = useState(!isDemo);
+  const queryClient = useQueryClient();
+  const peopleQuery = useQuery({ queryKey: messagesKey("people"), queryFn: () => conversationService.list(), staleTime: 0 });
+  const chatsQuery = useQuery({
+    queryKey: messagesKey("assistant"), queryFn: () => conversationService.listAssistant(), enabled: !isDemo, staleTime: 0,
+  });
+  const people = peopleQuery.data ?? NO_PEOPLE;
+  const chats = chatsQuery.data ?? NO_CHATS;
+  const loadingPeople = peopleQuery.isPending;
+  const loadingChats = !isDemo && chatsQuery.isPending;
+  // Changes to either list, from the stream or this page's own writes, made in the cache.
+  const setPeople = useCallback((change: (list: Conversation[]) => Conversation[]) => {
+    queryClient.setQueryData<Conversation[]>(messagesKey("people"), (list) => list && change(list));
+  }, [queryClient]);
+  const setChats = useCallback((change: (list: AssistantConversation[]) => AssistantConversation[]) => {
+    queryClient.setQueryData<AssistantConversation[]>(messagesKey("assistant"), (list) => list && change(list));
+  }, [queryClient]);
   // Opened on a new AI chat (the top bar's AI button, or a widget's, with its question).
   const [opening] = useState(() => (isDemo ? null : readAiChatView(readDashboardEntry()?.view)));
   const [selected, setSelected] = useState<Selected | null>(() => (opening ? { kind: "ai", uuid: crypto.randomUUID() } : null));
@@ -71,8 +94,7 @@ export function MessagesSection() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // The collection open in place of a chat, read again once the assistant makes something.
   const [showCollection, setShowCollection] = useState(false);
-  const [collectionVersion, setCollectionVersion] = useState(0);
-  const collection = useCollection(!isAdvisor && !isDemo, collectionVersion);
+  const collection = useCollection(!isAdvisor && !isDemo);
   const selectedRef = useRef<Selected | null>(selected);
   // The chats listed, by kind, for the stream.
   const peopleRef = useRef<Set<string>>(new Set());
@@ -93,46 +115,23 @@ export function MessagesSection() {
     if (entry?.section === "messages" && entry.view !== undefined) pushDashboardEntry({ section: "messages" }, true);
   }, []);
 
-  // Bumped to read each list again.
-  const [peopleVersion, setPeopleVersion] = useState(0);
-  const [chatsVersion, setChatsVersion] = useState(0);
-  const loadPeople = useCallback(() => setPeopleVersion((v) => v + 1), []);
-  const loadChats = useCallback(() => setChatsVersion((v) => v + 1), []);
-
-  useEffect(() => {
-    let live = true;
-    conversationService.list()
-      .then((found) => { if (live) setPeople(found); })
-      .catch((err) => {
-        console.error(err);
-        if (live) setError("We couldn't load your conversations. Please try again.");
-      })
-      .finally(() => { if (live) setLoadingPeople(false); });
-    return () => { live = false; };
-  }, [peopleVersion]);
-
-  useEffect(() => {
-    if (isDemo) return;
-    let live = true;
-    conversationService.listAssistant()
-      .then((found) => { if (live) setChats(found); })
-      .catch((err) => {
-        console.error(err);
-        if (live) setError("We couldn't load your chats with the assistant. Please try again.");
-      })
-      .finally(() => { if (live) setLoadingChats(false); });
-    return () => { live = false; };
-  }, [chatsVersion, isDemo]);
+  // Each list read again.
+  const loadPeople = useCallback(() => { void queryClient.invalidateQueries({ queryKey: messagesKey("people") }); }, [queryClient]);
+  const loadChats = useCallback(() => { void queryClient.invalidateQueries({ queryKey: messagesKey("assistant") }); }, [queryClient]);
+  // A list that couldn't be read says so, over the page's own errors' place.
+  const listError = peopleQuery.isError
+    ? "We couldn't load your conversations. Please try again."
+    : chatsQuery.isError ? "We couldn't load your chats with the assistant. Please try again." : null;
 
   // Marks the conversation read up to the message, and clears its unread count here.
   const markRead = useCallback((conversationUuid: string, messageUuid: string) => {
     setPeople((list) => list.map((c) => (c.conversationUuid === conversationUuid ? { ...c, unreadCount: 0 } : c)));
     conversationService.markRead(conversationUuid, messageUuid).catch((err) => console.error(err));
-  }, []);
+  }, [setPeople]);
 
   const patchChat = useCallback((conversationUuid: string, change: Partial<AssistantConversation>) => {
     setChats((list) => list.map((c) => (c.conversationUuid === conversationUuid ? { ...c, ...change } : c)));
-  }, []);
+  }, [setChats]);
 
   const dropDraft = useCallback((conversationUuid: string) => {
     setDrafts((all) => {
@@ -153,7 +152,7 @@ export function MessagesSection() {
   // An action as it is now (the user's click, or `action_changed`): in place of its block, in the
   // open chat's answers or in the answer being written.
   const applyAction = useCallback((conversationUuid: string, action: AssistantAction) => {
-    if (action.state === "done") setCollectionVersion((v) => v + 1);
+    if (action.state === "done") collectionChanged(queryClient);
     if (selectedRef.current?.uuid === conversationUuid) {
       setMessages((shown) => shown.map((message) => {
         const blocks = withAction(message.blocks, action);
@@ -166,7 +165,7 @@ export function MessagesSection() {
       const blocks = withAction(draft.blocks, action);
       return blocks === draft.blocks ? all : { ...all, [conversationUuid]: { ...draft, blocks } };
     });
-  }, []);
+  }, [queryClient]);
 
   const loadThread = useCallback(async (chat: Selected) => {
     setLoadingThread(true);
@@ -231,7 +230,7 @@ export function MessagesSection() {
       const updated = { ...found, lastMessage: message, unreadCount: unread };
       return [updated, ...list.filter((c) => c !== found)];
     });
-  }, [me, markRead]);
+  }, [me, markRead, setPeople]);
 
   // A message with the AI, likewise. A question, the latest, means an answer is on its way; an
   // answer, that it's done.
@@ -247,7 +246,7 @@ export function MessagesSection() {
       const updated = { ...found, answering, lastMessage: newer ? message : found.lastMessage };
       return [updated, ...list.filter((c) => c !== found)];
     });
-  }, [dropDraft]);
+  }, [dropDraft, setChats]);
 
   // The live stream, both kinds' events on it. Reconnects with a new ticket after an error; once
   // back, reads the lists and the open chat again, for what was missed meanwhile.
@@ -366,7 +365,7 @@ export function MessagesSection() {
       if (retry) clearTimeout(retry);
       window.removeEventListener("auth-unauthorized", handleUnauthorized);
     };
-  }, [me, isDemo, receivedFromPerson, receivedFromAi, applyPiece, applyAction, dropDraft, patchChat, loadPeople, loadChats, loadThread]);
+  }, [me, isDemo, receivedFromPerson, receivedFromAi, applyPiece, applyAction, dropDraft, patchChat, loadPeople, loadChats, loadThread, setPeople, setChats]);
 
   const isAi = selected?.kind === "ai";
   // An answer's action, as a card the user confirms or cancels in this chat.
@@ -531,9 +530,9 @@ export function MessagesSection() {
         </p>
       </div>
 
-      {error && (
+      {(error ?? listError) && (
         <p className="flex items-center gap-2 text-sm font-semibold text-red-700 bg-red-50 rounded-2xl px-4 py-3">
-          <AlertCircle className="w-4 h-4 shrink-0" /> {error}
+          <AlertCircle className="w-4 h-4 shrink-0" /> {error ?? listError}
         </p>
       )}
 

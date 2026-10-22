@@ -1,8 +1,10 @@
 // components/dashboard/journal/Moderation.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, EyeOff, Flag, Loader2, RotateCcw, ShieldCheck } from "lucide-react";
+import { journalKey, useJournal, useJournalQuery } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
 import type { CommentCase, Decision, ModerationCaseDetail, ReportReason } from "../../../models/Journal";
 import { NOTE_MAX, REASONS, REASON_LABELS, REPORT_STATUS_LABELS, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
@@ -17,7 +19,7 @@ import { EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE, Spinner, St
  * a review), then the reported comments, each decided in place.
  */
 export function ModerationCases({ onOpen }: { onOpen: (articleUuid: string) => void }) {
-  const list = usePaged((offset) => journalService.cases(PAGE_SIZE, offset), "cases");
+  const list = usePaged(["cases"], (offset) => journalService.cases(PAGE_SIZE, offset));
 
   return (
     <div className="space-y-6 pb-12">
@@ -164,8 +166,12 @@ function CommentCaseCard({ item, onDecided }: { item: CommentCase; onDecided: (u
 
 /** The comments with open reports, the longest waiting first; a decided one leaves the list. */
 function CommentCases() {
-  const list = usePaged((offset) => journalService.commentCases(PAGE_SIZE, offset), "comment-cases");
-  const decided = (uuid: string) => list.update((items) => items.filter((c) => c.comment.uuid !== uuid));
+  const { changed } = useJournal();
+  const list = usePaged(["commentCases"], (offset) => journalService.commentCases(PAGE_SIZE, offset));
+  const decided = (uuid: string) => {
+    list.update((items) => items.filter((c) => c.comment.uuid !== uuid));
+    changed();
+  };
 
   return (
     <section className="space-y-3 pt-4">
@@ -194,9 +200,9 @@ function CommentCases() {
  * Either closes its open reports and the author's ask.
  */
 export function ModerationCasePage({ uuid, onBack }: { uuid: string; onBack: () => void }) {
-  const [detail, setDetail] = useState<ModerationCaseDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
+  const { changed } = useJournal();
+  const queryClient = useQueryClient();
+  const read = useJournalQuery(["case", uuid], () => journalService.getCase(uuid));
   const [decision, setDecision] = useState<Decision | null>(null);
   const [reason, setReason] = useState<ReportReason | "">("");
   const [note, setNote] = useState("");
@@ -204,16 +210,12 @@ export function ModerationCasePage({ uuid, onBack }: { uuid: string; onBack: () 
   const [decideError, setDecideError] = useState<string | null>(null);
   const [decided, setDecided] = useState<Decision | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    journalService.getCase(uuid)
-      .then((d) => { if (!cancelled) { setDetail(d); setError(null); } })
-      .catch((err) => { if (!cancelled) setError(journalErrorText(err, "This case couldn't be loaded.")); });
-    return () => { cancelled = true; };
-  }, [uuid, attempt]);
-
+  const detail = read.data;
   const back = <Breadcrumb trail={[{ label: "Moderation", onClick: onBack }]} current={detail?.article.title || "Case"} />;
-  if (error) return <div className="pb-12 space-y-5">{back}<ErrorState message={error} onRetry={() => setAttempt((n) => n + 1)} /></div>;
+  if (read.isError) {
+    const message = journalErrorText(read.error, "This case couldn't be loaded.");
+    return <div className="pb-12 space-y-5">{back}<ErrorState message={message} onRetry={() => void read.refetch()} /></div>;
+  }
   if (!detail) return <div className="pb-12 space-y-5">{back}<Spinner /></div>;
 
   const { article, openCase, reports } = detail;
@@ -225,7 +227,12 @@ export function ModerationCasePage({ uuid, onBack }: { uuid: string; onBack: () 
     setDecideError(null);
     try {
       const next = await journalService.decide(uuid, decision, reason || undefined, note.trim());
-      setDetail({ ...detail, article: next, openCase: null, reports: reports.map((r) => (r.status === "open" ? { ...r, status: decision === "hide" ? "article_hidden" : "article_kept" } : r)) });
+      queryClient.setQueryData<ModerationCaseDetail>(journalKey("case", uuid), {
+        ...detail, article: next, openCase: null,
+        reports: reports.map((r) => (r.status === "open" ? { ...r, status: decision === "hide" ? "article_hidden" : "article_kept" } : r)),
+      });
+      // The cases' list, the article's page and the lists it's in are read again when next shown.
+      changed();
       setDecided(decision);
       setDecision(null);
     } catch (err) {

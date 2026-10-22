@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";
 import { reportService } from "../../services/reportService";
 import { ApiError } from "../../services/apiClient";
+import { accountKey } from "../../hooks/useAccountQuery";
 import type { Portfolio } from "../../models/Portfolio";
 
 type RequestState =
@@ -24,6 +26,7 @@ type RequestState =
  * @deprecated Deprecated (2026-10-22): a report is asked for in the assistant's chat only (its action card); served until removed.
  */
 export function useGenerateReport() {
+  const queryClient = useQueryClient();
   const [state, setState] = useState<RequestState>({ kind: "idle" });
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
 
@@ -37,6 +40,8 @@ export function useGenerateReport() {
         ...(force ? { force: true } : {}),
       });
       setState({ kind: "queued" });
+      // The portfolio's reports read again: the new one among them, on its way.
+      void queryClient.invalidateQueries({ queryKey: accountKey("reports", target.uuid) });
     } catch (err) {
       if (err instanceof ApiError && err.status === 409 && !force) setState({ kind: "conflict" });
       else setState({ kind: "error", message: err instanceof Error ? err.message : "Unable to generate the report." });

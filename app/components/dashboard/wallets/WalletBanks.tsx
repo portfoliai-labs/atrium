@@ -1,13 +1,13 @@
 // components/dashboard/wallets/WalletBanks.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Check, Landmark, Link2, Plus, RefreshCw, Search, Trash2, Unlink } from "lucide-react";
 import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
 import { bankingService } from "../../../services/bankingService";
 import { formatCurrency } from "../../../lib/format";
 import { dayLabel, errorText } from "../../../lib/wallets";
-import type { AccountSync, Bank, BankAccount, BankLink } from "../../../models/Banking";
+import type { AccountSync, BankAccount, BankLink } from "../../../models/Banking";
 import type { Wallet } from "../../../models/Wallet";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -423,22 +423,14 @@ export function IconButton({ label, onClick, danger, spinning, disabled, title, 
  */
 function ConnectBankDialog({ renew, wallet, onClose }: { renew?: BankLink; wallet?: Wallet; onClose: () => void }) {
   const [country, setCountry] = useState(renew?.country ?? "IT");
-  const [banks, setBanks] = useState<{ country: string; list: Bank[] | null; error: string | null } | null>(null);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<string | null>(renew?.bankName ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (renew) return;
-    let cancelled = false;
-    bankingService.banks(country)
-      .then((list) => { if (!cancelled) setBanks({ country, list, error: null }); })
-      .catch((err) => { if (!cancelled) setBanks({ country, list: null, error: errorText(err, "Unable to load the banks.") }); });
-    return () => { cancelled = true; };
-  }, [country, renew]);
-
-  const list = banks?.country === country ? banks.list : undefined;
+  // A country's banks; none read to renew a link.
+  const banks = useWalletQuery(["banks", country], () => bankingService.banks(country), { enabled: !renew });
+  const list = banks.isError ? null : banks.data;
   const shown = (list ?? []).filter((b) => b.name.toLowerCase().includes(query.trim().toLowerCase()));
 
   const submit = async () => {
@@ -461,7 +453,7 @@ function ConnectBankDialog({ renew, wallet, onClose }: { renew?: BankLink; walle
       title={renew ? `Renew ${renew.bankName}` : wallet ? `Connect a bank to ${wallet.name}` : "Connect a bank"}
       subtitle="You give the consent on your bank's own page: read only, for up to 180 days."
       busy={busy}
-      error={error ?? (banks?.country === country ? banks.error : null)}
+      error={error ?? (banks.isError ? errorText(banks.error, "Unable to load the banks.") : null)}
       submitLabel="Continue to the bank"
       canSubmit={!!picked}
       onSubmit={() => void submit()}
