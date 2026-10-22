@@ -52,7 +52,8 @@ const VISIBLE_ACTIONS = 3;
 export function PageHeader({
   eyebrow, crumbs, badge, notice, title, value, change, note, counters = [], actions = [], figures = [],
 }: {
-  eyebrow: string;
+  // Left out where the breadcrumb above already says what the page is.
+  eyebrow?: string;
   // The pages above this one (Investments › …): drawn as a breadcrumb in place of the eyebrow,
   // the title its last step. The eyebrow stays for a section's own page, with nothing above it.
   crumbs?: Crumb[];
@@ -82,7 +83,7 @@ export function PageHeader({
               <Breadcrumb trail={crumbs} current={title} />
               {badge}
             </div>
-          ) : (
+          ) : (eyebrow || badge) && (
             <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">
               {eyebrow}
               {badge}

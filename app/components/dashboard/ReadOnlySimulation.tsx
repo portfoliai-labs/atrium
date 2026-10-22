@@ -18,15 +18,17 @@ import { ProjectionPage } from "./projection/ProjectionPage";
  * portfolio routes (its Insights, its strategy) though it isn't in their list. Its page is a
  * backtest's (PerformanceSection's `backtest`) under a header whose actions are its stress test and
  * its projection (StressTestPage, ProjectionPage, opened in place with a crumb back), and the
- * page's own (`extraActions`: Compare): it can't be copied, backtested again or adopted. `notice`
+ * page's own (`extraActions`): it can't be copied, backtested again or adopted. `notice`
  * adds a line of its own above the backtest strip (left out with `banner` false, when the page says
  * what the strategy is itself), and `children` come under the header, hidden with it while a
- * detail view is open.
+ * detail view is open. `crumb`: its own step in the breadcrumb (its name unless said), where the
+ * breadcrumb says what it is in place of an eyebrow.
  */
-export function ReadOnlySimulation({ portfolioUuid, trail, eyebrow, title: knownTitle, notice, banner = true, strategyShown = false, children, onNavigate, extraActions = [] }: {
+export function ReadOnlySimulation({ portfolioUuid, trail, eyebrow, crumb, title: knownTitle, notice, banner = true, strategyShown = false, children, onNavigate, extraActions = [] }: {
   portfolioUuid: string;
   trail: Crumb[];
-  eyebrow: string;
+  eyebrow?: string;
+  crumb?: string;
   // Its name when already known; otherwise read from the portfolio.
   title?: string;
   notice?: React.ReactNode;
@@ -34,7 +36,7 @@ export function ReadOnlySimulation({ portfolioUuid, trail, eyebrow, title: known
   // `children` say what the strategy is: its Insights leave out the strategy's own modules.
   strategyShown?: boolean;
   children?: React.ReactNode;
-  // Actions of the page's own, after the stress test and the projection (Compare, where it's offered).
+  // Actions of the page's own, after the stress test and the projection (Compare with my portfolios, where it's offered).
   extraActions?: PageAction[];
   onNavigate?: (section: string) => void;
 }) {
@@ -65,7 +67,7 @@ export function ReadOnlySimulation({ portfolioUuid, trail, eyebrow, title: known
       comparison={comparison ?? null}
       strategyShown={strategyShown}
       trail={trail}
-      pageLabel={title}
+      pageLabel={crumb ?? title}
       onNavigate={onNavigate}
       top={(
         <>

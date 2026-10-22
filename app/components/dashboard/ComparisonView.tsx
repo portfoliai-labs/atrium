@@ -16,10 +16,10 @@ import { AllocationModule, CumulativeReturnsModule } from "./CompareCharts";
 import type { Portfolio } from "../../models/Portfolio";
 import type { PortfolioComparisonEntry } from "../../models/PortfolioData";
 
-// A strategy compared though it isn't the user's: a published strategy of the catalog (its
-// portfolioUuid), or the backtest a strategy their advisor shared came from. The backend reads
-// it like their own (GET /v1/portfolios/comparison takes any portfolio they can read); `name` is
-// shown until the comparison names it.
+// A strategy compared beside the user's portfolios: one of their backtests, a published strategy
+// of the catalog (its portfolioUuid), or the backtest a strategy their advisor shared came from.
+// The backend reads it like their own (GET /v1/portfolios/comparison takes any portfolio they can
+// read); `name` is shown until the comparison names it.
 export interface CompareStrategy {
   uuid: string;
   name: string;
@@ -37,13 +37,15 @@ const STALE_TIMEOUT_MS = 5 * 60_000;
  * Each portfolio keeps its colour (portfolioColorMap), the same as on the Compare module of its
  * page (CompareModule), in the portfolio list's order.
  *
- * Strategies that aren't the user's (`strategies`: one from the catalog, or the simulation a strategy
- * their advisor shared came from) are compared beside them, after the user's portfolios, each a
- * card with a cross to take it out and a colour past theirs. A strategy no longer readable
- * (withdrawn, no longer shared: 403, 404) is said, with the way to take it out.
+ * Strategies (`strategies`: a backtest of the user's, one from the catalog, or the simulation a
+ * strategy their advisor shared came from) are compared beside them, after the user's portfolios,
+ * each a card with a cross to take it out and a colour past theirs. A strategy no longer readable
+ * (withdrawn, no longer shared: 403, 404) is said, with the way to take it out. `actions`: beside
+ * the cards' row (StrategiesCompare's picker).
  */
 export function ComparisonView({
-  candidates, trail, onOpen, strategies = [], onRemoveStrategy,
+  candidates, trail, onOpen, strategies = [], onRemoveStrategy, actions,
+  emptyText = "A comparison needs two portfolios at least: add another one to compare them.",
 }: {
   // The user's portfolios compared, in their order; all but the aggregate unless said.
   candidates?: Portfolio[];
@@ -51,16 +53,19 @@ export function ComparisonView({
   trail: Crumb[];
   // Opens one portfolio's own Insights, from its column head.
   onOpen: (uuid: string) => void;
-  // Strategies that aren't the user's, compared beside them (see CompareStrategy): always picked,
+  // Strategies compared beside them (see CompareStrategy): always picked,
   // after the user's portfolios, until taken out.
   strategies?: CompareStrategy[];
   onRemoveStrategy?: (uuid: string) => void;
+  actions?: React.ReactNode;
+  // What to do with fewer than two compared.
+  emptyText?: string;
 }) {
   const { portfolios } = usePortfolio();
   // Never the aggregate, which is the sum of the others rather than a peer of theirs.
   const comparable = useMemo(() => (candidates ?? portfolios).filter((p) => !p.isAggregate), [candidates, portfolios]);
-  // A strategy that's one of the user's own (a backtest of theirs) is just that portfolio.
-  const external = useMemo(() => strategies.filter((s) => !portfolios.some((p) => p.uuid === s.uuid)), [strategies, portfolios]);
+  // A strategy that's one of the portfolios compared is just that portfolio.
+  const external = useMemo(() => strategies.filter((s) => !comparable.some((p) => p.uuid === s.uuid)), [strategies, comparable]);
   const portfolioColors = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
   // The strategies take the palette's colours past the portfolios', so none repaints another.
   const colorOf = useMemo(() => (uuid: string) => {
@@ -79,6 +84,7 @@ export function ComparisonView({
   return (
     <div className="space-y-6 pb-12">
       <Breadcrumb trail={trail} current="Compare" />
+      {actions && <div className="flex justify-end">{actions}</div>}
       <CompareCards
         portfolios={comparable}
         figures={figures}
@@ -107,7 +113,7 @@ export function ComparisonView({
         </div>
       ) : compared < 2 ? (
         <div className="flex items-center justify-center text-center py-14 px-6 bg-white border border-slate-200 border-dashed rounded-4xl">
-          <p className="text-slate-500 text-sm max-w-sm">A comparison needs two portfolios at least: add another one to compare them.</p>
+          <p className="text-slate-500 text-sm max-w-sm">{emptyText}</p>
         </div>
       ) : loading && entries === null ? (
         <div className="flex h-64 items-center justify-center">
@@ -147,7 +153,7 @@ function CompareCards({ portfolios, figures, colorOf, onOpen, strategies = [], o
   figures: Map<string, PortfolioComparisonEntry> | undefined;
   colorOf: (uuid: string) => string;
   onOpen: (uuid: string) => void;
-  // The strategies compared that aren't the user's, each with its column's figures once loaded.
+  // The strategies compared beside the portfolios, each with its column's figures once loaded.
   strategies?: (CompareStrategy & { entry?: PortfolioComparisonEntry })[];
   onRemoveStrategy?: (uuid: string) => void;
 }) {

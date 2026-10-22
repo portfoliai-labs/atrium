@@ -2,11 +2,11 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, History, Info, Plus, Target, Telescope, Trash2 } from "lucide-react";
+import { ArrowUpRight, Columns3, History, Info, Plus, Target, Telescope, Trash2 } from "lucide-react";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { useSectionView } from "../../lib/dashboardHistory";
-import { STRATEGIES_SECTION, openClientPage, openCompareWith, openPortfolioPage } from "../../lib/dashboardNav";
+import { STRATEGIES_SECTION, openClientPage, openPortfolioPage } from "../../lib/dashboardNav";
 import { useMyPublications } from "../../hooks/useMyPublications";
 import { publicationService } from "../../services/publicationService";
 import { PublishStrategyDialog } from "./PublishStrategyDialog";
@@ -15,6 +15,7 @@ import { PortfolioNode, type PortfolioPage } from "./InvestmentsSection";
 import { isBacktest, type Portfolio } from "../../models/Portfolio";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { StrategyBuilder } from "./StrategyBuilder";
+import { StrategiesCompare } from "./StrategiesCompare";
 import { StrategiesCatalog, PublishedStrategyPage } from "./StrategiesExplore";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AdoptStrategyDialog } from "./AdoptStrategyDialog";
@@ -23,8 +24,9 @@ import { openAssetSettings } from "./SettingsSection";
 
 // Strategies' pages: "home", the user's strategies (their backtests) and the catalog of the
 // published ones; "builder", the form for a new backtest; "backtest", one backtest's page (`uuid`,
-// on `sub`); "published", one strategy of the catalog (`publicationId`).
-export type StrategiesPage = "home" | "builder" | "backtest" | "published";
+// on `sub`); "published", one strategy of the catalog (`publicationId`); "compare", strategies
+// side by side.
+export type StrategiesPage = "home" | "builder" | "backtest" | "published" | "compare";
 // A backtest's pages: its own, its generated transactions, its Stress test and Projection.
 export type BacktestPage = "overview" | "transactions" | "stress" | "projection";
 export type StrategiesView = { page: StrategiesPage; uuid?: string; sub?: BacktestPage; publicationId?: string };
@@ -38,6 +40,7 @@ const BACKTEST_PAGES: BacktestPage[] = ["overview", "transactions", "stress", "p
 export function strategiesViewOf(raw: unknown): StrategiesView {
   const v = (typeof raw === "object" && raw !== null ? raw : {}) as { page?: unknown; uuid?: unknown; sub?: unknown; publicationId?: unknown };
   if (v.page === "builder") return { page: "builder" };
+  if (v.page === "compare") return { page: "compare" };
   if (v.page === "backtest" && typeof v.uuid === "string") {
     return { page: "backtest", uuid: v.uuid, sub: BACKTEST_PAGES.includes(v.sub as BacktestPage) ? (v.sub as BacktestPage) : "overview" };
   }
@@ -72,7 +75,7 @@ export function StrategiesSection({ onNavigate }: { onNavigate: (section: string
  * simulation doesn't have (see PortfolioNode), and is adopted on a portfolio (AdoptStrategyDialog):
  * each of its targets becomes a range there, with an alert saying where the portfolio stands
  * against it. `trail`: the pages above Strategies. `onOpenPortfolio`: where a portfolio opens from
- * here (Investments', unless said).
+ * here (Investments', unless said). Compare (StrategiesCompare) puts strategies side by side.
  */
 export function StrategiesNode({ view, trail, onOpen, onOpenPortfolio, onNavigate }: {
   view: StrategiesView;
@@ -90,13 +93,15 @@ export function StrategiesNode({ view, trail, onOpen, onOpenPortfolio, onNavigat
   if (view.page === "builder") {
     return <StrategyBuilder trail={strategiesTrail} onCreated={(uuid) => openBacktest(uuid)} />;
   }
+  if (view.page === "compare") {
+    return <StrategiesCompare trail={strategiesTrail} onOpenBacktest={(uuid) => openBacktest(uuid)} />;
+  }
   if (view.page === "published" && view.publicationId) {
     return (
       <PublishedStrategyPage
         key={view.publicationId}
         publicationId={view.publicationId}
         trail={strategiesTrail}
-        onCompare={(compareWith) => openCompareWith(onNavigate, compareWith)}
         onNavigate={onNavigate}
       />
     );
@@ -129,6 +134,7 @@ export function StrategiesNode({ view, trail, onOpen, onOpenPortfolio, onNavigat
       onOpenBacktest={openBacktest}
       onOpenPublished={(publicationId) => onOpen({ page: "published", publicationId })}
       onOpenPortfolio={openPortfolio}
+      onCompare={() => onOpen({ page: "compare" })}
       onNavigate={onNavigate}
     />
   );
@@ -144,9 +150,10 @@ export function StrategiesNode({ view, trail, onOpen, onOpenPortfolio, onNavigat
  * An advisor adopts theirs on a client's portfolio (opening it in the client's investments, where it's
  * shared with the client or not), and publishes them to the catalog or withdraws them.
  */
-function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpenPortfolio, onNavigate }: {
+function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpenPortfolio, onCompare, onNavigate }: {
   trail: Crumb[];
   onBuild: () => void;
+  onCompare: () => void;
   onOpenBacktest: (uuid: string) => void;
   onOpenPublished: (publicationId: string) => void;
   onOpenPortfolio: (uuid: string, page?: PortfolioPage) => void;
@@ -198,18 +205,27 @@ function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpe
   return (
     <div className="space-y-6 pb-12">
       <Breadcrumb trail={trail} current="Strategies" />
-      {/* Titled as Projection and Stress test are, New strategy beside the title. */}
+      {/* Titled as Projection and Stress test are, Compare and New strategy beside the title. */}
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Strategies</h1>
-          <button
-            type="button"
-            onClick={onBuild}
-            {...demo}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Plus className="h-3.5 w-3.5" /> New strategy
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onCompare}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:border-slate-300 transition-colors"
+            >
+              <Columns3 className="h-3.5 w-3.5" /> Compare
+            </button>
+            <button
+              type="button"
+              onClick={onBuild}
+              {...demo}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="h-3.5 w-3.5" /> New strategy
+            </button>
+          </div>
         </div>
         <p className="flex items-start gap-2 text-[12.5px] text-[#78716c] max-w-3xl">
           <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
