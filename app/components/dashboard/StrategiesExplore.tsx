@@ -2,7 +2,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { AlertCircle, ArrowUpRight, ChevronLeft, ChevronRight, Loader2, Telescope } from "lucide-react";
+import { AlertCircle, ArrowUpRight, Check, ChevronLeft, ChevronRight, Loader2, Telescope } from "lucide-react";
 import { publicationService } from "../../services/publicationService";
 import { useInvestmentsQuery, useInvestmentsRead } from "../../context/PortfolioContext";
 import { ApiError } from "../../services/apiClient";
@@ -17,6 +17,7 @@ import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { describeRebalancing } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
+import type { CompareStrategy } from "./ComparisonView";
 import { CATEGORY_COLORS, SECURITY_COLORS } from "./StrategyBuilder";
 import { ProfileSummary } from "./StrategyProfile";
 
@@ -121,13 +122,15 @@ const positive = (v: string) => {
  * volatility and drawdown and sort by a figure, which the backend only does on a horizon, so the
  * filters stay off without one. Every figure is a simulation, net of its author's costs (shown next
  * to them), labelled so; nothing here is matched to the viewer, and nothing can be copied or adopted.
- * A strategy opens its page (PublishedStrategyPage).
+ * A strategy opens its page (PublishedStrategyPage). With `selection` (Strategies' Compare), a
+ * click on a card picks it or leaves it instead, a box in its corner saying which.
  */
-export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen }: {
-  own: { key: string; card: React.ReactNode }[];
+export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection }: {
+  own: { key: string; name: string; card: React.ReactNode }[];
   ownUuids: string[];
   emptyOwn: React.ReactNode;
   onOpen: (publicationId: string) => void;
+  selection?: { selected: CompareStrategy[]; onToggle: (strategy: CompareStrategy) => void };
 }) {
   const [show, setShow] = useState<"all" | "own">("all");
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
@@ -175,10 +178,34 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen }: {
   const published = (shown?.strategies ?? []).filter((x) => !ownUuids.includes(x.portfolioUuid));
   // The user's own lead the first page of All.
   const leading = show === "own" || page === 0 ? own : [];
-  const ownCard = (o: (typeof own)[number]) => <Fragment key={o.key}>{o.card}</Fragment>;
+  // A card as it is, or, while strategies are picked, under a layer that picks it.
+  const selectable = (key: string, strategy: CompareStrategy, card: React.ReactNode) => {
+    if (!selection) return <Fragment key={key}>{card}</Fragment>;
+    const on = selection.selected.some((s) => s.uuid === strategy.uuid);
+    return (
+      <div key={key} className="relative h-full">
+        {card}
+        <button
+          type="button"
+          aria-pressed={on}
+          aria-label={`${on ? "Leave out" : "Pick"} ${strategy.name} to compare`}
+          onClick={() => selection.onToggle(strategy)}
+          className={`absolute inset-0 rounded-[1.75rem] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40 ${on ? "ring-2 ring-[#C49A3C] bg-[#C49A3C]/5" : "hover:bg-[#1c1917]/[0.03]"}`}
+        >
+          <span className={`absolute top-4 right-4 w-6 h-6 rounded-lg border-2 flex items-center justify-center ${on ? "bg-[#C49A3C] border-[#C49A3C] text-white" : "bg-white border-slate-300"}`}>
+            {on && <Check className="h-4 w-4" />}
+          </span>
+        </button>
+      </div>
+    );
+  };
+  const ownCard = (o: (typeof own)[number]) => selectable(o.key, { uuid: o.key, name: o.name }, o.card);
   const cards = show === "own" ? own.map(ownCard) : [
     ...leading.map(ownCard),
-    ...published.map((x) => <StrategyCard key={x.publicationId} strategy={x} horizon={filters.horizon} onOpen={() => onOpen(x.publicationId)} />),
+    ...published.map((x) => selectable(
+      x.publicationId, { uuid: x.portfolioUuid, name: x.portfolioName },
+      <StrategyCard strategy={x} horizon={filters.horizon} onOpen={() => onOpen(x.publicationId)} />,
+    )),
   ];
 
   return (
