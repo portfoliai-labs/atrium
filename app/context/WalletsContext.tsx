@@ -140,7 +140,7 @@ export function useWalletSummary(walletUuid: string | null, enabled = true) {
   return state?.key === key ? state.value : undefined;
 }
 
-/** Each wallet's own summary, by uuid (for the hub's cards and the Dashboard's rows). */
+/** Each wallet's own summary, by uuid: one call per wallet (the retired hub's cards, see WalletNode). */
 export function useWalletSummaries(walletUuids: string[]) {
   const { source, version } = useWallets();
   const key = `${walletUuids.join(",")}:${version}`;

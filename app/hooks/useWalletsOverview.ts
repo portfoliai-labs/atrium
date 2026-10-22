@@ -2,7 +2,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useWallets, useWalletSummaries, useWalletSummary } from "../context/WalletsContext";
+import { useWallets, useWalletSummary } from "../context/WalletsContext";
 import { walletColor } from "../lib/wallets";
 import type { WalletKind, WalletSummaryMonth } from "../models/Wallet";
 
@@ -14,9 +14,6 @@ export interface WalletLine {
   // In the wallet's own currency.
   balance: number;
   currency: string;
-  // This month's money in minus money out, moves to and from the user's other wallets included;
-  // null while loading.
-  net: number | null;
 }
 
 export interface WalletsOverview {
@@ -43,14 +40,12 @@ export function useWalletsOverview(): WalletsOverview | null | undefined {
   const { wallets, loading, available } = useWallets();
   const active = useMemo(() => wallets.map((w, i) => ({ w, color: walletColor(w, i) })).filter(({ w }) => !w.archived), [wallets]);
   const total = useWalletSummary(null, available && !loading && active.length > 0);
-  const each = useWalletSummaries(useMemo(() => active.map(({ w }) => w.uuid), [active]));
 
   return useMemo(() => {
     if (!available) return null;
     if (loading) return undefined;
     const lines: WalletLine[] = active.map(({ w, color }) => ({
       id: w.uuid, name: w.name, kind: w.kind, color, balance: w.balance, currency: w.currency,
-      net: each?.[w.uuid]?.months.at(-1)?.net ?? (each ? 0 : null),
     }));
     if (active.length === 0) return { currency: "EUR", balance: 0, income: 0, expenses: 0, months: [], wallets: [] };
     if (total === undefined) return undefined;
@@ -63,5 +58,5 @@ export function useWalletsOverview(): WalletsOverview | null | undefined {
       months: total?.months ?? [],
       wallets: lines,
     };
-  }, [available, loading, active, total, each]);
+  }, [available, loading, active, total]);
 }
