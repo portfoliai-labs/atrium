@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { LogOut, Bell, Menu, Sparkles, X } from "lucide-react";
-import Image from "next/image";
 import { useUser } from "../../context/UserContext";
 import { useNotificationsContext } from "../../context/NotificationsContext";
 import { NotificationPanel } from "./NotificationPanel";
 import { AccountMenu } from "./AccountMenu";
+import { UserAvatar } from "./UserAvatar";
 import { TopbarSearch } from "./TopbarSearch";
 import type { AssetView } from "./AssetSection";
 import { ASSET_SECTION, SUBSCRIPTION_SECTION, aiChatView } from "../../lib/dashboardNav";
@@ -78,7 +78,6 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
   }, [greetingName]);
 
   const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(" ");
-  const initials = `${user?.first_name?.[0] ?? ""}${user?.last_name?.[0] ?? "U"}`.toUpperCase();
 
   async function handleBellClick() {
     const opening = !isPanelOpen;
@@ -212,20 +211,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
             onClick={handleProfileClick}
             className="flex items-center gap-3 p-1 md:p-1.5 md:pr-4 rounded-full md:rounded-[1.25rem] bg-white/70 border border-[rgba(196,154,60,0.25)] hover:shadow-sm transition-all cursor-pointer"
           >
-            <div className="relative h-8 w-8 md:h-9 md:w-9 rounded-full md:rounded-xl bg-[#1c1917] flex items-center justify-center text-white shadow-inner overflow-hidden">
-              {user?.profile_picture ? (
-                <Image
-                  src={user.profile_picture}
-                  alt="Profile"
-                  fill
-                  sizes="36px"
-                  className="object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <span className="font-bold text-xs">{initials}</span>
-              )}
-            </div>
+            <UserAvatar user={user} className="h-8 w-8 md:h-9 md:w-9 rounded-full md:rounded-xl" sizes="36px" />
 
             <div className="hidden md:flex flex-col">
               <span className="text-sm font-bold text-[#1c1917] leading-none mb-1">

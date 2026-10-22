@@ -15,8 +15,8 @@ import { formatCurrency } from "../../lib/format";
 import { NoDataEmptyState } from "./NoDataEmptyState";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { AlertGaugeCard } from "./AlertGauge";
-import { SUBSCRIPTION_SECTION, openPortfolioPage, openProfilePreferences, openRealEstatePage, openWalletPage } from "../../lib/dashboardNav";
-import { BudgetsSummaryModule, ProfileSummaryModule, UpcomingPaymentsModule } from "./DashboardSummaries";
+import { openPortfolioPage, openRealEstatePage, openWalletPage } from "../../lib/dashboardNav";
+import { BudgetsSummaryModule, UpcomingPaymentsModule } from "./DashboardSummaries";
 import { DailyArticleModule } from "./NewsSection";
 import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
 import { alertState, type AlertState, type AlertTone } from "../../lib/alerts";
@@ -26,7 +26,7 @@ import { useRealEstateNetWorth, type RealEstateNetWorth } from "../../hooks/useR
 import { useRealEstate } from "../../context/RealEstateContext";
 import { PreviewBadge } from "../preview/PreviewKit";
 import { WealthBreakdown } from "./WealthBreakdown";
-import { AiHelpButton } from "./assistant/AiHelpButton";
+import { MODULE_BODY, ModuleHead, Module as SummaryModule } from "./PerformanceSection";
 
 // One portfolio's GET /v1/portfolios/{p}/overview: null snapshot = no data yet (no transactions,
 // or the aggregate's first build hasn't landed), `failed` = the request itself errored.
@@ -41,8 +41,8 @@ type SnapshotState =
  * portfolio, plus the wallets' balance and the real estate's equity; a demo account's wallets and
  * properties are sample data, see lib/mock), with the portfolios, the wallets and the properties
  * under it as totals, and beside it on a wide enough page the wallets' cash flow (WealthBreakdown);
- * a row of summaries (the user's profile and plan, the month's budgets, the payments coming up);
- * then every portfolio's alerts and the article of the day. Headline figures
+ * then two by two: the wallets' cash flow and the payments coming up, every portfolio's alerts
+ * and the month's budgets; then the article of the day. Headline figures
  * only: the rest lives in Investments, Wallets and Real estate, which the summaries open. The overview endpoint never mixes history
  * with fresh data (no isStale).
  */
@@ -59,8 +59,8 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
   // Refetch only when the set of portfolios changes, not on every new array from the context
   // (a rename replaces the array but not the uuids). A portfolio with no entry yet reads as
   // loading; on a refetch the previous figures stay up until the new ones land.
-  // The aggregate's (the headline) and each real portfolio's, never a backtest's.
-  const uuidsKey = portfolios.filter((p) => p.isAggregate || !p.isVirtual).map((p) => p.uuid).join(",");
+  // The headline's only: the aggregate, or the only real portfolio (never a backtest).
+  const uuidsKey = (portfolios.find((p) => p.isAggregate) ?? portfolios.find((p) => !p.isVirtual))?.uuid ?? "";
   useEffect(() => {
     const uuids = uuidsKey ? uuidsKey.split(",") : [];
     let cancelled = false;
@@ -81,8 +81,6 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
   // A strategy's backtest is simulated money: never the net worth, and not in the aggregate.
   const aggregate = portfolios.find((p) => p.isAggregate);
   const headline = aggregate ?? portfolios.find((p) => !p.isVirtual);
-  // The real portfolios, each shown on its own under the total.
-  const members = useMemo(() => portfolios.filter((p) => !p.isVirtual), [portfolios]);
 
   // "Manage alerts" (and the empty state's button) open the Alerts page of the selected portfolio
   // (a real one or All portfolios: the default while a backtest is selected).
@@ -116,12 +114,14 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
     );
   }
 
+  // Two modules side by side once there's room (56rem), one under the other otherwise; one alone
+  // (the other has nothing to say) takes the row, and with neither the row isn't there.
+  // A grid rather than a flex row, so the two stretch to the same height (their cards are h-full).
+  const pair = "grid grid-cols-1 @[56rem]:grid-flow-col @[56rem]:auto-cols-fr gap-6 *:min-w-0 empty:hidden";
+
   return (
     // Sized by the room the page has (the Sidebar collapsed gives it more), not the window's.
     <div className="@container space-y-6 pb-12">
-    {/* Side by side once there's room for both (56rem), one under the other otherwise. */}
-    <div className="grid grid-cols-1 @[56rem]:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-6 items-stretch">
-
       {/* NET WORTH — a lone portfolio with no data yet gets the full-page "no data" window
           instead (unless there are wallets or properties to add up), since there's nothing else on the page. */}
       {headlineState.status === "failed" ? (
@@ -136,8 +136,6 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
         <NetWorthModule
           portfolio={headline}
           snapshot={headlineState.snapshot}
-          members={members}
-          snapshots={snapshots}
           wallets={wallets}
           realEstate={realEstate}
           onOpenPortfolios={onNavigate && investments ? () => openPortfolioPage(onNavigate, investments.uuid) : undefined}
@@ -146,27 +144,23 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
         />
       )}
 
-      {/* CASH FLOW — the wallets' last months. */}
-      {!noDataAtAll && headlineState.status === "ready" && <WealthBreakdown />}
-    </div>
-
-      {/* SUMMARIES — the user, the month's budgets and what's due: each only where it has something to say. */}
-      <div className="grid grid-cols-1 @[40rem]:grid-cols-2 @[56rem]:grid-cols-3 gap-6 items-stretch">
-        <ProfileSummaryModule
-          onOpenProfile={onNavigate ? () => openProfilePreferences(onNavigate) : undefined}
-          onUpgrade={onNavigate ? () => onNavigate(SUBSCRIPTION_SECTION) : undefined}
-        />
-        <BudgetsSummaryModule onOpen={onNavigate ? () => openWalletPage(onNavigate, "all", "budgets") : undefined} />
+      {/* CASH FLOW — the wallets' last months; beside it, the payments coming up. */}
+      <div className={pair}>
+        {!noDataAtAll && headlineState.status === "ready" && <WealthBreakdown />}
         <UpcomingPaymentsModule onOpen={onNavigate ? () => openWalletPage(onNavigate, "all") : undefined} />
       </div>
 
-      {/* ALERTS — every portfolio's, aggregate included, as one list sorted by urgency. */}
-      {!noDataAtAll && (
-        <AlertsModule
-          portfolios={portfolios}
-          onManage={onNavigate ? openAlertSettings : undefined}
-        />
-      )}
+      {/* ALERTS — every portfolio's, aggregate included, as one list sorted by urgency; beside
+          them, the month's budgets. */}
+      <div className={pair}>
+        {!noDataAtAll && (
+          <AlertsModule
+            portfolios={portfolios}
+            onManage={onNavigate ? openAlertSettings : undefined}
+          />
+        )}
+        <BudgetsSummaryModule onOpen={onNavigate ? () => openWalletPage(onNavigate, "all", "budgets") : undefined} />
+      </div>
 
       {/* ARTICLE OF THE DAY — the same pick for everyone; renders nothing on a day without one. */}
       <DailyArticleModule />
@@ -174,12 +168,7 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
   );
 }
 
-const chartDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const formatPct = (pct: number) => `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
-// Unrealized P&L relative to what's invested; null when nothing is (a fully sold-out
-// portfolio), where a percentage would be meaningless.
-const unrealizedPct = (s: PortfolioSnapshot) =>
-  s.totalInvestedCapital > 0 ? (s.totalUnrealizedPnl / s.totalInvestedCapital) * 100 : null;
 const signedCurrency = (value: number, currency: string) => `${value >= 0 ? "+" : ""}${formatCurrency(value, currency, 0)}`;
 
 function ErrorBanner({ message }: { message: string }) {
@@ -194,36 +183,27 @@ function ErrorBanner({ message }: { message: string }) {
 /**
  * NET WORTH MODULE — everything the user owns, in their reference currency: every portfolio at
  * today's market prices plus the wallets' balance and the real estate's equity. On top the total, with
- * how the market moved the portfolios today and this month, and one bar split into every portfolio,
- * wallet and property, each in a shade of its group's colour (gold for investments, teal for wallets,
- * orange for real estate) so the bar reads both ways: what each is, and how much of the whole each
- * group is. Under it, one column per group: its total, a line about it (the portfolios' unrealized
- * P&L, the wallets' money in and out this month, the properties' debt and how their equity moved this month),
- * opening its section (Investments' All portfolios, Wallets, Real estate), where each portfolio,
- * wallet and property is. The bar's pieces say which each is on hovering.
+ * how the market moved the portfolios today and this month, and one bar split into its groups,
+ * each in its colour (gold for investments, teal for wallets, orange for real estate), the same as
+ * its column's below, which is its legend. Under it, one column per group: its total (and for
+ * the real estate a line about it: its debt and how its equity moved this month), opening its section (Investments' All portfolios, Wallets, Real estate), where each portfolio,
+ * wallet and property is. The bar's pieces say what each is worth on hovering.
  *
  * The portfolios' total is the aggregate's (recomputed from every portfolio's transactions
- * combined) or the only portfolio's; each portfolio's piece of the bar is its own overview. A strategy's
- * backtest is simulated money: never here. The wallets come added up in the user's reference
- * currency (see useWalletsOverview); if that isn't the portfolios' they're shown but not added in,
- * and a wallet in another currency than that has no piece of its own in the bar. A wallet in debt
- * (a credit card) takes no room in the bar.
+ * combined) or the only portfolio's. A strategy's backtest is simulated money: never here. The
+ * wallets come added up in the user's reference currency (see useWalletsOverview); if that isn't
+ * the portfolios' they're shown but not added in. A group below zero takes no room in the bar.
  *
  * The real estate counts by its equity only (an instalment then counts once: cash out of a wallet,
- * debt down); its gross value and debt are in its column's line. Same currency rule as the wallets;
- * a property's piece of the bar is its equity in the reference currency when there's a rate. Equity
- * below zero (more debt than value) takes no room in the bar, as a wallet in debt.
+ * debt down); its gross value and debt are in its column's line. Same currency rule as the wallets.
  */
 function NetWorthModule({
-  portfolio, snapshot, members, snapshots, wallets, realEstate,
+  portfolio, snapshot, wallets, realEstate,
   onOpenPortfolios, onOpenWallets, onOpenRealEstate,
 }: {
   portfolio: Portfolio;
   // null: nothing computed yet (the aggregate's first build, or a portfolio with no data).
   snapshot: PortfolioSnapshot | null;
-  // The real portfolios, each with its own overview.
-  members: Portfolio[];
-  snapshots: Record<string, SnapshotState>;
   wallets: WalletsOverview | null;
   realEstate: RealEstateNetWorth | null;
   onOpenPortfolios?: () => void;
@@ -242,49 +222,23 @@ function NetWorthModule({
   const realEstateCounted = reOverview && reOverview.currency === currency ? reOverview.equity : 0;
   const total = investments + walletsCounted + realEstateCounted;
   const shareOf = (value: number) => (total > 0 ? Math.max(0, (value / total) * 100) : 0);
-  const pnlPct = snapshot ? unrealizedPct(snapshot) : null;
 
-  const portfolioRows = members.map((p, i) => {
-    const state = snapshots[p.uuid] ?? { status: "loading" as const };
-    return { portfolio: p, state, own: state.status === "ready" ? state.snapshot : null, shade: shadeOf(GOLD_SHADES, i) };
-  });
-  const walletRows = (wallets?.wallets ?? []).map((w, i) => ({ wallet: w, shade: shadeOf(TEAL_SHADES, i) }));
-  // A property's equity in the net worth's currency: its own, or the reference's; null in another.
-  const propertyRows = (realEstate?.properties ?? []).map((p, i) => ({
-    property: p,
-    shade: shadeOf(ORANGE_SHADES, i),
-    counted: realEstateCounted === 0 ? null : p.currency === currency ? p.equity : p.reference?.currency === currency ? p.reference.equity : null,
-  }));
-
-  // The bar, piece by piece: each portfolio's own value while they're all in, else the group as
-  // one piece; then each wallet with money in it.
-  const allIn = portfolioRows.length > 0 && portfolioRows.every((r) => r.state.status === "ready");
-  const segments = [
-    ...(allIn
-      ? portfolioRows.filter((r) => r.own && r.own.currency === currency).map((r) => ({ key: r.portfolio.uuid, label: r.portfolio.name, kind: "Portfolio", value: r.own!.totalMarketValue, color: r.shade }))
-      : [{ key: "investments", label: "Investments", kind: "Your portfolios", value: investments, color: GOLD }]),
-    ...(walletsCounted !== 0
-      ? walletRows.filter((r) => r.wallet.currency === currency).map((r) => ({ key: r.wallet.id, label: r.wallet.name, kind: "Wallet", value: r.wallet.balance, color: r.shade }))
-      : []),
-    ...propertyRows.filter((r) => r.counted !== null).map((r) => ({ key: r.property.id, label: r.property.name, kind: "Property, equity", value: r.counted!, color: r.shade })),
-  ].filter((s) => s.value > 0);
-  // Where each piece starts and ends along the bar, in percent: the hovered one's label sits over its middle.
-  let start = 0;
-  const pieces = segments.map((s) => {
-    const width = shareOf(s.value);
-    const piece = { ...s, width, center: start + width / 2 };
-    start += width;
-    return piece;
-  });
-  const focus = pieces.find((p) => p.key === hovered) ?? null;
-  // The groups counted in the total, for the bar's legend: shown once there are two.
+  // The bar, one piece per group counted in the total, in its colour (the same as its column's).
   const groups = [
     { key: "investments", label: "Investments", value: investments, color: GOLD },
     ...(walletsCounted !== 0 ? [{ key: "wallets", label: "Wallets", value: walletsCounted, color: TEAL }] : []),
     ...(realEstateCounted !== 0 ? [{ key: "realEstate", label: "Real estate", value: realEstateCounted, color: ORANGE }] : []),
-  ];
+  ].filter((g) => g.value > 0);
+  // Where each piece starts and ends along the bar, in percent: the hovered one's label sits over its middle.
+  let start = 0;
+  const pieces = groups.map((g) => {
+    const width = shareOf(g.value);
+    const piece = { ...g, width, center: start + width / 2 };
+    start += width;
+    return piece;
+  });
+  const focus = pieces.find((p) => p.key === hovered) ?? null;
   const columns = 1 + (wallets ? 1 : 0) + (realEstate ? 1 : 0);
-  const added = [wallets && "your wallets' balance", realEstate && "your real estate's equity"].filter(Boolean).join(" and ");
 
   return (
     <Module>
@@ -295,10 +249,6 @@ function NetWorthModule({
             <p className="text-4xl md:text-5xl font-black text-slate-900 tabular-nums mt-1.5" style={serif}>
               {formatCurrency(total, currency, 0)}
             </p>
-            <p className="text-[13px] text-slate-500 mt-1.5">
-              {snapshot ? `As of ${chartDateLabel(snapshot.snapshotAt)}, from daily market prices` : "Your portfolios at today's market prices"}
-              {added && `, plus ${added}`}.
-            </p>
           </div>
           {snapshot && moves && (
             <dl className="flex gap-6">
@@ -308,8 +258,7 @@ function NetWorthModule({
           )}
         </div>
 
-        {segments.length > 0 && (
-          <div className="space-y-2.5">
+        {pieces.length > 0 && (
             <div className="relative">
               {focus && (
                 <div
@@ -323,7 +272,7 @@ function NetWorthModule({
                     {focus.label}
                   </p>
                   <p className="mt-0.5 text-[11px] text-stone-400 tabular-nums">
-                    {focus.kind} · {formatCurrency(focus.value, currency, 0)} · {focus.width.toFixed(1)}%
+                    {formatCurrency(focus.value, currency, 0)} · {focus.width.toFixed(1)}%
                   </p>
                 </div>
               )}
@@ -344,14 +293,6 @@ function NetWorthModule({
                 ))}
               </div>
             </div>
-            {groups.length > 1 && (
-              <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs font-bold text-slate-600">
-                {groups.map((g) => (
-                  <span key={g.key} className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ background: g.color }} />{g.label} {shareOf(g.value).toFixed(0)}%</span>
-                ))}
-              </div>
-            )}
-          </div>
         )}
       </div>
 
@@ -363,7 +304,6 @@ function NetWorthModule({
           pending={portfolio.isAggregate
             ? "The combined figures across your portfolios are being prepared. Check back in a few minutes."
             : "No transactions yet: add some to see what your portfolio is worth."}
-          summary={snapshot && <><Delta amount={snapshot.totalUnrealizedPnl} pct={pnlPct} currency={snapshot.currency} /> unrealized</>}
           onOpen={onOpenPortfolios}
         />
         {wallets && (
@@ -372,13 +312,6 @@ function NetWorthModule({
             color={TEAL}
             badge={sample ? <PreviewBadge label="Sample data" /> : undefined}
             value={wallets.balance === null ? "—" : formatCurrency(wallets.balance, wallets.currency, 0)}
-            summary={
-              <>
-                <span className="text-emerald-600">+{formatCurrency(wallets.income, wallets.currency, 0)}</span> in
-                <span className="text-slate-300"> · </span>
-                <span className="text-rose-600">−{formatCurrency(wallets.expenses, wallets.currency, 0)}</span> out this month
-              </>
-            }
             onOpen={onOpenWallets}
           />
         )}
@@ -403,16 +336,10 @@ function NetWorthModule({
   );
 }
 
-// Each group's colour, and the shades its members take in order: light to dark, so neighbours
-// in the bar stay apart.
+// Each group's colour: the investments', the wallets', the real estate's.
 const GOLD = "#C49A3C";
 const TEAL = "#0f766e";
-const GOLD_SHADES = ["#8A6A28", "#C49A3C", "#E0BE72", "#A8813A", "#EDD5A2", "#6B5220"];
-const TEAL_SHADES = ["#0b5750", "#0f766e", "#2ea99b", "#79cbbf", "#134e4a"];
-// The real estate's colour.
 const ORANGE = "#eb6834";
-const ORANGE_SHADES = ["#b9471b", "#eb6834", "#f4a27d", "#d4561f", "#f8c7ae", "#8f3614"];
-const shadeOf = (shades: string[], i: number) => shades[i % shades.length];
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 
 /** One of the headline's market moves: "Today · +1,240 EUR · +0.84%". */
@@ -468,7 +395,7 @@ function GroupColumn({
       >
         <div className="flex items-center justify-between gap-3">
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+            <span className="h-2 w-2 rounded-full shrink-0" style={{ background: color }} />
             {title}
             {badge}
           </p>
@@ -528,7 +455,8 @@ const SUMMARY_GROUPS: { tone: AlertTone; label: string; dot: string }[] = [
  * (the backend re-checks every rule about every 5 minutes, so a reading changes while the page
  * is open). With more than one portfolio each dial is labelled with the portfolio it watches.
  * A one-line summary counts them by state; only the ALERTS_SHOWN_COLLAPSED most urgent get a
- * dial until the user asks for all of them. With no rules it isn't shown at all.
+ * dial until the user asks for all of them. With no rules, the way to set one. Its head opens
+ * the alerts' page (`onManage`), as the Budgets beside it opens theirs.
  */
 function AlertsModule({ portfolios, onManage }: { portfolios: Portfolio[]; onManage?: () => void }) {
   const uuids = useMemo(() => portfolios.map((p) => p.uuid), [portfolios]);
@@ -544,26 +472,27 @@ function AlertsModule({ portfolios, onManage }: { portfolios: Portfolio[]; onMan
     .map((g) => ({ ...g, count: sorted.filter((r) => alertState(r).tone === g.tone).length }))
     .filter((g) => g.count > 0);
 
-  // Only there when there's something to show: no alerts (or none loaded yet, or a failed
-  // request) means no module at all. They're set up on each portfolio's page (Portfolios).
-  if (loading || error || sorted.length === 0) return null;
+  // A failed request means no module at all. Without any alert yet, the way to set one (on each
+  // portfolio's page, see Portfolios).
+  if (error) return null;
 
   return (
-    <Module>
+    <SummaryModule>
       <ModuleHead
-        eyebrow="Alerts"
-        title="Your alerts"
+        title="Alerts"
         desc="How close each alert is to its limit. Checked about every 5 minutes."
-        right={onManage && (
-          <button
-            onClick={onManage}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 border border-slate-200 hover:border-[#C49A3C] hover:text-[#C49A3C] transition-colors"
-          >
-            Manage alerts
-          </button>
-        )}
+        onExplore={onManage}
       />
-      <div className="p-6 md:p-7 space-y-5">
+      {loading && rules === null ? (
+        <p className={`${MODULE_BODY} text-[12.5px] text-[#857e78]`}>Loading…</p>
+      ) : sorted.length === 0 ? (
+        <div className={`${MODULE_BODY} space-y-2`}>
+          <p className="text-[12.5px] text-[#857e78]">No alerts yet: an alert tells you when a portfolio or a holding crosses a limit you set.</p>
+          {onManage && <button type="button" onClick={onManage} className="text-xs font-bold text-[#8A6A28] hover:text-[#C49A3C]">Set an alert →</button>}
+        </div>
+      ) : (
+      // Its own container: the dials go two or three to a row by the module's width, beside Budgets or not.
+      <div className={`@container ${MODULE_BODY} space-y-4`}>
         <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs font-bold text-slate-600">
           {counts.map((g) => (
             <li key={g.tone} className="flex items-center gap-1.5">
@@ -572,7 +501,7 @@ function AlertsModule({ portfolios, onManage }: { portfolios: Portfolio[]; onMan
             </li>
           ))}
         </ul>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 @sm:grid-cols-2 @4xl:grid-cols-3 gap-4">
           {visible.map((rule) => (
             <div key={`${rule.portfolioUuid}:${rule.ruleId}`} className="flex flex-col gap-1.5">
               {portfolios.length > 1 && (
@@ -595,7 +524,8 @@ function AlertsModule({ portfolios, onManage }: { portfolios: Portfolio[]; onMan
           </div>
         )}
       </div>
-    </Module>
+      )}
+    </SummaryModule>
   );
 }
 
@@ -610,25 +540,3 @@ function Module({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ModuleHead({
-  eyebrow, title, desc, right,
-}: {
-  eyebrow: string; title: string; desc?: string; right?: React.ReactNode;
-}) {
-  return (
-    <div className="p-6 md:p-7 pb-5 border-b border-slate-100 flex flex-wrap items-start justify-between gap-6">
-      <div className="flex-1 min-w-0">
-        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C] mb-1.5">{eyebrow}</p>
-        <h2
-          className="text-lg md:text-xl font-black text-slate-900"
-          style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-        >
-          {title}
-          <AiHelpButton title={title} desc={desc} className="ml-1.5 align-middle" />
-        </h2>
-        {desc && <p className="text-[13px] text-slate-500 mt-1 leading-relaxed">{desc}</p>}
-      </div>
-      {right}
-    </div>
-  );
-}

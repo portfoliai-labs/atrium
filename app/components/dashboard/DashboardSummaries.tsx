@@ -2,14 +2,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarClock, Sparkles } from "lucide-react";
-import { useUser } from "../../context/UserContext";
+import { CalendarClock } from "lucide-react";
 import { useWallets } from "../../context/WalletsContext";
 import { formatCurrency } from "../../lib/format";
 import { CADENCE_LABELS, dayLabel, monthName, today } from "../../lib/wallets";
 import type { BudgetMonth, RecurringPayments } from "../../models/Wallet";
-import { Fig, Figs, MODULE_BODY, Module, ModuleHead } from "./PerformanceSection";
-import { riskToleranceLabel } from "./InvestorPolicyDialog";
+import { MODULE_BODY, Module, ModuleHead } from "./PerformanceSection";
 
 // The days ahead Coming up looks at, and the payments it names.
 const AHEAD_DAYS = 30;
@@ -20,80 +18,6 @@ function shiftDay(day: string, days: number) {
   const [y, m, d] = day.split("-").map(Number);
   const moved = new Date(y, m - 1, d + days);
   return `${moved.getFullYear()}-${String(moved.getMonth() + 1).padStart(2, "0")}-${String(moved.getDate()).padStart(2, "0")}`;
-}
-
-const PLAN_LABELS: Record<string, string> = { FREE: "Free plan", TESTER: "Tester", DEMO: "Demo account" };
-
-/**
- * YOUR PROFILE — on the Dashboard: who the account is, its plan (Free with the way to upgrade),
- * since when, its reference currency, tax residence and risk tolerance, and how much of the
- * investor profile is filled in, the way to the rest (`onOpenProfile`).
- */
-export function ProfileSummaryModule({ onOpenProfile, onUpgrade }: { onOpenProfile?: () => void; onUpgrade?: () => void }) {
-  const { user } = useUser();
-  if (!user) return null;
-
-  const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
-  const initials = [user.first_name, user.last_name].filter(Boolean).map((n) => n![0]).join("").toUpperCase() || user.email[0].toUpperCase();
-  // The investor profile's parts, each counted once filled in.
-  const parts = [
-    user.estimated_wealth, user.annual_income, user.savings_rate, user.financial_goals?.length ? user.financial_goals : null,
-    user.risk_tolerance, user.financial_knowledge_level, user.currency, user.tax_residence,
-  ];
-  const filled = parts.filter((p) => p !== null && p !== undefined).length;
-  const complete = Math.round((filled / parts.length) * 100);
-  const plan = user.subscription_tier ? PLAN_LABELS[user.subscription_tier] ?? user.subscription_tier : "Free plan";
-  const since = new Date(user.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" });
-
-  return (
-    <Module>
-      <ModuleHead title="Your profile" desc="Your account, your plan, and how much of your investor profile is filled in." onExplore={onOpenProfile} />
-      <div className={`${MODULE_BODY} space-y-4`}>
-        <div className="flex items-center gap-3">
-          {user.profile_picture
-            // eslint-disable-next-line @next/next/no-img-element
-            ? <img src={user.profile_picture} alt="" className="w-11 h-11 rounded-full object-cover shrink-0" />
-            : <span className="w-11 h-11 rounded-full bg-[#1c1917] text-[#C49A3C] font-black flex items-center justify-center shrink-0">{initials}</span>}
-          <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-bold text-[#1c1917] truncate">{name}</p>
-            <p className="flex items-center gap-2 text-xs text-[#78716c]">
-              <span className="px-2 py-0.5 rounded-full bg-[#C49A3C]/10 text-[#8A6A28] font-bold">{plan}</span>
-              since {since}
-            </p>
-          </div>
-          {user.subscription_tier === "FREE" && onUpgrade && (
-            <button
-              type="button"
-              onClick={onUpgrade}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors shrink-0"
-            >
-              <Sparkles className="h-3.5 w-3.5" /> Upgrade
-            </button>
-          )}
-        </div>
-        <Figs pairs>
-          <Fig label="Currency" value={user.currency ?? "—"} />
-          <Fig label="Tax residence" value={user.tax_residence ?? "—"} />
-          <Fig label="Risk tolerance" value={riskToleranceLabel(user.risk_tolerance) ?? "—"} />
-          <Fig label="Goals" value={user.financial_goals?.length ? String(user.financial_goals.length) : "—"} />
-        </Figs>
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-[#78716c]">Investor profile</span>
-            <span className="font-bold text-[#1c1917] tabular-nums">{complete}% complete</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-[#EEE9DD] overflow-hidden">
-            <div className="h-full rounded-full bg-[#C49A3C]" style={{ width: `${complete}%` }} />
-          </div>
-          {complete < 100 && onOpenProfile && (
-            <button type="button" onClick={onOpenProfile} className="text-xs font-bold text-[#8A6A28] hover:text-[#C49A3C]">
-              Complete your profile →
-            </button>
-          )}
-        </div>
-      </div>
-    </Module>
-  );
 }
 
 /** A wallets' read for the Dashboard, refetched as the wallets change: undefined loading, null failed. */
