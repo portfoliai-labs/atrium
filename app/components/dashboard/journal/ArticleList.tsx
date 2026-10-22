@@ -3,12 +3,12 @@
 
 import { useEffect, useState } from "react";
 import { HandHeart, Search, X } from "lucide-react";
-import { useJournal } from "../../../context/JournalContext";
+import { useJournal, useJournalRead } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
 import { CATEGORIES, CATEGORY_LABELS, QUERY_MAX } from "../../../lib/journal";
-import type { ArticleCategory, ArticleLanguage, ArticleSummary } from "../../../models/Journal";
+import type { ArticleCategory, ArticleLanguage } from "../../../models/Journal";
 import type { JournalFilters } from "../JournalSection";
-import { ArticleCard, EmptyState, ErrorState, JournalHeader, LeadCard, LoadMore, PAGE_SIZE, Spinner, usePaged } from "./JournalKit";
+import { ArticleCard, EmptyState, ErrorState, JournalHeader, LeadCard, LoadMore, Spinner, useArticles } from "./JournalKit";
 
 const SEARCH_DEBOUNCE_MS = 350;
 
@@ -29,21 +29,15 @@ function FilterChip({ label, onClear }: { label: string; onClear: () => void }) 
  * or where it isn't asked (`enabled` false).
  */
 function useTopArticle(enabled: boolean, language: ArticleLanguage) {
-  const key = enabled ? language : "";
-  const [top, setTop] = useState<{ key: string; article: ArticleSummary | null } | null>(null);
-
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    journalService.list({ order: "top_day", preferredLanguage: language, limit: 1 })
-      .then((page) => { if (!cancelled) setTop({ key, article: page.items.find((a) => a.applauseCount > 0) ?? null }); })
-      // An extra: without it the newest leads.
-      .catch(() => { if (!cancelled) setTop({ key, article: null }); });
-    return () => { cancelled = true; };
-  }, [enabled, language, key]);
-
+  const top = useJournalRead(
+    ["top", language],
+    () => journalService.list({ order: "top_day", preferredLanguage: language, limit: 1 })
+      .then((page) => page.items.find((a) => a.applauseCount > 0) ?? null),
+    enabled,
+  );
   if (!enabled) return null;
-  return top?.key === key ? top.article : undefined;
+  // An extra: without it (it couldn't be read: null) the newest leads.
+  return top;
 }
 
 /**
@@ -58,7 +52,7 @@ export function ArticleList({ filters, onFilters, onOpen }: {
   onFilters: (filters: JournalFilters) => void;
   onOpen: (slug: string) => void;
 }) {
-  const { source, language, mode } = useJournal();
+  const { language, mode } = useJournal();
   const [query, setQuery] = useState(filters.q ?? "");
 
   // Words typed reach the list once the reader pauses.
@@ -70,20 +64,15 @@ export function ArticleList({ filters, onFilters, onOpen }: {
   }, [query, filters, onFilters]);
 
   const { category, q, author, instrument } = filters;
-  const list = usePaged(
-    (offset) => source.list({
-      category,
-      q,
-      authorUuid: author?.uuid,
-      ...(instrument?.instrumentId
-        ? { instrumentId: instrument.instrumentId }
-        : { ticker: instrument?.ticker, isin: instrument?.isin ?? undefined }),
-      preferredLanguage: language,
-      limit: PAGE_SIZE,
-      offset,
-    }),
-    JSON.stringify([mode, category, q, author?.uuid, instrument?.instrumentId, instrument?.ticker, instrument?.isin, language]),
-  );
+  const list = useArticles({
+    category,
+    q,
+    authorUuid: author?.uuid,
+    ...(instrument?.instrumentId
+      ? { instrumentId: instrument.instrumentId }
+      : { ticker: instrument?.ticker, isin: instrument?.isin ?? undefined }),
+    preferredLanguage: language,
+  });
 
   const narrowed = !!(category || q || author || instrument);
   const setCategory = (next: ArticleCategory | undefined) => onFilters({ ...filters, category: next });

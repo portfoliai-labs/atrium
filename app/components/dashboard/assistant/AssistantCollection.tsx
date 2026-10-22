@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQueries, useQuery, type QueryClient } from "@tanstack/react-query";
 import { Building2, Download, FileText, Loader2, PieChart, Wallet } from "lucide-react";
 import { usePortfolio } from "../../../context/PortfolioContext";
-import { useWallets } from "../../../context/WalletsContext";
-import { useRealEstate } from "../../../context/RealEstateContext";
+import { useWallets, walletKey } from "../../../context/WalletsContext";
+import { realEstateKey, useRealEstate } from "../../../context/RealEstateContext";
+import { accountKey } from "../../../hooks/useAccountQuery";
 import { reportService } from "../../../services/reportService";
 import { walletService } from "../../../services/walletService";
 import { realEstateService } from "../../../services/realEstateService";
@@ -31,57 +33,57 @@ const KINDS: Record<ReportKind, { label: string; icon: typeof PieChart }> = {
   property: { label: "Property", icon: Building2 },
 };
 
+/** After a report the assistant made: every list read again (which one has it isn't said). */
+export function collectionChanged(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ queryKey: accountKey("reports") });
+  void queryClient.invalidateQueries({ queryKey: walletKey("reports") });
+  void queryClient.invalidateQueries({ queryKey: realEstateKey("reports") });
+}
+
 /**
  * The collection's media: every report the user has, newest first: their portfolios' (ready ones only), their wallets' and
- * their properties', each read from its own route. A route that fails leaves its reports out
- * rather than the whole list, read again as `reload` moves (a report the assistant just made).
+ * their properties', each read from its own route, in the query cache under its own key (a
+ * portfolio's shared with Reports). A route that fails leaves its reports out rather than the
+ * whole list; all are read again with `collectionChanged` (a report the assistant just made).
  * undefined while loading; `failed` when none could be read.
  */
-export function useCollection(enabled = true, reload = 0) {
+export function useCollection(enabled = true) {
   const { portfolios } = usePortfolio();
   const { wallets, available: hasWallets } = useWallets();
   const { properties, available: hasProperties } = useRealEstate();
   const real = useMemo(() => portfolios.filter((p) => !p.isVirtual && !p.isAggregate), [portfolios]);
-  const key = real.map((p) => p.uuid).join(",");
-  const [state, setState] = useState<{ key: string; items: CollectionItem[]; failed: boolean } | null>(null);
+  const documents = useQueries({
+    queries: real.map((p) => ({ queryKey: accountKey("reports", p.uuid), queryFn: () => reportService.getAllDocuments(p.uuid), enabled })),
+  });
+  const walletReports = useQuery({ queryKey: walletKey("reports"), queryFn: () => walletService.reports(), enabled: enabled && hasWallets });
+  const propertyReports = useQuery({ queryKey: realEstateKey("reports"), queryFn: () => realEstateService.reports(), enabled: enabled && hasProperties });
 
-  useEffect(() => {
-    if (!enabled) return;
-    let live = true;
-    const portfolioName = (uuid: string) => real.find((p) => p.uuid === uuid)?.name ?? "A portfolio";
-    const walletName = (uuid: string) => wallets.find((w) => w.uuid === uuid)?.name ?? "A wallet";
-    const propertyName = (uuid: string) => properties.find((p) => p.uuid === uuid)?.name ?? "A property";
-    const reads: Promise<CollectionItem[]>[] = [
-      ...real.map((p) => reportService.getAllDocuments(p.uuid).then((docs) => docs
-        .filter((d) => d.status === "UPLOADED")
-        .map((d): CollectionItem => ({
-          key: `portfolio:${d.document_id}`, kind: "portfolio", name: d.name, subject: portfolioName(d.portfolio_uuid), createdAt: d.created_at,
-          download: () => reportService.downloadReport(d.portfolio_uuid, d.document_id),
-        })))),
-      ...(hasWallets ? [walletService.reports().then((list) => list.map((r): CollectionItem => ({
-        key: `wallet:${r.documentId}`, kind: "wallet", name: r.name, subject: walletName(r.walletUuid), createdAt: r.createdAt,
-        download: () => walletService.reportDownloadUrl(r.walletUuid, r.documentId),
-      })))] : []),
-      ...(hasProperties ? [realEstateService.reports().then((list) => list.map((r): CollectionItem => ({
-        key: `property:${r.documentId}`, kind: "property", name: r.name, subject: propertyName(r.propertyUuid), createdAt: r.createdAt,
-        download: () => realEstateService.reportDownloadUrl(r.propertyUuid, r.documentId),
-      })))] : []),
-    ];
-    Promise.allSettled(reads).then((results) => {
-      if (!live) return;
-      const read = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
-      setState({
-        key,
-        items: read.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-        failed: results.length > 0 && results.every((r) => r.status === "rejected"),
-      });
-    });
-    return () => { live = false; };
-    // The names are read as they are when the list loads; `key` follows the portfolios.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, key, hasWallets, hasProperties, reload]);
+  const reads = [...documents, ...(hasWallets ? [walletReports] : []), ...(hasProperties ? [propertyReports] : [])];
+  if (!enabled || reads.some((r) => r.isPending)) return undefined;
 
-  return state?.key === key ? state : undefined;
+  const portfolioName = (uuid: string) => real.find((p) => p.uuid === uuid)?.name ?? "A portfolio";
+  const walletName = (uuid: string) => wallets.find((w) => w.uuid === uuid)?.name ?? "A wallet";
+  const propertyName = (uuid: string) => properties.find((p) => p.uuid === uuid)?.name ?? "A property";
+  const items: CollectionItem[] = [
+    ...documents.flatMap((r) => (r.data ?? [])
+      .filter((d) => d.status === "UPLOADED")
+      .map((d): CollectionItem => ({
+        key: `portfolio:${d.document_id}`, kind: "portfolio", name: d.name, subject: portfolioName(d.portfolio_uuid), createdAt: d.created_at,
+        download: () => reportService.downloadReport(d.portfolio_uuid, d.document_id),
+      }))),
+    ...(hasWallets ? walletReports.data ?? [] : []).map((r): CollectionItem => ({
+      key: `wallet:${r.documentId}`, kind: "wallet", name: r.name, subject: walletName(r.walletUuid), createdAt: r.createdAt,
+      download: () => walletService.reportDownloadUrl(r.walletUuid, r.documentId),
+    })),
+    ...(hasProperties ? propertyReports.data ?? [] : []).map((r): CollectionItem => ({
+      key: `property:${r.documentId}`, kind: "property", name: r.name, subject: propertyName(r.propertyUuid), createdAt: r.createdAt,
+      download: () => realEstateService.reportDownloadUrl(r.propertyUuid, r.documentId),
+    })),
+  ];
+  return {
+    items: items.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    failed: reads.length > 0 && reads.every((r) => r.isError),
+  };
 }
 
 /**

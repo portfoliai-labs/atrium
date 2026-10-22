@@ -1,9 +1,9 @@
 // components/dashboard/realEstate/PropertyRentals.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FileSignature, Pencil, Receipt, Trash2 } from "lucide-react";
-import { useRealEstate, useRealEstateRead } from "../../../context/RealEstateContext";
+import { useRealEstate, useRealEstateQuery, useRealEstateRead } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { formatCurrency } from "../../../lib/format";
 import {
@@ -234,7 +234,8 @@ function LeaseDialog({ property, lease, onClose, onSaved }: { property: Property
  * are taxed. Saved whole (PUT), or removed.
  */
 export function TaxpayerYearDialog({ year, onClose, onSaved }: { year: number; onClose: () => void; onSaved: () => void }) {
-  const { source, properties } = useRealEstate();
+  const { properties } = useRealEstate();
+  const read = useRealEstateQuery(["taxpayerYears", year], (source) => source.taxpayerYears(year));
   const [record, setRecord] = useState<TaxpayerYear | null | undefined>(undefined);
   const [otherIncome, setOtherIncome] = useState("");
   const [surcharges, setSurcharges] = useState("");
@@ -244,23 +245,17 @@ export function TaxpayerYearDialog({ year, onClose, onSaved }: { year: number; o
   const [error, setError] = useState<string | null>(null);
   const shortStays = properties.filter((p) => !p.archived && p.uses.some((u) => u.use === "short_term_rental"));
 
-  useEffect(() => {
-    let cancelled = false;
-    source.taxpayerYears(year)
-      .then((list) => {
-        if (cancelled) return;
-        const own = list.find((t) => t.holderName === null) ?? null;
-        setRecord(own);
-        if (own) {
-          setOtherIncome(own.otherIncome != null ? String(own.otherIncome) : "");
-          setSurcharges(own.surchargesPct != null ? String(own.surchargesPct) : "");
-          setReducedRate(own.reducedRatePropertyUuid ?? "");
-          setShortStayRegime(own.shortStayRegime ?? "flat_rate");
-        }
-      })
-      .catch(() => { if (!cancelled) setRecord(null); });
-    return () => { cancelled = true; };
-  }, [source, year]);
+  // The form filled once, from an answer read now (not one being read again after a save).
+  if (record === undefined && !read.isFetching && (read.isSuccess || read.isError)) {
+    const own = read.isError ? null : read.data.find((t) => t.holderName === null) ?? null;
+    setRecord(own);
+    if (own) {
+      setOtherIncome(own.otherIncome != null ? String(own.otherIncome) : "");
+      setSurcharges(own.surchargesPct != null ? String(own.surchargesPct) : "");
+      setReducedRate(own.reducedRatePropertyUuid ?? "");
+      setShortStayRegime(own.shortStayRegime ?? "flat_rate");
+    }
+  }
 
   const income = parseAmount(otherIncome);
   const surchargesValue = parseAmount(surcharges);

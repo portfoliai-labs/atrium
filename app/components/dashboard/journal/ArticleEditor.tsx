@@ -2,12 +2,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Editor, JSONContent } from "@tiptap/core";
 import {
   AlertTriangle, Check, CheckCircle2, Circle, Eye, ImagePlus, Loader2, PenLine, RotateCcw, Send, Trash2, Undo2, X,
 } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
-import { useJournal } from "../../../context/JournalContext";
+import { journalKey, useJournal, useJournalQuery } from "../../../context/JournalContext";
 import { ApiError } from "../../../services/apiClient";
 import { IMAGE_ACCEPT, journalService, uploadArticleImage } from "../../../services/journalService";
 import type {
@@ -101,11 +102,14 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   onRead: (slug: string) => void;
 }) {
   const { user } = useUser();
-  const { language, editor: isEditor } = useJournal();
+  const { language, editor: isEditor, changed } = useJournal();
+  const queryClient = useQueryClient();
   const isAdvisor = user?.role === "ADVISOR" && !isEditor;
 
+  // Only the article it opened on: its first save hands it a uuid it already has.
+  const [openedOn] = useState(uuid);
+  const read = useJournalQuery(["edit", openedOn], () => journalService.get(openedOn!), { enabled: !!openedOn });
   const [article, setArticle] = useState<Article | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(!uuid);
   const [form, setForm] = useState<Form>(() => formOf(null, language));
   const [initialBody, setInitialBody] = useState<Block[]>([]);
@@ -154,17 +158,20 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     setRefusal(null);
   }, [language]);
 
-  // The article, once: a new one starts empty.
-  useEffect(() => {
-    if (!uuid) return;
-    let cancelled = false;
-    journalService.get(uuid)
-      .then((a) => { if (!cancelled) { reset(a); setLoaded(true); } })
-      .catch((err) => { if (!cancelled) setLoadError(journalErrorText(err, "This article couldn't be loaded.")); });
-    return () => { cancelled = true; };
-    // Only the article it opened on: its first save hands it a uuid it already has.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // The article, once, as read fresh (a copy gone stale in the cache waits for its read): a new
+  // one starts empty. Read again later, it doesn't touch what's being written.
+  if (!loaded && read.data && !read.isStale) {
+    reset(read.data);
+    setLoaded(true);
+  }
+  const loadError = !loaded && read.isError ? journalErrorText(read.error, "This article couldn't be loaded.") : null;
+
+  // The article as a write left it, the editor's copy in the cache too; the Journal's other reads go stale.
+  const wrote = useCallback((a: Article) => {
+    setArticle(a);
+    changed();
+    queryClient.setQueryData(journalKey("edit", a.uuid), a);
+  }, [changed, queryClient]);
 
   const change = (patch: Partial<Form>) => {
     setForm((f) => ({ ...f, ...patch }));
@@ -206,7 +213,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
       const next = a
         ? await journalService.update(a.uuid, { ...content, expectedUpdatedAt: force ? null : a.updatedAt })
         : await journalService.create(content);
-      setArticle(next);
+      wrote(next);
       setSavedVersion(sent);
       setSavedAt(new Date());
       setRefusal(null);
@@ -223,7 +230,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     }
     // contentOf reads the refs and isAdvisor only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onCreated, isAdvisor]);
+  }, [onCreated, isAdvisor, wrote]);
 
   // A draft's autosave: once the author pauses, unless acta just refused it or it changed elsewhere.
   useEffect(() => {
@@ -268,7 +275,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
       if (!current) return;
       // The content is what was just saved: only the article's state changes, the editor stays.
       const next = await action(current.uuid);
-      if (next) setArticle(next);
+      if (next) wrote(next);
       return next;
     } catch (err) {
       const r = refusalOf(err);
@@ -294,6 +301,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     setActionError(null);
     try {
       await journalService.remove(article.uuid);
+      changed();
       onBack();
     } catch (err) {
       setActionError(journalErrorText(err, "The article couldn't be deleted."));
@@ -462,7 +470,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => { if (article) void journalService.get(article.uuid).then(reset).catch((err) => setActionError(journalErrorText(err, "It couldn't be reloaded."))); }}
+              onClick={() => { if (article) void journalService.get(article.uuid).then((a) => { reset(a); queryClient.setQueryData(journalKey("edit", a.uuid), a); }).catch((err) => setActionError(journalErrorText(err, "It couldn't be reloaded."))); }}
               className="px-3 py-1.5 rounded-lg bg-white border border-amber-200 text-xs font-bold"
             >
               Load that version

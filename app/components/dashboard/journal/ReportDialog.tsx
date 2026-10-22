@@ -5,6 +5,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { CheckCircle2, Flag, Loader2, X } from "lucide-react";
 import type { ReportReason } from "../../../models/Journal";
+import { useJournal } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
 import { NOTE_MAX, REASONS, REASON_LABELS, journalErrorText } from "../../../lib/journal";
 import { ApiError } from "../../../services/apiClient";
@@ -23,6 +24,7 @@ export function ReportDialog({ target, onClose }: { target: ReportTarget; onClos
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const { changed } = useJournal();
 
   const noteNeeded = reason === "other" && !note.trim();
 
@@ -34,6 +36,8 @@ export function ReportDialog({ target, onClose }: { target: ReportTarget; onClos
       if (target.kind === "comment") await journalService.reportComment(target.uuid, reason, note.trim());
       else await journalService.report(target.uuid, reason, note.trim());
       setSent(true);
+      // Your reports list it.
+      changed();
     } catch (err) {
       const own = err instanceof ApiError && (err.errorType === "OwnArticleError" || err.errorType === "OwnCommentError");
       setError(own ? `You can't report your own ${what}.` : journalErrorText(err, "The report couldn't be sent."));

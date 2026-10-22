@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useUser } from "../../context/UserContext";
 import {
   FileText, Download, Search, Tag as TagIcon,
   Loader2, AlertCircle, X, Eye, Plus, Check, Calendar, LayoutGrid,
 } from "lucide-react";
 import { reportService } from "../../services/reportService";
+import { accountKey, useAccountQuery } from "../../hooks/useAccountQuery";
 import type { Document } from "../../models/Report";
 
 // What the archive shows instead of a raw filename/timestamp: the period a report
@@ -67,6 +69,8 @@ interface DocumentCardProps {
 
 export type ReportsViewMode = "list" | "grouped";
 
+const NO_DOCUMENTS: Document[] = [];
+
 /**
  * Downloads a report's PDF: asks the backend for a short-lived signed URL, fetches the file and
  * saves it under `fileName` (".pdf" added when missing). Throws when any step fails.
@@ -99,9 +103,12 @@ export async function saveReportFile(url: string, fileName: string) {
  * "Newest first" / "By Tag", and each report's view, download and tags.
  */
 export function ReportsList({ portfolioUuid }: { portfolioUuid: string }) {
-  const [reports, setDocuments] = useState<Document[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  // The portfolio's documents, shared with the Reports browser and the assistant's collection.
+  const read = useAccountQuery(["reports", portfolioUuid], () => reportService.getAllDocuments(portfolioUuid));
+  const reports = Array.isArray(read.data) ? read.data : NO_DOCUMENTS;
+  const loading = read.isPending;
+  const error = read.isError ? read.error.message || "Failed to sync with server" : null;
 
   // UI & Filtering States
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -112,27 +119,9 @@ export function ReportsList({ portfolioUuid }: { portfolioUuid: string }) {
   const [taggingDocId, setTaggingDocId] = useState<string | null>(null);
   const [newTagName, setNewTagName] = useState<string>("");
 
-  /**
-   * Fetches all documents from the backend on component mount
-   */
-  const loadDocuments = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await reportService.getAllDocuments(portfolioUuid);
-      setDocuments(Array.isArray(data) ? data : []);
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to sync with server";
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadDocuments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portfolioUuid]);
+  // A document's tags as a write left them, wherever the list is read.
+  const setDocuments = (update: (list: Document[]) => Document[]) =>
+    queryClient.setQueryData<Document[]>(accountKey("reports", portfolioUuid), (prev) => prev && update(prev));
 
   // --- ACTIONS ---
 

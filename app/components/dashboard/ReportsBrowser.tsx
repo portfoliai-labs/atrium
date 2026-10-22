@@ -1,12 +1,14 @@
 // components/dashboard/ReportsBrowser.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, FileText, Loader2, Search } from "lucide-react";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { portfolioColorMap } from "../../lib/chartColors";
 import { reportService } from "../../services/reportService";
+import { accountKey } from "../../hooks/useAccountQuery";
 import { downloadReportFile } from "./ReportsList";
 import { useGenerateReport } from "./GenerateReport";
 import { GenerateReportDialog } from "./GenerateReportDialog";
@@ -34,25 +36,20 @@ export function ReportsBrowser({ portfolioUuid }: { portfolioUuid?: string } = {
   const colorOf = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
   const byUuid = useMemo(() => new Map(real.map((p) => [p.uuid, p])), [real]);
 
-  const [files, setFiles] = useState<Document[] | null>(null);
-  const [failed, setFailed] = useState(false);
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const [downloading, setDownloading] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
-  // Every real portfolio's reports; one failing to load doesn't hide the others'.
-  const uuidsKey = real.map((p) => p.uuid).join(",");
-  useEffect(() => {
-    let cancelled = false;
-    Promise.allSettled(real.map((p) => reportService.getAllDocuments(p.uuid))).then((results) => {
-      if (cancelled) return;
-      const loaded = results.filter((r) => r.status === "fulfilled");
-      setFailed(loaded.length === 0 && results.length > 0);
-      setFiles(loaded.flatMap((r) => (Array.isArray(r.value) ? r.value : [])));
-    });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uuidsKey]);
+  // Every real portfolio's reports, each portfolio's under its own key (shared with ReportsList and
+  // the assistant's collection); one failing to load doesn't hide the others'. null until all answer.
+  const { files, failed } = useQueries({
+    queries: real.map((p) => ({ queryKey: accountKey("reports", p.uuid), queryFn: () => reportService.getAllDocuments(p.uuid) })),
+    combine: (results) => ({
+      files: results.some((r) => r.isPending) ? null : results.flatMap((r) => (Array.isArray(r.data) ? r.data : [])),
+      failed: results.length > 0 && results.every((r) => r.isError),
+    }),
+  });
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -76,12 +73,14 @@ export function ReportsBrowser({ portfolioUuid }: { portfolioUuid?: string } = {
     }
   };
 
-  const setTags = (docId: string, tags: string[]) =>
-    setFiles((prev) => prev && prev.map((f) => (f.document_id === docId ? { ...f, tags } : f)));
+  // A file's tags as a write left them, in its portfolio's list wherever it's read.
+  const setTags = (file: Document, tags: string[]) =>
+    queryClient.setQueryData<Document[]>(accountKey("reports", file.portfolio_uuid), (prev) =>
+      prev?.map((f) => (f.document_id === file.document_id ? { ...f, tags } : f)));
   const addTag = async (file: Document, tag: string) => {
     try {
       await reportService.addTag(file.portfolio_uuid, file.document_id, tag);
-      setTags(file.document_id, [...(file.tags ?? []), tag]);
+      setTags(file, [...(file.tags ?? []), tag]);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Error adding tag");
     }
@@ -89,7 +88,7 @@ export function ReportsBrowser({ portfolioUuid }: { portfolioUuid?: string } = {
   const removeTag = async (file: Document, tag: string) => {
     try {
       await reportService.removeTag(file.portfolio_uuid, file.document_id, tag);
-      setTags(file.document_id, (file.tags ?? []).filter((t) => t !== tag));
+      setTags(file, (file.tags ?? []).filter((t) => t !== tag));
     } catch (err) {
       alert(err instanceof Error ? err.message : "Error removing tag");
     }

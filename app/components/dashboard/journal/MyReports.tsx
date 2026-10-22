@@ -16,7 +16,7 @@ const STATUS_TONES: Record<ReportStatus, string> = {
 
 /** YOUR REPORTS — the reader's reports on articles and comments, the newest first, each with the editors' decision. */
 export function MyReports() {
-  const list = usePaged((offset) => journalService.reports(PAGE_SIZE, offset), "reports");
+  const list = usePaged(["reports"], (offset) => journalService.reports(PAGE_SIZE, offset));
 
   return (
     <div className="space-y-6 pb-12">

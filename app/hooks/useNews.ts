@@ -1,85 +1,44 @@
-// app/hooks/useNews.ts
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { newsService } from "../services/newsService";
 import { ApiError } from "../services/apiClient";
-import type { NewsItem, DailyArticle } from "../models/News";
+import type { NewsItem } from "../models/News";
 
 const isNotFound = (err: unknown) => err instanceof ApiError && err.status === 404;
 
+/** A news read's key in the query cache (context/QueryContext): the same news, one read. */
+export const newsKey = (...parts: unknown[]) => ["news", ...parts];
+
+const NO_NEWS: NewsItem[] = [];
+
 // Fetches news for a given calendar month (year+month), or today's news when both are
-// omitted — re-fetches whenever year/month/limit change. A 404 means the backend found no
+// omitted — through the query cache, by year/month/limit. A 404 means the backend found no
 // articles to show: reported as `notFound` (not `error`) so callers can hide just their
 // section instead of showing a failure.
 export function useNews(year?: number, month?: number, limit?: number) {
-  const [items, setItems] = useState<NewsItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [notFound, setNotFound] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      setNotFound(false);
-      try {
-        const data = await newsService.getNews(year, month, limit);
-        if (!cancelled) setItems(data);
-      } catch (err) {
-        if (!cancelled) {
-          if (isNotFound(err)) {
-            setItems([]);
-            setNotFound(true);
-          } else {
-            setError(err instanceof Error ? err.message : "Failed to load news");
-          }
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    load();
-    return () => { cancelled = true; };
-  }, [year, month, limit]);
-
-  return { items, loading, error, notFound };
+  const query = useQuery({
+    queryKey: newsKey("list", year ?? null, month ?? null, limit ?? null),
+    queryFn: () => newsService.getNews(year, month, limit),
+  });
+  const notFound = query.isError && isNotFound(query.error);
+  return {
+    items: query.data ?? NO_NEWS,
+    loading: query.isPending,
+    error: query.isError && !notFound ? (query.error instanceof Error ? query.error.message : "Failed to load news") : null,
+    notFound,
+  };
 }
 
 // Fetches the global "article of the day" — same for every user, no params to vary by. A
 // 404 (no article picked today) is reported as `notFound`, same as useNews.
 export function useDailyArticle() {
-  const [article, setArticle] = useState<DailyArticle | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [notFound, setNotFound] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      setNotFound(false);
-      try {
-        const data = await newsService.getDailyArticle();
-        if (!cancelled) setArticle(data);
-      } catch (err) {
-        if (!cancelled) {
-          if (isNotFound(err)) {
-            setArticle(null);
-            setNotFound(true);
-          } else {
-            setError(err instanceof Error ? err.message : "Failed to load the daily article");
-          }
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    load();
-    return () => { cancelled = true; };
-  }, []);
-
-  return { article, loading, error, notFound };
+  const query = useQuery({ queryKey: newsKey("daily"), queryFn: () => newsService.getDailyArticle() });
+  const notFound = query.isError && isNotFound(query.error);
+  return {
+    article: query.data ?? null,
+    loading: query.isPending,
+    error: query.isError && !notFound ? (query.error instanceof Error ? query.error.message : "Failed to load the daily article") : null,
+    notFound,
+  };
 }

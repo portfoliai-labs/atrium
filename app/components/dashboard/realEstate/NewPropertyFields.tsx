@@ -1,15 +1,15 @@
 // components/dashboard/realEstate/NewPropertyFields.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRealEstate } from "../../../context/RealEstateContext";
+import { useState } from "react";
+import { useRealEstate, useRealEstateRead } from "../../../context/RealEstateContext";
 import {
   ACQUISITION_KIND_LABELS, ENERGY_RATINGS, FREQUENCY_LABELS, HOLDER_KIND_LABELS, PROPERTY_KINDS, PROPERTY_KIND_LABELS, PROPERTY_USES, PROPERTY_USE_LABELS,
   RATE_INDEX_LABELS, sqftToSqm,
 } from "../../../lib/realEstate";
 import { COMMON_CURRENCIES, today } from "../../../lib/wallets";
 import type {
-  AcquisitionKind, CostKind, HolderKind, InstalmentFrequency, MarketZone, MortgageInput, Property, PropertyCreateRequest, PropertyInput, PropertyKind,
+  AcquisitionKind, CostKind, HolderKind, InstalmentFrequency, MortgageInput, Property, PropertyCreateRequest, PropertyInput, PropertyKind,
   PropertyUpdateRequest, PropertyUse, RateIndex,
 } from "../../../models/RealEstate";
 import { Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
@@ -80,7 +80,7 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
   const [freeLoanToRelative, setFreeLoanToRelative] = useState(italian?.freeLoanToRelative ?? false);
   // What it can belong to: another property, not archived, not itself an appurtenance. One that
   // has appurtenances of its own can't belong to another.
-  const { properties, source } = useRealEstate();
+  const { properties } = useRealEstate();
   const hasAppurtenances = !!initial && properties.some((p) => p.appurtenantToUuid === initial.uuid);
   const owners = properties.filter((p) => p.uuid !== initial?.uuid && !p.archived && !p.appurtenantToUuid);
   // Italy's land registry.
@@ -91,16 +91,7 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
   // Its market zone (OMI), of the municipality's: "" finds it from the address's location.
   const [omiZone, setOmiZone] = useState(italian?.omiZone ?? "");
   const zoneMunicipality = cadastre.municipalityCode.trim().toUpperCase();
-  const [zones, setZones] = useState<{ code: string; list: MarketZone[] | null } | null>(null);
-  useEffect(() => {
-    if (!zoneMunicipality) return;
-    let cancelled = false;
-    source.marketZones(zoneMunicipality)
-      .then((list) => { if (!cancelled) setZones({ code: zoneMunicipality, list }); })
-      .catch(() => { if (!cancelled) setZones({ code: zoneMunicipality, list: null }); });
-    return () => { cancelled = true; };
-  }, [source, zoneMunicipality]);
-  const municipalityZones = zones?.code === zoneMunicipality ? zones.list : undefined;
+  const municipalityZones = useRealEstateRead(["marketZones", zoneMunicipality], (source) => source.marketZones(zoneMunicipality), !!zoneMunicipality);
 
   const countryCode = country.trim().toUpperCase();
   const currencyCode = currency.trim().toUpperCase();

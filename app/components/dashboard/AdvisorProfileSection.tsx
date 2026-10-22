@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Building2, Palette, Award, Save, Loader2, CheckCircle2, AlertCircle,
   ImagePlus, Trash2, Briefcase, BadgeCheck, Handshake, Clock,
 } from "lucide-react";
 import { advisorService } from "../../services/advisorService";
+import { clientsKey, useClientsQuery } from "../../context/ClientsContext";
 import { FEE_OPTIONS, LANGUAGE_OPTIONS, MEETING_OPTIONS, TOPIC_OPTIONS } from "../../lib/ips";
-import type { AdvisorStatement, AdvisorStatementPayload } from "../../models/Advisor";
+import type { AdvisorProfile, AdvisorStatement, AdvisorStatementPayload } from "../../models/Advisor";
 import { ChipSelect, Field, FieldGroup, NumberInput, TextArea, TextInput, YesNo } from "./ips/fields";
 
 const DEFAULT_BRAND_COLOR = "#C49A3C";
@@ -17,34 +19,58 @@ const EMPTY_STATEMENT: AdvisorStatementPayload = {
   acceptingClients: false, bio: "", registerNumber: "",
 };
 
+const readProfile = () => advisorService.getAdvisorProfile();
+
+/** The form's fields, from the profile as read (empty without one). */
+const profileForm = (profile: AdvisorProfile | undefined) => ({
+  company_name: profile?.company_name || "",
+  specialization: profile?.specialization || "",
+  years_experience: profile?.years_experience != null ? String(profile.years_experience) : "",
+  brand_color: profile?.brand_color || DEFAULT_BRAND_COLOR,
+});
+
+/** What the advisor offers, as the form edits it. */
+const statementForm = (saved: AdvisorStatement): AdvisorStatementPayload => ({
+  languages: saved.languages, meetingModes: saved.meetingModes, city: saved.city, feeModels: saved.feeModels,
+  topics: saved.topics, minClientWealth: saved.minClientWealth, acceptingClients: saved.acceptingClients,
+  bio: saved.bio, registerNumber: saved.registerNumber,
+});
+
+/**
+ * The advisor's profile and statement, in the query cache under ["clients", "advisorProfile"] and
+ * ["clients", "advisorStatement"]; the form starts from them once both are read (empty where one
+ * couldn't be).
+ */
 export function AdvisorProfileSection() {
-  const [loading, setLoading] = useState(true);
+  const profile = useClientsQuery(["advisorProfile"], readProfile);
+  const statement = useClientsQuery(["advisorStatement"], () => advisorService.getAdvisorStatement());
+
+  if (profile.isPending || statement.isPending) return (
+    <div className="flex justify-center py-20">
+      <Loader2 className="animate-spin text-[#C49A3C]" />
+    </div>
+  );
+  return <AdvisorProfileForm profile={profile.data} statement={statement.data ?? null} />;
+}
+
+function AdvisorProfileForm({ profile, statement: initialStatement }: { profile: AdvisorProfile | undefined; statement: AdvisorStatement | null }) {
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [formData, setFormData] = useState({
-    company_name: "",
-    specialization: "",
-    years_experience: "",
-    brand_color: DEFAULT_BRAND_COLOR,
-  });
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [formData, setFormData] = useState(() => profileForm(profile));
+  const [logoUrl, setLogoUrl] = useState<string | null>(profile?.logo_url || null);
   // What the advisor offers (investors are matched on it) and their OCF register number.
-  const [statement, setStatement] = useState<AdvisorStatementPayload>(EMPTY_STATEMENT);
-  const [verifiedAt, setVerifiedAt] = useState<string | null>(null);
-  const [savedRegisterNumber, setSavedRegisterNumber] = useState("");
+  const [statement, setStatement] = useState<AdvisorStatementPayload>(() => (initialStatement ? statementForm(initialStatement) : EMPTY_STATEMENT));
+  const [verifiedAt, setVerifiedAt] = useState<string | null>(initialStatement?.verifiedAt ?? null);
+  const [savedRegisterNumber, setSavedRegisterNumber] = useState(initialStatement?.registerNumber ?? "");
   const setOffer = (patch: Partial<AdvisorStatementPayload>) => setStatement((s) => ({ ...s, ...patch }));
 
-  const applyStatement = (saved: AdvisorStatement | null) => {
-    if (!saved) return;
-    setStatement({
-      languages: saved.languages, meetingModes: saved.meetingModes, city: saved.city, feeModels: saved.feeModels,
-      topics: saved.topics, minClientWealth: saved.minClientWealth, acceptingClients: saved.acceptingClients,
-      bio: saved.bio, registerNumber: saved.registerNumber,
-    });
+  const applyStatement = (saved: AdvisorStatement) => {
+    setStatement(statementForm(saved));
     setVerifiedAt(saved.verifiedAt);
     setSavedRegisterNumber(saved.registerNumber);
   };
@@ -54,28 +80,12 @@ export function AdvisorProfileSection() {
     setTimeout(() => setMessage(null), 3000);
   };
 
+  // The profile read again, into the form.
   const loadProfile = async () => {
-    const profile = await advisorService.getAdvisorProfile();
-    setFormData({
-      company_name: profile.company_name || "",
-      specialization: profile.specialization || "",
-      years_experience: profile.years_experience != null ? String(profile.years_experience) : "",
-      brand_color: profile.brand_color || DEFAULT_BRAND_COLOR,
-    });
-    setLogoUrl(profile.logo_url || null);
+    const loaded = await queryClient.fetchQuery({ queryKey: clientsKey("advisorProfile"), queryFn: readProfile, staleTime: 0 });
+    setFormData(profileForm(loaded));
+    setLogoUrl(loaded.logo_url || null);
   };
-
-  useEffect(() => {
-    (async () => {
-      try {
-        await Promise.all([loadProfile(), advisorService.getAdvisorStatement().then(applyStatement)]);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
 
   const handleSave = async () => {
     setSaving(true);
@@ -88,7 +98,10 @@ export function AdvisorProfileSection() {
         aum: null,
         brand_color: formData.brand_color || null,
       });
-      applyStatement(await advisorService.saveAdvisorStatement(statement));
+      void queryClient.invalidateQueries({ queryKey: clientsKey("advisorProfile") });
+      const saved = await advisorService.saveAdvisorStatement(statement);
+      queryClient.setQueryData(clientsKey("advisorStatement"), saved);
+      applyStatement(saved);
       showMessage("success", "Profile updated successfully");
     } catch (err) {
       console.error("Update error:", err);
@@ -121,6 +134,7 @@ export function AdvisorProfileSection() {
     try {
       await advisorService.deleteAdvisorLogo();
       setLogoUrl(null);
+      queryClient.setQueryData<AdvisorProfile>(clientsKey("advisorProfile"), (prev) => prev && { ...prev, logo_url: null });
       showMessage("success", "Logo removed");
     } catch (err) {
       console.error("Logo delete error:", err);
@@ -129,12 +143,6 @@ export function AdvisorProfileSection() {
       setUploadingLogo(false);
     }
   };
-
-  if (loading) return (
-    <div className="flex justify-center py-20">
-      <Loader2 className="animate-spin text-[#C49A3C]" />
-    </div>
-  );
 
   const inputClass = "w-full p-3.5 bg-white border border-[rgba(196,154,60,0.25)] rounded-xl font-medium text-[#1c1917] outline-none focus:border-[#C49A3C] focus:ring-4 focus:ring-[#C49A3C]/10 transition-all";
 

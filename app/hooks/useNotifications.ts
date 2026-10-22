@@ -1,72 +1,85 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   notificationService,
   type NotificationResponse,
 } from "../services/notificationService";
 import { useUser } from "../context/UserContext";
+import { notificationsKey } from "../context/NotificationsContext";
+import { accountKey } from "./useAccountQuery";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export type { NotificationResponse };
 
+const isUnread = (n: NotificationResponse) => n.read_at === null;
+
+// The full history, under notificationsKey("list"): read when asked for (the panel, the page) and
+// on every event of the stream, not on its own. Functions: NotificationsContext imports this module.
+const listKey = () => notificationsKey("list");
+const unreadKey = () => notificationsKey("unread");
+const NO_NOTIFICATIONS: NotificationResponse[] = [];
+
 export function useNotifications() {
-  const [notifications, setNotifications] = useState<NotificationResponse[]>([]);
-  const [hasUnread, setHasUnread] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const list = useQuery({ queryKey: listKey(), queryFn: () => notificationService.listNotifications(), enabled: false });
+  // Only the unread ones, once on mount: the badge, before the list is ever read.
+  const unread = useQuery({ queryKey: unreadKey(), queryFn: () => notificationService.listNotifications(true) });
   const esRef = useRef<EventSource | null>(null);
   // The live stream waits until we know who's signed in, and a demo account (see lib/demo) never
   // opens it: nothing it can do raises a notification, and the backend refuses its ticket.
   const { user, isDemo } = useUser();
   const canStream = user !== null && !isDemo;
 
+  const notifications = list.data ?? NO_NOTIFICATIONS;
+  // The list's say once it's been read, else the unread ones'.
+  const hasUnread = list.data ? list.data.some(isUnread) : (unread.data?.length ?? 0) > 0;
+
   // ── Load full history from REST ────────────────────────────────────────────
+  // Always read again (the panel opened shows the list as it is now), shared by whoever asks.
+  const fetchList = useCallback(
+    () => queryClient.fetchQuery({ queryKey: listKey(), queryFn: () => notificationService.listNotifications(), staleTime: 0 }),
+    [queryClient],
+  );
+
   const loadNotifications = useCallback(async () => {
-    setIsLoading(true);
     try {
-      const items = await notificationService.listNotifications();
-      setNotifications(items);
-      setHasUnread(items.some((n) => n.read_at === null));
-      return items;
+      return await fetchList();
     } catch (err) {
       console.error("[useNotifications] Failed to load notifications:", err);
       return [];
-    } finally {
-      setIsLoading(false);
     }
-  }, []);
+  }, [fetchList]);
 
   // ── Mark all currently-unread notifications as read ───────────────────────
   // Accepts an optional freshly-fetched list so callers that just awaited
   // loadNotifications() can pass it in directly, instead of relying on the
-  // (possibly stale) `notifications` state closure — see handleBellClick.
+  // (possibly stale) `notifications` closure — see handleBellClick.
   const markAllRead = useCallback(async (source?: NotificationResponse[]) => {
-    const unread = (source ?? notifications).filter((n) => n.read_at === null);
-    if (unread.length === 0) {
-      setHasUnread(false);
-      return;
-    }
-
-    // Optimistic update
+    const toMark = (source ?? notifications).filter(isUnread);
+    // Optimistic update: the list as read, nothing unread left.
     const now = new Date().toISOString();
-    setNotifications((prev) =>
-      prev.map((n) => (n.read_at === null ? { ...n, read_at: now } : n))
+    queryClient.setQueryData<NotificationResponse[]>(listKey(), (prev) =>
+      prev?.map((n) => (isUnread(n) ? { ...n, read_at: now } : n))
     );
-    setHasUnread(false);
+    queryClient.setQueryData<NotificationResponse[]>(unreadKey(), []);
+    if (toMark.length === 0) return;
 
     // Fire-and-forget — don't block the UI
     await Promise.allSettled(
-      unread.map((n) => notificationService.markAsRead(n.notification_id))
+      toMark.map((n) => notificationService.markAsRead(n.notification_id))
     );
-  }, [notifications]);
+  }, [notifications, queryClient]);
 
+  // Here only: the backend keeps them, and the next read brings them back.
   const dismissAll = useCallback(() => {
-    setNotifications([]);
-    setHasUnread(false);
-  }, []);
+    queryClient.setQueryData<NotificationResponse[]>(listKey(), []);
+    queryClient.setQueryData<NotificationResponse[]>(unreadKey(), []);
+  }, [queryClient]);
 
-  // ── SSE — keeps hasUnread in sync in real-time ────────────────────────────
+  // ── SSE — keeps the list and hasUnread in sync in real-time ──────────────
   useEffect(() => {
     if (!canStream) return;
     let cancelled = false;
@@ -85,15 +98,13 @@ export function useNotifications() {
         es.onopen = () => console.info("[useNotifications] SSE connection opened");
 
         const handleEvent = () => {
-          // A new event arrived: mark badge as unread and always refresh the list in the
-          // background, regardless of whether it was ever loaded — consumers other than the
+          // A new event arrived: always refresh the list in the background (the badge follows
+          // it), regardless of whether it was ever loaded — consumers other than the
           // notification panel (e.g. a "report in progress" button) rely on `notifications`
           // staying current even when the panel has never been opened.
-          setHasUnread(true);
-          notificationService
-            .listNotifications()
-            .then(setNotifications)
-            .catch(() => undefined);
+          fetchList().catch(() => undefined);
+          // A report's progress arrives as a notification: the reports are read again.
+          void queryClient.invalidateQueries({ queryKey: accountKey("reports") });
         };
 
         es.onmessage = handleEvent;
@@ -118,22 +129,13 @@ export function useNotifications() {
       esRef.current?.close();
       window.removeEventListener("auth-unauthorized", handleUnauthorized);
     };
-  }, [canStream]);
-
-  // ── Init: check for unread count on mount ────────────────────────────────
-  useEffect(() => {
-    notificationService
-      .listNotifications(true)
-      .then((items) => {
-        if (items.length > 0) setHasUnread(true);
-      })
-      .catch(() => undefined);
-  }, []);
+  }, [canStream, fetchList, queryClient]);
 
   return {
     notifications,
     hasUnread,
-    isLoading,
+    // Until the first answer only: read again, the list stays up.
+    isLoading: list.isFetching && list.data === undefined,
     loadNotifications,
     markAllRead,
     dismissAll,

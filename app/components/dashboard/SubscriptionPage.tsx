@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Script from "next/script";
 import { Crown, FlaskConical, Loader2 } from "lucide-react";
 import { userService } from "../../services/userService";
-import type { SubscriptionResponse } from "../../models/User";
+import { useAccountRead } from "../../hooks/useAccountQuery";
 import { PageHeader } from "./PageHeader";
 import SubscriptionSection from "./SubscriptionSection";
 
@@ -18,15 +18,10 @@ const TESTER_APPLICATION_FORM_ID = "QKWeYg";
  * `#pricing` scrolls down to the plans.
  */
 export function SubscriptionPage() {
-  const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    userService.getSubscription()
-      .then(setSubscription)
-      .catch((error) => console.error("Failed to load subscription:", error))
-      .finally(() => setLoading(false));
-  }, []);
+  // Shared with the top bar's account menu.
+  const read = useAccountRead(["subscription"], () => userService.getSubscription());
+  const loading = read === undefined;
+  const subscription = read ?? null;
 
   useEffect(() => {
     if (loading || !subscription || window.location.hash !== "#pricing") return;

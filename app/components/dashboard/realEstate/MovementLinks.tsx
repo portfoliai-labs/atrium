@@ -4,12 +4,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Link2, Loader2, Search, Unlink, Wallet as WalletIcon } from "lucide-react";
 import { useRealEstate, useRealEstateQuery } from "../../../context/RealEstateContext";
-import { useWallets } from "../../../context/WalletsContext";
+import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { formatCurrency } from "../../../lib/format";
 import { fieldErrorText } from "../../../lib/realEstate";
 import { dayLabel, errorText, today } from "../../../lib/wallets";
 import type { LinkedMovement, Mortgage, MovementLinkProposal, PropertyTransaction } from "../../../models/RealEstate";
+import type { MovementFilters } from "../../../models/Wallet";
 import { INPUT } from "../wallets/WalletDialogs";
 
 // How far back the proposals look when no range is filtered (the API takes at most 366 days).
@@ -232,12 +233,10 @@ export function MovementLinkField({ transaction: t, bookedOn, moneyIn, value, on
   onChange: (movementUuid: string) => void;
 }) {
   const walletName = useWalletName();
-  const { source } = useWallets();
+  const { available } = useWallets();
   const linked = value !== "" && value === t.movementUuid;
   const [query, setQuery] = useState("");
   const [text, setText] = useState("");
-  const [found, setFound] = useState<{ key: string; list: LinkedMovement[] } | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setText(query), 300);
@@ -245,34 +244,28 @@ export function MovementLinkField({ transaction: t, bookedOn, moneyIn, value, on
   }, [query]);
 
   const day = bookedOn || t.bookedOn;
-  const key = `${day}:${moneyIn}:${text}`;
-  const searching = !linked;
-  useEffect(() => {
-    if (!searching) return;
-    let cancelled = false;
-    source.movements(null, {
-      bookedFrom: addDays(day, -PICKER_DAYS), bookedTo: addDays(day, PICKER_DAYS),
-      direction: moneyIn ? "in" : "out", excludeTransfers: true, limit: 100, ...(text.trim() ? { text } : {}),
-    })
-      .then((list) => {
-        if (cancelled) return;
-        const amount = Math.abs(t.amount);
-        // Its currency only; the same amount first, then the nearest day.
-        const nearness = (m: { amount: number; bookedOn: string }) =>
-          [Math.abs(Math.abs(m.amount) - amount) < 0.005 ? 0 : 1, Math.abs(Date.parse(m.bookedOn) - Date.parse(day))];
-        const items = list.items
-          .filter((m) => m.currency === t.currency)
-          .sort((a, b) => { const [x, y] = [nearness(a), nearness(b)]; return x[0] - y[0] || x[1] - y[1]; })
-          .map((m) => ({
-            movementUuid: m.uuid, walletUuid: m.walletUuid, bookedOn: m.bookedOn, amount: m.amount,
-            currency: m.currency, description: m.description, counterparty: m.counterparty,
-          }));
-        setFound({ key, list: items });
-        setError(null);
-      })
-      .catch((err) => { if (!cancelled) setError(errorText(err, "Unable to read your wallets.")); });
-    return () => { cancelled = true; };
-  }, [source, key, searching, day, moneyIn, text, t.amount, t.currency]);
+  const filters: MovementFilters = {
+    bookedFrom: addDays(day, -PICKER_DAYS), bookedTo: addDays(day, PICKER_DAYS),
+    direction: moneyIn ? "in" : "out", excludeTransfers: true, limit: 100, ...(text.trim() ? { text } : {}),
+  };
+  // The wallets' movements around its day, in the cache with the wallets' other reads.
+  const read = useWalletQuery(["movements", "all", filters], (source) => source.movements(null, filters), { enabled: !linked });
+  // Off where the wallets can't be read at all: said so, not left loading.
+  const error = !available ? "Unable to read your wallets." : read.isError ? errorText(read.error, "Unable to read your wallets.") : null;
+  const list = useMemo(() => {
+    if (!read.data) return undefined;
+    const amount = Math.abs(t.amount);
+    // Its currency only; the same amount first, then the nearest day.
+    const nearness = (m: { amount: number; bookedOn: string }) =>
+      [Math.abs(Math.abs(m.amount) - amount) < 0.005 ? 0 : 1, Math.abs(Date.parse(m.bookedOn) - Date.parse(day))];
+    return read.data.items
+      .filter((m) => m.currency === t.currency)
+      .sort((a, b) => { const [x, y] = [nearness(a), nearness(b)]; return x[0] - y[0] || x[1] - y[1]; })
+      .map((m): LinkedMovement => ({
+        movementUuid: m.uuid, walletUuid: m.walletUuid, bookedOn: m.bookedOn, amount: m.amount,
+        currency: m.currency, description: m.description, counterparty: m.counterparty,
+      }));
+  }, [read.data, day, t.amount, t.currency]);
 
   if (linked) {
     return (
@@ -298,7 +291,6 @@ export function MovementLinkField({ transaction: t, bookedOn, moneyIn, value, on
     );
   }
 
-  const list = found?.key === key ? found.list : undefined;
   return (
     <div className="space-y-2">
       <div className="relative">

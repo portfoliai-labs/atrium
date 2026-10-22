@@ -1,10 +1,11 @@
 // components/dashboard/journal/ArticleReader.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Bookmark, BookmarkCheck, EyeOff, Flag, HandHeart, Info, Loader2, PenLine } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
-import { useJournal } from "../../../context/JournalContext";
+import { journalKey, useJournal, useJournalQuery } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
 import type { Article, ArticleInstrument } from "../../../models/Journal";
 import {
@@ -119,32 +120,30 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
   onFilter: (filters: JournalFilters) => void;
 }) {
   const { user } = useUser();
-  const { source, canWrite, mode } = useJournal();
-  const [article, setArticle] = useState<Article | null>(null);
-  const [error, setError] = useState<{ message: string; missing: boolean } | null>(null);
-  const [attempt, setAttempt] = useState(0);
+  const { canWrite, mode, changed } = useJournal();
+  const queryClient = useQueryClient();
+  const read = useJournalQuery(["article", slug], (source) => source.bySlug(slug));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [reporting, setReporting] = useState(false);
   const [applauding, setApplauding] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    source.bySlug(slug)
-      .then((a) => { if (!cancelled) { setArticle(a); setError(null); } })
-      .catch((err) => { if (!cancelled) setError({ message: journalErrorText(err, "This article couldn't be loaded."), missing: isArticleNotFound(err) }); });
-    return () => { cancelled = true; };
-  }, [source, slug, attempt]);
+  // The article as read, then as the reader's applause, save and comments left it (no refetch).
+  const setArticle = (change: (a: Article) => Article) => {
+    queryClient.setQueryData<Article>(journalKey("article", slug), (a) => (a ? change(a) : a));
+    changed();
+  };
 
-  if (error) {
+  if (read.isError) {
     return (
       <div className="pb-12 space-y-5">
-        {error.missing
+        {isArticleNotFound(read.error)
           ? <EmptyState>This article isn&apos;t available: it may have been unpublished or removed.</EmptyState>
-          : <ErrorState message={error.message} onRetry={() => setAttempt((n) => n + 1)} />}
+          : <ErrorState message={journalErrorText(read.error, "This article couldn't be loaded.")} onRetry={() => void read.refetch()} />}
       </div>
     );
   }
+  const article = read.data;
   if (!article) return <div className="pb-12"><Spinner /></div>;
 
   const own = !!user && article.author.userUuid === user.uuid;
@@ -155,7 +154,7 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
     try {
       if (article.saved) await journalService.unsave(article.uuid);
       else await journalService.save(article.uuid);
-      setArticle({ ...article, saved: !article.saved });
+      setArticle((a) => ({ ...a, saved: !article.saved }));
     } catch (err) {
       setSaveError(journalErrorText(err, "That didn't work. Try again."));
     } finally {
@@ -169,10 +168,10 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
     try {
       if (article.applauded) {
         await journalService.withdrawApplause(article.uuid);
-        setArticle({ ...article, applauded: false, applauseCount: Math.max(0, article.applauseCount - 1) });
+        setArticle((a) => ({ ...a, applauded: false, applauseCount: Math.max(0, article.applauseCount - 1) }));
       } else {
         const { applauseCount } = await journalService.applaud(article.uuid);
-        setArticle({ ...article, applauded: true, applauseCount });
+        setArticle((a) => ({ ...a, applauded: true, applauseCount }));
       }
     } catch (err) {
       setSaveError(journalErrorText(err, "That didn't work. Try again."));
@@ -239,7 +238,7 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
           article={article}
           canWrite={canWrite}
           ownArticle={own}
-          onCount={(delta) => setArticle((a) => (a ? { ...a, commentCount: Math.max(0, a.commentCount + delta) } : a))}
+          onCount={(delta) => setArticle((a) => ({ ...a, commentCount: Math.max(0, a.commentCount + delta) }))}
         />
       )}
       {reporting && <ReportDialog target={{ kind: "article", uuid: article.uuid }} onClose={() => setReporting(false)} />}

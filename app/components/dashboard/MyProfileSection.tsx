@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Download, Loader2, Save } from "lucide-react";
 import { userService } from "../../services/userService";
+import { accountKey, useAccountRead } from "../../hooks/useAccountQuery";
+import type { UserProfile } from "../../models/User";
 import { useSectionView } from "../../lib/dashboardHistory";
 import { PROFILE_SECTION } from "../../lib/dashboardNav";
 import { TAX_REGIME_COUNTRIES, residenceOptions } from "../../lib/taxes";
@@ -130,18 +133,17 @@ function PreferencesCard() {
   const { user, refreshUser, isDemo } = useUser();
   const { changed } = usePortfolio();
   const isAdvisor = user?.role === "ADVISOR";
+  const queryClient = useQueryClient();
+  // The profile, as Settings reads it too.
+  const profile = useAccountRead(["profile"], () => userService.getUserProfile());
   // The tax residence ("" until set) picks the regime the investor's taxes are computed by.
-  const [saved, setSaved] = useState<{ language: string; currency: string; taxResidence: string } | null>(null);
+  const saved = profile
+    ? { language: profile.language || "en", currency: profile.currency || "USD", taxResidence: profile.tax_residence ?? "" }
+    : null;
   const [form, setForm] = useState({ language: "en", currency: "USD", taxResidence: "" });
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    userService.getUserProfile()
-      .then((profile) => setSaved({ language: profile.language || "en", currency: profile.currency || "USD", taxResidence: profile.tax_residence ?? "" }))
-      .catch((err) => console.error("Failed to load locale preferences:", err));
-  }, []);
 
   const edit = () => {
     if (!saved) return;
@@ -162,7 +164,10 @@ function PreferencesCard() {
       await refreshUser({ silent: true });
       // The figures in the reference currency, the taxes by the residence's regime.
       changed();
-      setSaved({ ...form, taxResidence: form.taxResidence || saved.taxResidence });
+      // The profile as saved, here and wherever else it's read.
+      queryClient.setQueryData<UserProfile>(accountKey("profile"), (prev) => prev && {
+        ...prev, language: form.language, currency: form.currency, tax_residence: form.taxResidence || saved.taxResidence || null,
+      });
       setEditing(false);
     } catch (err) {
       console.error("Failed to update locale preferences:", err);

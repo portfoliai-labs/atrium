@@ -1,9 +1,10 @@
 // components/dashboard/MarketRates.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useInvestmentsRead } from "../../context/PortfolioContext";
 import { ratesService } from "../../services/ratesService";
 import {
   areaLabel, bondCurveAreas, bundSpread, currencyArea, hasBundSpread, hasDailyCurve, isEuribor, longMonthLabel,
@@ -19,21 +20,14 @@ import {
 
 const TEN_YEARS = 120;
 
-/** One read of the rates: undefined while loading, null when it failed (or `key` is null: not asked). */
-function useRates<T>(key: string | null, read: () => Promise<T>): T | null | undefined {
-  const [state, setState] = useState<{ key: string; value: T | null } | null>(null);
-  useEffect(() => {
-    if (key === null) return;
-    let cancelled = false;
-    read()
-      .then((value) => { if (!cancelled) setState({ key, value }); })
-      .catch(() => { if (!cancelled) setState({ key, value: null }); });
-    return () => { cancelled = true; };
-    // `read` is identified by `key`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  if (key === null) return null;
-  return state?.key === key ? state.value : undefined;
+/**
+ * One read of the rates, in the query cache under investmentsKey("rates", ...key) (a currency's
+ * policy rate is one read for a bond and a mortgage alike): undefined while loading, null when it
+ * failed (or `key` is null: not asked).
+ */
+function useRates<T>(key: unknown[] | null, read: () => Promise<T>): T | null | undefined {
+  const value = useInvestmentsRead(["rates", ...(key ?? [])], read, key !== null);
+  return key === null ? null : value;
 }
 
 const found = <T extends { found: boolean }>(list: T[] | null | undefined) => list?.find((x) => x.found) ?? null;
@@ -48,11 +42,11 @@ const found = <T extends { found: boolean }>(list: T[] | null | undefined) => li
  */
 export function BondRatesModule({ isin, name, currency }: { isin: string | null; name: string; currency: string }) {
   const areas = useMemo(() => bondCurveAreas({ isin, name, currency }), [isin, name, currency]);
-  const policies = useRates(`policy:${currency}`, () => ratesService.policy([currency]));
-  const curves = useRates(areas.length ? `curves:${areas.join(",")}` : null, () => ratesService.yieldCurves(areas));
+  const policies = useRates(["policy", currency], () => ratesService.policy([currency]));
+  const curves = useRates(areas.length ? ["curves", ...areas] : null, () => ratesService.yieldCurves(areas));
   const spreadAreas = areas.filter(hasBundSpread);
   const histories = useRates(
-    spreadAreas.length ? `history:${spreadAreas.join(",")}` : null,
+    spreadAreas.length ? ["history", ...spreadAreas] : null,
     () => ratesService.yieldHistory([...spreadAreas, "DE"], [TEN_YEARS]),
   );
   const [picked, setPicked] = useState<string | null>(null);
@@ -172,9 +166,9 @@ export function MortgageMarketRates({ mortgage: m }: { mortgage: Mortgage }) {
   const code = variable ? mortgageBenchmark(variable.index) : null;
   const euribor = variable ? isEuribor(variable.index) : false;
   const codes = code ? [code] : euribor ? (["ESTR"] as const) : [];
-  const benchmarks = useRates(variable && codes.length ? `benchmarks:${codes.join(",")}` : null, () => ratesService.benchmarks([...codes]));
+  const benchmarks = useRates(variable && codes.length ? ["benchmarks", ...codes] : null, () => ratesService.benchmarks([...codes]));
   const policyCurrency = euribor ? "EUR" : m.currency;
-  const policies = useRates(variable && !code ? `policy:${policyCurrency}` : null, () => ratesService.policy([policyCurrency]));
+  const policies = useRates(variable && !code ? ["policy", policyCurrency] : null, () => ratesService.policy([policyCurrency]));
 
   if (!variable || m.closedOn) return null;
   const benchmark = found(benchmarks);
