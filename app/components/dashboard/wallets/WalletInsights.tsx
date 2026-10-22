@@ -1,12 +1,12 @@
 // components/dashboard/wallets/WalletInsights.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Bar, BarChart, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { Lightbulb, Loader2 } from "lucide-react";
-import { useWallets } from "../../../context/WalletsContext";
+import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
 import { formatCompact, formatCurrency } from "../../../lib/format";
 import {
   CADENCE_LABELS, dayLabel, errorText, monthLabel, monthName, observationText, savingsRate, type CategoryRef, type CategoryTree,
@@ -31,27 +31,27 @@ const ROW = "grid grid-cols-1 lg:grid-cols-2 gap-[22px] lg:[&>*:only-child]:col-
 
 type Read = { categories: CategoryMonths; merchants: Merchants; recurring: RecurringPayments; observations: Observations };
 
-/** The insights' four reads for the summary's months, refetched as the wallets change. */
-function useInsights(scope: string | null, from: string | undefined, to: string | undefined) {
-  const { source, version } = useWallets();
-  const key = `${scope ?? "all"}:${from}:${to}:${version}`;
-  const [state, setState] = useState<{ key: string; read: Read | null; error: string | null } | null>(null);
-  useEffect(() => {
-    if (!from) return;
-    let cancelled = false;
-    Promise.all([
-      source.categoryMonths(scope, from, to),
-      source.merchants(scope, from, to, MERCHANTS_ASKED),
-      source.recurringPayments(scope),
-      source.observations(scope),
-    ])
-      .then(([categories, merchants, recurring, observations]) => {
-        if (!cancelled) setState({ key, read: { categories, merchants, recurring, observations }, error: null });
-      })
-      .catch((err) => { if (!cancelled) setState({ key, read: null, error: errorText(err, "Unable to work out the insights.") }); });
-    return () => { cancelled = true; };
-  }, [source, scope, from, to, key]);
-  return state?.key === key ? state : null;
+/**
+ * The insights' four reads for the summary's months, each its own in the cache (the recurring
+ * payments are the Dashboard's too). null while any is loading; an error when any failed.
+ */
+function useInsights(scope: string | null, from: string | undefined, to: string | undefined): { read: Read | null; error: string | null } | null {
+  const enabled = !!from;
+  const all = scope ?? "all";
+  const reads = [
+    useWalletQuery(["categoryMonths", all, from, to], (source) => source.categoryMonths(scope, from, to), { enabled }),
+    useWalletQuery(["merchants", all, from, to, MERCHANTS_ASKED], (source) => source.merchants(scope, from, to, MERCHANTS_ASKED), { enabled }),
+    useWalletQuery(["recurring", all], (source) => source.recurringPayments(scope), { enabled }),
+    useWalletQuery(["observations", all], (source) => source.observations(scope), { enabled }),
+  ] as const;
+  const [categories, merchants, recurring, observations] = [reads[0].data, reads[1].data, reads[2].data, reads[3].data];
+  const failure = reads.find((r) => r.isError)?.error;
+  // One object for as long as its four answers are the same, for the modules' memos.
+  return useMemo(() => {
+    if (failure) return { read: null, error: errorText(failure, "Unable to work out the insights.") };
+    if (!categories || !merchants || !recurring || !observations) return null;
+    return { read: { categories, merchants, recurring, observations }, error: null };
+  }, [failure, categories, merchants, recurring, observations]);
 }
 
 /**

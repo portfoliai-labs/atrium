@@ -1,9 +1,8 @@
 // components/dashboard/DashboardSummaries.tsx
 "use client";
 
-import { useEffect, useState } from "react";
 import { CalendarClock } from "lucide-react";
-import { useWallets } from "../../context/WalletsContext";
+import { useWalletRead, useWallets } from "../../context/WalletsContext";
 import { formatCurrency } from "../../lib/format";
 import { CADENCE_LABELS, dayLabel, monthName, today } from "../../lib/wallets";
 import type { BudgetMonth, RecurringPayments } from "../../models/Wallet";
@@ -20,23 +19,6 @@ function shiftDay(day: string, days: number) {
   return `${moved.getFullYear()}-${String(moved.getMonth() + 1).padStart(2, "0")}-${String(moved.getDate()).padStart(2, "0")}`;
 }
 
-/** A wallets' read for the Dashboard, refetched as the wallets change: undefined loading, null failed. */
-function useWalletRead<T>(read: (source: ReturnType<typeof useWallets>["source"]) => Promise<T>, enabled: boolean) {
-  const { source, version } = useWallets();
-  const [state, setState] = useState<{ version: number; value: T | null } | null>(null);
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    read(source)
-      .then((value) => { if (!cancelled) setState({ version, value }); })
-      .catch(() => { if (!cancelled) setState({ version, value: null }); });
-    return () => { cancelled = true; };
-    // `read` is the caller's inline function, the same read every time.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, version, enabled]);
-  return state?.version === version ? state.value : undefined;
-}
-
 /**
  * BUDGETS THIS MONTH — on the Dashboard, with wallets: what's been spent of the month's budgets
  * (the outermost ones, as the Budgets page adds them up) against where it should be by today, how
@@ -46,7 +28,7 @@ function useWalletRead<T>(read: (source: ReturnType<typeof useWallets>["source"]
 export function BudgetsSummaryModule({ onOpen }: { onOpen?: () => void }) {
   const { available, wallets } = useWallets();
   const hasWallets = available && wallets.some((w) => !w.archived);
-  const month = useWalletRead<BudgetMonth>((source) => source.budgetMonth(), hasWallets);
+  const month = useWalletRead<BudgetMonth>(["budgetMonth", "now"], (source) => source.budgetMonth(), hasWallets);
   if (!hasWallets || month === null) return null;
 
   const money = (v: number) => formatCurrency(v, month?.currency ?? "EUR", 0);
@@ -115,7 +97,7 @@ function BudgetLabel(ref: { categoryUuid: string | null; category: BudgetMonth["
 export function UpcomingPaymentsModule({ onOpen }: { onOpen?: () => void }) {
   const { available, wallets } = useWallets();
   const hasWallets = available && wallets.some((w) => !w.archived);
-  const recurring = useWalletRead<RecurringPayments>((source) => source.recurringPayments(null), hasWallets);
+  const recurring = useWalletRead<RecurringPayments>(["recurring", "all"], (source) => source.recurringPayments(null), hasWallets);
   if (!hasWallets || recurring === null) return null;
 
   const now = today();

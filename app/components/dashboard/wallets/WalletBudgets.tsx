@@ -1,13 +1,13 @@
 // components/dashboard/wallets/WalletBudgets.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChevronLeft, ChevronRight, ListPlus, Loader2, Pencil, Plus, Target, Trash2 } from "lucide-react";
-import { useWallets } from "../../../context/WalletsContext";
+import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
 import { formatCompact, formatCurrency } from "../../../lib/format";
 import { errorText, monthName, walletColor } from "../../../lib/wallets";
-import type { BudgetMonth, BudgetProgress, BudgetStatus } from "../../../models/Wallet";
+import type { BudgetProgress, BudgetStatus } from "../../../models/Wallet";
 import { walletService } from "../../../services/walletService";
 import { AXIS_TICK, Panel, TOOLTIP_STYLE } from "../../preview/PreviewKit";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -47,31 +47,19 @@ type Dialog = { kind: "new"; within?: string } | { kind: "edit"; budget: BudgetP
  * disabled, so it's clear where budgets are set.
  */
 export function WalletBudgets({ scope, onManage }: { scope: string | null; onManage: () => void }) {
-  const { wallets, categories, source, version, sample, changed } = useWallets();
+  const { wallets, categories, sample, changed } = useWallets();
   // undefined: this month, as the API counts it.
   const [month, setMonth] = useState<string | undefined>(undefined);
-  const key = `${month ?? "now"}:${version}`;
-  const [state, setState] = useState<{ key: string; data: BudgetMonth | null; error: string | null } | null>(null);
-  // The month the API answers for "this month": the newest one there is.
-  const [latest, setLatest] = useState<string | null>(null);
+  const read = useWalletQuery(["budgetMonth", month ?? "now"], (source) => source.budgetMonth(month));
+  // The month the API answers for "this month": the newest one there is (the same read as the
+  // page's while on it, and the Dashboard's).
+  const now = useWalletQuery(["budgetMonth", "now"], (source) => source.budgetMonth());
+  const latest = now.data?.month ?? null;
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    source.budgetMonth(month)
-      .then((data) => {
-        if (cancelled) return;
-        setState({ key, data, error: null });
-        if (month === undefined) setLatest(data.month);
-      })
-      .catch((err) => { if (!cancelled) setState({ key, data: null, error: errorText(err, "Unable to load the budgets.") }); });
-    return () => { cancelled = true; };
-  }, [source, month, key]);
-
-  const current = state?.key === key ? state : null;
-  const data = current?.data ?? null;
+  const data = read.isError ? null : read.data ?? null;
 
   const colors = useMemo(() => new Map(wallets.map((w, i) => [w.uuid, walletColor(w, i)])), [wallets]);
   const names = useMemo(() => new Map(wallets.map((w) => [w.uuid, w.name])), [wallets]);
@@ -84,8 +72,8 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
     ]));
   }, [data, categories]);
 
-  if (!current) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
-  if (!data) return <p className="text-sm font-semibold text-rose-600">{current.error}</p>;
+  if (read.isPending) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
+  if (!data) return <p className="text-sm font-semibold text-rose-600">{errorText(read.error, "Unable to load the budgets.")}</p>;
 
   const isCurrent = latest === null || data.month === latest;
   const all = scope === null;

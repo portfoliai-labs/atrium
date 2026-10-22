@@ -6,7 +6,8 @@ import {
   ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, FileText, Link2, Loader2, PlusCircle, Search,
   SlidersHorizontal, Trash2, Unlink, UploadCloud, Wand2, X,
 } from "lucide-react";
-import { useWallets } from "../../../context/WalletsContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { useWalletQuery, useWallets, walletKey } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
 import { formatCurrency } from "../../../lib/format";
 import { ALL_WALLETS, dayLabel, errorText, walletColor, type CategoryRef } from "../../../lib/wallets";
@@ -64,7 +65,7 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
   onAdd: () => void;
   onImport: () => void;
 }) {
-  const { wallets, source, version, changed } = useWallets();
+  const { wallets, changed } = useWallets();
   const [wallet, setWallet] = useState(initial);
   const scope = wallet === ALL_WALLETS ? null : wallet;
   const [query, setQuery] = useState("");
@@ -78,8 +79,6 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
   // The filters tucked behind "More filters": open from the start only if one is set.
   const secondary = [direction !== "all", category !== "all", hideTransfers].filter(Boolean).length;
   const [showMore, setShowMore] = useState(false);
-  // What the last answer was for (`key`): the rows stay shown while the next one loads.
-  const [result, setResult] = useState<{ key: string; rows: Movement[]; total: number | null; error: string | null } | null>(null);
   // The page and the selection belong to one filter: a new one starts from the first page, none selected.
   const [paging, setPaging] = useState<{ key: string; page: number }>({ key: "", page: 1 });
   const [selection, setSelection] = useState<{ key: string; uuids: Set<string> }>({ key: "", uuids: new Set() });
@@ -111,23 +110,16 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
   const selected = selection.key === pageKey ? selection.uuids : new Set<string>();
   const setSelected = (change: Set<string> | ((prev: Set<string>) => Set<string>)) =>
     setSelection({ key: pageKey, uuids: typeof change === "function" ? change(selected) : change });
-  const requestKey = `${pageKey}:${version}`;
-
-  useEffect(() => {
-    let cancelled = false;
-    source.movements(scope, { ...filters, limit: PAGE, offset: (page - 1) * PAGE })
-      .then((list) => { if (!cancelled) setResult({ key: requestKey, rows: list.items, total: list.total, error: null }); })
-      .catch((err) => {
-        if (!cancelled) setResult((prev) => ({ key: requestKey, rows: prev?.rows ?? [], total: prev?.total ?? null, error: errorText(err, "Unable to load the movements.") }));
-      });
-    return () => { cancelled = true; };
-    // filters and page are read through requestKey.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, requestKey]);
-  const rows = result?.rows ?? [];
-  const total = result?.total ?? null;
-  const loading = result?.key !== requestKey;
-  const loadError = result?.key === requestKey ? result.error : null;
+  // The rows stay shown while the next page, the next filters' or a write's answer loads.
+  const read = useWalletQuery(
+    ["movements", scope ?? "all", filters, page],
+    (source) => source.movements(scope, { ...filters, limit: PAGE, offset: (page - 1) * PAGE }),
+    { keepPrevious: true },
+  );
+  const rows = read.data?.items ?? [];
+  const total = read.data?.total ?? null;
+  const loading = read.isFetching;
+  const loadError = read.isError ? errorText(read.error, "Unable to load the movements.") : null;
   const pages = Math.max(1, Math.ceil((total ?? 0) / PAGE));
 
   const byUuid = useMemo(() => new Map(wallets.map((w, i) => [w.uuid, { wallet: w, color: walletColor(w, i) }])), [wallets]);
@@ -203,7 +195,7 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
             Saved movements {total !== null && <span className="text-slate-400 font-semibold">({total.toLocaleString("en-US")})</span>}
           </h4>
           <div className="flex items-center gap-3">
-            {loading && result && <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />}
+            {loading && read.data && <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />}
             <button
               type="button"
               onClick={() => setShowRules(true)}
@@ -336,7 +328,7 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
 
         {loadError ? (
           <p className="p-6 text-sm font-semibold text-rose-600">{loadError}</p>
-        ) : !result ? (
+        ) : !read.data ? (
           <div className="py-16 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-300" /></div>
         ) : rows.length === 0 && !loading ? (
           <div className="py-16 flex flex-col items-center justify-center text-center px-6">
@@ -495,24 +487,20 @@ function BarButton({ icon, children, onClick, disabled, danger }: { icon: React.
  */
 export function CategoryRulesDialog({ readOnly, onClose }: { readOnly: boolean; onClose: () => void }) {
   const { changed } = useWallets();
-  const [rules, setRules] = useState<CategoryRule[] | null>(null);
+  const queryClient = useQueryClient();
+  const read = useWalletQuery(["categoryRules"], () => walletService.categoryRules());
+  const rules = read.data ?? null;
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    walletService.categoryRules()
-      .then((list) => { if (!cancelled) setRules(list); })
-      .catch((err) => { if (!cancelled) setError(errorText(err, "Unable to load the category rules.")); });
-    return () => { cancelled = true; };
-  }, []);
+  const loadError = read.isError ? errorText(read.error, "Unable to load the category rules.") : null;
 
   const remove = async (rule: CategoryRule) => {
     setRemoving(rule.uuid);
     setError(null);
     try {
       await walletService.removeCategoryRule(rule.uuid);
-      setRules((prev) => prev?.filter((r) => r.uuid !== rule.uuid) ?? null);
+      queryClient.setQueryData<CategoryRule[]>(walletKey("categoryRules"), (prev) => prev?.filter((r) => r.uuid !== rule.uuid));
       changed();
     } catch (err) {
       setError(errorText(err, "Unable to delete this rule."));
@@ -527,7 +515,7 @@ export function CategoryRulesDialog({ readOnly, onClose }: { readOnly: boolean; 
       title="Category rules"
       subtitle="The category you give a movement is used for its payee's other movements, and for new ones."
       busy={removing !== null}
-      error={error}
+      error={error ?? loadError}
       submitLabel="Done"
       canSubmit
       onSubmit={onClose}
@@ -535,7 +523,7 @@ export function CategoryRulesDialog({ readOnly, onClose }: { readOnly: boolean; 
       wide
     >
       {rules === null ? (
-        !error && <Loader2 className="h-5 w-5 text-slate-400 animate-spin" />
+        !(error ?? loadError) && <Loader2 className="h-5 w-5 text-slate-400 animate-spin" />
       ) : rules.length === 0 ? (
         <p className="text-sm font-semibold text-slate-500">
           No rules yet: give a movement a category, and its payee&apos;s other movements follow.

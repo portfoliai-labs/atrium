@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
+    "@tanstack/react-query": "5.104.1",
     "@tiptap/core": "3.31.4",
     "@tiptap/extension-blockquote": "3.31.4",
     "@tiptap/extension-heading": "3.31.4",
