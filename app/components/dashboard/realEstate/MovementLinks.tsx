@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Link2, Loader2, Search, Unlink, Wallet as WalletIcon } from "lucide-react";
-import { useRealEstate } from "../../../context/RealEstateContext";
+import { useRealEstate, useRealEstateQuery } from "../../../context/RealEstateContext";
 import { useWallets } from "../../../context/WalletsContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { formatCurrency } from "../../../lib/format";
@@ -23,6 +23,9 @@ export function addDays(day: string, days: number) {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+const NO_PROPOSALS: MovementLinkProposal[] = [];
+const NO_MORTGAGES: Mortgage[] = [];
 
 /** The range the proposals are asked for: the filtered one, else the last 90 days; at most 366. */
 export function proposalRange(from: string, to: string) {
@@ -85,31 +88,16 @@ export function MovementProposals({ propertyUuid, from, to, transactions }: {
   // The transactions listed: the proposals name them by their description.
   transactions: PropertyTransaction[];
 }) {
-  const { properties, source, version, changed } = useRealEstate();
+  const { properties, changed } = useRealEstate();
   const range = proposalRange(from, to);
-  const key = `${propertyUuid}:${range.from}:${range.to}:${version}`;
-  const [state, setState] = useState<{ key: string; list: MovementLinkProposal[] } | null>(null);
-  const [mortgages, setMortgages] = useState<Mortgage[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    source.movementLinkProposals(propertyUuid, range.from, range.to)
-      .then((list) => { if (!cancelled) setState({ key, list }); })
-      // 503 when the wallets can't be asked: then there's simply nothing to propose.
-      .catch(() => { if (!cancelled) setState({ key, list: [] }); });
-    return () => { cancelled = true; };
-    // range is read through key.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, key]);
-
-  const proposals = state?.key === key ? state.list : [];
+  const read = useRealEstateQuery(
+    ["movementLinkProposals", propertyUuid, range.from, range.to],
+    (source) => source.movementLinkProposals(propertyUuid, range.from, range.to),
+  );
+  // 503 when the wallets can't be asked: then there's simply nothing to propose.
+  const proposals = read.data ?? NO_PROPOSALS;
   const instalments = proposals.some((p) => p.mortgageUuid);
-  useEffect(() => {
-    if (!instalments) return;
-    let cancelled = false;
-    source.mortgages(propertyUuid).then((list) => { if (!cancelled) setMortgages(list); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [source, propertyUuid, instalments]);
+  const mortgages = useRealEstateQuery(["mortgages", propertyUuid], (source) => source.mortgages(propertyUuid), { enabled: instalments }).data ?? NO_MORTGAGES;
 
   const byTransaction = useMemo(() => new Map(transactions.map((t) => [t.uuid, t])), [transactions]);
   const propertyName = (uuid: string) => properties.find((p) => p.uuid === uuid)?.name ?? "A property";

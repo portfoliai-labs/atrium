@@ -1,9 +1,10 @@
 // components/dashboard/realEstate/RealEstateAlerts.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Banknote, BellRing, CircleCheck, FileSignature, Landmark, Pencil, Plus, Receipt, Scale, Trash2, TrendingDown, Tags } from "lucide-react";
-import { useRealEstate } from "../../../context/RealEstateContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { realEstateKey, useRealEstate, useRealEstateQuery, useRealEstateRead } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { ApiError } from "../../../services/apiClient";
 import {
@@ -35,18 +36,7 @@ export const ALERT_ICONS: Record<RealEstateAlertType, React.ComponentType<{ clas
  * can't be read (a backend without alerts yet among them).
  */
 export function useAlertRules(propertyUuid: string | null, enabled = true) {
-  const { source, version, available } = useRealEstate();
-  const key = `${propertyUuid ?? "all"}:${version}`;
-  const [state, setState] = useState<{ key: string; rules: RealEstateAlertRule[] | null } | null>(null);
-  useEffect(() => {
-    if (!enabled || !available) return;
-    let cancelled = false;
-    source.alertRules(propertyUuid)
-      .then((rules) => { if (!cancelled) setState({ key, rules }); })
-      .catch(() => { if (!cancelled) setState({ key, rules: null }); });
-    return () => { cancelled = true; };
-  }, [source, propertyUuid, key, enabled, available]);
-  return state?.key === key ? state.rules : undefined;
+  return useRealEstateRead(["alertRules", propertyUuid ?? "all"], (source) => source.alertRules(propertyUuid), enabled);
 }
 
 /** The header's way to the Alerts: how many rules, and what the enabled ones find today (in red). */
@@ -77,33 +67,27 @@ export function RealEstateAlerts({ trail, property, onOpenProperty }: {
   property?: Property;
   onOpenProperty: (uuid: string) => void;
 }) {
-  const { properties, source, version, sample } = useRealEstate();
+  const { properties, sample } = useRealEstate();
+  const queryClient = useQueryClient();
   const scope = property?.uuid ?? null;
-  const key = `${scope ?? "all"}:${version}`;
-  // The list as read, then as the writes left it (no refetch for a toggle).
-  const [state, setState] = useState<{ key: string; rules: RealEstateAlertRule[] | null; error: string | null } | null>(null);
-  const [reload, setReload] = useState(0);
+  // The list as read (shared with the headers' counters), then as the writes left it (no refetch
+  // for a toggle).
+  const read = useRealEstateQuery(["alertRules", scope ?? "all"], (source) => source.alertRules(scope));
   const [editing, setEditing] = useState<RealEstateAlertRule | "new" | null>(null);
   const [deleting, setDeleting] = useState<RealEstateAlertRule | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    source.alertRules(scope)
-      .then((rules) => { if (!cancelled) setState({ key, rules, error: null }); })
-      .catch((err) => {
-        if (cancelled) return;
-        // A backend without alerts answers the route with a bare 404.
-        const missing = err instanceof ApiError && err.status === 404 && !scope;
-        setState({ key, rules: null, error: missing ? "Alerts aren't available yet." : fieldErrorText(err, "Unable to load the alerts.") });
-      });
-    return () => { cancelled = true; };
-  }, [source, scope, key, reload]);
-
-  const rules = state?.key === key ? state.rules : undefined;
-  const replace = (rule: RealEstateAlertRule) =>
-    setState((s) => s && { ...s, rules: s.rules?.map((r) => (r.uuid === rule.uuid ? rule : r)) ?? null });
+  const rules = read.isError ? null : read.data;
+  // A backend without alerts answers the route with a bare 404.
+  const loadError = !read.isError ? null
+    : read.error instanceof ApiError && read.error.status === 404 && !scope ? "Alerts aren't available yet."
+    : fieldErrorText(read.error, "Unable to load the alerts.");
+  // Every list it's in (all of them, each property's).
+  const replace = (rule: RealEstateAlertRule) => queryClient.setQueriesData<RealEstateAlertRule[]>(
+    { queryKey: realEstateKey("alertRules") }, (list) => list?.map((r) => (r.uuid === rule.uuid ? rule : r)),
+  );
+  const reload = () => { void queryClient.invalidateQueries({ queryKey: realEstateKey("alertRules") }); };
   const nameOf = (uuid: string | null) => (uuid ? properties.find((p) => p.uuid === uuid)?.name ?? "A property" : "Every property");
   const findingsOf = (r: RealEstateAlertRule) => (scope ? r.findings.filter((f) => f.propertyUuid === scope) : r.findings);
   const findings = rules ? currentFindings(rules, scope ?? undefined) : [];
@@ -126,7 +110,7 @@ export function RealEstateAlerts({ trail, property, onOpenProperty }: {
     try {
       await realEstateService.removeAlertRule(deleting.uuid);
       setDeleting(null);
-      setReload((n) => n + 1);
+      reload();
     } catch (err) {
       setError(fieldErrorText(err, "Unable to delete this rule."));
     } finally {
@@ -158,7 +142,7 @@ export function RealEstateAlerts({ trail, property, onOpenProperty }: {
       {rules === undefined ? (
         <p className="text-[13px] text-[#857e78]">Loading…</p>
       ) : rules === null ? (
-        <p className="text-[13px] font-semibold text-rose-600">{state?.error}</p>
+        <p className="text-[13px] font-semibold text-rose-600">{loadError}</p>
       ) : (
         <>
           {rules.some((r) => r.enabled) && (
@@ -271,7 +255,7 @@ export function RealEstateAlerts({ trail, property, onOpenProperty }: {
           properties={properties.filter((p) => !p.archived)}
           initialPropertyUuid={scope}
           onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); setReload((n) => n + 1); }}
+          onSaved={() => { setEditing(null); reload(); }}
         />
       )}
       {deleting && (

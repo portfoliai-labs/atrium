@@ -1,7 +1,8 @@
 // app/context/RealEstateContext.tsx
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useMemo } from "react";
+import { keepPreviousData, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useUser } from "./UserContext";
 import { ApiError } from "../services/apiClient";
 import { realEstateService } from "../services/realEstateService";
@@ -12,10 +13,11 @@ import type { Property, RealEstateOverview, RealEstateSummary } from "../models/
 /**
  * REAL ESTATE CONTEXT — an investor's properties, loaded once for the dashboard: Wealth, the
  * Sidebar and the real estate pages read the same list, archived properties included. A demo
- * account's are the sample data (lib/mock/realEstate), read only. Pages that read transactions,
- * mortgages or summaries refetch when `version` moves: after any write, `changed()` bumps it and
- * reloads the list (the figures move with every transaction). Empty, and never loaded, for an
- * advisor.
+ * account's are the sample data (lib/mock/realEstate), read only. Every real estate read is in the
+ * query cache (context/QueryContext) under a ["realEstate", ...] key (useRealEstateQuery), shared
+ * by the modules and pages that ask for it: after any write, `changed()` invalidates them all, the
+ * list too (the figures move with every transaction), and what's on screen is read again, staying
+ * up meanwhile. Empty, and never loaded, for an advisor.
  */
 interface RealEstateContextType {
   // As the API lists them, archived included.
@@ -28,54 +30,41 @@ interface RealEstateContextType {
   // A demo account's sample data: read only, and said so.
   sample: boolean;
   source: RealEstateSource;
-  version: number;
   changed: () => void;
 }
 
 const RealEstateContext = createContext<RealEstateContextType | undefined>(undefined);
 
+/** A real estate read's key in the query cache: everything under it goes with `changed()`. */
+export const realEstateKey = (...parts: unknown[]) => ["realEstate", ...parts];
+
+const NO_PROPERTIES: Property[] = [];
+
 export function RealEstateProvider({ children }: { children: React.ReactNode }) {
   const { user, isDemo } = useUser();
   const enabled = !!user && user.role !== "ADVISOR";
   const sample = enabled && isDemo;
-  const [properties, setProperties] = useState<Property[]>([]);
+  const queryClient = useQueryClient();
+  const list = useQuery({ queryKey: realEstateKey("list"), queryFn: () => realEstateService.list(true), enabled: enabled && !sample });
+
+  const missing = list.error instanceof ApiError && list.error.status === 404;
+  const error = list.error && !missing
+    ? (list.error instanceof Error ? list.error.message : "Unable to load your properties.")
+    : null;
   // Loading until the first answer only: a reload after a write keeps the pages up.
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [missing, setMissing] = useState(false);
-  const [version, setVersion] = useState(0);
-
-  const load = useCallback(async () => {
-    if (!enabled || sample) return;
-    try {
-      setProperties(await realEstateService.list(true));
-      setError(null);
-      setMissing(false);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) setMissing(true);
-      else setError(err instanceof Error ? err.message : "Unable to load your properties.");
-    } finally {
-      setLoaded(true);
-    }
-  }, [enabled, sample]);
-
-  useEffect(() => {
-    void load();
-  }, [load, version]);
-
-  const loading = enabled && !sample && !loaded;
-  const changed = useCallback(() => setVersion((v) => v + 1), []);
+  const loading = enabled && !sample && list.isPending;
+  const changed = useCallback(() => { void queryClient.invalidateQueries({ queryKey: realEstateKey() }); }, [queryClient]);
+  const properties = sample ? DEMO_PROPERTIES : list.data ?? NO_PROPERTIES;
 
   const value = useMemo<RealEstateContextType>(() => ({
-    properties: sample ? DEMO_PROPERTIES : properties,
+    properties,
     loading,
     error,
     available: enabled && !missing,
     sample,
     source: sample ? demoRealEstateSource : apiRealEstateSource,
-    version,
     changed,
-  }), [sample, properties, loading, error, enabled, missing, version, changed]);
+  }), [sample, properties, loading, error, enabled, missing, changed]);
   return <RealEstateContext.Provider value={value}>{children}</RealEstateContext.Provider>;
 }
 
@@ -86,37 +75,37 @@ export const useRealEstate = (): RealEstateContextType => {
 };
 
 /**
- * A read from the source, refetched as the real estate changes. undefined while loading, null when
- * it couldn't be read (e.g. no exchange rate for a property's currency on the figures across
- * properties).
+ * A real estate read through the query cache, under `realEstateKey(...key)`: asked for once however
+ * many modules want it, and again after `changed()`. Off where the real estate can't be shown. With
+ * `keepPrevious`, a new key (other filters, more pages) keeps the last answer up until its own.
  */
-function useSourceRead<T>(key: string, read: (source: RealEstateSource) => Promise<T>, enabled: boolean) {
-  const { source, version, available } = useRealEstate();
-  const fullKey = `${key}:${version}`;
-  const [state, setState] = useState<{ key: string; value: T | null } | null>(null);
-  useEffect(() => {
-    if (!enabled || !available) return;
-    let cancelled = false;
-    read(source)
-      .then((value) => { if (!cancelled) setState({ key: fullKey, value }); })
-      .catch(() => { if (!cancelled) setState({ key: fullKey, value: null }); });
-    return () => { cancelled = true; };
-    // `read` is identified by `key`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, fullKey, enabled, available]);
-  return state?.key === fullKey ? state.value : undefined;
+export function useRealEstateQuery<T>(
+  key: unknown[], read: (source: RealEstateSource) => Promise<T>, { enabled = true, keepPrevious = false } = {},
+): UseQueryResult<T> {
+  const { source, available } = useRealEstate();
+  return useQuery({
+    queryKey: realEstateKey(...key),
+    queryFn: () => read(source),
+    enabled: available && enabled,
+    placeholderData: keepPrevious ? keepPreviousData : undefined,
+  });
+}
+
+/**
+ * useRealEstateQuery's answer alone: undefined while loading, null when it couldn't be read (e.g.
+ * no exchange rate for a property's currency on the figures across properties).
+ */
+export function useRealEstateRead<T>(key: unknown[], read: (source: RealEstateSource) => Promise<T>, enabled = true): T | null | undefined {
+  const query = useRealEstateQuery(key, read, { enabled });
+  return query.isError ? null : query.data;
 }
 
 /** Every non-archived property together, today, in the reference currency. */
 export function useRealEstateOverview(enabled = true): RealEstateOverview | null | undefined {
-  return useSourceRead("overview", (source) => source.overview(), enabled);
+  return useRealEstateRead(["overview"], (source) => source.overview(), enabled);
 }
 
 /** One property's months (its currency) or every non-archived property's (`null`, the reference currency). */
 export function useRealEstateSummary(propertyUuid: string | null, from?: string, to?: string, enabled = true): RealEstateSummary | null | undefined {
-  return useSourceRead(
-    `summary:${propertyUuid ?? "all"}:${from ?? ""}:${to ?? ""}`,
-    (source) => source.summary(propertyUuid, from, to),
-    enabled,
-  );
+  return useRealEstateRead(["summary", propertyUuid ?? "all", from, to], (source) => source.summary(propertyUuid, from, to), enabled);
 }

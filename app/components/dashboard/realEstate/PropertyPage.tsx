@@ -1,9 +1,9 @@
 // components/dashboard/realEstate/PropertyPage.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Archive, Calculator, ChevronDown, ChevronUp, Loader2, Trash2, X } from "lucide-react";
-import { useRealEstate, useRealEstateSummary } from "../../../context/RealEstateContext";
+import { useRealEstate, useRealEstateRead, useRealEstateSummary } from "../../../context/RealEstateContext";
 import { realEstateService } from "../../../services/realEstateService";
 import { formatCurrency } from "../../../lib/format";
 import {
@@ -52,7 +52,7 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
   // After it's deleted.
   onGone: () => void;
 }) {
-  const { sample, changed, source, version } = useRealEstate();
+  const { sample, changed } = useRealEstate();
   const summary = useRealEstateSummary(property.uuid, (property.purchasedOn ?? property.createdAt).slice(0, 7));
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [rateFor, setRateFor] = useState<Mortgage | null>(null);
@@ -163,8 +163,6 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
 
       <MortgagesModule
         property={property}
-        source={source}
-        version={version}
         readOnly={readOnly}
         onChangeRate={setRateFor}
         onSimulate={setSimulating}
@@ -172,7 +170,7 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ValuationsModule property={property} source={source} version={version} readOnly={readOnly} onChanged={changed} />
+        <ValuationsModule property={property} readOnly={readOnly} onChanged={changed} />
         <PropertyUsesModule property={property} readOnly={readOnly} onChanged={changed} />
       </div>
       <DetailsModule property={property} />
@@ -233,36 +231,10 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
 
 /** How many transactions a property has: null while loading. */
 function useTransactionCount(propertyUuid: string) {
-  const { source, version } = useRealEstate();
-  const key = `${propertyUuid}:${version}`;
-  const [state, setState] = useState<{ key: string; total: number | null } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    source.transactions(propertyUuid, { limit: 1 })
-      .then((list) => { if (!cancelled) setState({ key, total: list.total }); })
-      .catch(() => { if (!cancelled) setState({ key, total: null }); });
-    return () => { cancelled = true; };
-  }, [source, propertyUuid, key]);
-  return state?.key === key ? state.total : null;
+  const list = useRealEstateRead(["transactions", propertyUuid, "count"], (source) => source.transactions(propertyUuid, { limit: 1 }));
+  return list?.total ?? null;
 }
 
-type Source = ReturnType<typeof useRealEstate>["source"];
-
-/** A read of the source for this property, again as the real estate changes: undefined while loading. */
-function useRead<T>(key: string, read: () => Promise<T>, version: number) {
-  const full = `${key}:${version}`;
-  const [state, setState] = useState<{ key: string; value: T | null } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    read()
-      .then((value) => { if (!cancelled) setState({ key: full, value }); })
-      .catch(() => { if (!cancelled) setState({ key: full, value: null }); });
-    return () => { cancelled = true; };
-    // `read` is identified by `key`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [full]);
-  return state?.key === full ? state.value : undefined;
-}
 
 function rateText(m: Mortgage) {
   if (m.rate.variable) {
@@ -273,17 +245,15 @@ function rateText(m: Mortgage) {
 }
 
 /** The property's mortgages, open first: each with its figures, its schedule and its rate changes. */
-function MortgagesModule({ property, source, version, readOnly, onChangeRate, onSimulate, onChanged }: {
+function MortgagesModule({ property, readOnly, onChangeRate, onSimulate, onChanged }: {
   property: Property;
-  source: Source;
-  version: number;
   readOnly: boolean;
   onChangeRate: (m: Mortgage) => void;
   // Prepaying or refinancing it, simulated (read only too: nothing is stored until recorded).
   onSimulate: (m: Mortgage) => void;
   onChanged: () => void;
 }) {
-  const mortgages = useRead(`mortgages:${property.uuid}`, () => source.mortgages(property.uuid), version);
+  const mortgages = useRealEstateRead(["mortgages", property.uuid], (s) => s.mortgages(property.uuid));
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Mortgage | null>(null);
@@ -318,8 +288,6 @@ function MortgagesModule({ property, source, version, readOnly, onChangeRate, on
           <MortgageCard
             key={m.uuid}
             mortgage={m}
-            source={source}
-            version={version}
             money={money}
             readOnly={readOnly}
             busy={busy !== null}
@@ -346,10 +314,8 @@ function MortgagesModule({ property, source, version, readOnly, onChangeRate, on
   );
 }
 
-function MortgageCard({ mortgage: m, source, version, money, readOnly, busy, onChangeRate, onSimulate, onRemoveRate, onToggleClosed, onDelete }: {
+function MortgageCard({ mortgage: m, money, readOnly, busy, onChangeRate, onSimulate, onRemoveRate, onToggleClosed, onDelete }: {
   mortgage: Mortgage;
-  source: Source;
-  version: number;
   money: (v: number) => string;
   readOnly: boolean;
   busy: boolean;
@@ -417,13 +383,13 @@ function MortgageCard({ mortgage: m, source, version, money, readOnly, busy, onC
         {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
         {open ? "Hide the schedule" : "Show the schedule"}
       </button>
-      {open && <Schedule mortgage={m} source={source} version={version} />}
+      {open && <Schedule mortgage={m} />}
     </div>
   );
 }
 
-function Schedule({ mortgage, source, version }: { mortgage: Mortgage; source: Source; version: number }) {
-  const schedule = useRead<MortgageSchedule>(`schedule:${mortgage.uuid}`, () => source.schedule(mortgage.uuid), version);
+function Schedule({ mortgage }: { mortgage: Mortgage }) {
+  const schedule = useRealEstateRead<MortgageSchedule>(["schedule", mortgage.uuid], (source) => source.schedule(mortgage.uuid));
   const [all, setAll] = useState(false);
   if (schedule === undefined) return <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />;
   if (schedule === null) return <p className="text-xs font-semibold text-rose-600">Unable to load the schedule.</p>;
@@ -477,10 +443,10 @@ function Schedule({ mortgage, source, version }: { mortgage: Mortgage; source: S
 }
 
 /** Its valuations, newest first: the latest is its value. */
-function ValuationsModule({ property, source, version, readOnly, onChanged }: {
-  property: Property; source: Source; version: number; readOnly: boolean; onChanged: () => void;
+function ValuationsModule({ property, readOnly, onChanged }: {
+  property: Property; readOnly: boolean; onChanged: () => void;
 }) {
-  const valuations = useRead<Valuation[]>(`valuations:${property.uuid}`, () => source.valuations(property.uuid), version);
+  const valuations = useRealEstateRead<Valuation[]>(["valuations", property.uuid], (source) => source.valuations(property.uuid));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const remove = async (uuid: string) => {
@@ -534,10 +500,10 @@ function ValuationsModule({ property, source, version, readOnly, onChanged }: {
 
 function DetailsModule({ property: p }: { property: Property }) {
   const italy = p.details.italy;
-  const { properties, source } = useRealEstate();
+  const { properties } = useRealEstate();
   const owner = p.appurtenantToUuid ? properties.find((x) => x.uuid === p.appurtenantToUuid) : undefined;
   const appurtenances = properties.filter((x) => x.appurtenantToUuid === p.uuid);
-  const municipality = useRead(`municipality:${italy?.municipalityCode ?? ""}`, () => (italy?.municipalityCode ? source.municipalities({ codes: [italy.municipalityCode] }) : Promise.resolve([])), 0);
+  const municipality = useRealEstateRead(["municipality", italy?.municipalityCode ?? ""], (source) => (italy?.municipalityCode ? source.municipalities({ codes: [italy.municipalityCode] }) : Promise.resolve([])));
   const rows: [string, string | null][] = [
     ["Address", [p.address.street, [p.address.postalCode, p.address.locality].filter(Boolean).join(" "), p.address.region, p.address.country].filter(Boolean).join(", ")],
     ["Neighbourhood", p.address.neighbourhood ?? null],

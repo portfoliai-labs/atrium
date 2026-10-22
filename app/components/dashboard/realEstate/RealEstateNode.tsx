@@ -1,10 +1,10 @@
 // components/dashboard/realEstate/RealEstateNode.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Archive, ChevronRight, Loader2, Plus } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useRealEstate, useRealEstateOverview, useRealEstateSummary } from "../../../context/RealEstateContext";
+import { useRealEstate, useRealEstateOverview, useRealEstateRead, useRealEstateSummary } from "../../../context/RealEstateContext";
 import { CATEGORICAL_PALETTE } from "../../../lib/chartColors";
 import { formatCompact, formatCurrency } from "../../../lib/format";
 import { PROPERTY_KIND_LABELS, PROPERTY_USE_LABELS } from "../../../lib/realEstate";
@@ -54,7 +54,7 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
   rootTrail: Crumb[];
   onOpen: (page: RealEstatePage, property?: string) => void;
 }) {
-  const { properties, loading, error, sample, source, version } = useRealEstate();
+  const { properties, loading, error, sample } = useRealEstate();
   const property = propertyUuid ? properties.find((p) => p.uuid === propertyUuid) : undefined;
   const page: RealEstatePage = requested === "property" && !property ? "home" : requested;
   const active = useMemo(() => properties.filter((p) => !p.archived), [properties]);
@@ -64,7 +64,7 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
   const firstMonth = useMemo(() => active.map((p) => p.purchasedOn?.slice(0, 7)).filter((m): m is string => !!m).sort()[0], [active]);
   const summary = useRealEstateSummary(null, firstMonth, undefined, !loading && page === "home");
   const [entry, setEntry] = useState<RealEstateEntryKind | null>(null);
-  const count = useTransactionTotal(source, version);
+  const count = useTransactionTotal();
   const alertRules = useAlertRules(null, !loading && page === "home");
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
@@ -190,20 +190,10 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
  * paid). Shown only when some property has them (one in Italy).
  */
 function TaxesModule({ properties, onOpen }: { properties: Property[]; onOpen: (uuid: string) => void }) {
-  const { source, version } = useRealEstate();
   const year = Number(today().slice(0, 4));
   const taxed = properties.some((p) => p.address.country === "IT");
-  const [state, setState] = useState<{ version: number; list: TaxList | null } | null>(null);
-  useEffect(() => {
-    if (!taxed) return;
-    let cancelled = false;
-    source.taxes(null, year)
-      .then((list) => { if (!cancelled) setState({ version, list }); })
-      .catch(() => { if (!cancelled) setState({ version, list: null }); });
-    return () => { cancelled = true; };
-  }, [source, version, year, taxed]);
+  const list = useRealEstateRead<TaxList>(["taxes", "all", year], (source) => source.taxes(null, year), taxed);
   if (!taxed) return null;
-  const list = state?.version === version ? state.list : undefined;
   const byUuid = new Map(properties.map((p) => [p.uuid, p]));
   const taxes = list?.taxes.filter((t) => byUuid.has(t.propertyUuid)) ?? [];
   // In euro: the tax is Italy's.
@@ -272,16 +262,9 @@ function TaxesModule({ properties, onOpen }: { properties: Property[]; onOpen: (
 }
 
 /** How many transactions there are across the properties: null while loading. */
-function useTransactionTotal(source: ReturnType<typeof useRealEstate>["source"], version: number) {
-  const [state, setState] = useState<{ version: number; total: number | null } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    source.transactions(null, { limit: 1 })
-      .then((list) => { if (!cancelled) setState({ version, total: list.total }); })
-      .catch(() => { if (!cancelled) setState({ version, total: null }); });
-    return () => { cancelled = true; };
-  }, [source, version]);
-  return state?.version === version ? state.total : null;
+function useTransactionTotal() {
+  const list = useRealEstateRead(["transactions", "all", "count"], (source) => source.transactions(null, { limit: 1 }));
+  return list?.total ?? null;
 }
 
 type Summary = ReturnType<typeof useRealEstateSummary>;
