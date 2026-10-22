@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, ChevronDown, Loader2, RotateCcw } from "lucide-react";
 import { useUser } from "../../context/UserContext";
+import { usePortfolio } from "../../context/PortfolioContext";
 import { assetCategoryService } from "../../services/assetCategoryService";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import { STRATEGY_CATEGORIES, STRATEGY_CATEGORY_LABELS, type StrategyCategory } from "../../models/Strategy";
@@ -21,6 +22,7 @@ import type { AssetCategoryEntry } from "../../models/AssetCategory";
  */
 export function AssetCategoriesEditor({ clientUuid }: { clientUuid?: string }) {
   const { isDemo } = useUser();
+  const { changed } = usePortfolio();
   const [entries, setEntries] = useState<AssetCategoryEntry[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   // The rows with a change on its way, and the last change each one couldn't make.
@@ -42,6 +44,8 @@ export function AssetCategoriesEditor({ clientUuid }: { clientUuid?: string }) {
     setRowErrors((e) => Object.fromEntries(Object.entries(e).filter(([id]) => id !== assetId)));
     try {
       setEntries(await write());
+      // The portfolios' composition by category moves with it.
+      changed();
     } catch (err) {
       setRowErrors((e) => ({ ...e, [assetId]: err instanceof Error ? err.message : "Unable to save this change." }));
     } finally {

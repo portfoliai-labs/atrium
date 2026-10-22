@@ -24,5 +24,5 @@ export function AssetSection({ portfolioUuid }: { portfolioUuid?: string }) {
     return <p className="py-16 text-center text-sm font-semibold text-[#78716c]">Search for a security from the top bar.</p>;
   }
 
-  return <AssetExplore key={view.listingId} listingId={view.listingId} assetId={view.instrumentId} portfolioUuid={portfolioUuid} revision={0} />;
+  return <AssetExplore key={view.listingId} listingId={view.listingId} assetId={view.instrumentId} portfolioUuid={portfolioUuid} />;
 }

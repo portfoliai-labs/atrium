@@ -1,57 +1,41 @@
 // app/hooks/useAlertRules.ts
 "use client";
 
-import { useEffect, useState } from "react";
+import type { SetStateAction } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { investmentsKey, useInvestmentsQuery } from "../context/PortfolioContext";
 import { alertService } from "../services/alertService";
 import type { AlertRuleResponse, ClientAlertRuleResponse, OwnAlertRuleResponse } from "../models/Alert";
 
 /**
- * A list of alert rules. `rules` is null until the first load. With `pollMs` the list is
- * refetched on that interval while the tab is visible, since the backend re-checks every rule
- * about every 5 minutes and a reading changes underneath the page; a failed refetch keeps the
- * rules already shown. `setRules` lets callers apply the result of a create / update / delete
- * directly, without another round trip.
+ * A list of alert rules, in the query cache under ["investments", "alertRules", ...key] (shared
+ * by the modules showing the same list). `rules` is null until the first load. With `pollMs` the
+ * list is read again on that interval while the tab is visible, since the backend re-checks every
+ * rule about every 5 minutes and a reading changes underneath the page; a failed read again keeps
+ * the rules already shown. `setRules` lets callers apply the result of a create / update / delete
+ * directly, without another round trip (the other lists of rules are read again).
  */
-function useRuleList<T>(fetchRules: () => Promise<T[]>, key: string, pollMs?: number) {
-  const [rules, setRules] = useState<T[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+function useRuleList<T>(fetchRules: () => Promise<T[]>, key: unknown[], pollMs?: number) {
+  const queryClient = useQueryClient();
+  const queryKey = investmentsKey("alertRules", ...key);
+  const query = useInvestmentsQuery(["alertRules", ...key], fetchRules, { pollMs });
+  const hash = JSON.stringify(queryKey);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async (initial: boolean) => {
-      try {
-        const data = await fetchRules();
-        if (!cancelled) {
-          setRules(data);
-          setError(null);
-        }
-      } catch (err) {
-        if (!cancelled && initial) setError(err instanceof Error ? err.message : "Failed to load the alerts");
-      } finally {
-        if (!cancelled && initial) setLoading(false);
-      }
-    };
-
-    load(true);
-    const id = pollMs ? setInterval(() => { if (!document.hidden) load(false); }, pollMs) : undefined;
-    return () => {
-      cancelled = true;
-      if (id) clearInterval(id);
-    };
-    // `key` stands for fetchRules, which callers create on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pollMs, reloadKey, key]);
-
-  const reload = () => {
-    setLoading(true);
-    setError(null);
-    setReloadKey((k) => k + 1);
+  const setRules = (next: SetStateAction<T[] | null>) => {
+    queryClient.setQueryData<T[]>(queryKey, (prev) => (typeof next === "function" ? next(prev ?? null) : next) ?? undefined);
+    void queryClient.invalidateQueries({ queryKey: investmentsKey("alertRules"), predicate: (q) => JSON.stringify(q.queryKey) !== hash });
   };
+  const reload = () => { void queryClient.invalidateQueries({ queryKey: investmentsKey("alertRules") }); };
+  // Loading too while a list that failed is asked for again.
+  const loading = query.data === undefined && (query.isPending || query.isFetching);
 
-  return { rules, setRules, loading, error, reload };
+  return {
+    rules: query.data ?? null,
+    setRules,
+    loading,
+    error: !loading && query.isError && query.data === undefined ? query.error.message || "Failed to load the alerts" : null,
+    reload,
+  };
 }
 
 /**
@@ -60,17 +44,17 @@ function useRuleList<T>(fetchRules: () => Promise<T[]>, key: string, pollMs?: nu
  * "self" via an omitted for_user_uuid).
  */
 export function useAlertRules(portfolioUuid: string, pollMs?: number) {
-  return useRuleList<AlertRuleResponse>(() => alertService.listRules(portfolioUuid), portfolioUuid, pollMs);
+  return useRuleList<AlertRuleResponse>(() => alertService.listRules(portfolioUuid), [portfolioUuid], pollMs);
 }
 
 /** Advisors only: every rule they put on any of their clients, each with its clientUuid. */
 export function useClientAlertRules(pollMs?: number) {
-  return useRuleList<ClientAlertRuleResponse>(() => alertService.listClientRules(), "clients", pollMs);
+  return useRuleList<ClientAlertRuleResponse>(() => alertService.listClientRules(), ["clients"], pollMs);
 }
 
 /** The caller's own rules on every portfolio they own, in one call (the investor's Dashboard). */
 export function useOwnAlertRules(pollMs?: number) {
-  return useRuleList<OwnAlertRuleResponse>(() => alertService.listOwnRules(), "own", pollMs);
+  return useRuleList<OwnAlertRuleResponse>(() => alertService.listOwnRules(), ["own"], pollMs);
 }
 
 /** A rule plus the portfolio it's on, for lists that span several portfolios. */
@@ -91,5 +75,5 @@ export function usePortfoliosAlertRules(portfolioUuids: string[], pollMs?: numbe
     const loaded = results.filter((r) => r.status === "fulfilled");
     if (loaded.length === 0 && results.length > 0) throw (results[0] as PromiseRejectedResult).reason;
     return loaded.flatMap((r) => r.value);
-  }, portfolioUuids.join(","), pollMs);
+  }, ["portfolios", ...portfolioUuids], pollMs);
 }

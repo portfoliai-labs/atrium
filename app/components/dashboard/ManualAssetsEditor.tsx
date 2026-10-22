@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useUser } from "../../context/UserContext";
+import { usePortfolio } from "../../context/PortfolioContext";
 import { manualAssetService } from "../../services/manualAssetService";
 import { ApiError } from "../../services/apiClient";
 import { formatCurrency } from "../../lib/format";
@@ -33,6 +34,7 @@ const errorText = (err: unknown, fallback: string) => (err instanceof Error ? er
  */
 export function ManualAssetsEditor({ clientUuid }: { clientUuid?: string }) {
   const { isDemo } = useUser();
+  const { changed } = usePortfolio();
   const [assets, setAssets] = useState<ManualAsset[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -49,7 +51,11 @@ export function ManualAssetsEditor({ clientUuid }: { clientUuid?: string }) {
     return () => { cancelled = true; };
   }, [clientUuid]);
 
-  const replace = (asset: ManualAsset) => setAssets((prev) => prev?.map((a) => (a.uuid === asset.uuid ? asset : a)) ?? prev);
+  // A rename, a category or a valuation: the portfolios holding it are computed again.
+  const replace = (asset: ManualAsset) => {
+    setAssets((prev) => prev?.map((a) => (a.uuid === asset.uuid ? asset : a)) ?? prev);
+    changed();
+  };
 
   const remove = async () => {
     if (!deleting) return;

@@ -3,7 +3,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { History, LineChart, ShieldAlert } from "lucide-react";
-import { usePortfolio } from "../../context/PortfolioContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { investmentsKey, useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { portfoliosService } from "../../services/portfoliosService";
 import { transactionService } from "../../services/transactionService";
@@ -272,16 +273,10 @@ const toneOf = (v: number | null | undefined): "gain" | "loss" | undefined => (v
 export function useComparisonEntry(uuid: string) {
   const { client } = usePortfolio();
   const clientUuid = client?.uuid ?? null;
-  const [entry, setEntry] = useState<{ uuid: string; value: PortfolioComparisonEntry | null } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    portfoliosService.compare([uuid], clientUuid)
-      .then((list) => { if (!cancelled) setEntry({ uuid, value: list[0] ?? null }); })
-      .catch(() => { if (!cancelled) setEntry({ uuid, value: null }); });
-    return () => { cancelled = true; };
-  }, [uuid, clientUuid]);
   // undefined while loading, null when it couldn't be read.
-  return entry?.uuid === uuid ? entry.value : undefined;
+  return useInvestmentsRead<PortfolioComparisonEntry | null>(
+    ["comparison", clientUuid ?? "own", uuid], async () => (await portfoliosService.compare([uuid], clientUuid))[0] ?? null,
+  );
 }
 
 /**
@@ -292,21 +287,17 @@ export function useComparisonEntry(uuid: string) {
  */
 function useHasAdoption(portfolio: Portfolio) {
   const backtest = isBacktest(portfolio);
-  const [state, setState] = useState<{ uuid: string; has: boolean; shared: SharedStrategy[] } | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  useEffect(() => {
-    if (backtest) return;
-    let cancelled = false;
-    Promise.all([
+  const queryClient = useQueryClient();
+  const key = ["adoption", portfolio.uuid];
+  const state = useInvestmentsRead(key, async () => {
+    const [adoption, shared] = await Promise.all([
       adoptionService.get(portfolio.uuid).catch(() => null),
       adoptionService.listShared(portfolio.uuid).catch(() => [] as SharedStrategy[]),
-    ]).then(([adoption, shared]) => {
-      if (!cancelled) setState({ uuid: portfolio.uuid, has: adoption !== null, shared });
-    });
-    return () => { cancelled = true; };
-  }, [portfolio.uuid, backtest, reloadKey]);
-  const current = state?.uuid === portfolio.uuid ? state : undefined;
-  return { hasAdoption: current?.has, shared: current?.shared ?? [], reload: () => setReloadKey((k) => k + 1) };
+    ]);
+    return { has: adoption !== null, shared };
+  }, !backtest);
+  const reload = () => { void queryClient.invalidateQueries({ queryKey: investmentsKey(...key) }); };
+  return { hasAdoption: state?.has, shared: state?.shared ?? [], reload };
 }
 
 /**
@@ -318,18 +309,12 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
   const backtest = isBacktest(portfolio);
   const ruleScope = backtest ? [] : portfolio.isAggregate ? [portfolio.uuid, ...real.map((p) => p.uuid)] : [portfolio.uuid];
   const { rules } = usePortfoliosAlertRules(ruleScope);
-  const [transactions, setTransactions] = useState<{ uuid: string; total: number | null } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    transactionService.getUserTransactions(portfolio.uuid, 1, 0)
-      .then((r) => { if (!cancelled) setTransactions({ uuid: portfolio.uuid, total: r.total }); })
-      .catch(() => { if (!cancelled) setTransactions({ uuid: portfolio.uuid, total: null }); });
-    return () => { cancelled = true; };
-  }, [portfolio.uuid]);
+  const transactions = useInvestmentsRead(
+    ["transactions", portfolio.uuid, "count"], async () => (await transactionService.getUserTransactions(portfolio.uuid, 1, 0)).total,
+  );
 
   return {
-    transactions: transactions?.uuid === portfolio.uuid ? transactions.total : null,
+    transactions: transactions ?? null,
     rules: rules === null ? null : rules.length,
     triggered: rules === null ? 0 : rules.filter((r) => r.enabled && r.isTriggered).length,
   };

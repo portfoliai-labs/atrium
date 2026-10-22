@@ -1,7 +1,7 @@
 // app/components/dashboard/DashboardOverview.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -13,7 +13,7 @@ import { portfolioService } from "../../services/portfolioService";
 import type { Portfolio, PortfolioSnapshot, TodayDashboard } from "../../models/Portfolio";
 import { formatCurrency } from "../../lib/format";
 import { NoDataEmptyState } from "./NoDataEmptyState";
-import { usePortfolio } from "../../context/PortfolioContext";
+import { useInvestmentsQuery, useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
 import { AlertGaugeCard } from "./AlertGauge";
 import { openPortfolioPage, openRealEstatePage, openWalletPage } from "../../lib/dashboardNav";
 import { BudgetsSummaryModule, UpcomingPaymentsModule } from "./DashboardSummaries";
@@ -54,33 +54,20 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
   // The real estate, likewise once there's a property (not archived, not sold).
   const realEstateNetWorth = useRealEstateNetWorth();
   const realEstate = realEstateNetWorth && realEstateNetWorth.properties.length > 0 ? realEstateNetWorth : null;
-  const [snapshots, setSnapshots] = useState<Record<string, SnapshotState>>({});
-
-  // Refetch only when the set of portfolios changes, not on every new array from the context
-  // (a rename replaces the array but not the uuids). A portfolio with no entry yet reads as
-  // loading; on a refetch the previous figures stay up until the new ones land.
-  // The headline's only: the aggregate, or the only real portfolio (never a backtest).
-  const uuidsKey = (portfolios.find((p) => p.isAggregate) ?? portfolios.find((p) => !p.isVirtual))?.uuid ?? "";
-  useEffect(() => {
-    const uuids = uuidsKey ? uuidsKey.split(",") : [];
-    let cancelled = false;
-    uuids.forEach(async (uuid) => {
-      let next: SnapshotState;
-      try {
-        next = { status: "ready", snapshot: await portfolioService.getPortfolioOverview(uuid) };
-      } catch (err) {
-        console.error(`Failed to fetch overview for portfolio ${uuid}:`, err);
-        next = { status: "failed" };
-      }
-      if (!cancelled) setSnapshots((prev) => ({ ...prev, [uuid]: next }));
-    });
-    return () => { cancelled = true; };
-  }, [uuidsKey]);
 
   // Every portfolio together: the aggregate when there is one, otherwise the only real portfolio.
   // A strategy's backtest is simulated money: never the net worth, and not in the aggregate.
   const aggregate = portfolios.find((p) => p.isAggregate);
   const headline = aggregate ?? portfolios.find((p) => !p.isVirtual);
+  // The headline's figures only.
+  const headlineUuid = headline?.uuid ?? "";
+  const overviewRead = useInvestmentsQuery(
+    ["overview", headlineUuid], () => portfolioService.getPortfolioOverview(headlineUuid), { enabled: headlineUuid !== "" },
+  );
+  // On a read again, the previous figures stay up until the new ones land.
+  const headlineState: SnapshotState = overviewRead.data !== undefined ? { status: "ready", snapshot: overviewRead.data }
+    : overviewRead.isError ? { status: "failed" }
+    : { status: "loading" };
 
   // "Manage alerts" (and the empty state's button) open the Alerts page of the selected portfolio
   // (a real one or All portfolios: the default while a backtest is selected).
@@ -101,7 +88,6 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
   const investments = portfolios.find((p) => p.isAggregate) ?? portfolios.find((p) => p.isDefault);
 
   if (!headline) return null;
-  const headlineState = snapshots[headline.uuid] ?? { status: "loading" };
   // A lone portfolio with no data gets the full-page "no data" window and nothing else: an
   // alert with no portfolio to watch has nothing to measure.
   const noDataAtAll = headlineState.status === "ready" && headlineState.snapshot === null && !aggregate;
@@ -421,14 +407,7 @@ function GroupColumn({
  * can mix two versions of the portfolio then).
  */
 function useRecentMoves(portfolioUuid: string) {
-  const [today, setToday] = useState<TodayDashboard | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    portfolioService.getTodayDashboard(portfolioUuid)
-      .then((data) => { if (!cancelled) setToday(data); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [portfolioUuid]);
+  const today = useInvestmentsRead<TodayDashboard | null>(["today", portfolioUuid], () => portfolioService.getTodayDashboard(portfolioUuid));
   return today && !today.isStale ? today : null;
 }
 

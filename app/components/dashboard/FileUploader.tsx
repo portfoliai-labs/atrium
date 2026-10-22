@@ -31,12 +31,13 @@ import { ImportWizard } from "./import/ImportWizard";
 import { UploadedFileState } from "./uploaderTypes";
 import { TransactionsSection, TransactionRow, DisplayTransaction, BulkOperation } from "./TransactionsSection";
 import { TransactionFilterBar, TransactionFilterState, EMPTY_TRANSACTION_FILTERS } from "./TransactionFilterBar";
-import { usePortfolio } from "../../context/PortfolioContext";
+import { useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 
 const EXISTING_PAGE_SIZE = 10;
 const PENDING_PAGE_SIZE = 10;
+const NO_TRANSACTIONS: TransactionResponse[] = [];
 
 function pendingToDisplay(tx: StandardTransaction): DisplayTransaction {
   return {
@@ -165,7 +166,7 @@ function groupByPortfolio<T>(items: T[], portfolioOf: (item: T) => string): Map<
 // `readOnly`: a virtual portfolio's (a backtest's) generated transactions — the saved list only,
 // with nothing to add, import, edit or delete.
 export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = false }: { portfolioUuid?: string; readOnly?: boolean } = {}) {
-  const { portfolios: allPortfolios, current } = usePortfolio();
+  const { portfolios: allPortfolios, current, changed } = usePortfolio();
   // A demo account (see lib/demo) sees the list and can open the form, but can't import, save,
   // edit or delete anything.
   const { isDemo } = useUser();
@@ -186,12 +187,9 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
   const [files, setFiles] = useState<UploadedFileState[]>([]);
   const [mappingModalFileId, setMappingModalFileId] = useState<string | null>(null);
   const [manualTransactions, setManualTransactions] = useState<StandardTransaction[]>([]);
-  const [existingItems, setExistingItems] = useState<TransactionResponse[]>([]);
-  const [existingTotal, setExistingTotal] = useState(0);
   const [existingPage, setExistingPage] = useState(1);
   const [existingFilters, setExistingFilters] = useState<TransactionFilterState>(EMPTY_TRANSACTION_FILTERS);
   const [pendingPage, setPendingPage] = useState(1);
-  const [loadingExisting, setLoadingExisting] = useState(true);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [deletingKeys, setDeletingKeys] = useState<Set<string>>(new Set());
   const [updatingKeys, setUpdatingKeys] = useState<Set<string>>(new Set());
@@ -240,32 +238,20 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
     setExistingPage(1);
   };
 
-  // Fetch one page of the user's already-saved transactions whenever the page, filters, or user changes
-  useEffect(() => {
-    let cancelled = false;
-    setLoadingExisting(true);
-    if (!listUuid) return;
-    transactionService.getUserTransactions(listUuid, EXISTING_PAGE_SIZE, (existingPage - 1) * EXISTING_PAGE_SIZE, toServiceFilters(existingFilters))
-      .then(res => {
-        if (cancelled) return;
-        setExistingItems(res.items);
-        setExistingTotal(res.total);
-      })
-      .finally(() => { if (!cancelled) setLoadingExisting(false); });
-    return () => { cancelled = true; };
-  }, [listUuid, existingPage, existingFilters]);
+  // One page of the user's already-saved transactions, for the page and filters shown (the last
+  // one stays up while the next loads).
+  const existing = useInvestmentsQuery(
+    ["transactions", listUuid, "list", existingPage, existingFilters],
+    () => transactionService.getUserTransactions(listUuid, EXISTING_PAGE_SIZE, (existingPage - 1) * EXISTING_PAGE_SIZE, toServiceFilters(existingFilters)),
+    { enabled: listUuid !== "", keepPrevious: true },
+  );
+  const existingItems = existing.data?.items ?? NO_TRANSACTIONS;
+  const existingTotal = existing.data?.total ?? 0;
+  const loadingExisting = existing.isPending || existing.isFetching;
 
-  // Re-fetches a given page of saved transactions (used after a save/delete changes the underlying data)
-  const refreshExisting = async (page: number) => {
-    setLoadingExisting(true);
-    try {
-      const res = await transactionService.getUserTransactions(listUuid, EXISTING_PAGE_SIZE, (page - 1) * EXISTING_PAGE_SIZE, toServiceFilters(existingFilters));
-      setExistingItems(res.items);
-      setExistingTotal(res.total);
-    } finally {
-      setLoadingExisting(false);
-    }
-  };
+  // After a save/delete changes the underlying data: the list read again, and every investments'
+  // figure with it (Insights, the headers' counters, the Dashboard).
+  const refreshExisting = changed;
 
   // Close the mapping modal if the file it points to has been removed
   useEffect(() => {
@@ -540,7 +526,7 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
             transactionService.deleteTransactions(uuid, txs.map(tx => tx.transaction_uuid)),
           ),
         );
-        await refreshExisting(existingPage);
+        refreshExisting();
       } finally {
         setDeletingKeys(prev => {
           const next = new Set(prev);
@@ -583,11 +569,8 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
         prev.forEach(k => { if (!k.startsWith("existing::")) next.add(k); });
         return next;
       });
-      if (existingPage === 1) {
-        await refreshExisting(1);
-      } else {
-        setExistingPage(1);
-      }
+      refreshExisting();
+      setExistingPage(1);
     } catch (error: unknown) {
       setStatus("error");
       setErrorMessage(error instanceof Error ? error.message : "Failed to delete transactions.");
@@ -674,7 +657,7 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
       const owner = existingItems.find(tx => tx.transaction_uuid === uuid)?.portfolio_uuid ?? listUuid;
       try {
         await transactionService.updateTransaction(owner, uuid, toTransactionInput(pendingToDisplay(updated)));
-        await refreshExisting(existingPage);
+        refreshExisting();
       } catch (error: unknown) {
         setStatus("error");
         setErrorMessage(error instanceof Error ? error.message : "Failed to update transaction.");
@@ -738,7 +721,7 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
         await Promise.all(
           toEdit.map(tx => transactionService.updateTransaction(tx.portfolio_uuid, tx.transaction_uuid, toTransactionInput({ ...existingToDisplay(tx), operation }))),
         );
-        await refreshExisting(existingPage);
+        refreshExisting();
       } catch (error: unknown) {
         setStatus("error");
         setErrorMessage(error instanceof Error ? error.message : "Failed to update some transactions.");
@@ -783,11 +766,8 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
         ),
       );
       setListingsByInstrument({});
-      if (existingPage === 1) {
-        await refreshExisting(1);
-      } else {
-        setExistingPage(1);
-      }
+      refreshExisting();
+      setExistingPage(1);
       setStatus("saved");
       setShowToast(true);
       setFiles([]);
@@ -875,7 +855,7 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
             setTransferFrom(null);
             setStatus("saved");
             setShowToast(true);
-            void refreshExisting(existingPage);
+            refreshExisting();
           }}
         />
       )}
@@ -905,11 +885,8 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
             // Only refreshes the saved-transactions list — the wizard stays open on its
             // "Import complete" summary until the user dismisses it via the Done button,
             // which is what actually advances the queue (onClose).
-            if (existingPage === 1) {
-              void refreshExisting(1);
-            } else {
-              setExistingPage(1);
-            }
+            refreshExisting();
+            setExistingPage(1);
           }}
           onFallbackToManual={() => { void handleWizardFallbackToManual(wizardQueue[0]); }}
         />

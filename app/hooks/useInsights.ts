@@ -1,7 +1,9 @@
 // app/hooks/useInsights.ts
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { investmentsKey } from "../context/PortfolioContext";
 import { portfolioService } from "../services/portfolioService";
 import type {
   InsightsCompositionResponse, InsightsIncomeCostsResponse, InsightsPerformanceResponse, InsightsRiskResponse,
@@ -14,15 +16,10 @@ import type {
 const STALE_POLL_INTERVAL_MS = 15_000;
 const STALE_TIMEOUT_MS = 5 * 60_000;
 
-/**
- * One section of the page: `data` null while its first answer is on its way (or when it failed).
- * `revision` goes up every time the section is fetched again, so a detail view open on one of its
- * modules knows to fetch itself again too.
- */
+/** One section of the page: `data` null while its first answer is on its way (or when it failed). */
 export interface SectionState<T> {
   data: T | null;
   failed: boolean;
-  revision: number;
 }
 
 interface Sections {
@@ -32,7 +29,15 @@ interface Sections {
   risk: SectionState<InsightsRiskResponse>;
 }
 
-type SectionKey = keyof Sections;
+export type SectionKey = keyof Sections;
+
+/**
+ * An Insights read's key in the query cache: a section's (`insightsKey(uuid, "risk")`), or a
+ * detail's under the section its module is in (`insightsKey(uuid, "risk", "riskModel")`), so the
+ * section read again after a rebuild reads its open details again too.
+ */
+export const insightsKey = (portfolioUuid: string, section?: SectionKey, ...detail: unknown[]) =>
+  investmentsKey("insights", portfolioUuid, ...(section ? [section, ...detail] : []));
 
 export interface Insights extends Sections {
   // True once the page has waited STALE_TIMEOUT_MS for a rebuild: a stale module then shows its
@@ -54,7 +59,7 @@ const SECTION_KEYS = Object.keys(LOADERS) as SectionKey[];
 type StaleKey = keyof InsightsStatusModules | "history";
 
 /** The modules of a section that are stale in what was last fetched. */
-function staleKeys(sections: Sections, key: SectionKey): StaleKey[] {
+function staleKeys(sections: { [K in SectionKey]: { data: Sections[K]["data"] } }, key: SectionKey): StaleKey[] {
   const stale: StaleKey[] = [];
   const add = (name: StaleKey, module: { isStale: boolean } | null | undefined) => {
     if (module?.isStale) stale.push(name);
@@ -95,114 +100,82 @@ function staleKeys(sections: Sections, key: SectionKey): StaleKey[] {
 const isFresh = (status: InsightsStatusResponse, key: StaleKey) =>
   key === "history" ? !status.historyIsStale : status.modules[key]?.isStale === false;
 
-const initialSections = (): Sections => ({
-  composition: { data: null, failed: false, revision: 0 },
-  incomeCosts: { data: null, failed: false, revision: 0 },
-  performance: { data: null, failed: false, revision: 0 },
-  risk: { data: null, failed: false, revision: 0 },
-});
+/** The sections as last read for the portfolio, from the cache. */
+const cachedSections = (queryClient: QueryClient, portfolioUuid: string) =>
+  Object.fromEntries(SECTION_KEYS.map((key) => [key, { data: queryClient.getQueryData(insightsKey(portfolioUuid, key)) ?? null }])) as
+    { [K in SectionKey]: { data: Sections[K]["data"] } };
 
 /**
- * The Insights page's main data: its four sections, fetched in parallel, each drawn as soon as
- * it arrives and failing on its own. While any module is stale, polls /insights/status (not the
- * sections) every STALE_POLL_INTERVAL_MS, and fetches a section again once one of its stale
- * modules is reported fresh; after STALE_TIMEOUT_MS it stops and sets `timedOut`.
+ * The Insights page's main data: its four sections, read in parallel (and kept in the query cache,
+ * see context/PortfolioContext), each drawn as soon as it arrives and failing on its own. While any
+ * module is stale, polls /insights/status (not the sections) every STALE_POLL_INTERVAL_MS, and reads
+ * a section again (its open details with it) once one of its stale modules is reported fresh; after
+ * STALE_TIMEOUT_MS it stops and sets `timedOut`.
  */
 export function useInsights(portfolioUuid: string): Insights {
-  const [sections, setSections] = useState<Sections>(initialSections);
-  const [timedOut, setTimedOut] = useState(false);
-
-  // The polling below reads the latest sections without restarting on every refetch.
-  const sectionsRef = useRef(sections);
-  useEffect(() => {
-    sectionsRef.current = sections;
-  }, [sections]);
-
-  // Bumped when the portfolio changes, so an answer for the previous one is dropped.
-  const generation = useRef(0);
-
-  const fetchSection = async <K extends SectionKey>(key: K, gen: number) => {
-    try {
-      const data = await LOADERS[key](portfolioUuid);
-      if (gen !== generation.current) return;
-      setSections((prev) => ({ ...prev, [key]: { data, failed: false, revision: prev[key].revision + 1 } }));
-    } catch {
-      if (gen !== generation.current) return;
-      // A failed refetch keeps what was already on screen; a failed first fetch has nothing to keep.
-      setSections((prev) => ({ ...prev, [key]: { ...prev[key], failed: prev[key].data === null } }));
-    }
-  };
-
-  useEffect(() => {
-    const gen = ++generation.current;
-    setSections(initialSections());
-    setTimedOut(false);
-    SECTION_KEYS.forEach((key) => fetchSection(key, gen));
-    // fetchSection only reads portfolioUuid, which is the dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portfolioUuid]);
+  const queryClient = useQueryClient();
+  const results = useQueries({
+    queries: SECTION_KEYS.map((key) => ({ queryKey: insightsKey(portfolioUuid, key), queryFn: () => LOADERS[key](portfolioUuid) })),
+  });
+  // A failed read again keeps what was already on screen; a failed first read has nothing to keep.
+  const sections = Object.fromEntries(SECTION_KEYS.map((key, i) => {
+    const data = results[i].data ?? null;
+    return [key, { data, failed: results[i].isError && data === null }];
+  })) as unknown as Sections;
 
   const anyStale = SECTION_KEYS.some((key) => staleKeys(sections, key).length > 0);
 
+  // The portfolio whose rebuild has been waited on for STALE_TIMEOUT_MS; cleared once nothing is stale.
+  const [timedOutFor, setTimedOutFor] = useState<string | null>(null);
   useEffect(() => {
-    if (!anyStale) {
-      setTimedOut(false);
-      return;
-    }
-    const gen = generation.current;
-    const deadline = Date.now() + STALE_TIMEOUT_MS;
-    const timer = setInterval(async () => {
-      if (Date.now() >= deadline) {
-        clearInterval(timer);
-        if (gen === generation.current) setTimedOut(true);
-        return;
-      }
-      try {
-        const status = await portfolioService.getInsightsStatus(portfolioUuid);
-        if (gen !== generation.current) return;
-        for (const key of SECTION_KEYS) {
-          if (staleKeys(sectionsRef.current, key).some((k) => isFresh(status, k))) fetchSection(key, gen);
-        }
-      } catch {
-        // A transient error while polling: the next tick tries again.
-      }
-    }, STALE_POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-    // fetchSection only reads portfolioUuid, which is a dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!anyStale) return;
+    const timer = setTimeout(() => setTimedOutFor(portfolioUuid), STALE_TIMEOUT_MS);
+    return () => {
+      clearTimeout(timer);
+      setTimedOutFor(null);
+    };
   }, [anyStale, portfolioUuid]);
+  const timedOut = anyStale && timedOutFor === portfolioUuid;
+
+  useQuery({
+    queryKey: [...insightsKey(portfolioUuid), "status"],
+    queryFn: async () => {
+      const status = await portfolioService.getInsightsStatus(portfolioUuid);
+      const read = cachedSections(queryClient, portfolioUuid);
+      for (const key of SECTION_KEYS) {
+        if (staleKeys(read, key).some((k) => isFresh(status, k))) {
+          void queryClient.invalidateQueries({ queryKey: insightsKey(portfolioUuid, key) });
+          // The volatility's detail is drawn from the returns too (the Performance section's).
+          if (key === "performance") void queryClient.invalidateQueries({ queryKey: insightsKey(portfolioUuid, "risk", "volatility") });
+        }
+      }
+      return status;
+    },
+    enabled: anyStale && !timedOut,
+    // Every tick asks again (a transient error is tried again on the next one); the first waits a
+    // tick too, as the rebuild has only just started.
+    refetchInterval: STALE_POLL_INTERVAL_MS,
+    refetchIntervalInBackground: true,
+    staleTime: STALE_POLL_INTERVAL_MS,
+    initialData: null,
+    initialDataUpdatedAt: () => Date.now(),
+  });
 
   return { ...sections, timedOut };
 }
 
 /**
- * A detail view's own document, fetched when the view opens (`load` non-null) and again whenever
- * `revision` changes (its section was fetched again, e.g. after a rebuild). The previous answer
- * stays on screen while the next one loads. `error` keeps the thrown error, so a caller can tell
- * a 404 from a failure.
+ * A detail view's own document, read when the view opens (`load` non-null) under `key` (an
+ * insightsKey, or another investmentsKey), and again whenever its section is. The previous answer stays on screen while the
+ * next one loads. `error` keeps the thrown error, so a caller can tell a 404 from a failure.
  */
-export function useDetail<T>(load: (() => Promise<T>) | null, key: string, revision: number) {
-  const [state, setState] = useState<{ data: T | null; error: unknown; forKey: string | null }>({ data: null, error: null, forKey: null });
-  const loadRef = useRef(load);
-  useEffect(() => {
-    loadRef.current = load;
-  }, [load]);
-  const active = load !== null;
-
-  useEffect(() => {
-    if (!active || !loadRef.current) return;
-    let cancelled = false;
-    loadRef.current()
-      .then((data) => { if (!cancelled) setState({ data, error: null, forKey: key }); })
-      .catch((error: unknown) => { if (!cancelled) setState((prev) => ({ data: prev.forKey === key ? prev.data : null, error, forKey: key })); });
-    return () => { cancelled = true; };
-  }, [active, key, revision]);
-
+export function useDetail<T>(load: (() => Promise<T>) | null, key: unknown[]) {
+  // A disabled query never calls it.
+  const query = useQuery({ queryKey: key, queryFn: load ?? (() => Promise.reject(new Error("Not open"))), enabled: load !== null });
   // Another key's answer (a different month, say) is never shown for this one.
-  const current = state.forKey === key;
   return {
-    data: current ? state.data : null,
-    error: current ? state.error : null,
-    loading: active && !current,
+    data: query.data ?? null,
+    error: query.error,
+    loading: load !== null && query.isPending,
   };
 }
