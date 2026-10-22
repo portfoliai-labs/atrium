@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { X, AlertCircle, PlusCircle, Pencil, Trash2, ArrowRightLeft } from "lucide-react";
 import { StandardTransaction } from "../../models/Report";
@@ -8,7 +8,7 @@ import { validateTransactions } from "../../lib/parser";
 import type { Portfolio } from "../../models/Portfolio";
 import type { RewardKind, TransactionOperation } from "../../models/Transaction";
 import type { ManualAsset } from "../../models/ManualAsset";
-import { manualAssetService } from "../../services/manualAssetService";
+import { useManualAssets } from "./ManualAssetsEditor";
 import { usePortfolio } from "../../context/PortfolioContext";
 import {
   ACCRUED_INTEREST_OPERATIONS, CASH_OPERATIONS, INSTRUMENT_OPERATIONS, OPERATION_HINTS, OPERATION_LABELS,
@@ -192,6 +192,8 @@ function PillButton({
 
 const num = (s: string) => (s.trim() === "" ? null : Number(s.replace(",", ".")));
 
+const NO_MANUAL_ASSETS: ManualAsset[] = [];
+
 export function TransactionModal({
   mode, initial, onClose, onSave, onDelete, portfolios, defaultPortfolioUuid, lockKind = false, onTransfer, readOnly = false,
 }: TransactionModalProps) {
@@ -207,21 +209,14 @@ export function TransactionModal({
     if (saved.assetId || (!saved.ticker && !saved.listingId)) return null;
     return { listingId: saved.listingId || undefined, ticker: saved.ticker, name: saved.name || saved.ticker, isin: saved.isin || null };
   });
-  // The user's manual assets (a client's, on an advisor's view), once asked for.
-  const [manualAssets, setManualAssets] = useState<ManualAsset[] | null>(null);
-  const [manualError, setManualError] = useState<string | null>(null);
 
   const op = form.operation;
   const cash = isCashOperation(op);
   const wantsManual = !cash && form.assetSource === "manual";
-  useEffect(() => {
-    if (!wantsManual || manualAssets !== null) return;
-    let cancelled = false;
-    manualAssetService.list(client?.uuid)
-      .then((list) => { if (!cancelled) setManualAssets(list); })
-      .catch((err) => { if (!cancelled) { setManualAssets([]); setManualError(err instanceof Error ? err.message : "Unable to load your manual assets."); } });
-    return () => { cancelled = true; };
-  }, [wantsManual, manualAssets, client?.uuid]);
+  // The user's manual assets (a client's, on an advisor's view), once asked for.
+  const manual = useManualAssets(client?.uuid, wantsManual);
+  const manualAssets = manual.isError ? NO_MANUAL_ASSETS : manual.data ?? null;
+  const manualError = manual.isError ? (manual.error instanceof Error ? manual.error.message : "Unable to load your manual assets.") : null;
 
   const set = <K extends keyof FormState>(key: K) => (value: FormState[K]) =>
     setForm(prev => ({ ...prev, [key]: value }));

@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowUpRight, ChevronLeft, ChevronRight, Info, Loader2, X } from "lucide-react";
 import { portfoliosService } from "../../services/portfoliosService";
 import { ApiError } from "../../services/apiClient";
-import { usePortfolio } from "../../context/PortfolioContext";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { investmentsKey, usePortfolio } from "../../context/PortfolioContext";
 import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
 import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
@@ -291,47 +292,47 @@ function useSideScroll(itemCount: number) {
 }
 
 /**
- * Fetches the comparison for the given (comma-joined) uuids, once `enabled`, refetching every
- * STALE_POLL_INTERVAL_MS while any column is stale, for up to STALE_TIMEOUT_MS. `timedOut`
- * means stale columns should now be drawn anyway, with a hint.
+ * Reads the comparison for the given (comma-joined) uuids, once `enabled`, again every
+ * STALE_POLL_INTERVAL_MS while any column is stale, for up to STALE_TIMEOUT_MS from the first
+ * stale answer of this visit. `timedOut` means stale columns should now be drawn anyway, with a hint. Another
+ * selection keeps the previous columns up while it loads, so the page doesn't flash.
  */
 function useComparison(uuidsKey: string, enabled: boolean) {
   const { client } = usePortfolio();
   const clientUuid = client?.uuid ?? null;
-  // `failedStatus`: the refusal's HTTP status, when it was one (403, 404: a strategy not readable
-  // any more).
-  const [state, setState] = useState<{ entries: PortfolioComparisonEntry[] | null; loading: boolean; failed: boolean; failedStatus?: number; timedOut: boolean }>({
-    entries: null, loading: true, failed: false, timedOut: false,
+  const queryClient = useQueryClient();
+  const uuids = uuidsKey ? uuidsKey.split(",") : [];
+  const queryKey = investmentsKey("comparison", clientUuid ?? "own", "compare", uuids);
+  const read = useQuery({
+    queryKey,
+    queryFn: async (): Promise<Compared> => {
+      const entries = await portfoliosService.compare(uuids, clientUuid);
+      if (!entries.some((e) => e.isStale)) return { entries, staleSince: null, timedOut: false };
+      // Stale since the answer before, if it was and it's the last tick's (not an earlier visit's).
+      const before = queryClient.getQueryState<Compared>(queryKey);
+      const polling = before?.data && Date.now() - before.dataUpdatedAt < 2 * STALE_POLL_INTERVAL_MS;
+      const staleSince = (polling ? before.data?.staleSince : null) ?? Date.now();
+      return { entries, staleSince, timedOut: Date.now() - staleSince >= STALE_TIMEOUT_MS };
+    },
+    enabled: enabled && uuids.length >= 1,
+    placeholderData: keepPreviousData,
+    refetchInterval: (query) => (query.state.data?.staleSince != null && !query.state.data.timedOut ? STALE_POLL_INTERVAL_MS : false),
   });
 
-  useEffect(() => {
-    const uuids = uuidsKey ? uuidsKey.split(",") : [];
-    if (!enabled || uuids.length < 1) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const startedAt = Date.now();
+  // `failedStatus`: the refusal's HTTP status, when it was one (403, 404: a strategy not readable
+  // any more).
+  return {
+    entries: read.isError ? null : read.data?.entries ?? null,
+    loading: read.isPending || read.isPlaceholderData,
+    failed: read.isError,
+    failedStatus: read.error instanceof ApiError ? read.error.status : undefined,
+    timedOut: !read.isError && !!read.data?.timedOut,
+  };
+}
 
-    const tick = async (isFirst: boolean) => {
-      // Keep the previous columns up while a new selection loads, so the page doesn't flash.
-      if (isFirst) setState((prev) => ({ ...prev, loading: true, failed: false, timedOut: false }));
-      try {
-        const entries = await portfoliosService.compare(uuids, clientUuid);
-        if (cancelled) return;
-        const anyStale = entries.some((e) => e.isStale);
-        const timedOut = anyStale && Date.now() - startedAt >= STALE_TIMEOUT_MS;
-        setState({ entries, loading: false, failed: false, timedOut });
-        if (anyStale && !timedOut) timer = setTimeout(() => tick(false), STALE_POLL_INTERVAL_MS);
-      } catch (err) {
-        if (!cancelled) setState({ entries: null, loading: false, failed: true, failedStatus: err instanceof ApiError ? err.status : undefined, timedOut: false });
-      }
-    };
-    tick(true);
-
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [uuidsKey, clientUuid, enabled]);
-
-  return state;
+/** The comparison as read, and since when some column has been stale (null: none is). */
+interface Compared {
+  entries: PortfolioComparisonEntry[];
+  staleSince: number | null;
+  timedOut: boolean;
 }

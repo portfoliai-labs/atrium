@@ -1,10 +1,11 @@
 // components/dashboard/taxes/TaxesPage.tsx
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
+import type { UseQueryResult } from "@tanstack/react-query";
 import { AlertTriangle, ChevronDown, Hourglass, Info, Loader2, Landmark } from "lucide-react";
 import { usePortfolio } from "../../../context/PortfolioContext";
-import { taxService } from "../../../services/taxService";
+import { useRealizedGains, useTaxIncome, useTaxYear } from "../../../hooks/useTaxes";
 import { ApiError } from "../../../services/apiClient";
 import { formatCurrency, formatQuantity } from "../../../lib/format";
 import {
@@ -21,7 +22,13 @@ import { Fig, Figs, Module, ModuleHead, MODULE_BODY } from "../PerformanceSectio
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 
 // What a request came back with: the answer, or why there's none.
-type Loaded<T> = { key: string; data: T | null; error: string | null; noRegime?: boolean };
+type Loaded<T> = { data: T | null; error: string | null; noRegime?: boolean };
+
+/** A read's answer as the page draws it: null while it loads, its data or what went wrong. */
+function loaded<T>(read: UseQueryResult<T>, failure: (err: unknown) => { error: string | null; noRegime?: boolean }): Loaded<T> | null {
+  if (read.isError) return { data: null, ...failure(read.error) };
+  return read.data === undefined ? null : { data: read.data, error: null };
+}
 
 const errorText = (err: unknown, what: string) => {
   if (err instanceof ApiError && err.status === 503) return `A currency's exchange rate is missing, so ${what} can't be computed yet. Try again later.`;
@@ -62,49 +69,23 @@ export function TaxesPage({ trail, initialYear, onOpenSettings, onOpenPortfolios
   onOpenPortfolios: () => void;
 }) {
   const { portfolios, client } = usePortfolio();
-  const clientUuid = client?.uuid ?? null;
   const years = useMemo(() => taxYears(), []);
   const [year, setYear] = useState(() => (initialYear !== undefined && years.includes(initialYear) ? initialYear : years[0]));
   // null: the regime's own.
   const [method, setMethod] = useState<CostMethod | null>(null);
-  const [taxYear, setTaxYear] = useState<Loaded<TaxYear> | null>(null);
-  const [gains, setGains] = useState<Loaded<RealizedGains> | null>(null);
-  const [income, setIncome] = useState<Loaded<InvestmentIncome> | null>(null);
+  // A residence set elsewhere (the Profile, the client's settings) invalidates them (`changed()`).
+  const yearRead = useTaxYear(year);
+  const incomeRead = useTaxIncome(year);
+  // The year's gains by the method asked before, kept on screen while another method's load.
+  const gainsRead = useRealizedGains(year, method, { keepPrevious: true });
 
-  const yearKey = `${clientUuid}:${year}`;
-  const gainsKey = `${yearKey}:${method}`;
-  // A residence set elsewhere (another tab, the client's settings) is read on the next visit.
-  useEffect(() => {
-    let cancelled = false;
-    taxService.year(year, clientUuid)
-      .then((data) => { if (!cancelled) setTaxYear({ key: yearKey, data, error: null }); })
-      .catch((err) => {
-        if (cancelled) return;
-        const noRegime = err instanceof ApiError && err.status === 409 && err.errorType === TAX_REGIME_UNAVAILABLE;
-        setTaxYear({ key: yearKey, data: null, error: noRegime ? null : errorText(err, "this year's taxes"), noRegime });
-      });
-    return () => { cancelled = true; };
-  }, [year, clientUuid, yearKey]);
-  useEffect(() => {
-    let cancelled = false;
-    taxService.income(year, clientUuid)
-      .then((data) => { if (!cancelled) setIncome({ key: yearKey, data, error: null }); })
-      .catch((err) => { if (!cancelled) setIncome({ key: yearKey, data: null, error: errorText(err, "this year's income") }); });
-    return () => { cancelled = true; };
-  }, [year, clientUuid, yearKey]);
-  useEffect(() => {
-    let cancelled = false;
-    taxService.realizedGains(year, method, clientUuid)
-      .then((data) => { if (!cancelled) setGains({ key: gainsKey, data, error: null }); })
-      .catch((err) => { if (!cancelled) setGains({ key: gainsKey, data: null, error: errorText(err, "this year's sales") }); });
-    return () => { cancelled = true; };
-  }, [year, method, clientUuid, gainsKey]);
-
-  const tax = taxYear?.key === yearKey ? taxYear : null;
-  const sales = gains?.key === gainsKey ? gains : null;
-  const payments = income?.key === yearKey ? income : null;
-  // The gains of the year asked before, kept on screen while another method's load.
-  const shownSales = sales ?? (gains?.key.startsWith(`${yearKey}:`) ? gains : null);
+  const tax = loaded(yearRead, (err) => {
+    const noRegime = err instanceof ApiError && err.status === 409 && err.errorType === TAX_REGIME_UNAVAILABLE;
+    return { error: noRegime ? null : errorText(err, "this year's taxes"), noRegime };
+  });
+  const payments = loaded(incomeRead, (err) => ({ error: errorText(err, "this year's income") }));
+  const sales = gainsRead.isPlaceholderData ? null : loaded(gainsRead, (err) => ({ error: errorText(err, "this year's sales") }));
+  const shownSales = sales ?? (gainsRead.isPlaceholderData ? { data: gainsRead.data, error: null } : null);
 
   const nameOf = useMemo(() => {
     const names = new Map(portfolios.map((p) => [p.uuid, p.name]));

@@ -1,9 +1,9 @@
 // components/dashboard/MarketDataModule.tsx
 "use client";
 
-import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { portfolioService } from "../../services/portfolioService";
+import { useInvestmentsRead } from "../../context/PortfolioContext";
 import { MARKET_DATA_SOURCE_LABELS, type AssetMarketData, type RiskStatistics } from "../../models/MarketData";
 import { CardFoot, CardInfo } from "./InstrumentProfileModule";
 import { MODULE_BODY, Module, ModuleHead } from "./PerformanceSection";
@@ -55,18 +55,9 @@ const COLUMNS_CLASS: Record<number, string> = { 1: "", 2: "md:grid-cols-2", 3: "
  * with none of them, leaves the cards out; a card with no values is left out too.
  */
 export function MarketDataModule({ listingId }: { listingId: string }) {
-  const [state, setState] = useState<{ listingId: string; data: AssetMarketData | null } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    portfolioService.getAssetMarketData(listingId)
-      .then((data) => { if (!cancelled) setState({ listingId, data }); })
-      .catch(() => { if (!cancelled) setState({ listingId, data: null }); });
-    return () => { cancelled = true; };
-  }, [listingId]);
-
-  const current = state?.listingId === listingId ? state : undefined;
-  if (current === undefined) {
+  // undefined while it's computed, null when it couldn't be.
+  const data = useInvestmentsRead<AssetMarketData>(["asset", listingId, "marketData"], () => portfolioService.getAssetMarketData(listingId));
+  if (data === undefined) {
     return (
       <Module>
         <ModuleHead title="Market data" desc={DESC} />
@@ -78,7 +69,6 @@ export function MarketDataModule({ listingId }: { listingId: string }) {
       </Module>
     );
   }
-  const data = current.data;
   if (data === null) return null;
   const { quote, marketCap, valuation, averageVolume, risk, currency } = data;
 

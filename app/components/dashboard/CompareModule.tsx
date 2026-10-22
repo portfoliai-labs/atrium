@@ -1,10 +1,10 @@
 // components/dashboard/CompareModule.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Loader2 } from "lucide-react";
-import { usePortfolio } from "../../context/PortfolioContext";
+import { useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
 import { portfoliosService } from "../../services/portfoliosService";
 import { portfolioColorMap } from "../../lib/chartColors";
 import { toChartPoints } from "../../lib/series";
@@ -79,20 +79,12 @@ export function useCompareEntries() {
   const { portfolios, client } = usePortfolio();
   const real = useMemo(() => portfolios.filter((p) => !p.isVirtual && !p.isAggregate), [portfolios]);
   const colorOf = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
-  const key = `${client?.uuid ?? "own"}:${real.map((p) => p.uuid).join(",")}`;
-  const [state, setState] = useState<{ key: string; entries: PortfolioComparisonEntry[] | null } | null>(null);
+  const uuids = real.map((p) => p.uuid);
+  const entries = useInvestmentsRead(
+    ["comparison", client?.uuid ?? "own", "real", uuids], () => portfoliosService.compare(uuids, client?.uuid ?? null),
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    portfoliosService.compare(real.map((p) => p.uuid), client?.uuid ?? null)
-      .then((entries) => { if (!cancelled) setState({ key, entries }); })
-      .catch(() => { if (!cancelled) setState({ key, entries: null }); });
-    return () => { cancelled = true; };
-    // `real` and the client are read through `key`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
-  return { entries: state?.key === key ? state.entries : undefined, colorOf };
+  return { entries, colorOf };
 }
 
 /** A figure's portfolio: its colour, as its line and its slice of the donut have it, its name on hover. */

@@ -1,10 +1,11 @@
 // components/dashboard/AssetCategoriesEditor.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlertTriangle, ChevronDown, Loader2, RotateCcw } from "lucide-react";
 import { useUser } from "../../context/UserContext";
-import { usePortfolio } from "../../context/PortfolioContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { investmentsKey, useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContext";
 import { assetCategoryService } from "../../services/assetCategoryService";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import { STRATEGY_CATEGORIES, STRATEGY_CATEGORY_LABELS, type StrategyCategory } from "../../models/Strategy";
@@ -23,27 +24,22 @@ import type { AssetCategoryEntry } from "../../models/AssetCategory";
 export function AssetCategoriesEditor({ clientUuid }: { clientUuid?: string }) {
   const { isDemo } = useUser();
   const { changed } = usePortfolio();
-  const [entries, setEntries] = useState<AssetCategoryEntry[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const key = ["assetCategories", clientUuid ?? "own"];
+  const read = useInvestmentsQuery(key, () => assetCategoryService.list(clientUuid));
+  const entries = read.data ?? null;
+  const loadError = read.isError ? (read.error instanceof Error ? read.error.message : "Unable to load the categories.") : null;
   // The rows with a change on its way, and the last change each one couldn't make.
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [showGone, setShowGone] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    assetCategoryService.list(clientUuid)
-      .then((list) => { if (!cancelled) setEntries(list); })
-      .catch((err) => { if (!cancelled) setLoadError(err instanceof Error ? err.message : "Unable to load the categories."); });
-    return () => { cancelled = true; };
-  }, [clientUuid]);
 
   // Both writes answer with the whole list as it is then.
   const change = async (assetId: string, write: () => Promise<AssetCategoryEntry[]>) => {
     setBusy((b) => new Set(b).add(assetId));
     setRowErrors((e) => Object.fromEntries(Object.entries(e).filter(([id]) => id !== assetId)));
     try {
-      setEntries(await write());
+      queryClient.setQueryData(investmentsKey(...key), await write());
       // The portfolios' composition by category moves with it.
       changed();
     } catch (err) {

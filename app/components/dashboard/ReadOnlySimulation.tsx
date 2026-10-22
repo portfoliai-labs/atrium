@@ -1,7 +1,8 @@
 // components/dashboard/ReadOnlySimulation.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useInvestmentsRead } from "../../context/PortfolioContext";
 import { portfoliosService } from "../../services/portfoliosService";
 import type { PortfolioComparisonEntry } from "../../models/PortfolioData";
 import { PerformanceSection } from "./PerformanceSection";
@@ -37,31 +38,16 @@ export function ReadOnlySimulation({ portfolioUuid, trail, eyebrow, title: known
   extraActions?: PageAction[];
   onNavigate?: (section: string) => void;
 }) {
-  const [name, setName] = useState<{ uuid: string; value: string | null } | null>(null);
   const [tool, setTool] = useState<"stress" | "projection" | null>(null);
   // Its returns beside the Performance chart (TWR since inception, last 12 months, per year), from
   // the comparison as a portfolio's page has them (GET /v1/portfolios/comparison reads any portfolio
   // the viewer can).
-  const [comparison, setComparison] = useState<{ uuid: string; value: PortfolioComparisonEntry | null } | null>(null);
+  const comparison = useInvestmentsRead<PortfolioComparisonEntry | null>(
+    ["comparison", "own", portfolioUuid], async () => (await portfoliosService.compare([portfolioUuid]))[0] ?? null,
+  );
+  const name = useInvestmentsRead(["portfolio", portfolioUuid], () => portfoliosService.get(portfolioUuid), !knownTitle);
 
-  useEffect(() => {
-    let cancelled = false;
-    portfoliosService.compare([portfolioUuid])
-      .then((list) => { if (!cancelled) setComparison({ uuid: portfolioUuid, value: list[0] ?? null }); })
-      .catch(() => { if (!cancelled) setComparison({ uuid: portfolioUuid, value: null }); });
-    return () => { cancelled = true; };
-  }, [portfolioUuid]);
-
-  useEffect(() => {
-    if (knownTitle) return;
-    let cancelled = false;
-    portfoliosService.get(portfolioUuid)
-      .then((p) => { if (!cancelled) setName({ uuid: portfolioUuid, value: p.name }); })
-      .catch(() => { if (!cancelled) setName({ uuid: portfolioUuid, value: null }); });
-    return () => { cancelled = true; };
-  }, [portfolioUuid, knownTitle]);
-
-  const title = knownTitle ?? (name?.uuid === portfolioUuid ? name.value : null) ?? "Simulation";
+  const title = knownTitle ?? name?.name ?? "Simulation";
 
   const back = [...trail, { label: title, onClick: () => setTool(null) }];
   if (tool === "stress") return <StressTestPage portfolioUuid={portfolioUuid} trail={back} eyebrow={eyebrow} />;
@@ -76,7 +62,7 @@ export function ReadOnlySimulation({ portfolioUuid, trail, eyebrow, title: known
       key={portfolioUuid}
       portfolioUuid={portfolioUuid}
       backtest
-      comparison={comparison?.uuid === portfolioUuid ? comparison.value : null}
+      comparison={comparison ?? null}
       strategyShown={strategyShown}
       trail={trail}
       pageLabel={title}

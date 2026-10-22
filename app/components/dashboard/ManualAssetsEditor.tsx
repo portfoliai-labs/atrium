@@ -1,10 +1,11 @@
 // components/dashboard/ManualAssetsEditor.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useUser } from "../../context/UserContext";
-import { usePortfolio } from "../../context/PortfolioContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { investmentsKey, useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContext";
 import { manualAssetService } from "../../services/manualAssetService";
 import { ApiError } from "../../services/apiClient";
 import { formatCurrency } from "../../lib/format";
@@ -21,6 +22,13 @@ const today = () => new Date().toLocaleDateString("en-CA");
 const dateLabel = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
 const errorText = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback);
 
+const manualAssetsKey = (clientUuid?: string) => investmentsKey("manualAssets", clientUuid ?? "own");
+
+/** The user's manual assets (a client's, with `clientUuid`), through the query cache. */
+export function useManualAssets(clientUuid?: string, enabled = true) {
+  return useInvestmentsQuery(["manualAssets", clientUuid ?? "own"], () => manualAssetService.list(clientUuid), { enabled });
+}
+
 /**
  * MANUAL ASSETS — the user's investments with no market price (GET /v1/manual-assets): unlisted
  * shares, private equity, a loan, physical gold, each valued by hand. Created here with a name, a
@@ -35,25 +43,22 @@ const errorText = (err: unknown, fallback: string) => (err instanceof Error ? er
 export function ManualAssetsEditor({ clientUuid }: { clientUuid?: string }) {
   const { isDemo } = useUser();
   const { changed } = usePortfolio();
-  const [assets, setAssets] = useState<ManualAsset[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const read = useManualAssets(clientUuid);
+  const assets = read.data ?? null;
+  const loadError = read.isError ? errorText(read.error, "Unable to load the manual assets.") : null;
+  // The list as the writes leave it (shared with the transaction form's).
+  const setAssets = (update: (prev: ManualAsset[] | undefined) => ManualAsset[] | undefined) =>
+    queryClient.setQueryData<ManualAsset[]>(manualAssetsKey(clientUuid), update);
   const [creating, setCreating] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<ManualAsset | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    manualAssetService.list(clientUuid)
-      .then((list) => { if (!cancelled) setAssets(list); })
-      .catch((err) => { if (!cancelled) setLoadError(errorText(err, "Unable to load the manual assets.")); });
-    return () => { cancelled = true; };
-  }, [clientUuid]);
-
   // A rename, a category or a valuation: the portfolios holding it are computed again.
   const replace = (asset: ManualAsset) => {
-    setAssets((prev) => prev?.map((a) => (a.uuid === asset.uuid ? asset : a)) ?? prev);
+    setAssets((prev) => prev?.map((a) => (a.uuid === asset.uuid ? asset : a)));
     changed();
   };
 
@@ -63,7 +68,7 @@ export function ManualAssetsEditor({ clientUuid }: { clientUuid?: string }) {
     setDeleteError(null);
     try {
       await manualAssetService.remove(deleting.uuid);
-      setAssets((prev) => prev?.filter((a) => a.uuid !== deleting.uuid) ?? prev);
+      setAssets((prev) => prev?.filter((a) => a.uuid !== deleting.uuid));
       setDeleting(null);
     } catch (err) {
       setDeleteError(err instanceof ApiError && err.errorType === MANUAL_ASSET_IN_USE
@@ -288,27 +293,25 @@ function AssetRow({ asset, expanded, readOnly, onToggle, onChanged, onDelete }: 
 
 type Draft = { valuedOn: string; price: string };
 
+const NO_VALUATIONS: ManualValuation[] = [];
+
 /**
  * An asset's valuations, newest first, each removable, and new ones added by day (one already
  * there is replaced). No day twice, none in the future, at most MANUAL_VALUATIONS_MAX at once.
  */
 function Valuations({ asset, readOnly, onLatest }: { asset: ManualAsset; readOnly: boolean; onLatest: (v: ManualValuation | null) => void }) {
-  const [list, setList] = useState<ManualValuation[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const key = ["manualAssetValuations", asset.uuid];
+  const read = useInvestmentsQuery(key, () => manualAssetService.valuations(asset.uuid));
+  const list = read.isError ? NO_VALUATIONS : read.data ?? null;
+  const [writeError, setError] = useState<string | null>(null);
+  const error = writeError ?? (read.isError ? errorText(read.error, "Unable to load the valuations.") : null);
   const [drafts, setDrafts] = useState<Draft[]>([{ valuedOn: today(), price: "" }]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    manualAssetService.valuations(asset.uuid)
-      .then((v) => { if (!cancelled) setList(v); })
-      .catch((err) => { if (!cancelled) { setList([]); setError(errorText(err, "Unable to load the valuations.")); } });
-    return () => { cancelled = true; };
-  }, [asset.uuid]);
-
   const take = (next: ManualValuation[]) => {
-    setList(next);
+    queryClient.setQueryData(investmentsKey(...key), next);
     onLatest(next.length > 0 ? next[next.length - 1] : null);
   };
 

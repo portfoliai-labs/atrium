@@ -4,12 +4,13 @@
 import { Fragment, useEffect, useState } from "react";
 import { AlertCircle, ArrowUpRight, ChevronLeft, ChevronRight, Info, Loader2, Telescope } from "lucide-react";
 import { publicationService } from "../../services/publicationService";
+import { useInvestmentsQuery, useInvestmentsRead } from "../../context/PortfolioContext";
 import { ApiError } from "../../services/apiClient";
 import { STRATEGY_PROXIES, simulatedPeriod, targetLabel, type StrategyCosts, type StrategyParams, type StrategyResponse, type StrategyTarget } from "../../models/Strategy";
 import { portfoliosService } from "../../services/portfoliosService";
 import {
   CRISIS_LABELS, FILTER_HORIZONS, HORIZON_LABELS, SORT_LABELS, isFigureSort,
-  type CatalogPage, type CatalogSort, type FilterHorizon, type HorizonFigures, type PublishedStrategy,
+  type CatalogSort, type FilterHorizon, type HorizonFigures, type PublishedStrategy,
 } from "../../models/PublishedStrategy";
 import { exchangeLabel } from "../../models/Listing";
 import { formatCurrency } from "../../lib/format";
@@ -155,7 +156,6 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen }: {
   // The figure filters as last sent: they follow the inputs once typing stops.
   const [applied, setApplied] = useState({ maxVolatilityPct: "", maxDrawdownPct: "" });
   const [page, setPage] = useState(0);
-  const [result, setResult] = useState<{ key: string; page: CatalogPage | null; error: string | null } | null>(null);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -176,22 +176,12 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen }: {
         offset: page * PAGE_SIZE,
       }
     : { limit: PAGE_SIZE, offset: page * PAGE_SIZE };
-  const key = JSON.stringify(query);
 
-  useEffect(() => {
-    let cancelled = false;
-    publicationService.list(JSON.parse(key))
-      .then((p) => { if (!cancelled) setResult({ key, page: p, error: null }); })
-      .catch((err) => {
-        if (!cancelled) setResult({ key, page: null, error: err instanceof Error ? err.message : "Unable to load the strategies." });
-      });
-    return () => { cancelled = true; };
-  }, [key]);
-
-  const current = result?.key === key ? result : null;
   // While the next page loads, the last one stays, dimmed.
-  const shown = current?.page ?? result?.page ?? null;
-  const loading = current === null;
+  const read = useInvestmentsQuery(["publications", "catalog", query], () => publicationService.list(query), { keepPrevious: true });
+  const loading = read.isPending || read.isPlaceholderData;
+  const error = !loading && read.isError ? (read.error instanceof Error ? read.error.message : "Unable to load the strategies.") : null;
+  const shown = read.data ?? null;
 
   const setHorizon = (horizon: FilterHorizon | null) => {
     // Back to no horizon: nothing it needed stays set.
@@ -293,15 +283,15 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen }: {
         )}
       </section>
 
-      {show === "all" && current?.error && (
-        <p className="flex items-center gap-2 text-sm font-semibold text-rose-600"><AlertCircle className="h-4 w-4" /> {current.error}</p>
+      {show === "all" && error && (
+        <p className="flex items-center gap-2 text-sm font-semibold text-rose-600"><AlertCircle className="h-4 w-4" /> {error}</p>
       )}
       {show === "own" && own.length === 0 ? (
         emptyOwn
-      ) : show === "all" && !shown && !current?.error ? (
+      ) : show === "all" && !shown && !error ? (
         <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-[#C49A3C]" /></div>
       ) : cards.length === 0 ? (
-        current?.error ? null : (
+        error ? null : (
           <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white px-6 py-10 flex flex-col items-center text-center gap-2">
             <Telescope className="h-6 w-6 text-slate-400" />
             <p className="text-sm font-black text-slate-900">
@@ -456,50 +446,31 @@ export function PublishedStrategyPage({ publicationId, trail, onCompare, onNavig
   onCompare?: (strategies: CompareStrategy[]) => void;
   onNavigate?: (section: string) => void;
 }) {
-  const [result, setResult] = useState<{ id: string; strategy: PublishedStrategy | null; error: string | null } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    publicationService.get(publicationId)
-      .then((s) => { if (!cancelled) setResult({ id: publicationId, strategy: s, error: null }); })
-      .catch((err) => {
-        if (cancelled) return;
-        const error = err instanceof ApiError && err.status === 404
-          ? "This strategy isn't in the catalog any more: its author withdrew it."
-          : err instanceof Error ? err.message : "Unable to load this strategy.";
-        setResult({ id: publicationId, strategy: null, error });
-      });
-    return () => { cancelled = true; };
-  }, [publicationId]);
+  const read = useInvestmentsQuery(["publications", publicationId], () => publicationService.get(publicationId));
+  const error = !read.isError ? null
+    : read.error instanceof ApiError && read.error.status === 404 ? "This strategy isn't in the catalog any more: its author withdrew it."
+    : read.error instanceof Error ? read.error.message : "Unable to load this strategy.";
 
   // What the catalog leaves out of a strategy, from its backtest (GET /v1/portfolios/{p}/strategy,
   // readable while it's published): the amount it started with, and the money it added or took.
-  const portfolioUuid = result?.id === publicationId ? result.strategy?.portfolioUuid ?? null : null;
-  const [params, setParams] = useState<{ uuid: string; value: StrategyResponse | null } | null>(null);
-  useEffect(() => {
-    if (!portfolioUuid) return;
-    let cancelled = false;
-    portfoliosService.getStrategy(portfolioUuid)
-      .then((v) => { if (!cancelled) setParams({ uuid: portfolioUuid, value: v }); })
-      .catch(() => { if (!cancelled) setParams({ uuid: portfolioUuid, value: null }); });
-    return () => { cancelled = true; };
-  }, [portfolioUuid]);
   // undefined while loading, null when it couldn't be read.
-  const flows = params?.uuid === portfolioUuid ? params.value : undefined;
+  const portfolioUuid = read.data?.portfolioUuid ?? null;
+  const flows = useInvestmentsRead<StrategyResponse>(
+    ["strategy", portfolioUuid], () => portfoliosService.getStrategy(portfolioUuid!), portfolioUuid !== null,
+  );
 
-  const current = result?.id === publicationId ? result : null;
-  if (!current?.strategy) {
+  if (!read.data) {
     return (
       <div className="space-y-6 pb-12">
         <Breadcrumb trail={trail} current="Published strategy" />
-        {current?.error
-          ? <p className="flex items-center gap-2 text-sm font-semibold text-rose-600"><AlertCircle className="h-4 w-4" /> {current.error}</p>
+        {error
+          ? <p className="flex items-center gap-2 text-sm font-semibold text-rose-600"><AlertCircle className="h-4 w-4" /> {error}</p>
           : <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-[#C49A3C]" /></div>}
       </div>
     );
   }
 
-  const s = current.strategy;
+  const s = read.data;
   const horizons = HORIZON_ORDER.flatMap((h) => s.horizons.filter((x) => x.horizon === h));
   const period = simulatedPeriod(s.startedOn);
 

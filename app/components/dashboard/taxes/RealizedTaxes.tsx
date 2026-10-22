@@ -1,17 +1,18 @@
 // components/dashboard/taxes/RealizedTaxes.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Bar, BarChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Hourglass, Info } from "lucide-react";
-import { usePortfolio } from "../../../context/PortfolioContext";
-import { taxService } from "../../../services/taxService";
+import { useInvestmentsRead, usePortfolio } from "../../../context/PortfolioContext";
+import { fetchTaxYear, taxesByYearKey, useRealizedGains, useTaxYear } from "../../../hooks/useTaxes";
 import { transactionService } from "../../../services/transactionService";
 import { ApiError } from "../../../services/apiClient";
 import { formatCompact, formatCurrency } from "../../../lib/format";
 import { CATEGORICAL_PALETTE } from "../../../lib/chartColors";
 import { TAX_DISCLAIMER, taxYears } from "../../../lib/taxes";
-import { TAX_REGIME_UNAVAILABLE, type RealizedGains, type TaxYear } from "../../../models/Tax";
+import { TAX_REGIME_UNAVAILABLE, type TaxYear } from "../../../models/Tax";
 import { ExplorePanel } from "../ExploreView";
 import { AXIS_TICK_COLOR, FigRows, TOOLTIP_STYLE } from "../PerformanceSection";
 
@@ -50,27 +51,21 @@ async function yearsWithTransactions(portfolioUuid: string): Promise<number[]> {
 export function TaxesByYearPanel({ portfolioUuid, onOpen }: { portfolioUuid: string; onOpen: (year?: number) => void }) {
   const { client } = usePortfolio();
   const clientUuid = client?.uuid ?? null;
-  const key = `${clientUuid}:${portfolioUuid}`;
-  // undefined loading; "noRegime" without a residence or a regime for it; null failed.
-  const [state, setState] = useState<{ key: string; value: TaxYear[] | "noRegime" | null } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const years = await yearsWithTransactions(portfolioUuid);
-      if (years.length === 0) return [];
-      // The latest year first: without a regime, none of them has one, so no more asking.
-      const latest = await Promise.allSettled([taxService.year(years[years.length - 1], clientUuid)]);
-      if (latest[0].status === "rejected" && isNoRegime(latest[0].reason)) return "noRegime" as const;
-      const results = [...await Promise.allSettled(years.slice(0, -1).map((y) => taxService.year(y, clientUuid))), ...latest];
-      const read = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
-      // Some years missing (a currency without rates): the others still read.
-      return read.length > 0 || years.length === 0 ? read : null;
-    })()
-      .catch(() => null)
-      .then((value) => { if (!cancelled) setState({ key, value }); });
-    return () => { cancelled = true; };
-  }, [portfolioUuid, clientUuid, key]);
-  const data = state?.key === key ? state.value : undefined;
+  const queryClient = useQueryClient();
+  // undefined loading; "noRegime" without a residence or a regime for it; null failed. Each year
+  // through the cache, shared with the Taxes page's.
+  const data = useInvestmentsRead<TaxYear[] | "noRegime" | null>(taxesByYearKey(clientUuid, portfolioUuid), async () => {
+    const years = await yearsWithTransactions(portfolioUuid);
+    if (years.length === 0) return [];
+    const year = (y: number) => fetchTaxYear(queryClient, clientUuid, y);
+    // The latest year first: without a regime, none of them has one, so no more asking.
+    const latest = await Promise.allSettled([year(years[years.length - 1])]);
+    if (latest[0].status === "rejected" && isNoRegime(latest[0].reason)) return "noRegime";
+    const results = [...await Promise.allSettled(years.slice(0, -1).map(year)), ...latest];
+    const read = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+    // Some years missing (a currency without rates): the others still read.
+    return read.length > 0 ? read : null;
+  });
 
   const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
   const currency = rows[0]?.currency ?? "EUR";
@@ -194,24 +189,16 @@ export function TaxesByYearPanel({ portfolioUuid, onOpen }: { portfolioUuid: str
  * Opens the Taxes page on the year (`onOpen`). Nothing without a residence or when it can't be read.
  */
 export function PortfolioTaxYear({ portfolioUuid, onOpen }: { portfolioUuid: string; onOpen: (year?: number) => void }) {
-  const { portfolios, client } = usePortfolio();
-  const clientUuid = client?.uuid ?? null;
+  const { portfolios } = usePortfolio();
   const portfolio = portfolios.find((p) => p.uuid === portfolioUuid);
   const declared = portfolios.filter((p) => !p.isVirtual && p.taxationMode === "declared");
   const withheld = portfolio?.taxationMode === "withheld";
   // Declared with others: its own net, from the year's sales.
   const shared = !withheld && declared.length > 1;
   const year = new Date().getFullYear();
-  const key = `${clientUuid}:${portfolioUuid}:${year}:${shared}`;
-  const [state, setState] = useState<{ key: string; value: { tax: TaxYear; gains: RealizedGains | null } | null } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([taxService.year(year, clientUuid), shared ? taxService.realizedGains(year, null, clientUuid) : null])
-      .then(([tax, gains]) => { if (!cancelled) setState({ key, value: { tax, gains } }); })
-      .catch(() => { if (!cancelled) setState({ key, value: null }); });
-    return () => { cancelled = true; };
-  }, [year, clientUuid, shared, key]);
-  const data = state?.key === key ? state.value : undefined;
+  const tax = useTaxYear(year);
+  const gains = useRealizedGains(year, null, { enabled: shared });
+  const data = tax.data && (!shared || gains.data) ? { tax: tax.data, gains: shared ? gains.data ?? null : null } : undefined;
   if (!portfolio || !data) return null;
 
   const money = (v: number) => formatCurrency(v, data.tax.currency, 0);

@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueries } from "@tanstack/react-query";
+import { investmentsKey } from "../../context/PortfolioContext";
 import { createPortal } from "react-dom";
 import { AlertTriangle, Loader2, X } from "lucide-react";
 import { listingLine, type Listing } from "../../models/Listing";
@@ -44,40 +46,30 @@ export function ListingResolutionModal({
   onResolved: (listings: Record<string, Listing>) => void;
   onClose: () => void;
 }) {
-  const [candidates, setCandidates] = useState<Record<string, Listing[] | "error">>({});
-  const [picked, setPicked] = useState<Record<string, Listing>>({});
+  // Each security's search, through the cache (the same as the asset picker's for that text).
+  const answers = useQueries({
+    queries: instruments.map((instrument) => ({
+      queryKey: investmentsKey("listings", queryOf(instrument)),
+      queryFn: ({ signal }: { signal: AbortSignal }) => listingService.search(queryOf(instrument), signal),
+    })),
+  });
+  const candidates: Record<string, Listing[] | "error"> = {};
+  instruments.forEach((instrument, i) => {
+    const answer = answers[i];
+    if (answer.isError) candidates[instrument.key] = "error";
+    else if (answer.data) candidates[instrument.key] = answer.data;
+  });
+  // What the user picked or cleared, over what the search proposes (see `proposed`).
+  const [choices, setChoices] = useState<Record<string, Listing | null>>({});
+  const picked: Record<string, Listing> = {};
+  for (const instrument of instruments) {
+    const found = candidates[instrument.key];
+    const choice = instrument.key in choices ? choices[instrument.key]
+      : found && found !== "error" ? proposed(found, instrument.currencies) : null;
+    if (choice) picked[instrument.key] = choice;
+  }
 
-  useEffect(() => {
-    let cancelled = false;
-    void Promise.all(instruments.map(async (instrument) => {
-      try {
-        return [instrument.key, await listingService.search(queryOf(instrument))] as const;
-      } catch {
-        return [instrument.key, "error"] as const;
-      }
-    })).then((answers) => {
-      if (cancelled) return;
-      setCandidates(Object.fromEntries(answers));
-      setPicked((prev) => {
-        const next = { ...prev };
-        for (const [key, found] of answers) {
-          const instrument = instruments.find((i) => i.key === key);
-          const proposal = found !== "error" && instrument ? proposed(found, instrument.currencies) : null;
-          if (proposal && !next[key]) next[key] = proposal;
-        }
-        return next;
-      });
-    });
-    return () => { cancelled = true; };
-  }, [instruments]);
-
-  const pick = (key: string, listing: Listing | null) =>
-    setPicked((prev) => {
-      const next = { ...prev };
-      if (listing) next[key] = listing;
-      else delete next[key];
-      return next;
-    });
+  const pick = (key: string, listing: Listing | null) => setChoices((prev) => ({ ...prev, [key]: listing }));
 
   const searching = instruments.some((i) => candidates[i.key] === undefined);
   const missing = instruments.filter((i) => !picked[i.key]).length;
