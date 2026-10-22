@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, Columns3, History, Info, Plus, Target, Telescope, Trash2 } from "lucide-react";
+import { ArrowUpRight, Columns3, History, Info, Plus, Target, Telescope, Trash2, X } from "lucide-react";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { useSectionView } from "../../lib/dashboardHistory";
@@ -16,6 +16,7 @@ import { isBacktest, type Portfolio } from "../../models/Portfolio";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { StrategyBuilder } from "./StrategyBuilder";
 import { StrategiesCompare } from "./StrategiesCompare";
+import type { CompareStrategy } from "./ComparisonView";
 import { StrategiesCatalog, PublishedStrategyPage } from "./StrategiesExplore";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AdoptStrategyDialog } from "./AdoptStrategyDialog";
@@ -24,12 +25,12 @@ import { openAssetSettings } from "./SettingsSection";
 
 // Strategies' pages: "home", the user's strategies (their backtests) and the catalog of the
 // published ones; "builder", the form for a new backtest; "backtest", one backtest's page (`uuid`,
-// on `sub`); "published", one strategy of the catalog (`publicationId`); "compare", strategies
-// side by side.
+// on `sub`); "published", one strategy of the catalog (`publicationId`); "compare", the strategies
+// picked on "home" side by side (`compare`).
 export type StrategiesPage = "home" | "builder" | "backtest" | "published" | "compare";
 // A backtest's pages: its own, its generated transactions, its Stress test and Projection.
 export type BacktestPage = "overview" | "transactions" | "stress" | "projection";
-export type StrategiesView = { page: StrategiesPage; uuid?: string; sub?: BacktestPage; publicationId?: string };
+export type StrategiesView = { page: StrategiesPage; uuid?: string; sub?: BacktestPage; publicationId?: string; compare?: CompareStrategy[] };
 
 const BACKTEST_PAGES: BacktestPage[] = ["overview", "transactions", "stress", "projection"];
 
@@ -38,9 +39,12 @@ const BACKTEST_PAGES: BacktestPage[] = ["overview", "transactions", "stress", "p
  * old Explore's (Strategy, the catalog, the builder, a backtest), so old links still land.
  */
 export function strategiesViewOf(raw: unknown): StrategiesView {
-  const v = (typeof raw === "object" && raw !== null ? raw : {}) as { page?: unknown; uuid?: unknown; sub?: unknown; publicationId?: unknown };
+  const v = (typeof raw === "object" && raw !== null ? raw : {}) as { page?: unknown; uuid?: unknown; sub?: unknown; publicationId?: unknown; compare?: unknown };
   if (v.page === "builder") return { page: "builder" };
-  if (v.page === "compare") return { page: "compare" };
+  if (v.page === "compare") {
+    const compare = (Array.isArray(v.compare) ? v.compare : []).filter((s): s is CompareStrategy => typeof s?.uuid === "string" && typeof s?.name === "string");
+    return { page: "compare", compare };
+  }
   if (v.page === "backtest" && typeof v.uuid === "string") {
     return { page: "backtest", uuid: v.uuid, sub: BACKTEST_PAGES.includes(v.sub as BacktestPage) ? (v.sub as BacktestPage) : "overview" };
   }
@@ -75,7 +79,8 @@ export function StrategiesSection({ onNavigate }: { onNavigate: (section: string
  * simulation doesn't have (see PortfolioNode), and is adopted on a portfolio (AdoptStrategyDialog):
  * each of its targets becomes a range there, with an alert saying where the portfolio stands
  * against it. `trail`: the pages above Strategies. `onOpenPortfolio`: where a portfolio opens from
- * here (Investments', unless said). Compare (StrategiesCompare) puts strategies side by side.
+ * here (Investments', unless said). Compare (StrategiesCompare) puts the strategies picked on the
+ * home page side by side.
  */
 export function StrategiesNode({ view, trail, onOpen, onOpenPortfolio, onNavigate }: {
   view: StrategiesView;
@@ -94,7 +99,7 @@ export function StrategiesNode({ view, trail, onOpen, onOpenPortfolio, onNavigat
     return <StrategyBuilder trail={strategiesTrail} onCreated={(uuid) => openBacktest(uuid)} />;
   }
   if (view.page === "compare") {
-    return <StrategiesCompare trail={strategiesTrail} onOpenBacktest={(uuid) => openBacktest(uuid)} />;
+    return <StrategiesCompare key={JSON.stringify(view.compare ?? [])} trail={strategiesTrail} strategies={view.compare ?? []} onOpenBacktest={(uuid) => openBacktest(uuid)} />;
   }
   if (view.page === "published" && view.publicationId) {
     return (
@@ -134,7 +139,7 @@ export function StrategiesNode({ view, trail, onOpen, onOpenPortfolio, onNavigat
       onOpenBacktest={openBacktest}
       onOpenPublished={(publicationId) => onOpen({ page: "published", publicationId })}
       onOpenPortfolio={openPortfolio}
-      onCompare={() => onOpen({ page: "compare" })}
+      onCompare={(compare) => onOpen({ page: "compare", compare })}
       onNavigate={onNavigate}
     />
   );
@@ -153,7 +158,7 @@ export function StrategiesNode({ view, trail, onOpen, onOpenPortfolio, onNavigat
 function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpenPortfolio, onCompare, onNavigate }: {
   trail: Crumb[];
   onBuild: () => void;
-  onCompare: () => void;
+  onCompare: (strategies: CompareStrategy[]) => void;
   onOpenBacktest: (uuid: string) => void;
   onOpenPublished: (publicationId: string) => void;
   onOpenPortfolio: (uuid: string, page?: PortfolioPage) => void;
@@ -172,6 +177,11 @@ function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpe
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const backtests = portfolios.filter(isBacktest);
   const demo = isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
+  // Compare: null until it's asked for, then the strategies picked on the list, across its pages.
+  const [picked, setPicked] = useState<CompareStrategy[] | null>(null);
+  const togglePicked = (strategy: CompareStrategy) => setPicked((prev) => (
+    prev?.some((s) => s.uuid === strategy.uuid) ? prev.filter((s) => s.uuid !== strategy.uuid) : [...(prev ?? []), strategy]
+  ));
 
   const withdraw = async () => {
     if (!withdrawing) return;
@@ -212,8 +222,9 @@ function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpe
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={onCompare}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:border-slate-300 transition-colors"
+              onClick={() => setPicked((prev) => (prev ? null : []))}
+              aria-pressed={picked !== null}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-colors ${picked ? "border-[#C49A3C] bg-[#C49A3C]/10 text-[#8A6A28]" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"}`}
             >
               <Columns3 className="h-3.5 w-3.5" /> Compare
             </button>
@@ -235,9 +246,39 @@ function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpe
         </p>
       </div>
 
+      {/* While comparing: how many are picked, and the way to compare them (two at least) or not. */}
+      {picked && (
+        <div className="sticky top-4 z-20 flex flex-wrap items-center justify-between gap-3 px-5 py-3 rounded-2xl bg-white border border-[#C49A3C]/40 shadow-sm">
+          <p className="text-xs font-semibold text-slate-600">
+            Pick the strategies to compare, yours or the published ones
+            <span className="ml-2 font-black text-slate-900 tabular-nums">{picked.length} picked</span>
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPicked(null)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:border-slate-300 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" /> Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => onCompare(picked)}
+              disabled={picked.length < 2}
+              title={picked.length < 2 ? "Pick two at least" : undefined}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Columns3 className="h-3.5 w-3.5" /> Compare{picked.length > 0 ? ` (${picked.length})` : ""}
+            </button>
+          </div>
+        </div>
+      )}
+
       <StrategiesCatalog
+        selection={picked ? { selected: picked, onToggle: togglePicked } : undefined}
         own={backtests.map((p) => ({
           key: p.uuid,
+          name: p.name,
           card: (
             // As a published strategy's card, marked as the user's own, with what can be done with it.
             <article className="relative h-full bg-white rounded-[1.75rem] border border-[#C49A3C]/40 p-6 flex flex-col gap-5">

@@ -40,11 +40,10 @@ const STALE_TIMEOUT_MS = 5 * 60_000;
  * Strategies (`strategies`: a backtest of the user's, one from the catalog, or the simulation a
  * strategy their advisor shared came from) are compared beside them, after the user's portfolios,
  * each a card with a cross to take it out and a colour past theirs. A strategy no longer readable
- * (withdrawn, no longer shared: 403, 404) is said, with the way to take it out. `actions`: beside
- * the cards' row (StrategiesCompare's picker).
+ * (withdrawn, no longer shared: 403, 404) is said, with the way to take it out.
  */
 export function ComparisonView({
-  candidates, trail, onOpen, strategies = [], onRemoveStrategy, actions,
+  candidates, trail, onOpen, strategies = [], onRemoveStrategy,
   emptyText = "A comparison needs two portfolios at least: add another one to compare them.",
 }: {
   // The user's portfolios compared, in their order; all but the aggregate unless said.
@@ -57,7 +56,6 @@ export function ComparisonView({
   // after the user's portfolios, until taken out.
   strategies?: CompareStrategy[];
   onRemoveStrategy?: (uuid: string) => void;
-  actions?: React.ReactNode;
   // What to do with fewer than two compared.
   emptyText?: string;
 }) {
@@ -84,7 +82,6 @@ export function ComparisonView({
   return (
     <div className="space-y-6 pb-12">
       <Breadcrumb trail={trail} current="Compare" />
-      {actions && <div className="flex justify-end">{actions}</div>}
       <CompareCards
         portfolios={comparable}
         figures={figures}
