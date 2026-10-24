@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { History } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { investmentsKey, useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
@@ -19,7 +18,6 @@ import { PublishStrategyDialog } from "./PublishStrategyDialog";
 import { investmentsOf, isBacktest, type Portfolio } from "../../models/Portfolio";
 import type { PortfolioComparisonEntry } from "../../models/PortfolioData";
 import { PerformanceSection } from "./PerformanceSection";
-import { ToolsModule, type Tool } from "./ToolsModule";
 import { PageHeader, type PageAction, type PageCounter, type PageFigure } from "./PageHeader";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { FileUploader } from "./FileUploader";
@@ -255,7 +253,6 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
       onOpenSimulation={(uuid) => go({ kind: "portfolio", uuid: portfolio.uuid, page: "strategy", simulation: uuid })}
       onOpenTaxSettings={onOpenTaxSettings ?? (() => openProfilePreferences(onNavigate))}
       onOpenAssetSettings={onOpenAssetSettings}
-      onOpenStrategies={hasStrategies ? () => openStrategies({ page: "home" }) : undefined}
       onNavigate={onNavigate}
     />
   );
@@ -327,13 +324,12 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  * - a backtest: adopt its strategy, delete. Its figures are a simulation's (returns and risk over
  *   its run), its transactions generated and read only, and its Insights leave out what a
  *   simulation doesn't have (see PerformanceSection's `backtest`).
- * Under the header, what to plan with it (PlanningTools: Strategies; a backtest's projection is
- * one of its actions), then its Insights (PerformanceSection), whose Composition opens
+ * Under the header, its Insights (PerformanceSection), whose Composition opens
  * each portfolio of All portfolios and whose Realized P&L the investments' Taxes. A demo account sees everything but can't change anything. An advisor on a
  * client's (PortfolioContext's `client`) can't rename or delete it; its alerts are the advisor's,
  * its asset categories the client's, and its Strategy page says whether the client sees it.
  */
-export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, compareWith, onCompareWith, taxYear, onOpenTaxes, onOpenSimulation, onOpenTaxSettings, onOpenAssetSettings, onOpenStrategies, onBacktestGone, onNavigate }: {
+export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, compareWith, onCompareWith, taxYear, onOpenTaxes, onOpenSimulation, onOpenTaxSettings, onOpenAssetSettings, onBacktestGone, onNavigate }: {
   portfolio: Portfolio;
   page: PortfolioPage;
   trail: Crumb[];
@@ -356,8 +352,6 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   // The investments' Taxes page: where the tax residence is set.
   onOpenTaxSettings?: () => void;
   onOpenAssetSettings?: () => void;
-  // Strategies, from Plan (the user's own investments; a client's have none).
-  onOpenStrategies?: () => void;
   // A backtest's page (Strategies'): where to go once it's deleted. Strategies by default.
   onBacktestGone?: () => void;
   onNavigate: (section: string) => void;
@@ -597,13 +591,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           // Its step above a month or a detail: All portfolios' is "Investments", as in its pages' trails.
           pageLabel={portfolio.isAggregate ? "Investments" : portfolio.name}
           trailInTop
-          top={backtest ? header : (
-            <>
-              {header}
-              {/* A client's has no Strategies, so nothing to plan with. */}
-              {onOpenStrategies && <PlanningTools onOpenStrategies={onOpenStrategies} />}
-            </>
-          )}
+          top={header}
           // All portfolios (with two or more): how they did next to each other, its Compare module.
           onCompare={!backtest && real.length > 1 && portfolio.isAggregate ? () => open("compare") : undefined}
           onOpenTaxes={backtest ? undefined : onOpenTaxes}
@@ -742,19 +730,6 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       )}
     </div>
   );
-}
-
-/**
- * PLANNING TOOLS — what a portfolio's page plans with, under its header: Strategies (the user's
- * backtests and the published ones; not on a client's). Its stress test and projection are in
- * its Insights (Volatility's detail and Performance's, see PerformanceSection); its Alerts and
- * Reports are reached from the header's counters.
- */
-function PlanningTools({ onOpenStrategies }: { onOpenStrategies: () => void }) {
-  const tools: Tool[] = [
-    { key: "strategies", onClick: onOpenStrategies, icon: History, title: "Strategies", text: "Your strategies tested on the past, and the ones advisors publish." },
-  ];
-  return <ToolsModule title="Plan" tools={tools} />;
 }
 
 function ReadOnlyNote({ children }: { children: React.ReactNode }) {
