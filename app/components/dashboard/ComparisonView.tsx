@@ -12,7 +12,7 @@ import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { VirtualBadge } from "./BacktestMarks";
 import { CompareMetrics } from "./CompareMetrics";
-import { AllocationModule, CumulativeReturnsModule } from "./CompareCharts";
+import { AllocationModule, CumulativeReturnsModule, ReturnsByWindowModule, RiskReturnModule } from "./CompareCharts";
 import type { Portfolio } from "../../models/Portfolio";
 import type { PortfolioComparisonEntry } from "../../models/PortfolioData";
 
@@ -32,8 +32,10 @@ const STALE_TIMEOUT_MS = 5 * 60_000;
 /**
  * COMPARISON VIEW — the investments' Compare (see PortfoliosCompare): every one of the user's
  * portfolios (`candidates`), nothing to pick, as a card on top (CompareCards) that says whose
- * colour is whose, and all of them side by side under them (GET /v1/portfolios/comparison): a
- * module per subject (CompareMetrics), the cumulative returns and the allocation (CompareCharts).
+ * colour is whose, and all of them side by side under them (GET /v1/portfolios/comparison):
+ * the cumulative returns first, a module per subject (CompareMetrics), the returns window by window
+ * beside risk against return, and how they did against the market beside the allocation
+ * (CompareCharts).
  * Each portfolio keeps its colour (portfolioColorMap), the same as on the Compare module of its
  * page (CompareModule), in the portfolio list's order.
  *
@@ -130,9 +132,19 @@ export function ComparisonView({
               <p className="text-xs font-bold">An update is taking longer than usual — some figures below may be out of date.</p>
             </div>
           )}
-          <CompareMetrics entries={entries} colorOf={colorOf} isUpdating={isUpdating} />
+          {/* How they grew first, then the figures side by side. */}
           <CumulativeReturnsModule entries={visible} colorOf={colorOf} />
-          <AllocationModule entries={visible} colorOf={colorOf} />
+          <CompareMetrics entries={entries} colorOf={colorOf} isUpdating={isUpdating} part="others" />
+          {/* The same windows for everyone: what each earned over them, and for how much swing. */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <ReturnsByWindowModule entries={visible} colorOf={colorOf} />
+            <RiskReturnModule entries={visible} colorOf={colorOf} />
+          </div>
+          {/* How each did against the market, beside what each holds. */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-stretch">
+            <CompareMetrics entries={entries} colorOf={colorOf} isUpdating={isUpdating} part="benchmark" />
+            <AllocationModule entries={visible} colorOf={colorOf} />
+          </div>
         </div>
       )}
     </div>

@@ -140,22 +140,27 @@ function bestColumns(row: MetricRow, entries: CompareEntry[], hidden: (e: Compar
  * COMPARE METRICS — the compared portfolios' figures (picked on the cards above, see
  * ComparisonView), a white module per subject (Value, Returns, Risk, Income & costs, Benchmark):
  * its head, then a tile per figure (MetricTile), all alike, as many to a row as the subject has
- * (up to three), so they line up whatever the subject.
+ * (up to three), so they line up whatever the subject. `part` draws the benchmark's alone, or
+ * everything but it (Compare puts it beside the allocation), filling its height when alone.
  */
 export function CompareMetrics({
-  entries, colorOf, isUpdating,
+  entries, colorOf, isUpdating, part = "all",
 }: {
   entries: CompareEntry[];
   colorOf: (uuid: string) => string;
   isUpdating: (e: CompareEntry) => boolean;
+  part?: "all" | "benchmark" | "others";
 }) {
   const currency = entries.find((e) => e.value)?.value?.currency ?? "EUR";
-  const groups = useMemo(() => buildGroups(entries, currency), [entries, currency]);
+  const groups = useMemo(
+    () => buildGroups(entries, currency).filter((g) => part === "all" || (g.eyebrow === "Benchmark") === (part === "benchmark")),
+    [entries, currency, part],
+  );
 
   return (
-    <div className="space-y-6">
+    <div className={part === "benchmark" ? "h-full" : "space-y-6"}>
       {groups.map((g) => (
-        <Module key={g.title}>
+        <Module key={g.title} className={part === "benchmark" ? "h-full" : ""}>
           <ModuleHead eyebrow={g.eyebrow} title={g.title} desc={g.desc} />
           <div className={`p-5 md:p-6 grid grid-cols-1 gap-4 ${
             g.rows.length >= 3 ? "sm:grid-cols-2 xl:grid-cols-3" : g.rows.length === 2 ? "sm:grid-cols-2" : ""
