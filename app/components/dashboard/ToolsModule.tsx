@@ -13,12 +13,12 @@ export interface Tool {
 }
 
 /**
- * TOOLS MODULE — the pages a page's header leads to besides its own (a portfolio's Plan: taxes,
- * stress test, projection, strategies), a tile each, in one card under the header: as many to a
+ * TOOLS MODULE — the pages a page's header leads to besides its own (a portfolio's Plan:
+ * projection, strategies), a tile each, in one card under the header: as many to a
  * row as there are, up to four.
  */
 export function ToolsModule({ title, tools }: { title: string; tools: Tool[] }) {
-  const columns = tools.length >= 4 ? "sm:grid-cols-2 xl:grid-cols-4" : tools.length === 3 ? "md:grid-cols-3" : "sm:grid-cols-2";
+  const columns = tools.length >= 4 ? "sm:grid-cols-2 xl:grid-cols-4" : tools.length === 3 ? "md:grid-cols-3" : tools.length === 2 ? "sm:grid-cols-2" : "";
   return (
     <Module>
       <ModuleHead title={title} />

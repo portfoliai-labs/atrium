@@ -82,7 +82,7 @@ function requestOf(question: Question, forms: Forms): { request: ProjectionReque
 }
 
 /**
- * PROJECTION — a portfolio's page (any the user reads, as the stress test): a Monte Carlo of where
+ * PROJECTION — a portfolio's page (any the user reads): a Monte Carlo of where
  * it could go as it is (POST .../projection), on one of three questions, each its own form, run
  * when asked: reaching a goal (the probability, and when at the 10th/50th/90th percentile), whether
  * monthly withdrawals last (the success rate, the ending balances), and the safe withdrawal (the
@@ -397,7 +397,7 @@ function Fan({ years, start, currency, probabilityLabel, yearLabel = "Year" }: {
   return (
     <div>
       <div className="h-72">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 600, height: 288 }}>
           <ComposedChart data={points} margin={{ top: 12, right: 4, left: 0, bottom: 0 }}>
             <XAxis dataKey="year" tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }} axisLine={false} tickLine={false} minTickGap={24} />
             <YAxis yAxisId="value" tickFormatter={(v) => formatCompact(Number(v))} tick={{ fontSize: 11, fill: AXIS_TICK_COLOR }} axisLine={false} tickLine={false} width={56} />

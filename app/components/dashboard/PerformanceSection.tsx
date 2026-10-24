@@ -31,6 +31,7 @@ import { NoDataEmptyState } from "./NoDataEmptyState";
 import { InstrumentProfileModule } from "./InstrumentProfileModule";
 import { DonutList, type DonutItem } from "./DonutList";
 import { CompareModule } from "./CompareModule";
+import { StressTestModule, StressTestPanel } from "./stress/StressTest";
 import { AssetArticlesModule } from "./journal/AssetArticlesModule";
 import { AssetNewsModule } from "./AssetNewsModule";
 import { BondRatesModule } from "./MarketRates";
@@ -138,30 +139,36 @@ export function PerformanceSection({
   const { explore, host: exploreHost, setSlot: setExploreSlot } = useExploreHost();
   const exploring = explore !== null;
 
-  // A month opens from Performance's detail, one level further down, over it: the detail stays
-  // mounted underneath (hidden), and the scroll position is kept for the way back to it.
-  const scrollBeforeMonth = useRef(0);
-  const openMonth = (year: number, m: number) => {
-    scrollBeforeMonth.current = window.scrollY;
-    setSelected({ year, month: m });
+  // The stress test, opened from Volatility's detail like a month from Performance's.
+  const [stressOpen, setStressOpen] = useState(false);
+
+  // A month opens from Performance's detail, one level further down, over it, and the stress
+  // test from Volatility's: the detail stays mounted underneath (hidden), and the scroll
+  // position is kept for the way back to it.
+  const scrollBeforeDeeper = useRef(0);
+  const openDeeper = (open: () => void) => {
+    scrollBeforeDeeper.current = window.scrollY;
+    open();
     window.scrollTo({ top: 0 });
   };
-  const monthOpen = selected !== null;
-  const firstMonthRun = useRef(true);
+  const openMonth = (year: number, m: number) => openDeeper(() => setSelected({ year, month: m }));
+  const openStress = () => openDeeper(() => setStressOpen(true));
+  const deeperOpen = selected !== null || stressOpen;
+  const firstDeeperRun = useRef(true);
   useEffect(() => {
-    if (firstMonthRun.current) {
-      firstMonthRun.current = false;
+    if (firstDeeperRun.current) {
+      firstDeeperRun.current = false;
       return;
     }
-    if (monthOpen) return;
-    const frame = requestAnimationFrame(() => window.scrollTo({ top: scrollBeforeMonth.current }));
+    if (deeperOpen) return;
+    const frame = requestAnimationFrame(() => window.scrollTo({ top: scrollBeforeDeeper.current }));
     return () => cancelAnimationFrame(frame);
-  }, [monthOpen]);
+  }, [deeperOpen]);
 
-  // The browser's back button closes a month, then a detail view: opening either adds a history
+  // The browser's back button closes a month (or the stress test), then a detail view: opening either adds a history
   // entry (see lib/dashboardHistory), and landing on an entry below it closes it. Closed from the
   // page (Esc, the Sidebar), it goes back past its entry, so the next back goes further up.
-  const overlay: DashboardOverlay | null = selected ? "month" : explore ? "explore" : null;
+  const overlay: DashboardOverlay | null = selected ? "month" : stressOpen ? "stress" : explore ? "explore" : null;
   const exploreRef = useRef(explore);
   useEffect(() => {
     exploreRef.current = explore;
@@ -184,6 +191,7 @@ export function PerformanceSection({
     const onPopState = () => {
       const landed = readDashboardEntry()?.overlay;
       if (landed !== "month") setSelected(null);
+      if (landed !== "stress") setStressOpen(false);
       if (landed !== "explore") exploreRef.current?.onClose();
     };
     window.addEventListener("popstate", onPopState);
@@ -204,12 +212,17 @@ export function PerformanceSection({
           current={monthTitle}
           right={<ViewReportLink portfolioUuid={portfolioUuid} documentId={month.data?.reportDocumentId ?? null} />}
         />
+      ) : stressOpen ? (
+        <Breadcrumb
+          trail={[...above, insightsCrumb(() => setStressOpen(false)), ...(explore ? [{ label: explore.title, onClick: () => setStressOpen(false) }] : [])]}
+          current="Stress test"
+        />
       ) : explore ? (
         <Breadcrumb trail={[...above, insightsCrumb(explore.onClose)]} current={explore.title} hidden={explore.noTrail} />
       ) : trail && !(trailInTop && top) ? (
         <Breadcrumb trail={trail} current={pageLabel} />
       ) : null}
-      {!selected && !explore && top}
+      {!deeperOpen && !explore && top}
 
       {performance.failed ? (
         <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3 text-rose-700">
@@ -243,9 +256,10 @@ export function PerformanceSection({
             currency={performance.data.currency}
           />
         )}
-        {/* Under an open month, the page and its detail stay mounted but hidden, the same way
-            the page stays under a detail (see below). */}
-        <div className={selected ? "invisible h-0 overflow-hidden" : "space-y-6"} aria-hidden={selected ? true : undefined} inert={selected ? true : undefined}>
+        {stressOpen && <StressTestPanel portfolioUuid={portfolioUuid} withPolicy={!backtest} />}
+        {/* Under an open month (or the stress test), the page and its detail stay mounted but
+            hidden, the same way the page stays under a detail (see below). */}
+        <div className={deeperOpen ? "invisible h-0 overflow-hidden" : "space-y-6"} aria-hidden={deeperOpen || undefined} inert={deeperOpen || undefined}>
         <ExploreHostContext.Provider value={exploreHost}>
           {/* Never display:none: the detail's charts are drawn here on its very first render,
               before `explore` is set, and a chart measured in a hidden box comes out 0×0. */}
@@ -262,6 +276,7 @@ export function PerformanceSection({
               value={performance.data.value}
               portfolioUuid={portfolioUuid}
               onSelectMonth={openMonth}
+              onOpenStress={openStress}
               isAggregate={isAggregate}
               onOpenPortfolio={onOpenPortfolio}
               onCompare={onCompare}
@@ -879,16 +894,20 @@ function riskModelUnavailableMessage(model: { status: RiskModelResponse["status"
 
 /**
  * RISK DETAIL — everything behind the volatility: the rolling volatility, the turbulent periods
- * and the drawdowns (/insights/volatility, which also follows the returns document) and, on the
- * aggregate, how the portfolios move together. The risk model has its own (RiskModelModule).
+ * and the drawdowns (/insights/volatility, which also follows the returns document), on the
+ * aggregate how the portfolios move together, then the stress test's summary (StressTestModule):
+ * what past crises would do to the portfolio as it is today, opening the stress test itself one
+ * level further down (`onOpenStress`; null leaves it out). The risk model has its own
+ * (RiskModelModule).
  */
 function RiskDetail({
-  portfolioUuid, aggregate,
-}: { portfolioUuid: string; aggregate: AggregateSlots | null }) {
+  portfolioUuid, aggregate, withPolicy, onOpenStress,
+}: { portfolioUuid: string; aggregate: AggregateSlots | null; withPolicy: boolean; onOpenStress: (() => void) | null }) {
   return (
     <>
       <VolatilityExplore portfolioUuid={portfolioUuid} />
       {aggregate && <PortfolioCorrelationModule slot={aggregate.comovement} members={aggregate.portfolios.module?.members ?? []} />}
+      {onOpenStress && <StressTestModule portfolioUuid={portfolioUuid} withPolicy={withPolicy} onOpen={onOpenStress} />}
     </>
   );
 }
@@ -2852,7 +2871,7 @@ function slotOf<S, M>(
 const ownStale = (module: { isStale: boolean }) => module.isStale;
 
 // How deep each overlay sits over the page: a month opens from a detail view.
-const OVERLAY_DEPTH: Record<DashboardOverlay | "none", number> = { none: 0, explore: 1, month: 2 };
+const OVERLAY_DEPTH: Record<DashboardOverlay | "none", number> = { none: 0, explore: 1, month: 2, stress: 2 };
 
 const PREPARING_ANALYTICS = "Being prepared — this shows up after the overnight analysis of your portfolio has run.";
 const PREPARING_TICK = "Being prepared — this shows up shortly after your first transactions are processed.";
@@ -2955,13 +2974,16 @@ function RollingVolatilityChart({ series, className = "h-64" }: { series: TimeSe
  * page: its detail (RiskDetail) holds the rest of it.
  */
 function VolatilityModule({
-  slot, portfolioUuid, aggregate, maxDrawdownPct,
+  slot, portfolioUuid, aggregate, maxDrawdownPct, withPolicy, onOpenStress,
 }: {
   slot: ModuleSlot<InsightsVolatilityModule>;
   portfolioUuid: string;
   aggregate: AggregateSlots | null;
   // Since inception, from the comparison; null to leave it out.
   maxDrawdownPct: number | null;
+  // The stress test measured against the investor's Investment Policy (not a backtest's).
+  withPolicy: boolean;
+  onOpenStress: () => void;
 }) {
   const data = slot.module;
   const [exploring, setExploring] = useState(false);
@@ -2971,7 +2993,7 @@ function VolatilityModule({
       <ModuleHead
         onExplore={ready(slot) ? () => setExploring(true) : undefined}
         title="Volatility"
-        desc={`${data?.rollingWindowDays ? `The chart uses a rolling ${data.rollingWindowDays}-day window.` : "How much your portfolio's value moves around."} Open it for its turbulent periods and drawdowns.`}
+        desc={`${data?.rollingWindowDays ? `The chart uses a rolling ${data.rollingWindowDays}-day window.` : "How much your portfolio's value moves around."} Open it for its turbulent periods, drawdowns and how past crises would hit it.`}
       />
       <SlotPlaceholder slot={slot} />
       {ready(slot) && (
@@ -2998,7 +3020,13 @@ function VolatilityModule({
       )}
       {ready(slot) && exploring && (
         <ExploreView title="Risk" onClose={() => setExploring(false)}>
-          <RiskDetail portfolioUuid={portfolioUuid} aggregate={aggregate} />
+          <RiskDetail
+            portfolioUuid={portfolioUuid}
+            aggregate={aggregate}
+            withPolicy={withPolicy}
+            // Under a year of history, nothing but a message about it: no stress test either.
+            onOpenStress={slot.module.status === "insufficient_history" ? null : onOpenStress}
+          />
         </ExploreView>
       )}
     </Module>
@@ -4435,11 +4463,12 @@ function MonthPage({
  * Profit & Loss (what selling locked in, and what the holdings paid, the latter not opening
  * anything of its own), Costs (what trading cost), Performance (the value over time: returns,
  * the monthly returns and the benchmark behind it), Risk (the volatility: its turbulent periods
- * and drawdowns) and the Risk Model (the efficient frontier: the mixes, the weight gaps and the
- * correlations behind it). A month opens from Performance's detail (see PerformanceSection).
+ * and drawdowns, and what past crises would do to it today) and the Risk Model (the efficient
+ * frontier: the mixes, the weight gaps and the correlations behind it). A month opens from
+ * Performance's detail (see PerformanceSection).
  */
 function HistoryPage({
-  insights, performance, value, portfolioUuid, onSelectMonth, isAggregate, onOpenPortfolio, onCompare, onOpenTaxes, comparison, backtest, strategyShown,
+  insights, performance, value, portfolioUuid, onSelectMonth, onOpenStress, isAggregate, onOpenPortfolio, onCompare, onOpenTaxes, comparison, backtest, strategyShown,
 }: {
   insights: Insights;
   // The Performance section, already loaded, and its value (PerformanceSection checks both).
@@ -4447,6 +4476,8 @@ function HistoryPage({
   value: InsightsValueModule;
   portfolioUuid: string;
   onSelectMonth: (year: number, month: number) => void;
+  // Opens the stress test, from Volatility's detail.
+  onOpenStress: () => void;
   // "All portfolios": Holdings and Risk then also show how the portfolios make it up.
   isAggregate: boolean;
   // Opens one of the aggregate's portfolios (from the Composition).
@@ -4514,6 +4545,8 @@ function HistoryPage({
       portfolioUuid={portfolioUuid}
       aggregate={aggregate}
       maxDrawdownPct={comparison?.performance?.maxDrawdownPct ?? null}
+      withPolicy={!backtest}
+      onOpenStress={onOpenStress}
     />
   );
   const updatingNote = !historyUpdating && performance.historyIsStale && <Tile><UpdatingNote /></Tile>;

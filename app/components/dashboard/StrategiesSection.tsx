@@ -28,11 +28,11 @@ import { openAssetSettings } from "./SettingsSection";
 // on `sub`); "published", one strategy of the catalog (`publicationId`); "compare", the strategies
 // picked on "home" side by side (`compare`).
 export type StrategiesPage = "home" | "builder" | "backtest" | "published" | "compare";
-// A backtest's pages: its own, its generated transactions, its Stress test and Projection.
-export type BacktestPage = "overview" | "transactions" | "stress" | "projection";
+// A backtest's pages: its own, its generated transactions, its Projection.
+export type BacktestPage = "overview" | "transactions" | "projection";
 export type StrategiesView = { page: StrategiesPage; uuid?: string; sub?: BacktestPage; publicationId?: string; compare?: CompareStrategy[] };
 
-const BACKTEST_PAGES: BacktestPage[] = ["overview", "transactions", "stress", "projection"];
+const BACKTEST_PAGES: BacktestPage[] = ["overview", "transactions", "projection"];
 
 /**
  * The Strategies page a history entry's view is on, well formed: its own, or one of Plan's or the
@@ -215,7 +215,7 @@ function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpe
   return (
     <div className="space-y-6 pb-12">
       <Breadcrumb trail={trail} current="Strategies" />
-      {/* Titled as Projection and Stress test are, Compare and New strategy beside the title. */}
+      {/* Titled as Projection is, Compare and New strategy beside the title. */}
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Strategies</h1>

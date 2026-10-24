@@ -15,7 +15,8 @@
 
 import { useEffect, useState } from "react";
 
-export type DashboardOverlay = "explore" | "month";
+// "stress": the stress test, opened from Volatility's detail one level further down, like a month.
+export type DashboardOverlay = "explore" | "month" | "stress";
 
 export interface DashboardEntry {
   section: string;

@@ -42,8 +42,8 @@ import {
 // rather than open them.
 // 'performance' is the investor's Investments (once Wealth; an advisor's Insights).
 // Some are gone, kept so a link or history entry to them lands on where their pages went (see
-// relocate, below): 'discover' (its News, Journal and Explore), 'plan' (its Projection and Stress
-// test are each portfolio's, its Strategy is Strategies), 'explore' (the strategies catalog, once,
+// relocate, below): 'discover' (its News, Journal and Explore), 'plan' (its Projection is each
+// portfolio's, its Stress test in each one's Volatility, its Strategy is Strategies), 'explore' (the strategies catalog, once,
 // then the Journal and News together).
 // Whether the Sidebar is drawn as its icons only (see Sidebar): kept on this browser, the page
 // drawn again as it changes. Unreadable storage leaves it whole, and a change for this visit only.
@@ -75,8 +75,8 @@ const resolveSection = (section: string | null | undefined) => (section ? MOVED_
 /**
  * Where a page of a section that's gone (or that's another's for this account) went: the section
  * and the page to open in place of the entry, or null when it's where it should be.
- * - Plan: its Projection and Stress test, the portfolio's own (the investments when it named none);
- *   the rest, Strategies.
+ * - Plan: its Projection, the portfolio's own (the investments when it named none), its Stress test
+ *   the portfolio's page (it's in Volatility's detail now); the rest, Strategies.
  * - Strategies, and the old Explore's catalog pages: an advisor's own section; an investor's, under
  *   Investments.
  * - Explore: Strategies for its catalog's pages, the Journal or the News for theirs. Discover: the
@@ -106,7 +106,8 @@ function relocate(section: string, raw: unknown, isAdvisor: boolean): { section:
       return isAdvisor ? { section: 'overview', view: undefined } : null;
     case PLAN_SECTION:
       if (!isAdvisor && (view.page === "projection" || view.page === "stress")) {
-        return { section: INVESTMENTS_SECTION, view: { kind: "portfolio", uuid: typeof view.portfolio === "string" ? view.portfolio : "", page: view.page } };
+        const page = view.page === "projection" ? "projection" : "overview";
+        return { section: INVESTMENTS_SECTION, view: { kind: "portfolio", uuid: typeof view.portfolio === "string" ? view.portfolio : "", page } };
       }
       return strategies(view);
     case STRATEGIES_SECTION:
