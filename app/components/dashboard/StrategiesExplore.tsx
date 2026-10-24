@@ -116,7 +116,8 @@ const positive = (v: string) => {
  * their backtests, as cards made by the page) and the catalog (GET /v1/explore/strategies),
  * strategy portfolios advisors published, for every user to read, in one grid. "All" lists the
  * user's first, then the published ones (an advisor's own published ones are theirs, not listed
- * again: `ownUuids`); "Yours" only theirs (`emptyOwn` when there are none).
+ * again: `ownUuids`); with `onlyOwn` (Your strategies, a page of its own) only theirs, without the
+ * catalog's filters (`emptyOwn` when there are none).
  * The published ones are newest first by default, with no horizon; picking a
  * horizon (1, 3, 5 or 10 years) shows each strategy's figures over it and lets the user filter by
  * volatility and drawdown and sort by a figure, which the backend only does on a horizon, so the
@@ -125,14 +126,14 @@ const positive = (v: string) => {
  * A strategy opens its page (PublishedStrategyPage). With `selection` (Strategies' Compare), a
  * click on a card picks it or leaves it instead, a box in its corner saying which.
  */
-export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection }: {
+export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection, onlyOwn = false }: {
   own: { key: string; name: string; card: React.ReactNode }[];
+  onlyOwn?: boolean;
   ownUuids: string[];
   emptyOwn: React.ReactNode;
   onOpen: (publicationId: string) => void;
   selection?: { selected: CompareStrategy[]; onToggle: (strategy: CompareStrategy) => void };
 }) {
-  const [show, setShow] = useState<"all" | "own">("all");
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   // The figure filters as last sent: they follow the inputs once typing stops.
   const [applied, setApplied] = useState({ maxVolatilityPct: "", maxDrawdownPct: "" });
@@ -159,7 +160,7 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection }
     : { limit: PAGE_SIZE, offset: page * PAGE_SIZE };
 
   // While the next page loads, the last one stays, dimmed.
-  const read = useInvestmentsQuery(["publications", "catalog", query], () => publicationService.list(query), { keepPrevious: true });
+  const read = useInvestmentsQuery(["publications", "catalog", query], () => publicationService.list(query), { keepPrevious: true, enabled: !onlyOwn });
   const loading = read.isPending || read.isPlaceholderData;
   const error = !loading && read.isError ? (read.error instanceof Error ? read.error.message : "Unable to load the strategies.") : null;
   const shown = read.data ?? null;
@@ -177,7 +178,7 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection }
 
   const published = (shown?.strategies ?? []).filter((x) => !ownUuids.includes(x.portfolioUuid));
   // The user's own lead the first page of All.
-  const leading = show === "own" || page === 0 ? own : [];
+  const leading = onlyOwn || page === 0 ? own : [];
   // A card as it is, or, while strategies are picked, under a layer that picks it.
   const selectable = (key: string, strategy: CompareStrategy, card: React.ReactNode) => {
     if (!selection) return <Fragment key={key}>{card}</Fragment>;
@@ -200,7 +201,7 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection }
     );
   };
   const ownCard = (o: (typeof own)[number]) => selectable(o.key, { uuid: o.key, name: o.name }, o.card);
-  const cards = show === "own" ? own.map(ownCard) : [
+  const cards = onlyOwn ? own.map(ownCard) : [
     ...leading.map(ownCard),
     ...published.map((x) => selectable(
       x.publicationId, { uuid: x.portfolioUuid, name: x.portfolioName },
@@ -210,88 +211,68 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection }
 
   return (
     <div className="space-y-6">
-      <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-6 space-y-4">
-        <div>
-          <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Show</span>
-          <div className="flex flex-wrap gap-2">
-            {([["all", "All strategies"], ["own", `Yours · ${own.length}`]] as const).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setShow(id)}
-                aria-pressed={show === id}
-                className={`min-h-9 px-3.5 rounded-full text-[13px] font-bold transition-colors ${
-                  show === id ? "bg-[#1c1917] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-        {show === "all" && (
-          <>
-            <div>
-              <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Figures over</span>
-              <div className="flex flex-wrap gap-2">
-                {[null, ...FILTER_HORIZONS].map((h) => (
-                  <button
-                    key={h ?? "any"}
-                    type="button"
-                    onClick={() => setHorizon(h)}
-                    aria-pressed={filters.horizon === h}
-                    className={`min-h-9 px-3.5 rounded-full text-[13px] font-bold transition-colors ${
-                      filters.horizon === h ? "bg-[#1c1917] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    {h ? `Last ${HORIZON_LABELS[h]}` : "Any period"}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <FilterField
-                label="Volatility at most"
-                suffix="%"
-                value={filters.maxVolatilityPct}
-                disabled={!filters.horizon}
-                onChange={(v) => setFilters((f) => ({ ...f, maxVolatilityPct: v }))}
-              />
-              <FilterField
-                label="Worst drop no deeper than"
-                suffix="−%"
-                value={filters.maxDrawdownPct}
-                disabled={!filters.horizon}
-                onChange={(v) => setFilters((f) => ({ ...f, maxDrawdownPct: v }))}
-              />
-              <label className="block">
-                <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Sort by</span>
-                <select
-                  value={filters.horizon ? filters.sort : "newest"}
-                  onChange={(e) => { setFilters((f) => ({ ...f, sort: e.target.value as CatalogSort })); setPage(0); }}
-                  className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-slate-900 text-sm font-semibold outline-none focus:border-[#C49A3C]/60"
+      {!onlyOwn && (
+        <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-6 space-y-4">
+          <div>
+            <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Figures over</span>
+            <div className="flex flex-wrap gap-2">
+              {[null, ...FILTER_HORIZONS].map((h) => (
+                <button
+                  key={h ?? "any"}
+                  type="button"
+                  onClick={() => setHorizon(h)}
+                  aria-pressed={filters.horizon === h}
+                  className={`min-h-9 px-3.5 rounded-full text-[13px] font-bold transition-colors ${
+                    filters.horizon === h ? "bg-[#1c1917] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
                 >
-                  {(Object.keys(SORT_LABELS) as CatalogSort[]).map((x) => (
-                    <option key={x} value={x} disabled={isFigureSort(x) && !filters.horizon}>{SORT_LABELS[x]}</option>
-                  ))}
-                </select>
-              </label>
+                  {h ? `Last ${HORIZON_LABELS[h]}` : "Any period"}
+                </button>
+              ))}
             </div>
-            <p className="text-[11px] text-slate-500">
-              {filters.horizon
-                ? own.length > 0 ? "The figures filter and sort the published strategies; yours stay first." : null
-                : "Pick a period to filter or sort by the figures: they're compared over the same years."}
-            </p>
-          </>
-        )}
-      </section>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <FilterField
+              label="Volatility at most"
+              suffix="%"
+              value={filters.maxVolatilityPct}
+              disabled={!filters.horizon}
+              onChange={(v) => setFilters((f) => ({ ...f, maxVolatilityPct: v }))}
+            />
+            <FilterField
+              label="Worst drop no deeper than"
+              suffix="−%"
+              value={filters.maxDrawdownPct}
+              disabled={!filters.horizon}
+              onChange={(v) => setFilters((f) => ({ ...f, maxDrawdownPct: v }))}
+            />
+            <label className="block">
+              <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Sort by</span>
+              <select
+                value={filters.horizon ? filters.sort : "newest"}
+                onChange={(e) => { setFilters((f) => ({ ...f, sort: e.target.value as CatalogSort })); setPage(0); }}
+                className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-slate-900 text-sm font-semibold outline-none focus:border-[#C49A3C]/60"
+              >
+                {(Object.keys(SORT_LABELS) as CatalogSort[]).map((x) => (
+                  <option key={x} value={x} disabled={isFigureSort(x) && !filters.horizon}>{SORT_LABELS[x]}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            {filters.horizon
+              ? own.length > 0 ? "The figures filter and sort the published strategies; yours stay first." : null
+              : "Pick a period to filter or sort by the figures: they're compared over the same years."}
+          </p>
+        </section>
+      )}
 
-      {show === "all" && error && (
+      {!onlyOwn && error && (
         <p className="flex items-center gap-2 text-sm font-semibold text-rose-600"><AlertCircle className="h-4 w-4" /> {error}</p>
       )}
-      {show === "own" && own.length === 0 ? (
+      {onlyOwn && own.length === 0 ? (
         emptyOwn
-      ) : show === "all" && !shown && !error ? (
+      ) : !onlyOwn && !shown && !error ? (
         <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-[#C49A3C]" /></div>
       ) : cards.length === 0 ? (
         error ? null : (
@@ -309,10 +290,10 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection }
         )
       ) : (
         <>
-          <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-opacity ${show === "all" && loading ? "opacity-60" : ""}`}>
+          <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-opacity ${!onlyOwn && loading ? "opacity-60" : ""}`}>
             {cards}
           </div>
-          {show === "all" && total > PAGE_SIZE && (
+          {!onlyOwn && total > PAGE_SIZE && (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs font-semibold text-slate-500 tabular-nums">Published: {from}–{to} of {total}</span>
               <span className="flex items-center gap-2">
