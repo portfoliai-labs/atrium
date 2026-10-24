@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, Columns3, History, Info, Plus, Target, Telescope, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Columns3, History, Info, Target, Telescope, Trash2, X } from "lucide-react";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { useSectionView } from "../../lib/dashboardHistory";
@@ -14,6 +14,7 @@ import type { PublishedStrategy } from "../../models/PublishedStrategy";
 import { PortfolioNode, type PortfolioPage } from "./InvestmentsSection";
 import { isBacktest, type Portfolio } from "../../models/Portfolio";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
+import { ActionButton } from "./PageHeader";
 import { StrategyBuilder } from "./StrategyBuilder";
 import { StrategiesCompare } from "./StrategiesCompare";
 import type { CompareStrategy } from "./ComparisonView";
@@ -24,10 +25,10 @@ import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import { openAssetSettings } from "./SettingsSection";
 
 // Strategies' pages: "home", the user's strategies (their backtests) and the catalog of the
-// published ones; "builder", the form for a new backtest; "backtest", one backtest's page (`uuid`,
+// published ones; "mine", the user's strategies alone; "builder", the form for a new backtest; "backtest", one backtest's page (`uuid`,
 // on `sub`); "published", one strategy of the catalog (`publicationId`); "compare", the strategies
 // picked on "home" side by side (`compare`).
-export type StrategiesPage = "home" | "builder" | "backtest" | "published" | "compare";
+export type StrategiesPage = "home" | "mine" | "builder" | "backtest" | "published" | "compare";
 // A backtest's pages: its own, its generated transactions, its Projection.
 export type BacktestPage = "overview" | "transactions" | "projection";
 export type StrategiesView = { page: StrategiesPage; uuid?: string; sub?: BacktestPage; publicationId?: string; compare?: CompareStrategy[] };
@@ -41,6 +42,7 @@ const BACKTEST_PAGES: BacktestPage[] = ["overview", "transactions", "projection"
 export function strategiesViewOf(raw: unknown): StrategiesView {
   const v = (typeof raw === "object" && raw !== null ? raw : {}) as { page?: unknown; uuid?: unknown; sub?: unknown; publicationId?: unknown; compare?: unknown };
   if (v.page === "builder") return { page: "builder" };
+  if (v.page === "mine") return { page: "mine" };
   if (v.page === "compare") {
     const compare = (Array.isArray(v.compare) ? v.compare : []).filter((s): s is CompareStrategy => typeof s?.uuid === "string" && typeof s?.name === "string");
     return { page: "compare", compare };
@@ -59,7 +61,7 @@ const createdLabel = (iso: string) =>
 /** Whether a view is one of Strategies' pages, or of the old Explore's (the catalog's). */
 export const isStrategiesView = (raw: unknown) => {
   const v = (typeof raw === "object" && raw !== null ? raw : {}) as { page?: unknown; publicationId?: unknown };
-  return ["home", "builder", "backtest", "published", "explore", "strategy"].includes(v.page as string) || typeof v.publicationId === "string";
+  return ["home", "mine", "builder", "backtest", "published", "explore", "strategy"].includes(v.page as string) || typeof v.publicationId === "string";
 };
 
 /**
@@ -132,9 +134,14 @@ export function StrategiesNode({ view, trail, onOpen, onOpenPortfolio, onNavigat
     );
   }
 
+  // Yours: the same list, the user's strategies alone, a page under Strategies.
+  const mine = view.page === "mine";
   return (
     <StrategiesHome
-      trail={trail}
+      key={view.page}
+      mine={mine}
+      trail={mine ? strategiesTrail : trail}
+      onToggleMine={() => onOpen({ page: mine ? "home" : "mine" })}
       onBuild={() => onOpen({ page: "builder" })}
       onOpenBacktest={openBacktest}
       onOpenPublished={(publicationId) => onOpen({ page: "published", publicationId })}
@@ -147,16 +154,20 @@ export function StrategiesNode({ view, trail, onOpen, onOpenPortfolio, onNavigat
 
 /**
  * STRATEGIES HOME — one list (StrategiesCatalog) of the user's strategies, each to open (its
- * page), adopt or delete, and the published ones, to look at before making one's own; a filter
- * shows only the user's. New strategy (StrategyBuilder) is beside the title. Adopting puts the strategy on a portfolio the user picks (or a new one) and opens that
+ * page), adopt or delete, and the published ones, to look at before making one's own; with `mine`
+ * ("Your strategies", a page of its own) the user's alone. Its actions are on the right of the
+ * line under the title, as the Journal's pages have theirs: the other of the two pages
+ * (`onToggleMine`), Compare and New strategy (StrategyBuilder). Adopting puts the strategy on a portfolio the user picks (or a new one) and opens that
  * portfolio's Strategy page, where its ranges are. A demo account sees the backtests but can't
  * create, adopt or delete.
  *
  * An advisor adopts theirs on a client's portfolio (opening it in the client's investments, where it's
  * shared with the client or not), and publishes them to the catalog or withdraws them.
  */
-function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpenPortfolio, onCompare, onNavigate }: {
+function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, onOpenPublished, onOpenPortfolio, onCompare, onNavigate }: {
+  mine: boolean;
   trail: Crumb[];
+  onToggleMine: () => void;
   onBuild: () => void;
   onCompare: (strategies: CompareStrategy[]) => void;
   onOpenBacktest: (uuid: string) => void;
@@ -214,43 +225,44 @@ function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpe
 
   return (
     <div className="space-y-6 pb-12">
-      <Breadcrumb trail={trail} current="Strategies" />
-      {/* Titled as Projection is, Compare and New strategy beside the title. */}
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Strategies</h1>
-          <div className="flex flex-wrap items-center gap-2">
+      <Breadcrumb trail={trail} current={mine ? "Your strategies" : "Strategies"} />
+      {/* As the Journal's pages: the actions beside the line under the title, not the title, level
+          with its top (it runs to a few lines, which would leave a gap above them at its foot). */}
+      <header className="space-y-2">
+        <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>{mine ? "Your strategies" : "Strategies"}</h1>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <p className="flex items-start gap-2 flex-1 min-w-64 text-[12.5px] text-[#78716c] max-w-2xl">
+            <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            {mine
+              ? canPublish
+                ? "The strategies you backtested: open one, adopt it on a client's portfolio, or publish it to the catalog."
+                : "The strategies you backtested: open one to see how it would have done, or adopt it on one of your portfolios."
+              : canPublish
+                ? "Yours and the ones advisors publish. Backtest a strategy on historical prices and adopt it on a client's portfolio: each of its targets becomes a range, and an alert tells you where the portfolio stands against it; share it to let the client read it. Or publish it, for everyone to read."
+                : "Yours and the ones advisors publish. Backtest how you would invest on historical prices; when one of yours fits, adopt it on one of your portfolios: each of its targets becomes a range, and an alert says where the portfolio stands against it."}
+          </p>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <ActionButton action={{ label: mine ? "All strategies" : `Your strategies · ${backtests.length}`, onClick: onToggleMine }} />
             <button
               type="button"
               onClick={() => setPicked((prev) => (prev ? null : []))}
               aria-pressed={picked !== null}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-colors ${picked ? "border-[#C49A3C] bg-[#C49A3C]/10 text-[#8A6A28]" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"}`}
+              className={`inline-flex items-center gap-[7px] px-[15px] py-2.5 rounded-xl border text-[12.5px] font-bold transition-[border-color,background-color,transform] active:scale-[0.98] ${
+                picked ? "border-[#C49A3C] bg-[#C49A3C]/10 text-[#8A6A28]" : "bg-white border-[#E0DACC] text-[#1c1917] hover:border-[#C49A3C]"
+              }`}
             >
               <Columns3 className="h-3.5 w-3.5" /> Compare
             </button>
-            <button
-              type="button"
-              onClick={onBuild}
-              {...demo}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Plus className="h-3.5 w-3.5" /> New strategy
-            </button>
+            <ActionButton action={{ label: "New strategy", onClick: onBuild, primary: true, ...demo }} />
           </div>
         </div>
-        <p className="flex items-start gap-2 text-[12.5px] text-[#78716c] max-w-3xl">
-          <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          {canPublish
-            ? "Yours and the ones advisors publish. Backtest a strategy on historical prices and adopt it on a client's portfolio: each of its targets becomes a range, and an alert tells you where the portfolio stands against it; share it to let the client read it. Or publish it, for everyone to read."
-            : "Yours and the ones advisors publish. Backtest how you would invest on historical prices; when one of yours fits, adopt it on one of your portfolios: each of its targets becomes a range, and an alert says where the portfolio stands against it."}
-        </p>
-      </div>
+      </header>
 
       {/* While comparing: how many are picked, and the way to compare them (two at least) or not. */}
       {picked && (
         <div className="sticky top-4 z-20 flex flex-wrap items-center justify-between gap-3 px-5 py-3 rounded-2xl bg-white border border-[#C49A3C]/40 shadow-sm">
           <p className="text-xs font-semibold text-slate-600">
-            Pick the strategies to compare, yours or the published ones
+            {mine ? "Pick your strategies to compare" : "Pick the strategies to compare, yours or the published ones"}
             <span className="ml-2 font-black text-slate-900 tabular-nums">{picked.length} picked</span>
           </p>
           <div className="flex items-center gap-2">
@@ -275,6 +287,7 @@ function StrategiesHome({ trail, onBuild, onOpenBacktest, onOpenPublished, onOpe
       )}
 
       <StrategiesCatalog
+        onlyOwn={mine}
         selection={picked ? { selected: picked, onToggle: togglePicked } : undefined}
         own={backtests.map((p) => ({
           key: p.uuid,
