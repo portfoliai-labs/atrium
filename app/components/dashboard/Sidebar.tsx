@@ -4,6 +4,9 @@ import {
   LayoutDashboard, ChevronLeft, ChevronRight, Sparkles, Users, Newspaper, BookOpen, LineChart, Wallet, Building2, History, Inbox,
 } from "lucide-react";
 import { useUser } from "../../context/UserContext";
+import { usePortfolio } from "../../context/PortfolioContext";
+import { useDashboardEntry } from "../../lib/dashboardHistory";
+import { isBacktest } from "../../models/Portfolio";
 import { CLIENTS_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, SUBSCRIPTION_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
 import { useWallets } from "../../context/WalletsContext";
 import { useRealEstate } from "../../context/RealEstateContext";
@@ -27,7 +30,9 @@ type NavItem = { id: string; label: string; icon: typeof LayoutDashboard };
 /**
  * SIDEBAR — the dashboard's sections, one row each. Nothing under them: a section's own pages
  * (a portfolio, a wallet, a property, a client) are opened from its page (All portfolios'
- * Portfolios, All wallets' Wallets, the properties' table, the clients' list). On a wide screen it
+ * Portfolios, All wallets' Wallets, the properties' table, the clients' list). An investor's
+ * Strategies is Investments' (see InvestmentsSection), its own row all the same, lit on its pages
+ * (the list, a strategy's, a backtest's) in place of Investments. On a wide screen it
  * can be drawn narrow (`collapsed`), its icons only, the round button on its edge, at the top,
  * switching between the two.
  */
@@ -41,6 +46,11 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
   // Wallets and Real estate only where the user has them (a backend with them, a demo account's
   // sample data).
   const hasWallets = isDemo || walletsAvailable;
+  // Whether Investments is on Strategies' pages: its list and builder, or a backtest.
+  const entry = useDashboardEntry();
+  const { portfolios } = usePortfolio();
+  const view = (entry?.section === INVESTMENTS_SECTION ? entry.view : null) as { kind?: string; uuid?: string } | null;
+  const onStrategies = view?.kind === "strategies" || (view?.kind === "portfolio" && portfolios.some((p) => p.uuid === view.uuid && isBacktest(p)));
 
   const journalItem: NavItem = { id: JOURNAL_SECTION, label: 'Journal', icon: BookOpen };
   const newsItem: NavItem = { id: NEWS_SECTION, label: 'News', icon: Newspaper };
@@ -52,6 +62,8 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
     ...(hasWallets ? [{ id: WALLETS_SECTION, label: 'Wallets', icon: Wallet }] : []),
     journalItem,
     newsItem,
+    // Opened as its own section, which lands on Investments' Strategies (see the dashboard page).
+    { id: STRATEGIES_SECTION, label: 'Strategies', icon: History },
   ];
 
   // A client's pages are the investor's, on the client's portfolios (see ClientsSection); the
@@ -71,7 +83,9 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
   };
 
   const renderItem = (item: NavItem) => {
-    const isActive = activeSection === item.id;
+    const isActive = !isAdvisor && activeSection === INVESTMENTS_SECTION && (item.id === INVESTMENTS_SECTION || item.id === STRATEGIES_SECTION)
+      ? (item.id === STRATEGIES_SECTION) === onStrategies
+      : activeSection === item.id;
     return (
       <button
         key={item.id}

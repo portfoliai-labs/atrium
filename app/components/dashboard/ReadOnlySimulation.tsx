@@ -9,16 +9,15 @@ import { PerformanceSection } from "./PerformanceSection";
 import { PageHeader, type PageAction } from "./PageHeader";
 import { BacktestBanner } from "./BacktestMarks";
 import type { Crumb } from "./Breadcrumb";
-import { StressTestPage } from "./stress/StressTestPage";
 import { ProjectionPage } from "./projection/ProjectionPage";
 
 /**
  * READ-ONLY SIMULATION — someone else's strategy portfolio, opened from a strategy an advisor
  * shared or from the strategies catalog: the backend lets the viewer read it through the usual
  * portfolio routes (its Insights, its strategy) though it isn't in their list. Its page is a
- * backtest's (PerformanceSection's `backtest`) under a header whose actions are its stress test and
- * its projection (StressTestPage, ProjectionPage, opened in place with a crumb back), and the
- * page's own (`extraActions`): it can't be copied, backtested again or adopted. `notice`
+ * backtest's (PerformanceSection's `backtest`) under a header whose actions are its projection
+ * (ProjectionPage, opened in place with a crumb back; its stress test is in Volatility's detail),
+ * and the page's own (`extraActions`): it can't be copied, backtested again or adopted. `notice`
  * adds a line of its own above the backtest strip (left out with `banner` false, when the page says
  * what the strategy is itself), and `children` come under the header, hidden with it while a
  * detail view is open. `crumb`: its own step in the breadcrumb (its name unless said), where the
@@ -36,11 +35,11 @@ export function ReadOnlySimulation({ portfolioUuid, trail, eyebrow, crumb, title
   // `children` say what the strategy is: its Insights leave out the strategy's own modules.
   strategyShown?: boolean;
   children?: React.ReactNode;
-  // Actions of the page's own, after the stress test and the projection (Compare with my portfolios, where it's offered).
+  // Actions of the page's own, after the projection (Compare with my portfolios, where it's offered).
   extraActions?: PageAction[];
   onNavigate?: (section: string) => void;
 }) {
-  const [tool, setTool] = useState<"stress" | "projection" | null>(null);
+  const [tool, setTool] = useState<"projection" | null>(null);
   // Its returns beside the Performance chart (TWR since inception, last 12 months, per year), from
   // the comparison as a portfolio's page has them (GET /v1/portfolios/comparison reads any portfolio
   // the viewer can).
@@ -52,9 +51,8 @@ export function ReadOnlySimulation({ portfolioUuid, trail, eyebrow, crumb, title
   const title = knownTitle ?? name?.name ?? "Simulation";
 
   const back = [...trail, { label: title, onClick: () => setTool(null) }];
-  if (tool === "stress") return <StressTestPage portfolioUuid={portfolioUuid} trail={back} eyebrow={eyebrow} />;
   if (tool === "projection") return <ProjectionPage portfolioUuid={portfolioUuid} trail={back} eyebrow={eyebrow} />;
-  const open = (next: "stress" | "projection") => {
+  const open = (next: "projection") => {
     setTool(next);
     window.scrollTo({ top: 0 });
   };
@@ -74,7 +72,7 @@ export function ReadOnlySimulation({ portfolioUuid, trail, eyebrow, crumb, title
           <PageHeader
             eyebrow={eyebrow}
             title={title}
-            actions={[{ label: "Stress test", onClick: () => open("stress") }, { label: "Projection", onClick: () => open("projection") }, ...extraActions]}
+            actions={[{ label: "Projection", onClick: () => open("projection") }, ...extraActions]}
             notice={(
               <div className="space-y-3">
                 {notice}

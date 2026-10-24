@@ -29,8 +29,8 @@ export const JOURNAL_SECTION = "journal";
 // Today's market headlines (see NewsSection).
 export const NEWS_SECTION = "news";
 // Sections that are gone, kept so old links and history entries land where their pages went (see
-// the dashboard page): Plan's (Projection and Stress test, each portfolio's own now; Strategy,
-// Strategies) and Explore's (the strategies catalog, once; then the Journal and News together).
+// the dashboard page): Plan's (Projection, each portfolio's own now, Stress test in its
+// Volatility; Strategy, Strategies) and Explore's (the strategies catalog, once; then the Journal and News together).
 export const PLAN_SECTION = "plan";
 export const EXPLORE_SECTION = "explore";
 // An advisor's clients: the list, and each client's investments (see ClientsSection).

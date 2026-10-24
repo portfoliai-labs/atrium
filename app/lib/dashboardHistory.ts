@@ -15,7 +15,8 @@
 
 import { useEffect, useState } from "react";
 
-export type DashboardOverlay = "explore" | "month";
+// "tool": the stress test or the projection, opened from a detail one level further down, like a month.
+export type DashboardOverlay = "explore" | "month" | "tool";
 
 export interface DashboardEntry {
   section: string;
