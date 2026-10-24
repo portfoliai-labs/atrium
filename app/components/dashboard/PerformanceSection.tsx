@@ -903,14 +903,32 @@ function riskModelUnavailableMessage(model: { status: RiskModelResponse["status"
 function RiskDetail({
   portfolioUuid, aggregate, withPolicy, onOpenStress,
 }: { portfolioUuid: string; aggregate: AggregateSlots | null; withPolicy: boolean; onOpenStress: (() => void) | null }) {
+  const members = aggregate?.portfolios.module?.members ?? [];
+  const comovement = aggregate && <PortfolioCorrelationModule slot={aggregate.comovement} members={members} />;
+  const stress = onOpenStress && <StressTestModule portfolioUuid={portfolioUuid} withPolicy={withPolicy} onOpen={onOpenStress} />;
   return (
     <>
       <VolatilityExplore portfolioUuid={portfolioUuid} />
-      {aggregate && <PortfolioCorrelationModule slot={aggregate.comovement} members={aggregate.portfolios.module?.members ?? []} />}
-      {onOpenStress && <StressTestModule portfolioUuid={portfolioUuid} withPolicy={withPolicy} onOpen={onOpenStress} />}
+      {comovement && stress ? (
+        // Side by side on a wide screen, the matrix's share growing with the portfolios in it
+        // (a column each); past what still fits beside the stress test, one under the other.
+        <div className={`grid grid-cols-1 gap-6 ${comovementColumns(aggregate.comovement.module?.correlation?.portfolioUuids.length ?? members.length)}`}>
+          <div className="@container min-w-0">{comovement}</div>
+          <div className="@container min-w-0">{stress}</div>
+        </div>
+      ) : comovement || stress}
     </>
   );
 }
+
+// The aggregate's correlation matrix beside the stress test: its share of the row, out of 12, by
+// the portfolios in it (each a 52px column), so the matrix fits without scrolling.
+const comovementColumns = (portfolios: number) =>
+  portfolios <= 3 ? "xl:grid-cols-[4fr_8fr]"
+    : portfolios <= 5 ? "xl:grid-cols-[5fr_7fr]"
+      : portfolios <= 7 ? "xl:grid-cols-[7fr_5fr]"
+        : portfolios <= 9 ? "xl:grid-cols-[8fr_4fr]"
+          : "";
 
 /**
  * RISK MODEL MODULE — the risk model on the page: the efficient frontier, from the Risk section

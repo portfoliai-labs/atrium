@@ -17,6 +17,8 @@ import {
 import { Fig, Figs, Module, ModuleHead, MODULE_BODY } from "../PerformanceSection";
 
 const dateLabel = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+// "2007–09", or "2020" within one year.
+const yearsLabel = (start: string, end: string) => (start.slice(0, 4) === end.slice(0, 4) ? start.slice(0, 4) : `${start.slice(0, 4)}–${end.slice(2, 4)}`);
 const pct = (v: number, signed = true) => `${signed && v > 0 ? "+" : ""}${v.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
 const toneOf = (v: number): "gain" | "loss" | undefined => (v > 0 ? "gain" : v < 0 ? "loss" : undefined);
 const toneText = (v: number) => (v > 0 ? "text-[#047857]" : v < 0 ? "text-[#e11d48]" : "text-[#1c1917]");
@@ -165,7 +167,8 @@ const lossScale = (runs: { data?: StressTest }[], limitPct: number | null) =>
 
 /**
  * STRESS TEST MODULE — the stress test in Volatility's detail (RiskDetail): what each past
- * crisis would do to the portfolio as it is today, a row each, with the investor's largest
+ * crisis would do to the portfolio as it is today, a line each (kept short: it sits beside the
+ * portfolios' correlation matrix, often a small one), with the investor's largest
  * acceptable loss marked on the bars when `withPolicy` (see StressTestPanel). Opens the stress
  * test itself, one level further down (`onOpen`): each crisis's categories and positions, and
  * shocks of one's own.
@@ -190,17 +193,35 @@ export function StressTestModule({ portfolioUuid, withPolicy, onOpen }: { portfo
           <p className="text-[12.5px] text-[#857e78]">Nothing to test yet: the portfolio holds nothing that has been valued.</p>
         ) : (
           <>
-            <ul className="grid grid-cols-1 @2xl:grid-cols-3 gap-x-8 gap-y-4">
-              {STRESS_CRISES.map((c, i) => (
-                <li key={c.crisis}>
-                  <span className="block text-[13px] font-bold text-[#1c1917] truncate">{c.label}</span>
-                  <span className="block text-[11px] text-[#857e78]">{dateLabel(c.startDate)} – {dateLabel(c.endDate)}</span>
-                  <CrisisImpact data={crises[i].data} failed={crises[i].isError} limitPct={limitPct} scale={scale} />
-                </li>
-              ))}
+            <ul className="space-y-3">
+              {STRESS_CRISES.map((c, i) => {
+                const { data, isError } = crises[i];
+                return (
+                  // The bar between the name and the figure, or under them both when it's narrow.
+                  <li key={c.crisis} className="grid grid-cols-[minmax(0,1fr)_auto] @sm:grid-cols-[minmax(0,1fr)_minmax(4rem,1.5fr)_auto] items-center gap-x-4 gap-y-1.5">
+                    <span className="min-w-0" title={`${dateLabel(c.startDate)} – ${dateLabel(c.endDate)}`}>
+                      <span className="block text-[13px] font-bold text-[#1c1917] truncate">{c.label}</span>
+                      <span className="block text-[11px] text-[#857e78]">{yearsLabel(c.startDate, c.endDate)}</span>
+                    </span>
+                    <span className="col-span-2 order-last @sm:col-span-1 @sm:order-none">
+                      {data?.pricedAt && <LossBar changePct={data.changePct} limitPct={limitPct} scale={scale} />}
+                    </span>
+                    <span className="text-right">
+                      {isError ? <span className="text-[11px] font-semibold text-[#e11d48]">Unavailable</span>
+                        : !data ? <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-[#C49A3C]" />
+                          : data.pricedAt && (
+                            <>
+                              <span className={`block text-[13px] font-black tabular-nums ${toneText(data.changePct)}`}>{pct(data.changePct)}</span>
+                              <span className="block text-[11px] tabular-nums text-[#857e78]">{data.change > 0 ? "+" : ""}{formatCurrency(data.change, data.currency, 0)}</span>
+                            </>
+                          )}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
             {limitPct !== null && done.length > 0 && (
-              <p className="mt-5 flex items-center gap-2 text-[12px] text-[#78716c]">
+              <p className="mt-4 flex items-center gap-2 text-[12px] text-[#78716c]">
                 <span className="h-3 w-0.5 shrink-0 bg-[#1c1917]" />
                 {beyond
                   ? <>At least one crisis goes <span className="font-bold text-[#e11d48]">beyond the {pct(limitPct, false)}</span> loss you said you could accept, in your Investment Policy.</>
@@ -235,6 +256,19 @@ function ScenarioCard({ selected, onSelect, title, sub, detail, children }: {
   );
 }
 
+/** A crisis's loss as a bar from the left, on the `scale` the crises share, the policy's limit a tick on it (red past it). */
+function LossBar({ changePct, limitPct, scale }: { changePct: number; limitPct: number | null; scale: number }) {
+  const beyond = limitPct !== null && -changePct > limitPct;
+  return (
+    <span className="relative block h-1.5 rounded-full bg-[#F4F1EA]">
+      {changePct < 0 && (
+        <span className={`absolute inset-y-0 left-0 rounded-full ${beyond ? "bg-[#e11d48]" : "bg-[#C49A3C]"}`} style={{ width: `${(-changePct / scale) * 100}%` }} />
+      )}
+      {limitPct !== null && <span className="absolute -inset-y-1 w-0.5 -ml-px bg-[#1c1917]" style={{ left: `${(limitPct / scale) * 100}%` }} />}
+    </span>
+  );
+}
+
 /**
  * A crisis card's answer: the change to the whole portfolio and the loss as a bar from the left,
  * on the scale all the cards share, with the policy's limit as a tick on it (red past it).
@@ -251,12 +285,7 @@ function CrisisImpact({ data, failed, limitPct, scale }: { data: StressTest | un
         <span className={`font-black tabular-nums ${toneText(data.changePct)}`}>{pct(data.changePct)}</span>
         <span className="tabular-nums text-[#857e78]">{data.change > 0 ? "+" : ""}{formatCurrency(data.change, data.currency, 0)}</span>
       </span>
-      <span className="relative block h-1.5 rounded-full bg-[#F4F1EA]">
-        {data.changePct < 0 && (
-          <span className={`absolute inset-y-0 left-0 rounded-full ${beyond ? "bg-[#e11d48]" : "bg-[#C49A3C]"}`} style={{ width: `${(-data.changePct / scale) * 100}%` }} />
-        )}
-        {limitPct !== null && <span className="absolute -inset-y-1 w-0.5 -ml-px bg-[#1c1917]" style={{ left: `${(limitPct / scale) * 100}%` }} />}
-      </span>
+      <LossBar changePct={data.changePct} limitPct={limitPct} scale={scale} />
       {beyond && <span className="block text-[11px] font-semibold text-[#e11d48]">Beyond the {pct(limitPct, false)} you could accept</span>}
     </span>
   );
