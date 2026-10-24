@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { History, LineChart } from "lucide-react";
+import { History } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { investmentsKey, useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
@@ -158,7 +158,7 @@ function viewFromHistory(hasStrategies: boolean, portfolios: Portfolio[], sectio
  * its Insights (PerformanceSection), whose Composition leads down to each portfolio (from All
  * portfolios) or holding. Its activity and its actions open pages of its own, always on that
  * portfolio, so none of them asks which one: Transactions, Alerts and Reports, and on All
- * portfolios Compare and Manage portfolios, and on each its Projection; the
+ * portfolios Compare and Manage portfolios (its stress test and projection are in its Insights); the
  * investments' Taxes from the Realized P&L of their Insights. Beside All portfolios, Strategies (StrategiesNode): the user's
  * strategies, each a backtest opening the same page as a portfolio's, and the ones advisors publish.
  *
@@ -327,8 +327,8 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  * - a backtest: adopt its strategy, delete. Its figures are a simulation's (returns and risk over
  *   its run), its transactions generated and read only, and its Insights leave out what a
  *   simulation doesn't have (see PerformanceSection's `backtest`).
- * Under the header, what to plan with it (PlanningTools: its Projection; a backtest's is one of
- * its actions), then its Insights (PerformanceSection), whose Composition opens
+ * Under the header, what to plan with it (PlanningTools: Strategies; a backtest's projection is
+ * one of its actions), then its Insights (PerformanceSection), whose Composition opens
  * each portfolio of All portfolios and whose Realized P&L the investments' Taxes. A demo account sees everything but can't change anything. An advisor on a
  * client's (PortfolioContext's `client`) can't rename or delete it; its alerts are the advisor's,
  * its asset categories the client's, and its Strategy page says whether the client sees it.
@@ -600,7 +600,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           top={backtest ? header : (
             <>
               {header}
-              <PlanningTools onOpen={open} onOpenStrategies={onOpenStrategies} />
+              {/* A client's has no Strategies, so nothing to plan with. */}
+              {onOpenStrategies && <PlanningTools onOpenStrategies={onOpenStrategies} />}
             </>
           )}
           // All portfolios (with two or more): how they did next to each other, its Compare module.
@@ -744,15 +745,14 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
 }
 
 /**
- * PLANNING TOOLS — what a portfolio's page plans with, under its header: its Projection, a page
- * of its own (its stress test is in Volatility's detail, see PerformanceSection), and Strategies
- * (the user's backtests and the published ones; not on a client's). Its Alerts and Reports are
- * reached from the header's counters.
+ * PLANNING TOOLS — what a portfolio's page plans with, under its header: Strategies (the user's
+ * backtests and the published ones; not on a client's). Its stress test and projection are in
+ * its Insights (Volatility's detail and Performance's, see PerformanceSection); its Alerts and
+ * Reports are reached from the header's counters.
  */
-function PlanningTools({ onOpen, onOpenStrategies }: { onOpen: (page: PortfolioPage) => void; onOpenStrategies?: () => void }) {
+function PlanningTools({ onOpenStrategies }: { onOpenStrategies: () => void }) {
   const tools: Tool[] = [
-    { key: "projection", onClick: () => onOpen("projection"), icon: LineChart, title: "Projection", text: "Where it could go from here: a goal, withdrawals, the safe withdrawal." },
-    ...(onOpenStrategies ? [{ key: "strategies", onClick: onOpenStrategies, icon: History, title: "Strategies", text: "Your strategies tested on the past, and the ones advisors publish." }] : []),
+    { key: "strategies", onClick: onOpenStrategies, icon: History, title: "Strategies", text: "Your strategies tested on the past, and the ones advisors publish." },
   ];
   return <ToolsModule title="Plan" tools={tools} />;
 }

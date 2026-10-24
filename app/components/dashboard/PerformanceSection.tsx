@@ -32,6 +32,7 @@ import { InstrumentProfileModule } from "./InstrumentProfileModule";
 import { DonutList, type DonutItem } from "./DonutList";
 import { CompareModule } from "./CompareModule";
 import { StressTestModule, StressTestPanel } from "./stress/StressTest";
+import { ProjectionModule, ProjectionPanel, type ProjectionStart } from "./projection/ProjectionPage";
 import { AssetArticlesModule } from "./journal/AssetArticlesModule";
 import { AssetNewsModule } from "./AssetNewsModule";
 import { BondRatesModule } from "./MarketRates";
@@ -139,12 +140,14 @@ export function PerformanceSection({
   const { explore, host: exploreHost, setSlot: setExploreSlot } = useExploreHost();
   const exploring = explore !== null;
 
-  // The stress test, opened from Volatility's detail like a month from Performance's.
-  const [stressOpen, setStressOpen] = useState(false);
+  // The stress test, opened from Volatility's detail, or the projection from Performance's (on a
+  // goal, its answer already there), like a month.
+  const [tool, setTool] = useState<{ kind: "stress" } | { kind: "projection"; start?: ProjectionStart } | null>(null);
+  const closeTool = () => setTool(null);
 
-  // A month opens from Performance's detail, one level further down, over it, and the stress
-  // test from Volatility's: the detail stays mounted underneath (hidden), and the scroll
-  // position is kept for the way back to it.
+  // A month opens from Performance's detail, one level further down, over it, and so do the
+  // tools: the detail stays mounted underneath (hidden), and the scroll position is kept for the
+  // way back to it.
   const scrollBeforeDeeper = useRef(0);
   const openDeeper = (open: () => void) => {
     scrollBeforeDeeper.current = window.scrollY;
@@ -152,8 +155,9 @@ export function PerformanceSection({
     window.scrollTo({ top: 0 });
   };
   const openMonth = (year: number, m: number) => openDeeper(() => setSelected({ year, month: m }));
-  const openStress = () => openDeeper(() => setStressOpen(true));
-  const deeperOpen = selected !== null || stressOpen;
+  const openStress = () => openDeeper(() => setTool({ kind: "stress" }));
+  const openProjection = (start?: ProjectionStart) => openDeeper(() => setTool({ kind: "projection", start }));
+  const deeperOpen = selected !== null || tool !== null;
   const firstDeeperRun = useRef(true);
   useEffect(() => {
     if (firstDeeperRun.current) {
@@ -165,10 +169,10 @@ export function PerformanceSection({
     return () => cancelAnimationFrame(frame);
   }, [deeperOpen]);
 
-  // The browser's back button closes a month (or the stress test), then a detail view: opening either adds a history
+  // The browser's back button closes a month (or a tool), then a detail view: opening either adds a history
   // entry (see lib/dashboardHistory), and landing on an entry below it closes it. Closed from the
   // page (Esc, the Sidebar), it goes back past its entry, so the next back goes further up.
-  const overlay: DashboardOverlay | null = selected ? "month" : stressOpen ? "stress" : explore ? "explore" : null;
+  const overlay: DashboardOverlay | null = selected ? "month" : tool ? "tool" : explore ? "explore" : null;
   const exploreRef = useRef(explore);
   useEffect(() => {
     exploreRef.current = explore;
@@ -191,7 +195,7 @@ export function PerformanceSection({
     const onPopState = () => {
       const landed = readDashboardEntry()?.overlay;
       if (landed !== "month") setSelected(null);
-      if (landed !== "stress") setStressOpen(false);
+      if (landed !== "tool") setTool(null);
       if (landed !== "explore") exploreRef.current?.onClose();
     };
     window.addEventListener("popstate", onPopState);
@@ -212,10 +216,10 @@ export function PerformanceSection({
           current={monthTitle}
           right={<ViewReportLink portfolioUuid={portfolioUuid} documentId={month.data?.reportDocumentId ?? null} />}
         />
-      ) : stressOpen ? (
+      ) : tool ? (
         <Breadcrumb
-          trail={[...above, insightsCrumb(() => setStressOpen(false)), ...(explore ? [{ label: explore.title, onClick: () => setStressOpen(false) }] : [])]}
-          current="Stress test"
+          trail={[...above, insightsCrumb(closeTool), ...(explore ? [{ label: explore.title, onClick: closeTool }] : [])]}
+          current={tool.kind === "stress" ? "Stress test" : "Projection"}
         />
       ) : explore ? (
         <Breadcrumb trail={[...above, insightsCrumb(explore.onClose)]} current={explore.title} hidden={explore.noTrail} />
@@ -256,8 +260,9 @@ export function PerformanceSection({
             currency={performance.data.currency}
           />
         )}
-        {stressOpen && <StressTestPanel portfolioUuid={portfolioUuid} withPolicy={!backtest} />}
-        {/* Under an open month (or the stress test), the page and its detail stay mounted but
+        {tool?.kind === "stress" && <StressTestPanel portfolioUuid={portfolioUuid} withPolicy={!backtest} />}
+        {tool?.kind === "projection" && <ProjectionPanel portfolioUuid={portfolioUuid} start={tool.start} />}
+        {/* Under an open month (or a tool), the page and its detail stay mounted but
             hidden, the same way the page stays under a detail (see below). */}
         <div className={deeperOpen ? "invisible h-0 overflow-hidden" : "space-y-6"} aria-hidden={deeperOpen || undefined} inert={deeperOpen || undefined}>
         <ExploreHostContext.Provider value={exploreHost}>
@@ -277,6 +282,7 @@ export function PerformanceSection({
               portfolioUuid={portfolioUuid}
               onSelectMonth={openMonth}
               onOpenStress={openStress}
+              onOpenProjection={openProjection}
               isAggregate={isAggregate}
               onOpenPortfolio={onOpenPortfolio}
               onCompare={onCompare}
@@ -2889,7 +2895,7 @@ function slotOf<S, M>(
 const ownStale = (module: { isStale: boolean }) => module.isStale;
 
 // How deep each overlay sits over the page: a month opens from a detail view.
-const OVERLAY_DEPTH: Record<DashboardOverlay | "none", number> = { none: 0, explore: 1, month: 2, stress: 2 };
+const OVERLAY_DEPTH: Record<DashboardOverlay | "none", number> = { none: 0, explore: 1, month: 2, tool: 2 };
 
 const PREPARING_ANALYTICS = "Being prepared — this shows up after the overnight analysis of your portfolio has run.";
 const PREPARING_TICK = "Being prepared — this shows up shortly after your first transactions are processed.";
@@ -4486,7 +4492,7 @@ function MonthPage({
  * Performance's detail (see PerformanceSection).
  */
 function HistoryPage({
-  insights, performance, value, portfolioUuid, onSelectMonth, onOpenStress, isAggregate, onOpenPortfolio, onCompare, onOpenTaxes, comparison, backtest, strategyShown,
+  insights, performance, value, portfolioUuid, onSelectMonth, onOpenStress, onOpenProjection, isAggregate, onOpenPortfolio, onCompare, onOpenTaxes, comparison, backtest, strategyShown,
 }: {
   insights: Insights;
   // The Performance section, already loaded, and its value (PerformanceSection checks both).
@@ -4494,8 +4500,9 @@ function HistoryPage({
   value: InsightsValueModule;
   portfolioUuid: string;
   onSelectMonth: (year: number, month: number) => void;
-  // Opens the stress test, from Volatility's detail.
+  // Open the stress test, from Volatility's detail, and the projection, from Performance's.
   onOpenStress: () => void;
+  onOpenProjection: (start?: ProjectionStart) => void;
   // "All portfolios": Holdings and Risk then also show how the portfolios make it up.
   isAggregate: boolean;
   // Opens one of the aggregate's portfolios (from the Composition).
@@ -4512,6 +4519,11 @@ function HistoryPage({
   strategyShown: boolean;
 }) {
   const { composition, incomeCosts, risk, timedOut } = insights;
+  // The investments' own page (All portfolios, or the only portfolio) measures itself against the
+  // investor's goals, which are theirs as a whole; another portfolio, or a backtest, doesn't.
+  const { portfolios } = usePortfolio();
+  const owned = portfolios.filter((p) => !p.isVirtual && !p.isAggregate);
+  const withGoals = !backtest && (isAggregate || (owned.length === 1 && owned[0].uuid === portfolioUuid));
   const currency = performance.currency;
   const own = <S, M extends { isStale: boolean }>(section: SectionState<S>, pick: (data: S) => M | null) =>
     slotOf(section, timedOut, pick, ownStale);
@@ -4539,6 +4551,8 @@ function HistoryPage({
       currency={currency}
       portfolioUuid={portfolioUuid}
       onSelectMonth={onSelectMonth}
+      withGoals={withGoals}
+      onOpenProjection={onOpenProjection}
     />
   );
 
@@ -4696,17 +4710,21 @@ function ValueModule({ value, currency, comparison, children }: {
 /**
  * PERFORMANCE DETAIL — everything behind the value: the time-weighted returns
  * (/insights/returns), the monthly returns (a month opens one level further down, the month in
- * progress with how the market moved it day by day) and the benchmark comparison
- * (/insights/benchmark).
+ * progress with how the market moved it day by day), the benchmark comparison
+ * (/insights/benchmark), then where it could go from here (ProjectionModule: the investor's goals,
+ * or the safe withdrawal), opening the projection one level down too.
  */
 function PerformanceDetail({
-  heatmap, historyUpdating, currency, portfolioUuid, onSelectMonth,
+  heatmap, historyUpdating, currency, portfolioUuid, onSelectMonth, withGoals, onOpenProjection,
 }: {
   heatmap: MonthlyMarketEffectEntry[];
   historyUpdating: boolean;
   currency: string;
   portfolioUuid: string;
   onSelectMonth: (year: number, month: number) => void;
+  // The projection on the Investment Policy's goals (the investments' own page), not the safe withdrawal.
+  withGoals: boolean;
+  onOpenProjection: (start?: ProjectionStart) => void;
 }) {
   return (
     <>
@@ -4720,6 +4738,7 @@ function PerformanceDetail({
         {historyUpdating ? <StaleUpdatingState /> : <MonthlyReturnsHeatmap entries={heatmap} onSelectMonth={onSelectMonth} />}
       </Module>
       <BenchmarkExplore portfolioUuid={portfolioUuid} />
+      <ProjectionModule portfolioUuid={portfolioUuid} withGoals={withGoals} onOpen={onOpenProjection} />
     </>
   );
 }

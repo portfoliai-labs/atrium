@@ -2,8 +2,12 @@
 "use client";
 
 import { useState } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { AlertTriangle, Hourglass, Info, Loader2 } from "lucide-react";
 import { Area, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { investmentsKey } from "../../../context/PortfolioContext";
+import { useInvestorPolicyRead } from "../../../hooks/useInvestorPolicy";
+import { PROFILE_SECTION, useOpenDashboardPage } from "../../../lib/dashboardNav";
 import { projectionService } from "../../../services/projectionService";
 import { ApiError } from "../../../services/apiClient";
 import { formatCompact, formatCurrency } from "../../../lib/format";
@@ -28,7 +32,7 @@ const QUESTIONS: { id: Question; label: string; detail: string }[] = [
 ];
 
 // Each question's form, as typed.
-interface Forms {
+export interface Forms {
   goal: { targetAmount: string; monthlyContribution: string; targetHorizonYears: string };
   survival: { monthlyWithdrawal: string; horizonYears: string; yearsUntilRetirement: string; monthlyContribution: string };
   safeWithdrawal: { horizonYears: string; yearsUntilRetirement: string; monthlyContribution: string; targetSuccessPct: string };
@@ -92,13 +96,43 @@ function requestOf(question: Question, forms: Forms): { request: ProjectionReque
  * months of returns the backend refuses, and the page says why and when to come back.
  */
 export function ProjectionPage({ portfolioUuid, trail, eyebrow }: { portfolioUuid: string; trail: Crumb[]; eyebrow?: string }) {
-  const [question, setQuestion] = useState<Question>("goal");
-  const [forms, setForms] = useState<Forms>(INITIAL_FORMS);
+  return (
+    <div className="space-y-6 pb-12">
+      <Breadcrumb trail={trail} current="Projection" />
+      <div className="flex flex-col gap-2">
+        {eyebrow && <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">{eyebrow}</p>}
+        <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Projection</h1>
+      </div>
+      <ProjectionPanel portfolioUuid={portfolioUuid} />
+    </div>
+  );
+}
+
+/**
+ * Where the projection opens: a question, its form, and its answer when it's already run (a goal
+ * from ProjectionModule, shown at once rather than asked again).
+ */
+export interface ProjectionStart {
+  question: Question;
+  forms: Forms;
+  result?: Projection;
+}
+
+/**
+ * The projection itself (ProjectionPage's, and one level down from Performance's detail): what it
+ * rests on said first, then the question on the left and its answer on the right. `start` opens it
+ * on a question already filled in.
+ */
+export function ProjectionPanel({ portfolioUuid, start }: { portfolioUuid: string; start?: ProjectionStart }) {
+  const [question, setQuestion] = useState<Question>(start?.question ?? "goal");
+  const [forms, setForms] = useState<Forms>(start?.forms ?? INITIAL_FORMS);
   // By portfolio and question (`${portfolioUuid}:${question}`): another portfolio picked keeps the form.
-  const [outcomes, setOutcomes] = useState<Partial<Record<string, Outcome>>>({});
+  const [outcomes, setOutcomes] = useState<Partial<Record<string, Outcome>>>(
+    start?.result ? { [`${portfolioUuid}:${start.question}`]: { data: start.result, error: null } } : {},
+  );
   const [running, setRunning] = useState(false);
   // The reference currency, once a run has said it.
-  const [currency, setCurrency] = useState<string | null>(null);
+  const [currency, setCurrency] = useState<string | null>(start?.result?.currency ?? null);
 
   const built = requestOf(question, forms);
   const problem = "problem" in built ? built.problem : null;
@@ -130,17 +164,13 @@ export function ProjectionPage({ portfolioUuid, trail, eyebrow }: { portfolioUui
     setForms((f) => ({ ...f, [q]: { ...f[q], [field]: value } }));
   const unit = currency ?? "";
 
+  // In the page's own spacing, under the trail.
   return (
-    <div className="space-y-6 pb-12">
-      <Breadcrumb trail={trail} current="Projection" />
-      <div className="flex flex-col gap-2">
-        {eyebrow && <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">{eyebrow}</p>}
-        <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Projection</h1>
-        <p className="flex items-start gap-2 text-[12.5px] text-[#78716c] max-w-3xl">
-          <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          Where the portfolio as it is could go, over thousands of simulated markets drawn from its past returns. A range of outcomes, not a forecast: nothing is recorded. You enter amounts in today&apos;s money; the results are in the money of each year, inflation included.
-        </p>
-      </div>
+    <>
+      <p className="flex items-start gap-2 text-[12.5px] text-[#78716c] max-w-3xl">
+        <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+        Where the portfolio as it is could go, over thousands of simulated markets drawn from its past returns. A range of outcomes, not a forecast: nothing is recorded. You enter amounts in today&apos;s money; the results are in the money of each year, inflation included.
+      </p>
 
       {/* The question on the left, what it gives on the right: wide screens fill with the answer. */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] gap-6 items-start">
@@ -242,9 +272,139 @@ export function ProjectionPage({ portfolioUuid, trail, eyebrow }: { portfolioUui
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 }
+
+// The safe withdrawal the module falls back on: 30 years from today, in 9 simulated markets in 10.
+const SAFE_WITHDRAWAL: ProjectionRequest = { safeWithdrawal: { horizonYears: 30, yearsUntilRetirement: 0, targetSuccessPct: 90 } };
+
+const isTooShort = (err: unknown) => err instanceof ApiError && err.status === 409 && err.errorType === PROJECTION_HISTORY_TOO_SHORT;
+
+/**
+ * PROJECTION MODULE — the projection in Performance's detail, where the returns so far are: with
+ * `withGoals` (the investments' page, the investor's own), each goal of their Investment Policy
+ * with an amount, a line each: the chance of reaching it (by its year, when it has one), with the
+ * monthly contribution the policy says, and the median time; a goal opens the projection one
+ * level down on it (`onOpen`), its answer already there. Without goals, how much the portfolio
+ * could pay out each month for 30 years (the safe withdrawal), and on the investments' page a link
+ * to set goals. Each run is in the cache by its question (the same data gives the same answer).
+ * Left out, `null`, when the positions have under a year of returns together: the backend refuses
+ * then, and says so only once asked.
+ */
+export function ProjectionModule({ portfolioUuid, withGoals, onOpen }: {
+  portfolioUuid: string;
+  withGoals: boolean;
+  onOpen: (start?: ProjectionStart) => void;
+}) {
+  const policy = useInvestorPolicyRead(withGoals);
+  const openPage = useOpenDashboardPage();
+  const thisYear = new Date().getFullYear();
+  // Waiting for the policy before asking anything, so a goal isn't preceded by the fallback.
+  const policyPending = policy === undefined;
+  const goals = (policy?.objectives.goals ?? []).filter((g) => (g.targetAmount ?? 0) > 0);
+  const contribution = policy?.objectives.monthlyContribution ?? undefined;
+  const asks: { label: string; sub: string; forms?: Forms; request: ProjectionRequest }[] = goals.length > 0
+    ? goals.map((g, i) => {
+        // A year already past keeps the goal, without a deadline.
+        const years = g.targetYear !== null && g.targetYear > thisYear ? Math.min(g.targetYear - thisYear, PROJECTION_MAX_YEARS) : undefined;
+        return {
+          label: g.description.trim() || `Goal ${i + 1}`,
+          sub: g.targetYear !== null ? `by ${g.targetYear}` : "no deadline",
+          request: { goal: { targetAmount: g.targetAmount!, monthlyContribution: contribution, targetHorizonYears: years } },
+          forms: {
+            ...INITIAL_FORMS,
+            goal: { targetAmount: String(g.targetAmount), monthlyContribution: contribution ? String(contribution) : "", targetHorizonYears: years ? String(years) : "" },
+          },
+        };
+      })
+    : [{ label: "Safe withdrawal", sub: "30 years", request: SAFE_WITHDRAWAL }];
+  const runs = useQueries({
+    queries: policyPending ? [] : asks.map((a) => ({
+      queryKey: investmentsKey("projection", portfolioUuid, a.request),
+      queryFn: () => projectionService.run(portfolioUuid, a.request),
+      retry: (count: number, err: unknown) => !isTooShort(err) && count < 2,
+    })),
+  });
+  if (runs.some((r) => isTooShort(r.error))) return null;
+
+  return (
+    <Module>
+      <ModuleHead
+        title={goals.length > 0 ? "Your goals" : "Projection"}
+        desc="Where the portfolio as it is could go, over thousands of simulated markets drawn from its past returns. Open it to ask your own questions."
+        onExplore={() => onOpen()}
+      />
+      <div className={MODULE_BODY}>
+        {policyPending || runs.some((r) => r.isPending) ? (
+          <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-[#C49A3C]" /></div>
+        ) : goals.length > 0 ? (
+          <ul className="space-y-3">
+            {asks.map((a, i) => {
+              const goal = runs[i].data?.goal;
+              const chance = goal ? goal.deadlineProbabilityPct ?? goal.probabilityPct : null;
+              const money = (v: number) => formatCurrency(v, runs[i].data!.currency, 0);
+              return (
+                <li key={`${a.label}-${i}`}>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onOpen({ question: "goal", forms: a.forms!, result: runs[i].data }); }}
+                    className="w-full grid grid-cols-[minmax(0,1fr)_auto] @sm:grid-cols-[minmax(0,1fr)_minmax(4rem,1.5fr)_auto] items-center gap-x-4 gap-y-1.5 text-left rounded-lg -mx-2 px-2 py-1 hover:bg-[#FBFAF6]"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-bold text-[#1c1917] truncate">{a.label}</span>
+                      <span className="block text-[11px] text-[#857e78] truncate">{goal ? `${money(goals[i].targetAmount!)} ${a.sub}` : a.sub}</span>
+                    </span>
+                    <span className="col-span-2 order-last @sm:col-span-1 @sm:order-none">
+                      {chance !== null && (
+                        <span className="relative block h-1.5 rounded-full bg-[#F4F1EA]">
+                          <span className={`absolute inset-y-0 left-0 rounded-full ${chanceColor(chance)}`} style={{ width: `${chance}%` }} />
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-right">
+                      {runs[i].isError ? <span className="text-[11px] font-semibold text-[#e11d48]">Unavailable</span> : goal && (
+                        <>
+                          <span className="block text-[13px] font-black tabular-nums text-[#1c1917]">{pct(chance!)}</span>
+                          <span className="block text-[11px] tabular-nums text-[#857e78]">{goal.monthsToGoalP50 !== null ? `median ${durationLabel(goal.monthsToGoalP50)}` : "median: not reached"}</span>
+                        </>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+            {contribution ? <li className="pt-1 text-[11.5px] text-[#78716c]">Adding {formatCurrency(contribution, runs[0].data?.currency ?? "EUR", 0)} a month, as in your Investment Policy.</li> : null}
+          </ul>
+        ) : runs[0]?.isError ? (
+          <p className="text-[12.5px] font-semibold text-[#e11d48]">Unable to run the projection.</p>
+        ) : runs[0]?.data?.safeWithdrawal ? (
+          <div className="space-y-3">
+            <Figs>
+              <Fig
+                label="Safe withdrawal"
+                value={`${formatCurrency(runs[0].data.safeWithdrawal.monthlyWithdrawal, runs[0].data.currency, 0)} a month`}
+                strong
+                sub="For 30 years, in 9 in 10 simulated markets, in today's money"
+              />
+            </Figs>
+            {policy && openPage && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); openPage(PROFILE_SECTION, { page: "policy" }); }}
+                className="text-[12px] font-bold text-[#C49A3C] hover:text-[#1c1917]"
+              >
+                Set your goals in the Investment Policy to see your chance of reaching each one
+              </button>
+            )}
+          </div>
+        ) : null}
+      </div>
+    </Module>
+  );
+}
+
+const chanceColor = (chance: number) => (chance >= 80 ? "bg-[#047857]" : chance < 50 ? "bg-[#e11d48]" : "bg-[#C49A3C]");
 
 // What each question's answer shows, before it's run.
 const AWAITING: Record<Question, { title: string; figures: string[]; fan: boolean }> = {

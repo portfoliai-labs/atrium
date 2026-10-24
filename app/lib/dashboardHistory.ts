@@ -15,8 +15,8 @@
 
 import { useEffect, useState } from "react";
 
-// "stress": the stress test, opened from Volatility's detail one level further down, like a month.
-export type DashboardOverlay = "explore" | "month" | "stress";
+// "tool": the stress test or the projection, opened from a detail one level further down, like a month.
+export type DashboardOverlay = "explore" | "month" | "tool";
 
 export interface DashboardEntry {
   section: string;

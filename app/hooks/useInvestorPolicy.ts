@@ -4,10 +4,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { clientsKey, useClientsQuery } from "../context/ClientsContext";
+import { useUser } from "../context/UserContext";
 import { ipsService } from "../services/ipsService";
 import type { InvestorPolicy } from "../models/InvestorPolicy";
 
 export type IpsSaveStatus = "idle" | "saving" | "saved" | "error";
+
+/**
+ * The investor's policy to read only (a module measuring the portfolio against it), under the
+ * same key as useInvestorPolicy's: undefined while loading; null without one asked (`enabled`
+ * false), for an advisor (who has none of their own) or when it can't be read.
+ */
+export function useInvestorPolicyRead(enabled: boolean): InvestorPolicy | null | undefined {
+  const { user } = useUser();
+  const asked = enabled && user?.role !== "ADVISOR";
+  const query = useClientsQuery(["policy"], () => ipsService.getPolicy(), { enabled: asked && Boolean(user) });
+  if (!asked || query.isError) return null;
+  return query.data;
+}
 
 const SAVE_DELAY_MS = 500;
 

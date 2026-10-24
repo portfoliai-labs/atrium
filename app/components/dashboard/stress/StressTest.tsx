@@ -4,10 +4,8 @@
 import { useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { AlertTriangle, Info, Loader2, Minus, Plus, X } from "lucide-react";
-import { useClientsQuery } from "../../../context/ClientsContext";
 import { investmentsKey, useInvestmentsQuery } from "../../../context/PortfolioContext";
-import { useUser } from "../../../context/UserContext";
-import { ipsService } from "../../../services/ipsService";
+import { useInvestorPolicyRead } from "../../../hooks/useInvestorPolicy";
 import { stressTestService } from "../../../services/stressTestService";
 import { formatCurrency } from "../../../lib/format";
 import { STRATEGY_CATEGORIES, STRATEGY_CATEGORY_LABELS, type StrategyCategory } from "../../../models/Strategy";
@@ -156,9 +154,7 @@ function useCrisisRuns(portfolioUuid: string) {
 
 /** The largest loss the investor said they could accept (their Investment Policy's), in %; null without one, or when not asked. */
 function usePolicyLossLimit(withPolicy: boolean): number | null {
-  const { user } = useUser();
-  const policy = useClientsQuery(["policy"], () => ipsService.getPolicy(), { enabled: withPolicy && Boolean(user) && user?.role !== "ADVISOR" });
-  return withPolicy ? policy.data?.risk.maxDrawdownPct ?? null : null;
+  return useInvestorPolicyRead(withPolicy)?.risk.maxDrawdownPct ?? null;
 }
 
 // The crises' bars share one scale: the deepest loss, or the limit when it's deeper.
