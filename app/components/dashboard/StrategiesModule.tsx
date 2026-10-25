@@ -19,10 +19,8 @@ import { formatPct } from "./CompareCharts";
 
 const DESC = "The strategies your portfolios follow and where each one stands against its ranges; without one, your backtests by their yearly return; without those, the newest strategies advisors published.";
 
-// The backtests listed when no portfolio follows a strategy.
-const BACKTESTS_SHOWN = 3;
-// The catalog's, without either: its newest (its own order, no pick by figures).
-const CATALOG_QUERY = { limit: 2 };
+// The catalog's, without either: its newest (its own order, no pick by figures), more than fit.
+const CATALOG_QUERY = { limit: 8 };
 
 type Tone = "danger" | "ok" | "muted";
 const TONE_CLASS: Record<Tone, string> = { danger: "text-[#e11d48]", ok: "text-[#047857]", muted: "text-[#857e78]" };
@@ -63,16 +61,17 @@ const sinceStart = (s: PublishedStrategy) => s.horizons.find((h) => h.horizon ==
 
 /**
  * STRATEGIES — the investments' preview of Strategies, beside Compare on All portfolios (across the
- * page on the only portfolio). The strategies the portfolios follow, a line each: the user's own
+ * page on the only portfolio): a list alone, of as many lines as the card has room for (FitList).
+ * The strategies the portfolios follow, a line each: the user's own
  * adoptions, read from the alert rules they keep (`source` "adoption:<id>", the list the page's
  * header already reads, so nothing more is asked but each adoption's backtest, for its name), and
  * those their advisor shared (GET /v1/portfolios/shared-strategies, with their standings); each
  * says how many targets are outside their range and opens its portfolio's Strategy page
  * (`onOpenStrategy`). Without any, the user's backtests by their annualized return (GET
- * /v1/portfolios/comparison), beside the investments' own, each opening its backtest. Without
- * backtests either, the catalog's two newest (GET /v1/explore/strategies, Strategies' own read),
- * each with its yearly return, volatility and worst drop since its start, as the catalog always
- * shows them, opening its page; and the way to build one. The module opens Strategies (`onNavigate`). The
+ * /v1/portfolios/comparison), each opening its backtest. Without backtests either, the catalog's
+ * newest (GET /v1/explore/strategies, Strategies' own read), marked simulated, each with its yearly
+ * return, volatility and worst drop since its start, as the catalog always shows them, opening its
+ * page; with none, the way to build one. The module opens Strategies (`onNavigate`). The
  * investor's own: not on an advisor's view of a client.
  */
 export function StrategiesModule({ investmentsUuid, onOpenStrategy, onNavigate }: {
@@ -130,8 +129,7 @@ export function StrategiesModule({ investmentsUuid, onOpenStrategy, onNavigate }
   const uuids = [investmentsUuid, ...backtests.map((p) => p.uuid)];
   const entries = useInvestmentsRead(["comparison", "own", "strategies", uuids], () => portfoliosService.compare(uuids), ranking);
   const yearly = (uuid: string) => entries?.find((e) => e.portfolio.uuid === uuid)?.performance?.annualizedReturnPct ?? null;
-  const ranked = [...backtests].sort((a, b) => (yearly(b.uuid) ?? -Infinity) - (yearly(a.uuid) ?? -Infinity)).slice(0, BACKTESTS_SHOWN);
-  const own = yearly(investmentsUuid);
+  const ranked = [...backtests].sort((a, b) => (yearly(b.uuid) ?? -Infinity) - (yearly(a.uuid) ?? -Infinity));
   const browsing = !loading && followed.length === 0 && backtests.length === 0;
   const catalog = useInvestmentsRead(["publications", "catalog", CATALOG_QUERY], () => publicationService.list(CATALOG_QUERY), browsing);
   const published = catalog?.strategies ?? [];
@@ -139,88 +137,88 @@ export function StrategiesModule({ investmentsUuid, onOpenStrategy, onNavigate }
   const openStrategies = () => openStrategiesPage(onNavigate, { page: followed.length === 0 && backtests.length > 0 ? "mine" : "home" });
 
   return (
-    <Module className="@container">
+    <Module className="@container flex flex-col">
       <ModuleHead title="Strategies" desc={DESC} onExplore={openStrategies} />
-      <div className={MODULE_BODY}>
+      <div className={`${MODULE_BODY} flex-1 flex flex-col min-h-0`}>
         {loading || (ranking && entries === undefined) || (browsing && catalog === undefined) ? (
           <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 text-slate-300 animate-spin" /></div>
         ) : followed.length > 0 ? (
-          <ul className="grid grid-cols-1 @3xl:grid-cols-2 gap-x-6 gap-y-1">
+          <FitList>
             {followed.map((f) => (
-              <li key={f.key}>
+              <FitItem key={f.key}>
                 <Row title={f.portfolioName} sub={f.sub} onClick={() => onOpenStrategy(f.portfolioUuid)}>
                   <span className={`block text-[11.5px] font-bold text-right ${TONE_CLASS[f.tone]}`}>{f.status}</span>
                 </Row>
-              </li>
+              </FitItem>
             ))}
-          </ul>
+          </FitList>
         ) : backtests.length > 0 ? (
-          <div className="space-y-2">
-            <ul className="grid grid-cols-1 @3xl:grid-cols-3 gap-x-6 gap-y-1">
-              {ranked.map((p) => {
-                const r = yearly(p.uuid);
-                return (
-                  <li key={p.uuid}>
-                    <Row title={p.name} sub="Your backtest" onClick={() => openBacktestPage(onNavigate, p.uuid)}>
-                      <span className={`block text-[13px] font-black tabular-nums text-right ${r === null ? "text-[#857e78]" : r >= 0 ? "text-[#047857]" : "text-[#e11d48]"}`}>
-                        {r === null ? "—" : formatPct(r)}
-                      </span>
-                      <span className="block text-[11px] text-[#857e78] text-right">a year</span>
-                    </Row>
-                  </li>
-                );
-              })}
-            </ul>
-            <p className="text-[11.5px] text-[#78716c]">
-              {own !== null ? `Your investments: ${formatPct(own)} a year. ` : ""}
-              None is followed yet: adopt one on a portfolio to keep it to its ranges.
-            </p>
-          </div>
+          <FitList>
+            {ranked.map((p) => {
+              const r = yearly(p.uuid);
+              return (
+                <FitItem key={p.uuid}>
+                  <Row title={p.name} sub="Your backtest" onClick={() => openBacktestPage(onNavigate, p.uuid)}>
+                    <span className={`block text-[13px] font-black tabular-nums text-right ${r === null ? "text-[#857e78]" : r >= 0 ? "text-[#047857]" : "text-[#e11d48]"}`}>
+                      {r === null ? "—" : formatPct(r)}
+                    </span>
+                    <span className="block text-[11px] text-[#857e78] text-right">a year</span>
+                  </Row>
+                </FitItem>
+              );
+            })}
+          </FitList>
+        ) : published.length > 0 ? (
+          <FitList>
+            {published.map((s) => {
+              const f = sinceStart(s);
+              return (
+                <FitItem key={s.publicationId}>
+                  <Row
+                    title={s.portfolioName}
+                    sub={`Simulated · ${s.authorName ? `by ${s.authorName}` : "by an advisor"}`}
+                    onClick={() => openStrategiesPage(onNavigate, { page: "published", publicationId: s.publicationId })}
+                  >
+                    <span className={`block text-[13px] font-black tabular-nums text-right ${f?.annualizedReturnPct == null ? "text-[#857e78]" : f.annualizedReturnPct >= 0 ? "text-[#047857]" : "text-[#e11d48]"}`}>
+                      {f?.annualizedReturnPct == null ? "—" : `${formatPct(f.annualizedReturnPct)} a year`}
+                    </span>
+                    <span className="block text-[11px] tabular-nums text-[#857e78] text-right truncate">
+                      {f ? `Volatility ${f.volatilityPct == null ? "—" : `${f.volatilityPct.toFixed(1)}%`} · worst ${f.maxDrawdownPct == null ? "—" : `${f.maxDrawdownPct.toFixed(1)}%`}` : "Figures not computed yet"}
+                    </span>
+                  </Row>
+                </FitItem>
+              );
+            })}
+          </FitList>
         ) : (
-          <div className="space-y-3">
-            {published.length > 0 && (
-              <>
-                <ul className="grid grid-cols-1 @3xl:grid-cols-2 gap-x-6 gap-y-1">
-                  {published.map((s) => {
-                    const f = sinceStart(s);
-                    return (
-                      <li key={s.publicationId}>
-                        <Row
-                          title={s.portfolioName}
-                          sub={s.authorName ? `By ${s.authorName}` : "Published by an advisor"}
-                          onClick={() => openStrategiesPage(onNavigate, { page: "published", publicationId: s.publicationId })}
-                        >
-                          <span className={`block text-[13px] font-black tabular-nums text-right ${f?.annualizedReturnPct == null ? "text-[#857e78]" : f.annualizedReturnPct >= 0 ? "text-[#047857]" : "text-[#e11d48]"}`}>
-                            {f?.annualizedReturnPct == null ? "—" : `${formatPct(f.annualizedReturnPct)} a year`}
-                          </span>
-                          <span className="block text-[11px] tabular-nums text-[#857e78] text-right truncate">
-                            {f ? `Volatility ${f.volatilityPct == null ? "—" : `${f.volatilityPct.toFixed(1)}%`} · worst ${f.maxDrawdownPct == null ? "—" : `${f.maxDrawdownPct.toFixed(1)}%`}` : "Figures not computed yet"}
-                          </span>
-                        </Row>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <p className="text-[11px] text-[#857e78]">Simulated on historical prices since each one&apos;s start, net of its trading costs; not advice.</p>
-              </>
-            )}
-            <p className="text-[12.5px] text-[#78716c] max-w-md">
-              {published.length > 0
-                ? "Or backtest how you would invest, then adopt it on a portfolio: each target becomes a range, and an alert says where the portfolio stands against it."
-                : "Backtest how you would invest on historical prices, then adopt the strategy on a portfolio: each target becomes a range, and an alert says where the portfolio stands against it."}
-            </p>
-            <button
-              type="button"
-              onClick={() => openStrategiesPage(onNavigate, { page: "builder" })}
-              className="inline-flex items-center gap-1 text-[12px] font-bold text-[#C49A3C] hover:text-[#1c1917]"
-            >
-              Backtest a strategy <ArrowUpRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => openStrategiesPage(onNavigate, { page: "builder" })}
+            className="self-start inline-flex items-center gap-1 text-[12px] font-bold text-[#C49A3C] hover:text-[#1c1917]"
+          >
+            Backtest a strategy <ArrowUpRight className="h-3.5 w-3.5" />
+          </button>
         )}
       </div>
     </Module>
   );
+}
+
+/**
+ * The module's list, as many whole lines as the card has room for: the card's height when the row
+ * sets it (beside Compare), three lines' at least. The lines run down a column and on into the next
+ * (two side by side on a wide card); a line that doesn't fit wraps out of sight, never cut in half.
+ */
+function FitList({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative flex-1 min-h-[10.5rem]">
+      <ul className="absolute inset-y-0 -inset-x-2 flex flex-col flex-wrap content-start overflow-hidden">{children}</ul>
+    </div>
+  );
+}
+
+function FitItem({ children }: { children: React.ReactNode }) {
+  return <li className="w-full @3xl:w-1/2 px-2">{children}</li>;
 }
 
 /** A line of the module: what it is on the left, how it stands on the right; it opens its own page. */
