@@ -31,6 +31,7 @@ import { NoDataEmptyState } from "./NoDataEmptyState";
 import { InstrumentProfileModule } from "./InstrumentProfileModule";
 import { DonutList, type DonutItem } from "./DonutList";
 import { CompareModule } from "./CompareModule";
+import { StrategiesModule } from "./StrategiesModule";
 import { StressTestModule, StressTestPanel } from "./stress/StressTest";
 import { ProjectionModule, ProjectionPanel, type ProjectionStart } from "./projection/ProjectionPage";
 import { AssetArticlesModule } from "./journal/AssetArticlesModule";
@@ -87,7 +88,7 @@ export const TOOLTIP_STYLE: React.CSSProperties = {
  * in as they arrive. Stale modules are followed through /insights/status (see useInsights).
  */
 export function PerformanceSection({
-  portfolioUuid, isAggregate = false, backtest = false, strategyShown = false, onNavigate, trail, pageLabel = "Insights", trailInTop = false, top, onOpenPortfolio, onCompare, onOpenTaxes, comparison = null,
+  portfolioUuid, isAggregate = false, backtest = false, strategyShown = false, onNavigate, trail, pageLabel = "Insights", trailInTop = false, top, onOpenPortfolio, onCompare, onOpenStrategy, onOpenTaxes, comparison = null,
 }: {
   portfolioUuid: string; isAggregate?: boolean; onNavigate?: (section: string) => void;
   // A strategy's backtest (a virtual portfolio): its header carries BacktestBanner, and before
@@ -113,6 +114,9 @@ export function PerformanceSection({
   onOpenPortfolio?: (uuid: string) => void;
   // Opens Compare: with it, All portfolios shows its Compare module (CompareModule) under its Portfolios.
   onCompare?: () => void;
+  // Opens a portfolio's Strategy page: with it, the investments' page shows its Strategies module
+  // (StrategiesModule), beside Compare on All portfolios.
+  onOpenStrategy?: (portfolioUuid: string) => void;
   // Opens the investments' Taxes page, on a year: with it, the Realized P&L shows the taxes (the
   // investments' year by year in its detail, a portfolio's this year's under it).
   onOpenTaxes?: (year?: number) => void;
@@ -244,11 +248,15 @@ export function PerformanceSection({
             message="Its trades are being generated on historical prices, then its history is built like any portfolio's. Come back in a few minutes."
           />
         ) : (
-          <NoDataEmptyState
-            title="No performance data yet"
-            message="Add or upload your transactions and this is where you'll track how your portfolio moves over time."
-            onNavigate={onNavigate}
-          />
+          <div className="space-y-6">
+            <NoDataEmptyState
+              title="No performance data yet"
+              message="Add or upload your transactions and this is where you'll track how your portfolio moves over time."
+              onNavigate={onNavigate}
+            />
+            {/* Strategies need no transactions: backtesting one is a way to start. */}
+            {onOpenStrategy && onNavigate && <StrategiesModule investmentsUuid={portfolioUuid} onOpenStrategy={onOpenStrategy} onNavigate={onNavigate} />}
+          </div>
         )
       ) : (
         <>
@@ -286,6 +294,8 @@ export function PerformanceSection({
               isAggregate={isAggregate}
               onOpenPortfolio={onOpenPortfolio}
               onCompare={onCompare}
+              onOpenStrategy={onNavigate ? onOpenStrategy : undefined}
+              onNavigate={onNavigate}
               onOpenTaxes={onOpenTaxes}
               comparison={comparison}
               backtest={backtest}
@@ -4492,7 +4502,7 @@ function MonthPage({
  * Performance's detail (see PerformanceSection).
  */
 function HistoryPage({
-  insights, performance, value, portfolioUuid, onSelectMonth, onOpenStress, onOpenProjection, isAggregate, onOpenPortfolio, onCompare, onOpenTaxes, comparison, backtest, strategyShown,
+  insights, performance, value, portfolioUuid, onSelectMonth, onOpenStress, onOpenProjection, isAggregate, onOpenPortfolio, onCompare, onOpenStrategy, onNavigate, onOpenTaxes, comparison, backtest, strategyShown,
 }: {
   insights: Insights;
   // The Performance section, already loaded, and its value (PerformanceSection checks both).
@@ -4509,6 +4519,10 @@ function HistoryPage({
   onOpenPortfolio?: (uuid: string) => void;
   // Opens Compare, from the aggregate's Compare module.
   onCompare?: () => void;
+  // Opens a portfolio's Strategy page, from the Strategies module; with Strategies through
+  // onNavigate. Both, the module is shown.
+  onOpenStrategy?: (portfolioUuid: string) => void;
+  onNavigate?: (section: string) => void;
   // Opens the investments' Taxes page, from the Realized P&L.
   onOpenTaxes?: (year?: number) => void;
   comparison: PortfolioComparisonEntry | null;
@@ -4528,10 +4542,16 @@ function HistoryPage({
   const own = <S, M extends { isStale: boolean }>(section: SectionState<S>, pick: (data: S) => M | null) =>
     slotOf(section, timedOut, pick, ownStale);
 
+  // The investments' Strategies module (StrategiesModule), in the grid or under an empty history.
+  const strategies = onOpenStrategy && onNavigate && (
+    <StrategiesModule investmentsUuid={portfolioUuid} onOpenStrategy={onOpenStrategy} onNavigate={onNavigate} />
+  );
+
   if (isHistoryEmpty(value)) {
     return (
       <div className="space-y-6">
         <EmptyPeriodState message="Add or upload transactions to build your full portfolio history." />
+        {strategies}
       </div>
     );
   }
@@ -4630,7 +4650,9 @@ function HistoryPage({
       </Tile>
       {/* All portfolios: how they did next to each other, across the page under them, their
           colours the donut's. */}
-      {aggregate && onCompare && <Tile><CompareModule onOpen={onCompare} /></Tile>}
+      {aggregate && onCompare && <Tile span={strategies ? "wide" : "full"}><CompareModule onOpen={onCompare} /></Tile>}
+      {/* The strategies the portfolios follow: beside Compare, else across the page. */}
+      {strategies && <Tile span={aggregate && onCompare ? "narrow" : "full"}>{strategies}</Tile>}
       {/* What was made, sold (realized, dividends) and still held (gains & losses), beside what
           trading cost; then the risk. */}
       <Tile span="narrow" id={moduleAnchor("realized")}>

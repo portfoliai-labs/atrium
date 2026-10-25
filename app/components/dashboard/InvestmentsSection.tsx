@@ -595,6 +595,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           // All portfolios (with two or more): how they did next to each other, its Compare module.
           onCompare={!backtest && real.length > 1 && portfolio.isAggregate ? () => open("compare") : undefined}
           onOpenTaxes={backtest ? undefined : onOpenTaxes}
+          // The investments' page, the investor's own: the strategies their portfolios follow, its Strategies module.
+          onOpenStrategy={!backtest && !client && isInvestments ? (uuid) => onOpen(uuid, "strategy") : undefined}
           onOpenPortfolio={(uuid) => onOpen(uuid)}
           onNavigate={onNavigate}
           comparison={entry ?? null}
