@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { BarChart3, ShieldCheck, Zap, Loader2, AlertCircle, Mail, Lock, MailCheck, User, Users } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useAuthFlow } from "@/app/hooks/useAuthFlow";
+import { MIN_PASSWORD_LENGTH } from "@/app/lib/password";
 
 const loginFeatures: Array<{ icon: React.ElementType; title: string; description: string }> = [
   {
@@ -29,12 +30,19 @@ function LoginContent() {
     loginWithPassword,
     signUpWithPassword,
     resendConfirmation,
+    requestPasswordReset,
+    clearPasswordReset,
     status,
     isError,
     needsEmailConfirmation,
+    resetRequestedFor,
   } = useAuthFlow(isAddon ? "addon" : "default", next);
 
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  // "reset": Forgot password?, asking for the email a link to set a new password goes to; a reset
+  // link that no longer works sends back here on it (`?mode=reset`, see auth/reset-password).
+  const [authMode, setAuthMode] = useState<"signin" | "signup" | "reset">(
+    () => (searchParams.get("mode") === "reset" ? "reset" : "signin"),
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   // Which specific action is in flight, not just whether one is — every button below shares
@@ -55,7 +63,9 @@ function LoginContent() {
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPendingAction("password");
-    if (authMode === "signin") {
+    if (authMode === "reset") {
+      await requestPasswordReset(email);
+    } else if (authMode === "signin") {
       await loginWithPassword(email, password);
     } else {
       await signUpWithPassword(email, password);
@@ -109,17 +119,19 @@ function LoginContent() {
             <div className="flex items-center gap-2 mb-4">
               <span className="w-5 h-px" style={{ background: "#C49A3C" }} />
               <span className="text-[10px] font-medium tracking-[0.14em] uppercase" style={{ color: "#8A6A28" }}>
-                {isAddon ? "Extension sign in" : authMode === "signup" ? "Create account" : "Sign in"}
+                {authMode === "reset" ? "Reset password" : isAddon ? "Extension sign in" : authMode === "signup" ? "Create account" : "Sign in"}
               </span>
             </div>
             <h2
               className="text-[clamp(28px,3vw,40px)] font-black leading-tight tracking-tight mb-3"
               style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#1c1917" }}
             >
-              {isAddon ? "Authenticate extension." : authMode === "signup" ? "Create your account." : "Welcome back."}
+              {authMode === "reset" ? "Forgot your password?" : isAddon ? "Authenticate extension." : authMode === "signup" ? "Create your account." : "Welcome back."}
             </h2>
             <p className="text-[14px] font-light" style={{ color: "#78716c" }}>
-              {isAddon
+              {authMode === "reset"
+                ? "Enter your email and we'll send you a link to set a new one."
+                : isAddon
                 ? "Sign in to generate your authentication token."
                 : authMode === "signup"
                 ? "Sign up to start analysing your portfolio."
@@ -161,8 +173,45 @@ function LoginContent() {
                 {pendingAction === "resend" ? "Resending…" : "Resend confirmation email"}
               </button>
             </div>
+          ) : resetRequestedFor ? (
+            // The same whether or not an account has the email (see requestPasswordReset).
+            <div className="text-center">
+              <div
+                className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5"
+                style={{ background: "rgba(196,154,60,0.1)" }}
+              >
+                <MailCheck className="w-6 h-6" style={{ color: "#C49A3C" }} />
+              </div>
+              <p className="text-[14px] font-medium mb-1" style={{ color: "#1c1917" }}>
+                Check your inbox
+              </p>
+              <p className="text-[13px] font-light leading-relaxed mb-6" style={{ color: "#78716c" }}>
+                If an account exists for <strong>{resetRequestedFor}</strong>, we sent it a link to set a new
+                password. It may take a minute to arrive.
+              </p>
+              <div className="flex items-center justify-center gap-4">
+                <button
+                  type="button"
+                  onClick={clearPasswordReset}
+                  className="text-[12px] font-semibold underline"
+                  style={{ color: "#78716c" }}
+                >
+                  Send it again
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { clearPasswordReset(); setAuthMode("signin"); }}
+                  className="text-[12px] font-semibold underline"
+                  style={{ color: "#1c1917" }}
+                >
+                  Back to sign in
+                </button>
+              </div>
+            </div>
           ) : (
             <>
+              {authMode !== "reset" && (
+              <>
               <button
                 onClick={handleGoogle}
                 disabled={isLoading}
@@ -192,6 +241,8 @@ function LoginContent() {
                 <span className="text-[10px] uppercase tracking-[0.1em]" style={{ color: "#c4bdb5" }}>or</span>
                 <div className="flex-1 h-px" style={{ background: "#E0DACC" }} />
               </div>
+              </>
+              )}
 
               <form onSubmit={handlePasswordSubmit} className="space-y-3">
                 <div className="relative">
@@ -207,12 +258,13 @@ function LoginContent() {
                     style={{ background: "#fff", border: "1px solid #E0DACC", color: "#1c1917" }}
                   />
                 </div>
+                {authMode !== "reset" && (
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "#857e78" }} />
                   <input
                     type="password"
                     required
-                    minLength={6}
+                    minLength={MIN_PASSWORD_LENGTH}
                     autoComplete={authMode === "signup" ? "new-password" : "current-password"}
                     placeholder="Password"
                     value={password}
@@ -221,13 +273,26 @@ function LoginContent() {
                     style={{ background: "#fff", border: "1px solid #E0DACC", color: "#1c1917" }}
                   />
                 </div>
+                )}
+                {authMode === "signin" && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode("reset")}
+                      className="text-[12px] font-medium underline"
+                      style={{ color: "#78716c" }}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
                 <button
                   type="submit"
                   disabled={isLoading}
                   className="w-full py-3.5 px-6 rounded-[3px] text-[13px] font-semibold tracking-[0.04em] uppercase transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ background: "#fff", color: "#1c1917", border: "1px solid #1c1917" }}
                 >
-                  {pendingAction === "password" ? "Please wait…" : authMode === "signup" ? "Create account" : "Sign in"}
+                  {pendingAction === "password" ? "Please wait…" : authMode === "reset" ? "Send reset link" : authMode === "signup" ? "Create account" : "Sign in"}
                 </button>
               </form>
 
@@ -238,16 +303,19 @@ function LoginContent() {
               )}
 
               <p className="text-center text-[12px] font-medium mt-6" style={{ color: "#78716c" }}>
-                {authMode === "signup" ? "Already have an account?" : "Don't have an account?"}{" "}
+                {authMode === "reset" ? "Remembered it?" : authMode === "signup" ? "Already have an account?" : "Don't have an account?"}{" "}
                 <button
                   type="button"
-                  onClick={() => setAuthMode(authMode === "signup" ? "signin" : "signup")}
+                  onClick={() => setAuthMode(authMode === "signin" ? "signup" : "signin")}
                   className="underline font-semibold"
                   style={{ color: "#1c1917" }}
                 >
-                  {authMode === "signup" ? "Sign in" : "Sign up"}
+                  {authMode === "signin" ? "Sign up" : "Sign in"}
                 </button>
               </p>
+
+              {authMode !== "reset" && (
+              <>
 
               <p className="text-center text-[10px] font-semibold uppercase tracking-[0.1em] mt-6 mb-2" style={{ color: "#857e78" }}>
                 Or try a demo account
@@ -274,6 +342,8 @@ function LoginContent() {
                   Advisor
                 </button>
               </div>
+              </>
+              )}
             </>
           )}
 
