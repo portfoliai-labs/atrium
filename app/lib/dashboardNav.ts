@@ -46,9 +46,9 @@ export const readAiChatView = (view: unknown): AiChatView | null => (
   typeof view === "object" && view !== null && (view as AiChatView).page === MESSAGES_NEW_AI_CHAT ? (view as AiChatView) : null
 );
 // Profile: the user's preferences (language, currency, tax residence), once Settings' tab, an
-// investor's Investment Policy, and Find an advisor under it, once a section of its own (see
-// MyProfileSection). Not "profile",
-// the old investor profile's.
+// advisor's declaration, an investor's Investment Policy, and Find an advisor under it, once a
+// section of its own (see MyProfileSection). Not "profile", the old investor profile's (a link to
+// it lands here).
 export const PROFILE_SECTION = "myProfile";
 // The user's plan and the plans to move to (see SubscriptionPage), once Settings' first tab.
 export const SUBSCRIPTION_SECTION = "subscription";
