@@ -6,8 +6,8 @@
 // written in the code, lib/journalStatic).
 
 import type {
-  Article, ArticleAuthor, ArticleCategory, ArticleFilters, ArticleLanguage, ArticleStatus, ArticleSummary, Block,
-  Page, ReportReason, ReportStatus, Span,
+  Article, ArticleAuthor, ArticleCategory, ArticleFilters, ArticleInstrument, ArticleLanguage, ArticleStatus, ArticleSummary,
+  Block, Page, ReportReason, ReportStatus, Span,
 } from "../models/Journal";
 import { ApiError } from "../services/apiClient";
 import { journalService } from "../services/journalService";
@@ -58,6 +58,8 @@ export const CAPTION_MAX = 300;
 export const ATTRIBUTION_MAX = 200;
 export const HEADING_MAX = 200;
 export const MAX_INSTRUMENTS = 10;
+export const MAX_TABLE_ROWS = 50;
+export const MAX_TABLE_COLUMNS = 10;
 export const DISCLOSURE_MAX = 2000;
 export const NOTE_MAX = 1000;
 export const COMMENT_MAX = 2000;
@@ -86,6 +88,36 @@ export const dateLabel = (iso: string) =>
 export const readerLanguage = (language: string | null | undefined): ArticleLanguage =>
   language?.toLowerCase().startsWith("it") ? "it" : "en";
 
+// What an article's new drafts are filed under, the category and language being off the editor for now.
+export const DEFAULT_CATEGORY: ArticleCategory = "other";
+
+/**
+ * An instrument tagged in the text: "#" and its ticker, kept as plain text in a span (acta's spans
+ * have no tags). The ticker is one of the article's instruments, ending where no letter, digit, or
+ * "." or "-" followed by one, comes next: "#VWCE.MI" whole, "#VWCE." a tag and a full stop. Null
+ * when the article names none. Its one group is the ticker.
+ */
+export function tagPattern(instruments: Pick<ArticleInstrument, "ticker">[]): RegExp | null {
+  const tickers = [...new Set(instruments.map((i) => i.ticker))].sort((a, b) => b.length - a.length);
+  if (!tickers.length) return null;
+  const escaped = tickers.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`#(${escaped.join("|")})(?![\\p{L}\\p{N}]|[.-][\\p{L}\\p{N}])`, "gu");
+}
+
+/** `text` cut at its tags: the text between them, and each tag's ticker. */
+export function splitTags(text: string, pattern: RegExp | null): ({ text: string } | { ticker: string })[] {
+  if (!pattern) return [{ text }];
+  const parts: ({ text: string } | { ticker: string })[] = [];
+  let at = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index > at) parts.push({ text: text.slice(at, match.index) });
+    parts.push({ ticker: match[1] });
+    at = match.index + match[0].length;
+  }
+  if (at < text.length) parts.push({ text: text.slice(at) });
+  return parts;
+}
+
 export const spansText = (spans: Span[]) => spans.map((s) => s.text).join("");
 
 /** An article's words, block by block (for the static articles' search). */
@@ -102,6 +134,8 @@ export function blocksText(blocks: Block[]) {
           return b.items.map((i) => spansText(i.spans)).join(" ");
         case "image":
           return [b.altText, b.caption].filter(Boolean).join(" ");
+        case "table":
+          return [...b.rows.flatMap((r) => r.cells.map((c) => spansText(c.spans))), b.caption].filter(Boolean).join(" ");
       }
     })
     .join(" ");

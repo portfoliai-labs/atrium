@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { journalService } from "../../../services/journalService";
 import type { ArticleStatus } from "../../../models/Journal";
-import { CATEGORY_LABELS, dateLabel } from "../../../lib/journal";
+import { CATEGORY_LABELS, DEFAULT_CATEGORY, dateLabel } from "../../../lib/journal";
 import { Pills, serif } from "../../preview/PreviewKit";
 import { ActionButton } from "../PageHeader";
 import { EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE, Spinner, StatusChip, usePaged } from "./JournalKit";
@@ -54,7 +54,7 @@ export function MyArticles({ onOpen, onNew }: { onOpen: (uuid: string) => void; 
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusChip status={a.status} />
-                    {a.category && <span className="text-[10px] font-black uppercase tracking-wider text-[#C49A3C]">{CATEGORY_LABELS[a.category]}</span>}
+                    {a.category && a.category !== DEFAULT_CATEGORY && <span className="text-[10px] font-black uppercase tracking-wider text-[#C49A3C]">{CATEGORY_LABELS[a.category]}</span>}
                     {a.audience === "advisor_clients" && <span className="text-[10px] font-bold text-slate-400">Clients only</span>}
                   </div>
                   <p className={`mt-1.5 text-base font-black leading-snug truncate ${a.title ? "text-slate-900" : "text-slate-400"}`} style={serif}>

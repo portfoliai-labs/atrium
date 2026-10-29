@@ -39,6 +39,8 @@ export interface Span {
   bold?: boolean;
   italic?: boolean;
   linkUrl?: string | null;
+  strike?: boolean;
+  highlight?: boolean;
 }
 
 /** One of the author's completed uploads. `altText` is required to publish; `file` is read only. */
@@ -56,7 +58,10 @@ export type Block =
   // One level; unset style is bulleted.
   | { type: "list"; style?: ListStyle | null; items: { spans: Span[] }[] }
   | { type: "quote"; spans: Span[]; attribution?: string | null }
-  | ({ type: "image" } & ArticleImage);
+  | ({ type: "image" } & ArticleImage)
+  // Rows of cells, every row as wide as the first (1 to 50 rows of 1 to 10); a cell is its spans,
+  // none when empty. `headerRow`: the first row is the columns' headings.
+  | { type: "table"; rows: { cells: { spans: Span[] }[] }[]; headerRow?: boolean; caption?: string | null };
 
 /**
  * An instrument an article names: census' listing (listingId, as /v1/listings gives it), with the
