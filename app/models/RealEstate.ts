@@ -99,6 +99,11 @@ export interface ItalianDetails {
   // The OMI market zone the user picked ("B1"), of the municipality's; null: the one the address's
   // location falls in.
   omiZone?: string | null;
+  // The OMI building type (20 "Abitazioni civili", 21 "Abitazioni di tipo economico"…) and state
+  // (NORMALE, OTTIMO, SCADENTE) the user picked for the market's estimate only, where the ones the
+  // category gives don't fit how it sells today; null: by the category, in the zone's usual state.
+  omiBuildingType?: number | null;
+  omiState?: string | null;
 }
 
 /** A person without a name is the user. */
