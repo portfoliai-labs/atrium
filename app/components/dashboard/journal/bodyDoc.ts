@@ -1,7 +1,7 @@
 // components/dashboard/journal/bodyDoc.ts
 //
 // An article's body between acta's blocks and the editor's document (TipTap's JSON): paragraphs
-// with bold, italic, links and instruments tagged with "#", headings 2 and 3, one-level lists,
+// with bold, italic, struck through and highlighted text, links and instruments tagged with "#", headings 2 and 3, one-level lists,
 // quotes with an attribution, images, tables. Nothing else exists in the editor (see BodyEditor),
 // so every document maps whole. A tag is kept as its text ("#VWCE") in acta's spans; read back,
 // the text of a ticker among the article's instruments is a tag again.
@@ -29,6 +29,8 @@ function spansToContent(spans: Span[], instruments: ArticleInstrument[]): JSONCo
       const marks: Mark[] = [];
       if (s.bold) marks.push({ type: "bold" });
       if (s.italic) marks.push({ type: "italic" });
+      if (s.strike) marks.push({ type: "strike" });
+      if (s.highlight) marks.push({ type: "highlight" });
       if (s.linkUrl) marks.push({ type: "link", attrs: { href: s.linkUrl } });
       const withMarks = marks.length ? { marks } : {};
       return splitTags(s.text, pattern).map((part): JSONContent => {
@@ -85,9 +87,13 @@ function contentToSpans(content: JSONContent[] | undefined): Span[] {
       bold: marks.some((m) => m.type === "bold"),
       italic: marks.some((m) => m.type === "italic"),
       linkUrl: (marks.find((m) => m.type === "link")?.attrs?.href as string | undefined) ?? null,
+      strike: marks.some((m) => m.type === "strike"),
+      highlight: marks.some((m) => m.type === "highlight"),
     };
     const last = spans[spans.length - 1];
-    if (last && last.bold === span.bold && last.italic === span.italic && last.linkUrl === span.linkUrl) last.text += span.text;
+    const sameMarks = last && last.bold === span.bold && last.italic === span.italic && last.linkUrl === span.linkUrl
+      && last.strike === span.strike && last.highlight === span.highlight;
+    if (sameMarks) last.text += span.text;
     else spans.push(span);
   }
   return spans;

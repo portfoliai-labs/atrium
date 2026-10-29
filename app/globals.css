@@ -76,6 +76,8 @@ body {
   color: #94a3b8;
   pointer-events: none;
 }
+.journal-editor s { text-decoration-color: #94a3b8; }
+.journal-editor mark { background: rgb(196 154 60 / 0.25); color: inherit; border-radius: 2px; padding: 0 2px; }
 .journal-editor .journal-tag { color: #9a7424; font-weight: 600; background: rgb(196 154 60 / 0.12); border-radius: 4px; padding: 0 3px; }
 .journal-editor table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.6; table-layout: fixed; }
 .journal-editor th, .journal-editor td { border-bottom: 1px solid #E7E1D3; padding: 0.5rem 0.75rem; vertical-align: top; text-align: left; position: relative; }

@@ -39,6 +39,8 @@ export interface Span {
   bold?: boolean;
   italic?: boolean;
   linkUrl?: string | null;
+  strike?: boolean;
+  highlight?: boolean;
 }
 
 /** One of the author's completed uploads. `altText` is required to publish; `file` is read only. */

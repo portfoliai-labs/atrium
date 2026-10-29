@@ -36,6 +36,8 @@ function Spans({ spans }: { spans: Span[] }) {
         // A tag inside a link is the link's text.
         let node: React.ReactNode = s.linkUrl ? s.text : <Tagged text={s.text} />;
         if (s.italic) node = <em>{node}</em>;
+        if (s.strike) node = <s className="decoration-slate-400">{node}</s>;
+        if (s.highlight) node = <mark className="rounded-sm bg-[#C49A3C]/25 px-0.5 text-inherit">{node}</mark>;
         if (s.bold) node = <strong className="font-bold text-slate-900">{node}</strong>;
         if (s.linkUrl) {
           node = (

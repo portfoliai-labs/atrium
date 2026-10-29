@@ -2,19 +2,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Extension, Node, mergeAttributes, type Editor, type JSONContent } from "@tiptap/core";
+import { Extension, Node, isTextSelection, mergeAttributes, type Editor, type JSONContent } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, useEditorState, type ReactNodeViewProps } from "@tiptap/react";
+import { BubbleMenu, FloatingMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
 import { Blockquote } from "@tiptap/extension-blockquote";
 import { Heading } from "@tiptap/extension-heading";
 import { ListItem } from "@tiptap/extension-list";
 import { Placeholder } from "@tiptap/extensions";
+import { Highlight } from "@tiptap/extension-highlight";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import {
-  BetweenHorizontalEnd, BetweenHorizontalStart, BetweenVerticalEnd, BetweenVerticalStart, Bold, Heading2, Heading3, ImagePlus,
-  Italic, Link2, List, ListOrdered, Loader2, PanelTop, Pilcrow, Quote, Redo2, Table2, Trash2, Undo2, X,
+  BetweenHorizontalEnd, BetweenHorizontalStart, BetweenVerticalEnd, BetweenVerticalStart, Bold, Check, Heading2, Heading3,
+  Highlighter, ImagePlus, Italic, Link2, List, ListOrdered, Loader2, PanelTop, Plus, Quote, Strikethrough, Table2, Trash2, X,
 } from "lucide-react";
 import type { ArticleInstrument, Block } from "../../../models/Journal";
 import { exchangeLabel } from "../../../models/Listing";
@@ -216,7 +218,6 @@ const EXTENSIONS = [
     listItem: false,
     code: false,
     codeBlock: false,
-    strike: false,
     underline: false,
     horizontalRule: false,
     hardBreak: false,
@@ -233,6 +234,8 @@ const EXTENSIONS = [
   // One level of list: an item is a paragraph.
   ListItem.extend({ content: "paragraph" }),
   QuoteNode,
+  // ==text== highlights it, as ~~text~~ strikes it through.
+  Highlight,
   ArticleImageNode,
   InstrumentTagNode,
   ArticleTable,
@@ -240,7 +243,7 @@ const EXTENSIONS = [
   ArticleTableHeader,
   ArticleTableCell,
   FlagBlock,
-  Placeholder.configure({ placeholder: "Write the article here. Type # to tag an instrument; headings, lists, tables and images are in the bar above." }),
+  Placeholder.configure({ placeholder: "Tell your story… Select words to format them, type # to tag an instrument, and on an empty line + adds an image or a table." }),
 ];
 
 // ── Tagging an instrument ──
@@ -403,22 +406,45 @@ function ToolButton({ active = false, disabled = false, label, onClick, children
   );
 }
 
-// The toolbar of a document nobody has touched yet.
+/** A button of the bar over a selection: light on dark, gold when its mark is on. */
+function BubbleButton({ active = false, disabled = false, label, onClick, children }: {
+  active?: boolean; disabled?: boolean; label: string; onClick: () => void; children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      disabled={disabled}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className={`p-1.5 rounded-md transition-colors disabled:opacity-30 ${active ? "text-[#E3C77F]" : "text-slate-200 hover:text-white"}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+// The state of a document nobody has touched yet.
 const NO_MARKS = {
-  bold: false, italic: false, link: false, h2: false, h3: false, paragraph: true,
-  bullet: false, ordered: false, quote: false, canUndo: false, canRedo: false, inHeading: false,
-  canTable: true, table: null as TableState | null, tag: null as TagQuery | null,
+  bold: false, italic: false, strike: false, highlight: false, link: false, h2: false, h3: false,
+  quote: false, inHeading: false, canTable: true, table: null as TableState | null, tag: null as TagQuery | null, at: 0,
 };
 
-const Divider = () => <span className="w-px h-5 bg-slate-200 mx-1" />;
+const Divider = ({ dark = false }: { dark?: boolean }) => <span className={`w-px h-5 mx-1 ${dark ? "bg-white/15" : "bg-slate-200"}`} />;
 
 /**
  * The article's body, written as rich text and kept as acta's blocks (see bodyDoc): paragraphs with
- * bold, italic, links and instruments tagged with "#", two levels of heading, one-level lists,
- * quotes, tables and the author's images (uploaded straight to acta's bucket). It reads as the page
- * it's on: no frame, a bar above it that stays in sight. `initial` (with the article's
- * `instruments`, its tags) is read once; every change hands the document to `onChange`.
- * `editorRef` lets the page point at a block acta refused (focusNode).
+ * bold, italic, struck through and highlighted text, links and instruments tagged with "#", two
+ * levels of heading, one-level lists, quotes, tables and the author's images (uploaded straight to
+ * acta's bucket). It reads as the page it's on, Medium's way: no frame and no bar. Words selected
+ * get a bar over them (their marks, a link, a heading or a quote); an empty line a + at its left
+ * (an image, a table, a list, a quote); a table its own bar while the cursor is in it. Markdown's
+ * shorthands work as typed ("- " a list, "1. " a numbered one, "> " a quote, "## " a heading,
+ * **bold**, ~~struck~~, ==highlighted==). `initial` (with the article's `instruments`, its tags)
+ * is read once; every change hands the document to `onChange`. `editorRef` lets the page point at
+ * a block acta refused (focusNode).
  */
 export function BodyEditor({ initial, instruments = [], onChange, editorRef, disabled = false }: {
   initial: Block[];
@@ -428,10 +454,13 @@ export function BodyEditor({ initial, instruments = [], onChange, editorRef, dis
   disabled?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [linkOpen, setLinkOpen] = useState(false);
+  // The selection whose link is being written, by its position: selecting elsewhere closes it.
+  const [linkAt, setLinkAt] = useState<number | null>(null);
   const [linkValue, setLinkValue] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The empty line whose + is open, by its position: moving elsewhere closes it.
+  const [plusAt, setPlusAt] = useState<number | null>(null);
   // The tag menu's keys, while it's open; the "#" it was closed at, so it stays closed there.
   const tagKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
@@ -462,20 +491,18 @@ export function BodyEditor({ initial, instruments = [], onChange, editorRef, dis
     selector: ({ editor }) => editor ? {
       bold: editor.isActive("bold"),
       italic: editor.isActive("italic"),
+      strike: editor.isActive("strike"),
+      highlight: editor.isActive("highlight"),
       link: editor.isActive("link"),
       h2: editor.isActive("heading", { level: 2 }),
       h3: editor.isActive("heading", { level: 3 }),
-      paragraph: editor.isActive("paragraph") && !editor.isActive("listItem") && !editor.isActive("blockquote") && !editor.isActive("table"),
-      bullet: editor.isActive("bulletList"),
-      ordered: editor.isActive("orderedList"),
       quote: editor.isActive("blockquote"),
-      canUndo: editor.can().undo(),
-      canRedo: editor.can().redo(),
       // Marks don't exist in a heading.
       inHeading: editor.isActive("heading"),
       canTable: !editor.isActive("table") && editor.can().insertTable({ rows: 3, cols: 3, withHeaderRow: true }),
       table: tableStateOf(editor),
       tag: tagQueryOf(editor),
+      at: editor.state.selection.from,
     } : null,
   });
   // The instruments tagged so far, as the menu offers them: read again only once a tag is typed.
@@ -485,11 +512,14 @@ export function BodyEditor({ initial, instruments = [], onChange, editorRef, dis
   if (!editor) {
     return <div className="min-h-[360px] rounded-xl bg-white/40 animate-pulse" />;
   }
-  // The toolbar's state follows the editor's transactions, so it's only there after the first:
-  // until then, a fresh document's.
+  // The state follows the editor's transactions, so it's only there after the first: until then,
+  // a fresh document's.
   const state = toolbar ?? NO_MARKS;
   const tag = state.tag && state.tag.from !== dismissedAt ? state.tag : null;
   const table = state.table;
+  const plusOpen = plusAt === state.at;
+  const linkOpen = linkAt === state.at;
+  const setLinkOpen = (open: boolean) => setLinkAt(open ? state.at : null);
 
   const openLink = () => {
     setLinkValue(String(editor.getAttributes("link").href ?? ""));
@@ -531,80 +561,122 @@ export function BodyEditor({ initial, instruments = [], onChange, editorRef, dis
     ]).run();
   };
 
+  // What the + adds in place of its empty line.
+  const insert = (run: () => void) => {
+    setPlusAt(null);
+    run();
+  };
+
   return (
     <div>
+      {!disabled && table && (
+        <div className="sticky top-0 z-10 -mx-2 mb-2 flex flex-wrap items-center gap-0.5 border-y border-[#E7E1D3] bg-[#F7F5EF]/95 backdrop-blur px-1 py-1">
+          <span className="px-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">Table</span>
+          <ToolButton label="Row above" disabled={table.rows >= MAX_TABLE_ROWS} onClick={() => editor.chain().focus().addRowBefore().run()}><BetweenHorizontalStart className="h-4 w-4" /></ToolButton>
+          <ToolButton label="Row below" disabled={table.rows >= MAX_TABLE_ROWS} onClick={() => editor.chain().focus().addRowAfter().run()}><BetweenHorizontalEnd className="h-4 w-4" /></ToolButton>
+          <ToolButton label="Column before" disabled={table.columns >= MAX_TABLE_COLUMNS} onClick={() => editor.chain().focus().addColumnBefore().run()}><BetweenVerticalStart className="h-4 w-4" /></ToolButton>
+          <ToolButton label="Column after" disabled={table.columns >= MAX_TABLE_COLUMNS} onClick={() => editor.chain().focus().addColumnAfter().run()}><BetweenVerticalEnd className="h-4 w-4" /></ToolButton>
+          <ToolButton label="First row as headings" active={table.headerRow} onClick={() => editor.chain().focus().toggleHeaderRow().run()}><PanelTop className="h-4 w-4" /></ToolButton>
+          <Divider />
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().deleteRow().run()} className="px-2 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-800">Delete row</button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().deleteColumn().run()} className="px-2 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-800">Delete column</button>
+          <input
+            value={table.caption}
+            maxLength={CAPTION_MAX}
+            onChange={(e) => editor.chain().updateAttributes("table", { caption: e.target.value }).run()}
+            placeholder="Caption (optional)"
+            className="min-w-40 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-[#C49A3C]"
+          />
+          <ToolButton label="Delete table" onClick={() => editor.chain().focus().deleteTable().run()}><Trash2 className="h-4 w-4" /></ToolButton>
+        </div>
+      )}
+      {error && <p className="pb-3 text-xs font-medium text-rose-600">{error}</p>}
+      <EditorContent editor={editor} />
+      <input ref={fileRef} type="file" accept={IMAGE_ACCEPT} className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
+
       {!disabled && (
-        <div className="sticky top-0 z-10 -mx-2 flex flex-wrap items-center gap-0.5 border-y border-[#E7E1D3] bg-[#F7F5EF]/95 backdrop-blur px-1 py-1">
-          <ToolButton label="Paragraph" active={state.paragraph} onClick={() => editor.chain().focus().setParagraph().run()}><Pilcrow className="h-4 w-4" /></ToolButton>
-          <ToolButton label="Heading" active={state.h2} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 className="h-4 w-4" /></ToolButton>
-          <ToolButton label="Subheading" active={state.h3} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><Heading3 className="h-4 w-4" /></ToolButton>
-          <Divider />
-          <ToolButton label="Bold" active={state.bold} disabled={state.inHeading} onClick={() => editor.chain().focus().toggleBold().run()}><Bold className="h-4 w-4" /></ToolButton>
-          <ToolButton label="Italic" active={state.italic} disabled={state.inHeading} onClick={() => editor.chain().focus().toggleItalic().run()}><Italic className="h-4 w-4" /></ToolButton>
-          <ToolButton label="Link" active={state.link || linkOpen} disabled={state.inHeading} onClick={openLink}><Link2 className="h-4 w-4" /></ToolButton>
-          <Divider />
-          <ToolButton label="Bulleted list" active={state.bullet} onClick={() => editor.chain().focus().toggleBulletList().run()}><List className="h-4 w-4" /></ToolButton>
-          <ToolButton label="Numbered list" active={state.ordered} onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered className="h-4 w-4" /></ToolButton>
-          <ToolButton label="Quote" active={state.quote} onClick={() => editor.chain().focus().toggleBlockquote().run()}><Quote className="h-4 w-4" /></ToolButton>
-          <ToolButton label="Table" active={!!table} disabled={!state.canTable} onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
-            <Table2 className="h-4 w-4" />
-          </ToolButton>
-          <ToolButton label="Image" disabled={uploading} onClick={() => fileRef.current?.click()}>
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-          </ToolButton>
-          <input ref={fileRef} type="file" accept={IMAGE_ACCEPT} className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
-          <span className="flex-1" />
-          <ToolButton label="Undo" disabled={!state.canUndo} onClick={() => editor.chain().focus().undo().run()}><Undo2 className="h-4 w-4" /></ToolButton>
-          <ToolButton label="Redo" disabled={!state.canRedo} onClick={() => editor.chain().focus().redo().run()}><Redo2 className="h-4 w-4" /></ToolButton>
-          {table && (
-            <div className="basis-full flex flex-wrap items-center gap-0.5 border-t border-[#E7E1D3] pt-1 mt-0.5">
-              <span className="px-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">Table</span>
-              <ToolButton label="Row above" disabled={table.rows >= MAX_TABLE_ROWS} onClick={() => editor.chain().focus().addRowBefore().run()}><BetweenHorizontalStart className="h-4 w-4" /></ToolButton>
-              <ToolButton label="Row below" disabled={table.rows >= MAX_TABLE_ROWS} onClick={() => editor.chain().focus().addRowAfter().run()}><BetweenHorizontalEnd className="h-4 w-4" /></ToolButton>
-              <ToolButton label="Column before" disabled={table.columns >= MAX_TABLE_COLUMNS} onClick={() => editor.chain().focus().addColumnBefore().run()}><BetweenVerticalStart className="h-4 w-4" /></ToolButton>
-              <ToolButton label="Column after" disabled={table.columns >= MAX_TABLE_COLUMNS} onClick={() => editor.chain().focus().addColumnAfter().run()}><BetweenVerticalEnd className="h-4 w-4" /></ToolButton>
-              <ToolButton label="First row as headings" active={table.headerRow} onClick={() => editor.chain().focus().toggleHeaderRow().run()}><PanelTop className="h-4 w-4" /></ToolButton>
-              <Divider />
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().deleteRow().run()} className="px-2 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-800">Delete row</button>
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().deleteColumn().run()} className="px-2 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-800">Delete column</button>
+        <BubbleMenu
+          editor={editor}
+          options={{ placement: "top", offset: 8 }}
+          // Words selected only: not an image, nor cells across a table.
+          shouldShow={({ editor: e, state: s, from, to }) => e.isEditable && isTextSelection(s.selection) && from !== to && !!s.doc.textBetween(from, to).trim()}
+          className="flex items-center gap-0.5 rounded-lg bg-[#1c1917] px-1.5 py-1 shadow-lg"
+        >
+          {linkOpen ? (
+            <>
               <input
-                value={table.caption}
-                maxLength={CAPTION_MAX}
-                onChange={(e) => editor.chain().updateAttributes("table", { caption: e.target.value }).run()}
-                placeholder="Caption (optional)"
-                className="min-w-40 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-[#C49A3C]"
+                autoFocus
+                value={linkValue}
+                onChange={(e) => setLinkValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); applyLink(); }
+                  if (e.key === "Escape") { setLinkOpen(false); editor.commands.focus(); }
+                }}
+                placeholder="Paste or type a link…"
+                className="w-60 bg-transparent px-2 py-1 text-xs text-white outline-none placeholder:text-slate-400"
               />
-              <ToolButton label="Delete table" onClick={() => editor.chain().focus().deleteTable().run()}><Trash2 className="h-4 w-4" /></ToolButton>
+              <BubbleButton label="Apply" onClick={applyLink}><Check className="h-4 w-4" /></BubbleButton>
+              {state.link && (
+                <BubbleButton label="Remove link" onClick={() => { editor.chain().focus().extendMarkRange("link").unsetLink().run(); setLinkOpen(false); }}>
+                  <Trash2 className="h-4 w-4" />
+                </BubbleButton>
+              )}
+              <BubbleButton label="Close" onClick={() => { setLinkOpen(false); editor.commands.focus(); }}><X className="h-4 w-4" /></BubbleButton>
+            </>
+          ) : (
+            <>
+              <BubbleButton label="Bold" active={state.bold} disabled={state.inHeading} onClick={() => editor.chain().focus().toggleBold().run()}><Bold className="h-4 w-4" /></BubbleButton>
+              <BubbleButton label="Italic" active={state.italic} disabled={state.inHeading} onClick={() => editor.chain().focus().toggleItalic().run()}><Italic className="h-4 w-4" /></BubbleButton>
+              <BubbleButton label="Strikethrough" active={state.strike} disabled={state.inHeading} onClick={() => editor.chain().focus().toggleStrike().run()}><Strikethrough className="h-4 w-4" /></BubbleButton>
+              <BubbleButton label="Highlight" active={state.highlight} disabled={state.inHeading} onClick={() => editor.chain().focus().toggleHighlight().run()}><Highlighter className="h-4 w-4" /></BubbleButton>
+              <BubbleButton label="Link" active={state.link} disabled={state.inHeading} onClick={openLink}><Link2 className="h-4 w-4" /></BubbleButton>
+              <Divider dark />
+              <BubbleButton label="Heading" active={state.h2} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 className="h-4 w-4" /></BubbleButton>
+              <BubbleButton label="Subheading" active={state.h3} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><Heading3 className="h-4 w-4" /></BubbleButton>
+              <BubbleButton label="Quote" active={state.quote} onClick={() => editor.chain().focus().toggleBlockquote().run()}><Quote className="h-4 w-4" /></BubbleButton>
+            </>
+          )}
+        </BubbleMenu>
+      )}
+
+      {!disabled && (
+        <FloatingMenu
+          editor={editor}
+          options={{ placement: "left", offset: 12 }}
+          // An empty paragraph at the top level (not a heading's, a list's or a table's).
+          shouldShow={({ editor: e, state: s }) => {
+            const { $anchor, empty } = s.selection;
+            return e.isEditable && empty && $anchor.depth === 1 && $anchor.parent.type.name === "paragraph" && $anchor.parent.childCount === 0;
+          }}
+          className="flex items-center gap-1"
+        >
+          <button
+            type="button"
+            aria-label={plusOpen ? "Close" : "Add an image, a table, a list or a quote"}
+            title={plusOpen ? "Close" : "Add an image, a table, a list or a quote"}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setPlusAt(plusOpen ? null : state.at)}
+            className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-full border bg-[#F7F5EF] transition ${plusOpen ? "rotate-45 border-slate-400 text-slate-600" : "border-slate-300 text-slate-400 hover:border-slate-500 hover:text-slate-600"}`}
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+          {plusOpen && (
+            // Laid over the line, to the + button's right.
+            <div className="absolute left-full ml-2 flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-1 shadow-sm">
+              <ToolButton label="Image" disabled={uploading} onClick={() => insert(() => fileRef.current?.click())}>
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+              </ToolButton>
+              <ToolButton label="Table" disabled={!state.canTable} onClick={() => insert(() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run())}>
+                <Table2 className="h-4 w-4" />
+              </ToolButton>
+              <ToolButton label="Bulleted list" onClick={() => insert(() => editor.chain().focus().toggleBulletList().run())}><List className="h-4 w-4" /></ToolButton>
+              <ToolButton label="Numbered list" onClick={() => insert(() => editor.chain().focus().toggleOrderedList().run())}><ListOrdered className="h-4 w-4" /></ToolButton>
+              <ToolButton label="Quote" onClick={() => insert(() => editor.chain().focus().toggleBlockquote().run())}><Quote className="h-4 w-4" /></ToolButton>
             </div>
           )}
-        </div>
+        </FloatingMenu>
       )}
-      {linkOpen && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-[#E7E1D3] py-2">
-          <input
-            autoFocus
-            value={linkValue}
-            onChange={(e) => setLinkValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); applyLink(); }
-              if (e.key === "Escape") setLinkOpen(false);
-            }}
-            placeholder="https://…"
-            className="flex-1 min-w-48 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs outline-none focus:border-[#C49A3C]"
-          />
-          <button type="button" onClick={applyLink} className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-bold">Apply</button>
-          {state.link && (
-            <button type="button" onClick={() => { editor.chain().focus().extendMarkRange("link").unsetLink().run(); setLinkOpen(false); }} className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-200">
-              Remove link
-            </button>
-          )}
-          <button type="button" onClick={() => setLinkOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-600" aria-label="Close"><X className="h-3.5 w-3.5" /></button>
-        </div>
-      )}
-      {error && <p className="pt-3 text-xs font-medium text-rose-600">{error}</p>}
-      <div className="pt-6">
-        <EditorContent editor={editor} />
-      </div>
+
       {tag && !disabled && (
         <TagMenu
           key={tag.from}
