@@ -96,7 +96,7 @@ export function PropertyMarketModule({ property, readOnly, onEdit }: { property:
               </div>
             )}
             {market.status === "not_quoted" || !quotation ? (
-              notice("The zone has no quotation for this kind of property.")
+              notice("The zone has no quotation for this kind of property: pick another kind for the estimate in its details.")
             ) : (
               <>
                 {market.value ? (

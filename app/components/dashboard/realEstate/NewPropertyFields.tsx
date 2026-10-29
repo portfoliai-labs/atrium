@@ -4,7 +4,8 @@
 import { useState } from "react";
 import { useRealEstate, useRealEstateRead } from "../../../context/RealEstateContext";
 import {
-  ACQUISITION_KIND_LABELS, ENERGY_RATINGS, FREQUENCY_LABELS, HOLDER_KIND_LABELS, PROPERTY_KINDS, PROPERTY_KIND_LABELS, PROPERTY_USES, PROPERTY_USE_LABELS,
+  ACQUISITION_KIND_LABELS, ENERGY_RATINGS, FREQUENCY_LABELS, HOLDER_KIND_LABELS, OMI_BUILDING_TYPES, OMI_BUILDING_TYPE_LABELS, OMI_STATE_LABELS, PROPERTY_KINDS,
+  PROPERTY_KIND_LABELS, PROPERTY_USES, PROPERTY_USE_LABELS,
   RATE_INDEX_LABELS, sqftToSqm,
 } from "../../../lib/realEstate";
 import { COMMON_CURRENCIES, today } from "../../../lib/wallets";
@@ -90,6 +91,9 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
   });
   // Its market zone (OMI), of the municipality's: "" finds it from the address's location.
   const [omiZone, setOmiZone] = useState(italian?.omiZone ?? "");
+  // The kind and condition its market estimate takes: "" by the category, in the zone's usual state.
+  const [omiBuildingType, setOmiBuildingType] = useState(italian?.omiBuildingType ? String(italian.omiBuildingType) : "");
+  const [omiState, setOmiState] = useState(italian?.omiState ?? "");
   const zoneMunicipality = cadastre.municipalityCode.trim().toUpperCase();
   const municipalityZones = useRealEstateRead(["marketZones", zoneMunicipality], (source) => source.marketZones(zoneMunicipality), !!zoneMunicipality);
 
@@ -127,7 +131,7 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
   });
   const loanToRelative = use === "free_loan" && freeLoanToRelative;
   const zoneCode = zoneMunicipality ? omiZone : "";
-  const details = () => (italy && (Object.values(cadastre).some((v) => v.trim()) || historic || loanToRelative || zoneCode)
+  const details = () => (italy && (Object.values(cadastre).some((v) => v.trim()) || historic || loanToRelative || zoneCode || omiBuildingType || omiState)
     ? {
         italy: {
           municipalityCode: cadastre.municipalityCode.trim().toUpperCase() || null,
@@ -140,6 +144,8 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
           freeLoanToRelative: loanToRelative,
           // Sent whole with the rest: left out, a PATCH would drop the zone picked.
           omiZone: zoneCode || null,
+          omiBuildingType: omiBuildingType ? Number(omiBuildingType) : null,
+          omiState: omiState || null,
         },
       }
     : { italy: null });
@@ -219,7 +225,7 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
     const now = d.italy;
     const detailsChanged = !now || !italian
       ? !!now !== !!italian
-      : (["municipalityCode", "cadastralSheet", "cadastralParcel", "cadastralSubunit", "cadastralCategory", "historic", "freeLoanToRelative", "omiZone"] as const)
+      : (["municipalityCode", "cadastralSheet", "cadastralParcel", "cadastralSubunit", "cadastralCategory", "historic", "freeLoanToRelative", "omiZone", "omiBuildingType", "omiState"] as const)
           .some((k) => (now[k] ?? null) !== (italian[k] ?? null))
         || (now.cadastralIncome === null ? null : Number(now.cadastralIncome)) !== italian.cadastralIncome;
     const h = holder();
@@ -279,7 +285,7 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
           <input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} maxLength={3} list="property-currencies" className={INPUT} />
           <datalist id="property-currencies">{COMMON_CURRENCIES.map((c) => <option key={c} value={c} />)}</datalist>
         </Field>
-        <Field label="Surface">
+        <Field label="Surface" hint="Commercial (gross) area, walls included, as listings and the market ranges quote it.">
           <div className="flex gap-2">
             <input value={surface} onChange={(e) => setSurface(e.target.value)} inputMode="decimal" placeholder="68" className={`${INPUT} min-w-0 flex-1`} />
             <select value={unit} onChange={(e) => setUnit(e.target.value as "sqm" | "sqft")} aria-label="Unit" className={`${INPUT.replace("w-full", "")} w-24 shrink-0`}>
@@ -345,6 +351,19 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
                 </select>
               </Field>
             )}
+            <Field label="Kind for the estimate" className="sm:col-span-2" hint="Only the market estimate reads it; IMU keeps the category. Automatic: A/2 and A/3 as civil homes.">
+              <select value={omiBuildingType} onChange={(e) => setOmiBuildingType(e.target.value)} className={INPUT}>
+                <option value="">Automatic (from the category)</option>
+                {omiBuildingType && !OMI_BUILDING_TYPES.includes(Number(omiBuildingType)) && <option value={omiBuildingType}>{omiBuildingType}</option>}
+                {OMI_BUILDING_TYPES.map((t) => <option key={t} value={t}>{OMI_BUILDING_TYPE_LABELS[t]}</option>)}
+              </select>
+            </Field>
+            <Field label="Condition for the estimate" hint="Automatic: the zone's usual one.">
+              <select value={omiState} onChange={(e) => setOmiState(e.target.value)} className={INPUT}>
+                <option value="">Automatic</option>
+                {Object.entries(OMI_STATE_LABELS).map(([s, label]) => <option key={s} value={s}>{label}</option>)}
+              </select>
+            </Field>
             <Field label="Category"><input value={cadastre.cadastralCategory} onChange={(e) => setCadastre({ ...cadastre, cadastralCategory: e.target.value })} placeholder="A/2" className={INPUT} /></Field>
             <Field label="Cadastral income (€)"><input value={cadastre.cadastralIncome} onChange={(e) => setCadastre({ ...cadastre, cadastralIncome: e.target.value })} inputMode="decimal" placeholder="1032.91" className={INPUT} /></Field>
             <Field label="Sheet (foglio)"><input value={cadastre.cadastralSheet} onChange={(e) => setCadastre({ ...cadastre, cadastralSheet: e.target.value })} placeholder="12" className={INPUT} /></Field>
