@@ -43,6 +43,7 @@ import { MarketDataModule } from "./MarketDataModule";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { PageHeader } from "./PageHeader";
 import { ExploreView, ExploreHostContext, ExplorePanel, DataTable, useExploreHost, type DataColumn } from "./ExploreView";
+import { FactorLoadings, StyleMix, loadingsSet } from "./StrategyProfile";
 import type {
   ExposureEntryResponse, RiskModelResponse, RiskPointResponse, RiskPortfolioEntry, RiskModelUnavailableReason, WeightGapEntry,
   BenchmarkResponse, BenchmarkComponentEntry, TimeSeries, HorizonEntry, DividendsResponse, TradingCostsResponse,
@@ -51,7 +52,7 @@ import type {
   PositionResponse, InsightsHoldingsModule, InsightsExposureModule, InsightsClassificationsModule, InsightsPortfoliosModule,
   InsightsComovementModule, ClassificationDimension,
   InsightsTradingCostsModule, InsightsRealizedPnlModule, InsightsThisMonthModule,
-  InsightsValueModule, InsightsVolatilityModule, InsightsFrontierModule, InsightsPerformanceResponse, PortfolioComparisonEntry,
+  InsightsValueModule, InsightsVolatilityModule, InsightsFrontierModule, InsightsFactorExposuresModule, InsightsPerformanceResponse, PortfolioComparisonEntry,
 } from "../../models/PortfolioData";
 import type { TransactionResponse } from "../../models/Transaction";
 import { DIMENSION_PANELS, LOOK_THROUGH_INFO, allocationRows, dimensionOf, isInformative } from "../../lib/classifications";
@@ -3826,6 +3827,49 @@ function FigureRow({
  * to the portfolio's return, and which platforms it went to (the section sends the top
  * TOP_ROWS). Its detail (TradingCostsExplore) is /insights/trading-costs.
  */
+/**
+ * FACTOR EXPOSURES MODULE ("Behaves like") — what the equity holdings' monthly returns moved like:
+ * on the card, the closest mix of factor ETFs (its largest styles); its detail the whole mix with
+ * how it was measured and, where the backend serves Fama-French's factors (development only for
+ * now), their loadings. From the risk section's `factorExposures` (the overnight analysis): under
+ * three years of equity history, or without equity, the card says so and opens nothing.
+ */
+function FactorExposuresModule({ slot }: { slot: ModuleSlot<InsightsFactorExposuresModule> }) {
+  const data = slot.module;
+  const [exploring, setExploring] = useState(false);
+  const canExplore = data !== null && !slot.updating && data.status === "ok" && data.sets.length > 0;
+  const loadings = loadingsSet(data);
+
+  return (
+    <Module>
+      <ModuleHead
+        title="Behaves like"
+        desc="The mix of factor ETFs whose monthly returns come closest to its equity holdings': how they behaved, not what they hold."
+        onExplore={canExplore ? () => setExploring(true) : undefined}
+      />
+      <SlotPlaceholder slot={slot} />
+      {data !== null && !slot.updating && (
+        <div className={`${MODULE_BODY} space-y-4`}>
+          {slot.lagging && <UpdatingNote />}
+          <StyleMix exposures={data} compact />
+        </div>
+      )}
+      {canExplore && exploring && (
+        <ExploreView title="Behaves like" onClose={() => setExploring(false)}>
+          <ExplorePanel title="Factor ETF Mix" desc="The mix of factor ETFs whose monthly returns come closest to its equity holdings'.">
+            <div className="px-6 md:px-7 pb-6"><StyleMix exposures={data} /></div>
+          </ExplorePanel>
+          {loadings && (
+            <ExplorePanel title="Factor Loadings (Fama-French)" desc="Its equity holdings regressed on Fama and French's factors: the tilts that stand out from the noise.">
+              <div className="px-6 md:px-7 pb-6"><FactorLoadings set={loadings} equityWeightPct={data.equityWeightPct} /></div>
+            </ExplorePanel>
+          )}
+        </ExploreView>
+      )}
+    </Module>
+  );
+}
+
 function TradingCostsModule({ slot, currency, portfolioUuid }: { slot: ModuleSlot<InsightsTradingCostsModule>; currency: string; portfolioUuid: string }) {
   const data = slot.module;
   const [exploring, setExploring] = useState(false);
@@ -4603,6 +4647,7 @@ function HistoryPage({
   );
   const updatingNote = !historyUpdating && performance.historyIsStale && <Tile><UpdatingNote /></Tile>;
   const riskModel = <Tile id={moduleAnchor("risk")}><RiskModelModule slot={own(risk, (d) => d.frontier)} portfolioUuid={portfolioUuid} /></Tile>;
+  const factorExposures = <Tile><FactorExposuresModule slot={own(risk, (d) => d.factorExposures ?? null)} /></Tile>;
 
   const tradingCosts = <TradingCostsModule slot={own(incomeCosts, (d) => d.tradingCosts)} currency={currency} portfolioUuid={portfolioUuid} />;
 
@@ -4618,6 +4663,7 @@ function HistoryPage({
         <Tile span="wide" id={moduleAnchor("composition")}>{compositionModule}</Tile>
         <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>
         <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>
+        {factorExposures}
         {riskModel}
       </div>
     );
@@ -4668,6 +4714,7 @@ function HistoryPage({
       </Tile>
       <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>
       <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>
+      {factorExposures}
       {riskModel}
     </div>
   );

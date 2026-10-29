@@ -91,6 +91,7 @@ function staleKeys(sections: { [K in SectionKey]: { data: Sections[K]["data"] } 
       const d = sections.risk.data;
       add("volatility", d?.volatility);
       add("riskModel", d?.frontier);
+      add("factorExposures", d?.factorExposures);
       break;
     }
   }
