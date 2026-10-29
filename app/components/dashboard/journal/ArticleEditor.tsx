@@ -19,7 +19,7 @@ import {
   DEFAULT_CATEGORY, DEK_MAX, DISCLOSURE_HELP, DISCLOSURE_MAX, DISCLOSURE_TITLE, MAX_INSTRUMENTS,
   NOTE_MAX, TITLE_MAX, dateLabel, journalErrorText,
 } from "../../../lib/journal";
-import { serif } from "../../preview/PreviewKit";
+import { serif, serifText } from "../../preview/PreviewKit";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { BackLink, ErrorState, Spinner, StatusChip } from "./JournalKit";
 import { BodyEditor, focusNode } from "./BodyEditor";
@@ -371,7 +371,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
       type="button"
       onClick={() => void publish(missing)}
       disabled={!!busy || conflict}
-      className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-colors disabled:opacity-50"
+      className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold text-white bg-[#C49A3C] hover:bg-[#B08932] shadow-sm shadow-[#C49A3C]/30 transition-colors disabled:opacity-50"
     >
       {busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Publish
     </button>
@@ -380,7 +380,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
       type="button"
       onClick={() => void save()}
       disabled={!dirty || saving || conflict}
-      className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-colors disabled:opacity-50"
+      className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold text-white bg-[#C49A3C] hover:bg-[#B08932] shadow-sm shadow-[#C49A3C]/30 transition-colors disabled:opacity-50"
     >
       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save changes
     </button>
@@ -392,13 +392,13 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
         <div className="flex items-center gap-3">
           <BackLink label="Your articles" onClick={() => void leave()} />
           <StatusChip status={status} />
-          <span className="text-[11px] font-semibold text-slate-400">{saveState}</span>
+          <span className="text-[11px] font-semibold text-[#a8a29e]">{saveState}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setPreview((p) => !p)}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 border border-slate-200 bg-white hover:border-slate-300"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold text-[#57534e] border border-[#E0DACC] bg-transparent hover:border-[#C49A3C] hover:text-[#1c1917]"
           >
             {preview ? <><PenLine className="h-3.5 w-3.5" /> Edit</> : <><Eye className="h-3.5 w-3.5" /> Preview</>}
           </button>
@@ -408,7 +408,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
               onClick={() => void unpublish()}
               disabled={!!busy}
               title="Back to a draft: only you can read it"
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 border border-slate-200 bg-white hover:border-slate-300 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold text-[#57534e] border border-[#E0DACC] bg-transparent hover:border-[#C49A3C] hover:text-[#1c1917] disabled:opacity-50"
             >
               {busy === "unpublish" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />} Unpublish
             </button>
@@ -419,7 +419,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
               onClick={() => setReviewOpen(true)}
               disabled={!!busy || dirty}
               title={dirty ? "Save your changes first" : undefined}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 border border-slate-200 bg-white hover:border-slate-300 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold text-[#57534e] border border-[#E0DACC] bg-transparent hover:border-[#C49A3C] hover:text-[#1c1917] disabled:opacity-50"
             >
               <RotateCcw className="h-3.5 w-3.5" /> Ask for a review
             </button>
@@ -429,7 +429,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             type="button"
             onClick={() => setConfirmDelete(true)}
             disabled={!!busy}
-            className="p-2.5 rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+            className="p-2.5 rounded-full text-[#a8a29e] hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
             aria-label="Delete article"
             title="Delete article"
           >
@@ -475,7 +475,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
         </div>
       )}
 
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-2xl mx-auto">
         <div className={preview ? "hidden" : "space-y-4"}>
           <textarea
             value={form.title}
@@ -484,7 +484,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             rows={1}
             placeholder="Title"
             style={serif}
-            className={`w-full resize-none field-sizing-content bg-transparent text-3xl md:text-4xl font-black text-slate-900 leading-tight outline-none placeholder:text-slate-400 ${flagged === "title" ? "underline decoration-rose-400" : ""}`}
+            className={`w-full resize-none field-sizing-content bg-transparent text-4xl md:text-[46px] font-black text-[#1c1917] leading-[1.1] tracking-[-0.015em] outline-none placeholder:text-[#c8c0b0] ${flagged === "title" ? "underline decoration-rose-400" : ""}`}
           />
           <textarea
             value={form.dek}
@@ -492,7 +492,8 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             onChange={(e) => change({ dek: e.target.value.replace(/\n/g, " ") })}
             rows={1}
             placeholder="Subtitle (optional): one line on what the reader will take away"
-            className={`w-full resize-none field-sizing-content bg-transparent text-base md:text-lg text-slate-500 leading-relaxed outline-none placeholder:text-slate-400 ${flagged === "dek" ? "underline decoration-rose-400" : ""}`}
+            style={serifText}
+            className={`w-full resize-none field-sizing-content bg-transparent text-lg md:text-[21px] italic text-[#57534e] leading-snug outline-none placeholder:text-[#b5ad9e] ${flagged === "dek" ? "underline decoration-rose-400" : ""}`}
           />
           <BodyEditor key={bodyKey} initial={initialBody} instruments={initialInstruments} onChange={onBodyChange} editorRef={editorRef} />
           {instruments.length > 0 && (

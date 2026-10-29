@@ -38,12 +38,15 @@ const normalizeLink = (url: string) => {
   return hasScheme(trimmed) ? trimmed : `https://${trimmed}`;
 };
 
+// The page's own face, for the fields inside the text (an image's, a quote's), set in the serif.
+const UI_FONT = { fontFamily: "Arial, Helvetica, sans-serif" } as const;
+
 /** An image of the article: one of the author's uploads, with its alt text and caption. */
 function ImageView({ node, updateAttributes, deleteNode, selected, editor }: ReactNodeViewProps) {
   const { src, altText, caption } = node.attrs as { src: string | null; altText: string; caption: string };
   const editable = editor.isEditable;
   return (
-    <NodeViewWrapper className={`my-4 rounded-2xl border p-3 bg-slate-50/60 ${selected ? "border-[#C49A3C]" : "border-slate-200"}`} contentEditable={false}>
+    <NodeViewWrapper className={`my-6 rounded-2xl border p-3 bg-white/60 ${selected ? "border-[#C49A3C]" : "border-[#E7E1D3]"}`} contentEditable={false} style={UI_FONT}>
       <div className="relative">
         {src
           // A signed link to a private bucket: next/image can't optimise it.
@@ -117,9 +120,9 @@ const ArticleImageNode = Node.create({
 /** A quote: one paragraph, and who said it. */
 function QuoteView({ node, updateAttributes, editor }: ReactNodeViewProps) {
   return (
-    <NodeViewWrapper as="blockquote" className="my-4 border-l-2 border-[#C49A3C] pl-5 py-1">
-      <NodeViewContent className="italic text-slate-800" />
-      <div contentEditable={false} className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-400">
+    <NodeViewWrapper as="blockquote" className="my-6 border-l-[3px] border-[#C49A3C] pl-6 py-1">
+      <NodeViewContent className="italic text-[22px] leading-snug text-[#44403c]" />
+      <div contentEditable={false} className="mt-2 flex items-center gap-1.5 text-xs text-[#a8a29e]" style={UI_FONT}>
         <span>—</span>
         <input
           value={String(node.attrs.attribution ?? "")}
@@ -127,7 +130,7 @@ function QuoteView({ node, updateAttributes, editor }: ReactNodeViewProps) {
           disabled={!editor.isEditable}
           onChange={(e) => updateAttributes({ attribution: e.target.value })}
           placeholder="Who said it (optional)"
-          className="flex-1 bg-transparent font-bold text-slate-500 outline-none placeholder:font-medium placeholder:text-slate-400"
+          className="flex-1 bg-transparent font-bold text-[#78716c] outline-none placeholder:font-medium placeholder:text-[#b5ad9e]"
         />
       </div>
     </NodeViewWrapper>
@@ -399,7 +402,7 @@ function ToolButton({ active = false, disabled = false, label, onClick, children
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className={`p-2 rounded-lg transition-colors disabled:opacity-40 ${active ? "bg-[#C49A3C]/15 text-[#9a7424]" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"}`}
+      className={`p-2 rounded-lg transition-colors disabled:opacity-40 ${active ? "bg-[#C49A3C]/15 text-[#8A6A28]" : "text-[#78716c] hover:bg-[#F1EADB] hover:text-[#1c1917]"}`}
     >
       {children}
     </button>
@@ -678,13 +681,13 @@ export function BodyEditor({ initial, instruments = [], onChange, editorRef, dis
             title={plusOpen ? "Close" : "Add an image, a table, a list or a quote"}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setPlusAt(plusOpen ? null : state.at)}
-            className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-full border bg-[#F7F5EF] transition ${plusOpen ? "rotate-45 border-slate-400 text-slate-600" : "border-slate-300 text-slate-400 hover:border-slate-500 hover:text-slate-600"}`}
+            className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-full border bg-[#F7F5EF] transition ${plusOpen ? "rotate-45 border-[#C49A3C] text-[#8A6A28]" : "border-[#D9D0BC] text-[#a8a29e] hover:border-[#C49A3C] hover:text-[#8A6A28]"}`}
           >
             <Plus className="h-4 w-4" />
           </button>
           {plusOpen && (
             // Laid over the line, to the + button's right.
-            <div className="absolute left-full ml-2 flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-1 shadow-sm">
+            <div className="absolute left-full ml-2 flex items-center gap-1 rounded-full border border-[#E7E1D3] bg-white px-1.5 py-1 shadow-md shadow-[#1c1917]/5">
               <ToolButton label="Image" disabled={uploading} onClick={() => insert(() => fileRef.current?.click())}>
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
               </ToolButton>
