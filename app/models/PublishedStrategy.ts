@@ -66,6 +66,52 @@ interface ProfileBreakdown {
   shares: ProfileShare[];
 }
 
+// What its equity holdings' returns behaved like (nucleo's daily build), against each factor set
+// the backend serves: `long_only` the factor ETFs' (everywhere), `long_short` Fama-French's
+// (development only, not shown yet). A long-only set's `value` is the mix's weight (a fraction),
+// the rest (`cashWeight`) the risk-free; `significant` a weight of 5% or more. Not what the
+// holdings are (that's the breakdowns): how their monthly returns moved, measured over `months`.
+type FactorExposuresStatus = "ok" | "insufficient_history" | "unavailable";
+type FactorSetKind = "long_short" | "long_only";
+
+interface FactorExposure {
+  // `market`, `value`, `momentum`, `quality`, `min_volatility`, `size`, `emerging_markets`
+  // (long-only); `profitability`, `investment` too (long-short).
+  factor: string;
+  // As the set's source names it: "iShares Edge MSCI World Value Factor (IS3S)".
+  name: string;
+  value: number;
+  tStat: number | null;
+  significant: boolean;
+}
+
+interface FactorSetExposures {
+  provider: string;
+  region: string;
+  kind: FactorSetKind;
+  currency: string;
+  // What to cite: "iShares factor ETFs' prices (Yahoo Finance)".
+  source: string;
+  sourceUrl: string;
+  firstMonth: string | null;
+  lastMonth: string | null;
+  months: number;
+  // The share of the months' variance the factors explain, 0 to 1.
+  rSquared: number;
+  alphaAnnualPct: number;
+  alphaTStat: number | null;
+  cashWeight: number | null;
+  exposures: FactorExposure[];
+}
+
+interface FactorExposures {
+  // insufficient_history: fewer than 3 years of the equity holdings; unavailable: no equity holdings.
+  status: FactorExposuresStatus;
+  // The equity holdings measured, of the whole portfolio.
+  equityWeightPct: number;
+  sets: FactorSetExposures[];
+}
+
 interface StrategyProfile {
   breakdowns: ProfileBreakdown[];
   cashWeightPct: number;
@@ -73,6 +119,8 @@ interface StrategyProfile {
   // Each of `strategy.targets`' weight of the whole now, in their order (a category target's is
   // its proxy's); absent from an ianus before it.
   targetWeightsPct?: number[];
+  // Null until the daily build first measured them; absent from an ianus before them.
+  factorExposures?: FactorExposures | null;
 }
 
 interface PublishedStrategy {
@@ -159,5 +207,6 @@ const isFigureSort = (sort: CatalogSort) => sort !== "newest";
 export type {
   CatalogHorizon, FilterHorizon, CatalogSort, Crisis, HorizonFigures, CrisisFigures, PublishedStrategy, CatalogPage,
   CatalogQuery, PublishStrategyPayload, ProfileDimension, ProfileShare, ProfileBreakdown, StrategyProfile,
+  FactorExposuresStatus, FactorSetKind, FactorExposure, FactorSetExposures, FactorExposures,
 };
 export { MAX_DESCRIPTION_LENGTH, FILTER_HORIZONS, HORIZON_LABELS, SORT_LABELS, CRISIS_LABELS, isFigureSort };

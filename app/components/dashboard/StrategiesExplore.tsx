@@ -19,7 +19,7 @@ import { describeRebalancing } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
 import type { CompareStrategy } from "./ComparisonView";
 import { CATEGORY_COLORS, SECURITY_COLORS } from "./StrategyBuilder";
-import { ProfileSummary } from "./StrategyProfile";
+import { ProfileSummary, StyleMix } from "./StrategyProfile";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 const dateLabel = (iso: string) => new Date(iso.length === 10 ? `${iso}T00:00:00` : iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
@@ -498,6 +498,12 @@ export function PublishedStrategyPage({ publicationId, trail, onNavigate }: {
             ]} />
           </DetailPanel>
         </div>
+
+        {s.profile?.factorExposures && (
+          <DetailPanel title="Behaves like" badge={<SimulatedBadge />}>
+            <StyleMix exposures={s.profile.factorExposures} />
+          </DetailPanel>
+        )}
 
         <DetailPanel title="Figures by period" badge={<SimulatedBadge />} note={s.figuresComputedAt ? `Computed ${dateLabel(s.figuresComputedAt)}.` : undefined}>
           {horizons.length === 0 ? (
