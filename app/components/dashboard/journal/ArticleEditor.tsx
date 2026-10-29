@@ -15,13 +15,11 @@ import type {
   Article, ArticleAudience, ArticleCategory, ArticleContent, ArticleImage, ArticleInstrument, ArticleLanguage, Block,
 } from "../../../models/Journal";
 import { instrumentRef } from "../../../models/Journal";
-import type { Listing } from "../../../models/Listing";
 import {
-  ALT_TEXT_MAX, CAPTION_MAX, CATEGORIES, CATEGORY_LABELS, DEK_MAX, DISCLOSURE_HELP, DISCLOSURE_MAX, DISCLOSURE_TITLE,
-  LANGUAGES, LANGUAGE_LABELS, MAX_INSTRUMENTS, NOTE_MAX, TITLE_MAX, dateLabel, journalErrorText,
+  ALT_TEXT_MAX, CAPTION_MAX, DEFAULT_CATEGORY, DEK_MAX, DISCLOSURE_HELP, DISCLOSURE_MAX, DISCLOSURE_TITLE, MAX_INSTRUMENTS,
+  NOTE_MAX, TITLE_MAX, dateLabel, journalErrorText,
 } from "../../../lib/journal";
 import { serif } from "../../preview/PreviewKit";
-import { AssetPicker } from "../AssetPicker";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { BackLink, ErrorState, Spinner, StatusChip } from "./JournalKit";
 import { BodyEditor, focusNode } from "./BodyEditor";
@@ -31,13 +29,14 @@ import { ArticleDocument, HiddenNotice } from "./ArticleReader";
 // A draft saves itself once the author pauses.
 const AUTOSAVE_MS = 1500;
 
+// The category and language aren't asked for now: an article keeps its own, a new one is filed
+// under DEFAULT_CATEGORY in the reader's language.
 interface Form {
   title: string;
   dek: string;
-  category: ArticleCategory | null;
+  category: ArticleCategory;
   language: ArticleLanguage;
   cover: ArticleImage | null;
-  instruments: ArticleInstrument[];
   audience: ArticleAudience;
   interestDisclosure: string;
 }
@@ -45,10 +44,9 @@ interface Form {
 const formOf = (article: Article | null, language: ArticleLanguage): Form => ({
   title: article?.title ?? "",
   dek: article?.dek ?? "",
-  category: article?.category ?? null,
+  category: article?.category ?? DEFAULT_CATEGORY,
   language: article?.language ?? language,
   cover: article?.cover ?? null,
-  instruments: article?.instruments ?? [],
   audience: article?.audience ?? "everyone",
   interestDisclosure: article?.interestDisclosure ?? "",
 });
@@ -89,10 +87,10 @@ function blocksWithFiles(doc: JSONContent, blocks: Block[], nodeIndex: number[])
 
 /**
  * THE EDITOR — one of the caller's articles (or a new one, created at its first save): its title,
- * the line under it, its body (BodyEditor), and, on the side, its category, language, cover, the
- * instruments it's about and, for an advisor, who reads it and their interests. A draft saves
- * itself as the author writes; a published or hidden article is checked as publishing and goes
- * live on save, so it's saved by hand. Each save sends the updatedAt last read: an article
+ * the line under it and its body (BodyEditor), one page; the instruments it's about are those
+ * tagged with "#" in the body. On the side, its cover and, for an advisor, who reads it and their
+ * interests. A draft saves itself as the author writes; a published or hidden article is checked
+ * as publishing and goes live on save, so it's saved by hand. Each save sends the updatedAt last read: an article
  * changed elsewhere since (another tab) is a conflict to resolve, not overwritten.
  */
 export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
@@ -113,6 +111,8 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   const [loaded, setLoaded] = useState(!uuid);
   const [form, setForm] = useState<Form>(() => formOf(null, language));
   const [initialBody, setInitialBody] = useState<Block[]>([]);
+  // The instruments the body's tags name, as it was read.
+  const [initialInstruments, setInitialInstruments] = useState<ArticleInstrument[]>([]);
   // Bumped to start the body editor over from initialBody (a reload).
   const [bodyKey, setBodyKey] = useState(0);
   const docRef = useRef<JSONContent>({ type: "doc", content: [] });
@@ -151,6 +151,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     setArticle(a);
     setForm(formOf(a, language));
     setInitialBody(a.body);
+    setInitialInstruments(a.instruments);
     setBodyKey((k) => k + 1);
     setVersion(0);
     setSavedVersion(0);
@@ -183,7 +184,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   }, []);
 
   const contentOf = (f: Form): ArticleContent => {
-    const { blocks, nodeIndex } = docToBlocks(docRef.current);
+    const { blocks, nodeIndex, instruments } = docToBlocks(docRef.current);
     sentNodeIndex.current = nodeIndex;
     return {
       title: f.title.trim() || null,
@@ -192,7 +193,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
       language: f.language,
       cover: f.cover ? { imageUuid: f.cover.imageUuid, altText: f.cover.altText.trim(), caption: f.cover.caption?.trim() || null } : null,
       body: blocks,
-      instruments: f.instruments.map(instrumentRef),
+      instruments: instruments.map(instrumentRef),
       audience: isAdvisor ? f.audience : null,
       interestDisclosure: isAdvisor ? f.interestDisclosure.trim() || null : null,
     };
@@ -324,24 +325,17 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     }
   };
 
-  const addInstrument = (listing: Listing | null) => {
-    if (!listing || form.instruments.length >= MAX_INSTRUMENTS) return;
-    if (form.instruments.some((i) => i.instrumentId === listing.instrumentId)) return;
-    const { listingId, instrumentId, name, ticker, isin } = listing;
-    change({ instruments: [...form.instruments, { listingId, instrumentId, name, ticker, isin }] });
-  };
-
   if (loadError) return <div className="pb-12 space-y-5"><BackLink label="Your articles" onClick={onBack} /><ErrorState message={loadError} /></div>;
   if (!loaded) return <div className="pb-12 space-y-5"><BackLink label="Your articles" onClick={onBack} /><Spinner /></div>;
 
   // What publishing needs, as acta checks it.
-  const { blocks, nodeIndex } = docToBlocks(docRef.current);
+  const { blocks, nodeIndex, instruments } = docToBlocks(docRef.current);
   const images = blocks.filter((b): b is Extract<Block, { type: "image" }> => b.type === "image");
-  const needsDisclosure = isAdvisor && form.instruments.length > 0;
+  const needsDisclosure = isAdvisor && instruments.length > 0;
   const checklist = [
     { label: "A title", done: !!form.title.trim() },
-    { label: "A category", done: !!form.category },
     { label: "Some text", done: blocks.some((b) => b.type !== "image") },
+    ...(instruments.length > MAX_INSTRUMENTS ? [{ label: `At most ${MAX_INSTRUMENTS} instruments tagged`, done: false }] : []),
     ...(images.length || form.cover ? [{ label: "Alt text for every image", done: images.every((i) => i.altText) && (!form.cover || !!form.cover.altText.trim()) }] : []),
     ...(needsDisclosure ? [{ label: "Your interests in the instruments", done: !!form.interestDisclosure.trim() }] : []),
   ];
@@ -365,7 +359,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     category: form.category,
     language: form.language,
     cover: form.cover,
-    instruments: form.instruments,
+    instruments,
     audience: form.audience,
     slug: article?.slug ?? null,
     readMinutes: article?.readMinutes ?? 1,
@@ -511,7 +505,20 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             placeholder="Subtitle (optional): one line on what the reader will take away"
             className={`w-full resize-none field-sizing-content bg-transparent text-base md:text-lg text-slate-500 leading-relaxed outline-none placeholder:text-slate-400 ${flagged === "dek" ? "underline decoration-rose-400" : ""}`}
           />
-          <BodyEditor key={bodyKey} initial={initialBody} onChange={onBodyChange} editorRef={editorRef} />
+          <BodyEditor key={bodyKey} initial={initialBody} instruments={initialInstruments} onChange={onBodyChange} editorRef={editorRef} />
+          <div className={`flex flex-wrap items-center gap-1.5 border-t pt-3 text-xs ${flagged === "instruments" ? "border-rose-300" : "border-[#E7E1D3]"}`}>
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-1">About</span>
+            {instruments.length ? instruments.map((i, idx) => (
+              <span
+                key={i.instrumentId ?? i.listingId ?? i.ticker}
+                title={i.name ?? undefined}
+                className={`rounded-full px-2.5 py-0.5 font-bold ${(flagged === "instruments" && refusal?.index === idx) || idx >= MAX_INSTRUMENTS ? "bg-rose-100 text-rose-700" : "bg-[#C49A3C]/12 text-[#9a7424]"}`}
+              >
+                #{i.ticker}
+              </span>
+            )) : <span className="text-slate-400">Type # in the text to tag an instrument: readers find the article from the instruments it names.</span>}
+            {instruments.length > MAX_INSTRUMENTS && <span className="text-rose-600 font-semibold">Up to {MAX_INSTRUMENTS} instruments.</span>}
+          </div>
         </div>
         {previewArticle && <ArticleDocument article={previewArticle} />}
 
@@ -530,34 +537,15 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             </div>
           )}
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-            <label className="block">
-              <SideLabel>Category</SideLabel>
-              <select
-                value={form.category ?? ""}
-                onChange={(e) => change({ category: (e.target.value || null) as ArticleCategory | null })}
-                className={inputClass(flagged === "category")}
-              >
-                <option value="">Choose one</option>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+          {isAdvisor && (
+            <label className="block rounded-2xl border border-slate-200 bg-white p-5">
+              <SideLabel>Who reads it</SideLabel>
+              <select value={form.audience} onChange={(e) => change({ audience: e.target.value as ArticleAudience })} className={inputClass(flagged === "audience")}>
+                <option value="everyone">Everyone on PortfoliAI</option>
+                <option value="advisor_clients">Only my clients</option>
               </select>
             </label>
-            <label className="block">
-              <SideLabel>Language</SideLabel>
-              <select value={form.language} onChange={(e) => change({ language: e.target.value as ArticleLanguage })} className={inputClass(flagged === "language")}>
-                {LANGUAGES.map((l) => <option key={l} value={l}>{LANGUAGE_LABELS[l]}</option>)}
-              </select>
-            </label>
-            {isAdvisor && (
-              <label className="block">
-                <SideLabel>Who reads it</SideLabel>
-                <select value={form.audience} onChange={(e) => change({ audience: e.target.value as ArticleAudience })} className={inputClass(flagged === "audience")}>
-                  <option value="everyone">Everyone on PortfoliAI</option>
-                  <option value="advisor_clients">Only my clients</option>
-                </select>
-              </label>
-            )}
-          </div>
+          )}
 
           <div className={`rounded-2xl border bg-white p-5 space-y-3 ${flagged === "cover" ? "border-rose-400" : "border-slate-200"}`}>
             <SideLabel>Cover image</SideLabel>
@@ -601,37 +589,6 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             )}
             <input ref={coverInput} type="file" accept={IMAGE_ACCEPT} className="hidden" onChange={(e) => void uploadCover(e.target.files?.[0])} />
             {coverError && <p className="text-xs font-medium text-rose-600">{coverError}</p>}
-          </div>
-
-          <div className={`rounded-2xl border bg-white p-5 space-y-3 ${flagged === "instruments" ? "border-rose-400" : "border-slate-200"}`}>
-            <SideLabel>Instruments it&apos;s about</SideLabel>
-            {form.instruments.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {form.instruments.map((i, idx) => (
-                  <span
-                    key={i.listingId ?? i.ticker}
-                    className={`inline-flex items-center gap-1 rounded-full pl-3 pr-1.5 py-1 text-xs font-bold ${flagged === "instruments" && refusal?.index === idx ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700"}`}
-                  >
-                    {i.ticker}
-                    <button type="button" onClick={() => change({ instruments: form.instruments.filter((x) => x !== i) })} className="p-0.5 rounded-full hover:bg-slate-200" aria-label={`Remove ${i.ticker}`}>
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            {form.instruments.length < MAX_INSTRUMENTS ? (
-              <AssetPicker
-                key={form.instruments.length}
-                value={null}
-                onChange={addInstrument}
-                label="Add one"
-                excludeInstrumentIds={form.instruments.flatMap((i) => (i.instrumentId ? [i.instrumentId] : []))}
-              />
-            ) : (
-              <p className="text-xs text-slate-400">Up to {MAX_INSTRUMENTS} instruments.</p>
-            )}
-            <p className="text-[11px] text-slate-400 leading-relaxed">Readers find the article from the instruments it names.</p>
           </div>
 
           {isAdvisor && (needsDisclosure || form.interestDisclosure) && (
