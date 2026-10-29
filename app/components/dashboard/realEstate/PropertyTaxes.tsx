@@ -438,7 +438,8 @@ function TaxRateDialog({ property, year, onClose, onSaved }: { property: Propert
 /**
  * USES — what the property has been used for over time: the use since the start, then each change
  * with its day. A use that changed on a day is added here ("Use changed"); a change can be removed.
- * Correcting today's use is the property's settings.
+ * Correcting today's use is the property's settings. Nothing while it's had one use since the
+ * start: the first change is added from the page's actions.
  */
 export function PropertyUsesModule({ property, readOnly, onChanged }: { property: Property; readOnly: boolean; onChanged: () => void }) {
   const [dialog, setDialog] = useState(false);
@@ -457,6 +458,7 @@ export function PropertyUsesModule({ property, readOnly, onChanged }: { property
     }
   };
   const periods = [...property.uses].reverse();
+  if (periods.length < 2) return null;
   return (
     <Module>
       <ModuleHead
@@ -494,7 +496,7 @@ export function PropertyUsesModule({ property, readOnly, onChanged }: { property
   );
 }
 
-function UseChangeDialog({ property, onClose, onSaved }: { property: Property; onClose: () => void; onSaved: () => void }) {
+export function UseChangeDialog({ property, onClose, onSaved }: { property: Property; onClose: () => void; onSaved: () => void }) {
   const [effectiveOn, setEffectiveOn] = useState(today());
   const [use, setUse] = useState<PropertyUse>(PROPERTY_USES.find((u) => u !== property.use) ?? property.use);
   const [busy, setBusy] = useState(false);

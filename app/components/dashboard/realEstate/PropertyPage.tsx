@@ -13,36 +13,36 @@ import { dayLabel, errorText, today } from "../../../lib/wallets";
 import type { Mortgage, MortgageSchedule, Property, Valuation } from "../../../models/RealEstate";
 import type { Crumb } from "../Breadcrumb";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { PageHeader, type PageAction, type PageFigure } from "../PageHeader";
+import { PageHeader, type PageAction } from "../PageHeader";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { PreviewBadge } from "../../preview/PreviewKit";
 import { MortgageMarketRates } from "../MarketRates";
-import { CashFlowModule, ValueModule } from "./RealEstateNode";
+import { CashFlowModule, ValueModule, headerFigures } from "./RealEstateNode";
 import { MortgageDialog, PropertyEditDialog, RateChangeDialog, ValuationDialog } from "./PropertyDialogs";
 import { RealEstateTransactionDialog, type TaxPaymentPrefill } from "./RealEstateTransactionForm";
-import { PropertyTaxModule, PropertyUsesModule } from "./PropertyTaxes";
-import { LeasesModule, TaxpayerYearDialog } from "./PropertyRentals";
+import { PropertyTaxModule, PropertyUsesModule, UseChangeDialog } from "./PropertyTaxes";
+import { LeaseDialog, LeasesModule, TaxpayerYearDialog } from "./PropertyRentals";
 import { SaleSimulatorModule } from "./SaleTax";
 import { alertsCounter, useAlertRules } from "./RealEstateAlerts";
 import { MortgageSimulatorDialog } from "./MortgageSimulator";
 import { PropertyMarketModule } from "./PropertyMarket";
 
 const ARCHIVED_TITLE = "An archived property is read only";
-const pct = (v: number, digits = 1) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}%`;
-const toneOf = (v: number | null | undefined): "gain" | "loss" | undefined => (v == null || v === 0 ? undefined : v > 0 ? "gain" : "loss");
 
-type Dialog = "transaction" | "valuation" | "mortgage" | "edit" | "archive" | "delete";
+type Dialog = "transaction" | "valuation" | "mortgage" | "lease" | "use" | "edit" | "archive" | "delete";
 
 /**
  * PROPERTY PAGE — one property, under the real estate: a header with its value at the user's
  * share, how that stands against what was put in, its year in figures and what can be done with it
- * (a transaction, a valuation, a mortgage, its settings, archive, delete); under it its value since
- * the purchase and its last 12 months' cash flow, its taxes (Italy's IMU and the tax on its rents,
+ * (a transaction, a valuation, a mortgage, a lease, a use changed, its settings, archive, delete);
+ * under it its value since the purchase and its last 12 months' cash flow, its taxes (Italy's IMU and the tax on its rents,
  * PropertyTaxModule), its leases, its zone's market (Italy's OMI, PropertyMarketModule), what a sale
  * would be taxed (SaleSimulatorModule), its mortgages (each with its schedule and rate changes, closed or
  * reopened, a prepayment or a refinancing simulated), its valuations, its use over time and its details. Its amounts are in its own
- * currency. An archived property, and a demo account's, are read only.
+ * currency. An archived property, and a demo account's, are read only. A module with nothing in it
+ * isn't shown (no cash flow, lease, mortgage, valuation or use changed): the header's actions add
+ * the first; so are the header's figures with nothing to say (no debt, no income or cash flow).
  */
 export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts, onGone }: {
   property: Property;
@@ -91,18 +91,17 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
     { label: "Add transaction", primary: true, onClick: () => setDialog("transaction"), ...(property.soldOn ? { disabled: true, title: "Sold: it takes no new transactions" } : locked) },
     { label: "Add valuation", onClick: () => setDialog("valuation"), ...locked },
     { label: "Add mortgage", onClick: () => setDialog("mortgage"), ...locked },
+    { label: "Add lease", onClick: () => setDialog("lease"), ...locked },
+    { label: "Use changed", onClick: () => setDialog("use"), ...locked },
     { label: "Edit property", onClick: () => setDialog("edit"), ...locked },
     { label: property.archived ? "Unarchive" : "Archive", onClick: () => setDialog("archive"), ...sampleLock },
     { label: "Delete property", danger: true, onClick: () => setDialog("delete"), ...sampleLock },
   ];
 
-  const gain = f.invested > 0 && !property.soldOn ? ((f.valueAtShare - f.invested) / f.invested) * 100 : null;
-  const figures: PageFigure[] = [
-    { label: "Equity", value: money(f.equity), sub: f.loanToValuePct === null ? undefined : `Loan-to-value ${f.loanToValuePct.toFixed(0)}%` },
-    { label: "Mortgage debt", value: money(f.residualDebt) },
-    { label: "Income, 12 months", value: money(f.yearlyIncome), sub: f.grossYieldPct === null ? undefined : `${f.grossYieldPct.toFixed(1)}% gross yield` },
-    { label: "Net cash flow, 12 months", value: money(f.yearlyNetCashFlow), tone: toneOf(f.yearlyNetCashFlow) },
-  ];
+  // At its share, as the properties' together.
+  const figures = headerFigures({ ...f, value: f.valueAtShare }, money, !!property.soldOn);
+  // The last 12 months had money in or out.
+  const cashFlow = summary?.months.slice(-12).some((m) => m.income !== 0 || m.expenses !== 0 || m.mortgagePayments !== 0) ?? false;
   const eyebrow = ["Property", property.archived && "Archived", property.soldOn && `Sold ${dayLabel(property.soldOn)}`].filter(Boolean).join(" · ");
   const note = [
     PROPERTY_KIND_LABELS[property.kind],
@@ -125,8 +124,7 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
           </>
         )}
         title={property.name}
-        value={money(f.valueAtShare)}
-        change={gain === null ? null : { text: `${pct(gain)} on what was put in`, tone: toneOf(gain) }}
+        // What it is and where, without figures: those are the header's, as the wallets' and the portfolios' pages.
         note={note}
         counters={[
           { key: "transactions", label: "transactions", count, onClick: onOpenTransactions },
@@ -142,9 +140,9 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
         </p>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-6">
+      <div className={`grid grid-cols-1 gap-6 ${cashFlow ? "lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]" : ""}`}>
         <ValueModule summary={summary} desc="What it's worth at your share, against what was put in (the purchase, its costs and works)." />
-        <CashFlowModule summary={summary} />
+        {cashFlow && <CashFlowModule summary={summary} />}
       </div>
 
       <PropertyTaxModule
@@ -169,7 +167,8 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
         onChanged={changed}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Side by side, or the one of them shown across: each is nothing while empty. */}
+      <div className="flex flex-col lg:flex-row gap-6 empty:hidden *:min-w-0 *:flex-1">
         <ValuationsModule property={property} readOnly={readOnly} onChanged={changed} />
         <PropertyUsesModule property={property} readOnly={readOnly} onChanged={changed} />
       </div>
@@ -200,6 +199,8 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
       )}
       {dialog === "valuation" && <ValuationDialog property={property} onClose={close} onSaved={done} />}
       {dialog === "mortgage" && <MortgageDialog property={property} onClose={close} onSaved={done} />}
+      {dialog === "lease" && <LeaseDialog property={property} onClose={close} onSaved={done} />}
+      {dialog === "use" && <UseChangeDialog property={property} onClose={close} onSaved={done} />}
       {dialog === "edit" && <PropertyEditDialog property={property} onClose={close} onSaved={done} />}
       {rateFor && <RateChangeDialog mortgage={rateFor} onClose={() => setRateFor(null)} onSaved={() => { setRateFor(null); changed(); }} />}
       {dialog === "archive" && (
@@ -274,16 +275,14 @@ function MortgagesModule({ property, readOnly, onChangeRate, onSimulate, onChang
   };
 
   const sorted = [...(mortgages ?? [])].sort((a, b) => Number(!!a.closedOn) - Number(!!b.closedOn));
+  // Nothing without a mortgage: the first is added from the page's actions.
+  if (mortgages === undefined || mortgages?.length === 0) return null;
   return (
     <Module>
       <ModuleHead title="Mortgages" desc="Your part of each loan, its schedule worked out on its rate changes and the instalments paid." />
       <div className={`${MODULE_BODY} space-y-4`}>
-        {mortgages === undefined ? (
-          <p className="text-[12.5px] text-[#857e78]">Loading…</p>
-        ) : mortgages === null ? (
+        {mortgages === null ? (
           <p className="text-[12.5px] text-rose-600">Unable to load the mortgages.</p>
-        ) : sorted.length === 0 ? (
-          <p className="text-[12.5px] text-[#857e78]">No mortgage on it.</p>
         ) : sorted.map((m) => (
           <MortgageCard
             key={m.uuid}
@@ -442,7 +441,7 @@ function Schedule({ mortgage }: { mortgage: Mortgage }) {
   );
 }
 
-/** Its valuations, newest first: the latest is its value. */
+/** Its valuations, newest first: the latest is its value. Nothing before the first (the page's "Add valuation"). */
 function ValuationsModule({ property, readOnly, onChanged }: {
   property: Property; readOnly: boolean; onChanged: () => void;
 }) {
@@ -461,37 +460,29 @@ function ValuationsModule({ property, readOnly, onChanged }: {
       setBusy(false);
     }
   };
+  if (!valuations || valuations.length === 0) return null;
   return (
     <Module>
       <ModuleHead title="Valuations" desc="What the whole property is worth: the latest is its value. Before any, the purchase price." />
       <div className={MODULE_BODY}>
-        {valuations === undefined ? (
-          <p className="text-[12.5px] text-[#857e78]">Loading…</p>
-        ) : !valuations || valuations.length === 0 ? (
-          <p className="text-[12.5px] text-[#857e78]">
-            {property.figures.valueSource === "purchase_price" ? "None yet: its value is the purchase price."
-              : property.figures.valueSource === "market_zone" ? "None yet: its value is the middle of its zone's market range." : "None yet."}
-          </p>
-        ) : (
-          <ul className="divide-y divide-[#EEE9DD]">
-            {valuations.map((v, i) => (
-              <li key={v.uuid} className="flex items-center gap-3 py-2.5">
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-bold text-slate-800">
-                    {formatCurrency(v.value, v.currency, 0)}
-                    {i === 0 && <span className="ml-2 text-[10px] font-black uppercase tracking-wider text-[#C49A3C]">Current</span>}
-                  </span>
-                  <span className="block truncate text-[11.5px] text-slate-500">{dayLabel(v.valuedOn)} · {VALUATION_SOURCE_LABELS[v.source]}{v.note ? ` · ${v.note}` : ""}</span>
+        <ul className="divide-y divide-[#EEE9DD]">
+          {valuations.map((v, i) => (
+            <li key={v.uuid} className="flex items-center gap-3 py-2.5">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-bold text-slate-800">
+                  {formatCurrency(v.value, v.currency, 0)}
+                  {i === 0 && <span className="ml-2 text-[10px] font-black uppercase tracking-wider text-[#C49A3C]">Current</span>}
                 </span>
-                {!readOnly && (
-                  <button type="button" disabled={busy} onClick={() => remove(v.uuid)} aria-label="Delete valuation" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-50">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+                <span className="block truncate text-[11.5px] text-slate-500">{dayLabel(v.valuedOn)} · {VALUATION_SOURCE_LABELS[v.source]}{v.note ? ` · ${v.note}` : ""}</span>
+              </span>
+              {!readOnly && (
+                <button type="button" disabled={busy} onClick={() => remove(v.uuid)} aria-label="Delete valuation" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-50">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
         {error && <p className="text-xs font-semibold text-rose-600 mt-2">{error}</p>}
       </div>
     </Module>
