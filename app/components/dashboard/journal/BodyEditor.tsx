@@ -432,6 +432,21 @@ const NO_MARKS = {
   quote: false, inHeading: false, canTable: true, table: null as TableState | null, tag: null as TagQuery | null, at: 0,
 };
 
+// The menus' settings, made once: a new one on each render would be sent to their plugins each time.
+const PLUS_KEY = "journalPlus";
+const PLUS_OPTIONS = { placement: "left", offset: 12 } as const;
+const BUBBLE_OPTIONS = { placement: "top", offset: 8 } as const;
+
+/** The +: on an empty paragraph at the top level (not a heading's, a list's or a table's), where the cursor is. */
+const showPlus = ({ editor, state }: { editor: Editor; state: Editor["state"] }) => {
+  const { $anchor, empty } = state.selection;
+  return editor.isEditable && editor.isFocused && empty && $anchor.depth === 1 && $anchor.parent.type.name === "paragraph" && $anchor.parent.childCount === 0;
+};
+
+/** The bar over a selection: words selected only, not an image, nor cells across a table. */
+const showBubble = ({ editor, state, from, to }: { editor: Editor; state: Editor["state"]; from: number; to: number }) =>
+  editor.isEditable && isTextSelection(state.selection) && from !== to && !!state.doc.textBetween(from, to).trim();
+
 const Divider = ({ dark = false }: { dark?: boolean }) => <span className={`w-px h-5 mx-1 ${dark ? "bg-white/15" : "bg-slate-200"}`} />;
 
 /**
@@ -477,6 +492,17 @@ export function BodyEditor({ initial, instruments = [], onChange, editorRef, dis
     },
     onUpdate: ({ editor }) => onChange(editor.getJSON()),
   });
+
+  // The + is placed once its line changes; what moves the page under it (the title wrapping, an
+  // image loading, the table's bar) has it placed again.
+  useEffect(() => {
+    if (!editor) return;
+    const observer = new ResizeObserver(() => {
+      if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(PLUS_KEY, "updatePosition"));
+    });
+    observer.observe(document.body);
+    return () => observer.disconnect();
+  }, [editor]);
 
   // The page points at blocks through this editor. A replaced editor is destroyed later than its
   // successor is made, so it clears the ref only while the ref is still its own.
@@ -597,9 +623,8 @@ export function BodyEditor({ initial, instruments = [], onChange, editorRef, dis
       {!disabled && (
         <BubbleMenu
           editor={editor}
-          options={{ placement: "top", offset: 8 }}
-          // Words selected only: not an image, nor cells across a table.
-          shouldShow={({ editor: e, state: s, from, to }) => e.isEditable && isTextSelection(s.selection) && from !== to && !!s.doc.textBetween(from, to).trim()}
+          options={BUBBLE_OPTIONS}
+          shouldShow={showBubble}
           className="flex items-center gap-0.5 rounded-lg bg-[#1c1917] px-1.5 py-1 shadow-lg"
         >
           {linkOpen ? (
@@ -642,12 +667,9 @@ export function BodyEditor({ initial, instruments = [], onChange, editorRef, dis
       {!disabled && (
         <FloatingMenu
           editor={editor}
-          options={{ placement: "left", offset: 12 }}
-          // An empty paragraph at the top level (not a heading's, a list's or a table's).
-          shouldShow={({ editor: e, state: s }) => {
-            const { $anchor, empty } = s.selection;
-            return e.isEditable && empty && $anchor.depth === 1 && $anchor.parent.type.name === "paragraph" && $anchor.parent.childCount === 0;
-          }}
+          pluginKey={PLUS_KEY}
+          options={PLUS_OPTIONS}
+          shouldShow={showPlus}
           className="flex items-center gap-1"
         >
           <button
