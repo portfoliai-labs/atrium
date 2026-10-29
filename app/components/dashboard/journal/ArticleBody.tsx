@@ -4,7 +4,7 @@
 import { createContext, useContext, useMemo } from "react";
 import type { ArticleImage, ArticleInstrument, Block, Span } from "../../../models/Journal";
 import { splitTags, tagPattern } from "../../../lib/journal";
-import { serif } from "../../preview/PreviewKit";
+import { serif, serifText } from "../../preview/PreviewKit";
 
 // The article's instruments, for the tags in its text: what "#" and a ticker names, and where it leads.
 const Tags = createContext<{ instruments: ArticleInstrument[]; pattern: RegExp | null; onInstrument?: (i: ArticleInstrument) => void }>({
@@ -17,7 +17,7 @@ function Tagged({ text }: { text: string }) {
   return splitTags(text, pattern).map((part, i) => {
     if ("text" in part) return <span key={i}>{part.text}</span>;
     const instrument = instruments.find((x) => x.ticker === part.ticker)!;
-    const className = "font-semibold text-[#9a7424]";
+    const className = "font-semibold text-[#8A6A28]";
     return onInstrument ? (
       <button key={i} type="button" onClick={() => onInstrument(instrument)} title={`More articles about ${instrument.name ?? instrument.ticker}`} className={`${className} hover:underline underline-offset-2`}>
         #{part.ticker}
@@ -38,10 +38,10 @@ function Spans({ spans }: { spans: Span[] }) {
         if (s.italic) node = <em>{node}</em>;
         if (s.strike) node = <s className="decoration-slate-400">{node}</s>;
         if (s.highlight) node = <mark className="rounded-sm bg-[#C49A3C]/25 px-0.5 text-inherit">{node}</mark>;
-        if (s.bold) node = <strong className="font-bold text-slate-900">{node}</strong>;
+        if (s.bold) node = <strong className="font-bold text-[#1c1917]">{node}</strong>;
         if (s.linkUrl) {
           node = (
-            <a href={s.linkUrl} target="_blank" rel="noopener noreferrer nofollow ugc" className="text-[#9a7424] underline decoration-[#C49A3C]/50 underline-offset-2 hover:decoration-[#C49A3C]">
+            <a href={s.linkUrl} target="_blank" rel="noopener noreferrer nofollow ugc" className="text-[#8A6A28] underline decoration-[#C49A3C]/60 underline-offset-[3px] hover:decoration-[#C49A3C]">
               {node}
             </a>
           );
@@ -60,7 +60,7 @@ export function ArticleFigure({ image, className = "" }: { image: ArticleImage; 
       {/* A signed link to a private bucket: next/image can't optimise it. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={image.file.url} alt={image.altText} className="w-full rounded-2xl border border-slate-100" />
-      {image.caption && <figcaption className="mt-2 text-xs text-slate-400 text-center leading-relaxed">{image.caption}</figcaption>}
+      {image.caption && <figcaption className="mt-2.5 text-[13px] italic text-[#78716c] text-center leading-relaxed" style={serifText}>{image.caption}</figcaption>}
     </figure>
   );
 }
@@ -72,11 +72,11 @@ function ArticleTable({ table }: { table: Extract<Block, { type: "table" }> }) {
   return (
     <figure className="py-1">
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-[14px] leading-relaxed">
+        <table className="w-full border-collapse text-[16px] leading-relaxed">
           {head && (
             <thead>
               <tr>
-                {head.cells.map((c, j) => <th key={j} className="border-b-2 border-[#D9D0BC] px-3 py-2 text-left align-bottom font-bold text-slate-900"><Spans spans={c.spans} /></th>)}
+                {head.cells.map((c, j) => <th key={j} className="border-b-2 border-[#C49A3C] px-3 py-2 text-left align-bottom font-bold text-[#1c1917]"><Spans spans={c.spans} /></th>)}
               </tr>
             </thead>
           )}
@@ -89,7 +89,7 @@ function ArticleTable({ table }: { table: Extract<Block, { type: "table" }> }) {
           </tbody>
         </table>
       </div>
-      {table.caption && <figcaption className="mt-2 text-xs text-slate-400 text-center leading-relaxed">{table.caption}</figcaption>}
+      {table.caption && <figcaption className="mt-2.5 text-[13px] italic text-[#78716c] text-center leading-relaxed">{table.caption}</figcaption>}
     </figure>
   );
 }
@@ -107,26 +107,26 @@ export function ArticleBody({ blocks, instruments = [], onInstrument }: {
   const tags = useMemo(() => ({ instruments, pattern: tagPattern(instruments), onInstrument }), [instruments, onInstrument]);
   return (
     <Tags.Provider value={tags}>
-      <div className="space-y-5 text-[15px] text-slate-700 leading-[1.8]">
+      <div className="space-y-[1.4rem] text-[19px] text-[#292524] leading-[1.75]" style={serifText}>
         {blocks.map((block, i) => {
           switch (block.type) {
             case "paragraph":
               return <p key={i}><Spans spans={block.spans} /></p>;
             case "heading":
               return block.level === 3
-                ? <h3 key={i} className="text-lg font-black text-slate-900 pt-2" style={serif}>{block.text}</h3>
-                : <h2 key={i} className="text-xl font-black text-slate-900 pt-3" style={serif}>{block.text}</h2>;
+                ? <h3 key={i} className="text-[1.3rem] leading-snug font-bold text-[#1c1917] pt-2" style={serif}>{block.text}</h3>
+                : <h2 key={i} className="text-[1.65rem] leading-tight tracking-[-0.01em] font-black text-[#1c1917] pt-4" style={serif}>{block.text}</h2>;
             case "list": {
               const items = block.items.map((item, j) => <li key={j}><Spans spans={item.spans} /></li>);
               return block.style === "numbered"
-                ? <ol key={i} className="space-y-2 pl-5 list-decimal marker:text-[#C49A3C] marker:font-bold">{items}</ol>
-                : <ul key={i} className="space-y-2 pl-5 list-disc marker:text-[#C49A3C]">{items}</ul>;
+                ? <ol key={i} className="space-y-2 pl-[1.4rem] list-decimal marker:text-[#C49A3C] marker:font-bold">{items}</ol>
+                : <ul key={i} className="space-y-2 pl-[1.4rem] list-disc marker:text-[#C49A3C] marker:font-bold">{items}</ul>;
             }
             case "quote":
               return (
-                <blockquote key={i} className="border-l-2 border-[#C49A3C] pl-5 py-1">
-                  <p className="text-[17px] text-slate-800 italic leading-relaxed" style={serif}><Spans spans={block.spans} /></p>
-                  {block.attribution && <footer className="mt-2 text-xs font-bold text-slate-400">— {block.attribution}</footer>}
+                <blockquote key={i} className="border-l-[3px] border-[#C49A3C] pl-6 py-1 my-2">
+                  <p className="text-[22px] text-[#44403c] italic leading-snug"><Spans spans={block.spans} /></p>
+                  {block.attribution && <footer className="mt-2 text-xs font-bold not-italic text-[#a8a29e]" style={{ fontFamily: "Arial, Helvetica, sans-serif" }}>— {block.attribution}</footer>}
                 </blockquote>
               );
             case "image":

@@ -38,12 +38,15 @@ const normalizeLink = (url: string) => {
   return hasScheme(trimmed) ? trimmed : `https://${trimmed}`;
 };
 
+// The page's own face, for the fields inside the text (an image's, a quote's), set in the serif.
+const UI_FONT = { fontFamily: "Arial, Helvetica, sans-serif" } as const;
+
 /** An image of the article: one of the author's uploads, with its alt text and caption. */
 function ImageView({ node, updateAttributes, deleteNode, selected, editor }: ReactNodeViewProps) {
   const { src, altText, caption } = node.attrs as { src: string | null; altText: string; caption: string };
   const editable = editor.isEditable;
   return (
-    <NodeViewWrapper className={`my-4 rounded-2xl border p-3 bg-slate-50/60 ${selected ? "border-[#C49A3C]" : "border-slate-200"}`} contentEditable={false}>
+    <NodeViewWrapper className={`my-6 rounded-2xl border p-3 bg-white/60 ${selected ? "border-[#C49A3C]" : "border-[#E7E1D3]"}`} contentEditable={false} style={UI_FONT}>
       <div className="relative">
         {src
           // A signed link to a private bucket: next/image can't optimise it.
@@ -117,9 +120,9 @@ const ArticleImageNode = Node.create({
 /** A quote: one paragraph, and who said it. */
 function QuoteView({ node, updateAttributes, editor }: ReactNodeViewProps) {
   return (
-    <NodeViewWrapper as="blockquote" className="my-4 border-l-2 border-[#C49A3C] pl-5 py-1">
-      <NodeViewContent className="italic text-slate-800" />
-      <div contentEditable={false} className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-400">
+    <NodeViewWrapper as="blockquote" className="my-6 border-l-[3px] border-[#C49A3C] pl-6 py-1">
+      <NodeViewContent className="italic text-[22px] leading-snug text-[#44403c]" />
+      <div contentEditable={false} className="mt-2 flex items-center gap-1.5 text-xs text-[#a8a29e]" style={UI_FONT}>
         <span>—</span>
         <input
           value={String(node.attrs.attribution ?? "")}
@@ -127,7 +130,7 @@ function QuoteView({ node, updateAttributes, editor }: ReactNodeViewProps) {
           disabled={!editor.isEditable}
           onChange={(e) => updateAttributes({ attribution: e.target.value })}
           placeholder="Who said it (optional)"
-          className="flex-1 bg-transparent font-bold text-slate-500 outline-none placeholder:font-medium placeholder:text-slate-400"
+          className="flex-1 bg-transparent font-bold text-[#78716c] outline-none placeholder:font-medium placeholder:text-[#b5ad9e]"
         />
       </div>
     </NodeViewWrapper>
@@ -399,7 +402,7 @@ function ToolButton({ active = false, disabled = false, label, onClick, children
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className={`p-2 rounded-lg transition-colors disabled:opacity-40 ${active ? "bg-[#C49A3C]/15 text-[#9a7424]" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"}`}
+      className={`p-2 rounded-lg transition-colors disabled:opacity-40 ${active ? "bg-[#C49A3C]/15 text-[#8A6A28]" : "text-[#78716c] hover:bg-[#F1EADB] hover:text-[#1c1917]"}`}
     >
       {children}
     </button>
@@ -431,6 +434,21 @@ const NO_MARKS = {
   bold: false, italic: false, strike: false, highlight: false, link: false, h2: false, h3: false,
   quote: false, inHeading: false, canTable: true, table: null as TableState | null, tag: null as TagQuery | null, at: 0,
 };
+
+// The menus' settings, made once: a new one on each render would be sent to their plugins each time.
+const PLUS_KEY = "journalPlus";
+const PLUS_OPTIONS = { placement: "left", offset: 12 } as const;
+const BUBBLE_OPTIONS = { placement: "top", offset: 8 } as const;
+
+/** The +: on an empty paragraph at the top level (not a heading's, a list's or a table's), where the cursor is. */
+const showPlus = ({ editor, state }: { editor: Editor; state: Editor["state"] }) => {
+  const { $anchor, empty } = state.selection;
+  return editor.isEditable && editor.isFocused && empty && $anchor.depth === 1 && $anchor.parent.type.name === "paragraph" && $anchor.parent.childCount === 0;
+};
+
+/** The bar over a selection: words selected only, not an image, nor cells across a table. */
+const showBubble = ({ editor, state, from, to }: { editor: Editor; state: Editor["state"]; from: number; to: number }) =>
+  editor.isEditable && isTextSelection(state.selection) && from !== to && !!state.doc.textBetween(from, to).trim();
 
 const Divider = ({ dark = false }: { dark?: boolean }) => <span className={`w-px h-5 mx-1 ${dark ? "bg-white/15" : "bg-slate-200"}`} />;
 
@@ -477,6 +495,17 @@ export function BodyEditor({ initial, instruments = [], onChange, editorRef, dis
     },
     onUpdate: ({ editor }) => onChange(editor.getJSON()),
   });
+
+  // The + is placed once its line changes; what moves the page under it (the title wrapping, an
+  // image loading, the table's bar) has it placed again.
+  useEffect(() => {
+    if (!editor) return;
+    const observer = new ResizeObserver(() => {
+      if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(PLUS_KEY, "updatePosition"));
+    });
+    observer.observe(document.body);
+    return () => observer.disconnect();
+  }, [editor]);
 
   // The page points at blocks through this editor. A replaced editor is destroyed later than its
   // successor is made, so it clears the ref only while the ref is still its own.
@@ -597,9 +626,8 @@ export function BodyEditor({ initial, instruments = [], onChange, editorRef, dis
       {!disabled && (
         <BubbleMenu
           editor={editor}
-          options={{ placement: "top", offset: 8 }}
-          // Words selected only: not an image, nor cells across a table.
-          shouldShow={({ editor: e, state: s, from, to }) => e.isEditable && isTextSelection(s.selection) && from !== to && !!s.doc.textBetween(from, to).trim()}
+          options={BUBBLE_OPTIONS}
+          shouldShow={showBubble}
           className="flex items-center gap-0.5 rounded-lg bg-[#1c1917] px-1.5 py-1 shadow-lg"
         >
           {linkOpen ? (
@@ -642,12 +670,9 @@ export function BodyEditor({ initial, instruments = [], onChange, editorRef, dis
       {!disabled && (
         <FloatingMenu
           editor={editor}
-          options={{ placement: "left", offset: 12 }}
-          // An empty paragraph at the top level (not a heading's, a list's or a table's).
-          shouldShow={({ editor: e, state: s }) => {
-            const { $anchor, empty } = s.selection;
-            return e.isEditable && empty && $anchor.depth === 1 && $anchor.parent.type.name === "paragraph" && $anchor.parent.childCount === 0;
-          }}
+          pluginKey={PLUS_KEY}
+          options={PLUS_OPTIONS}
+          shouldShow={showPlus}
           className="flex items-center gap-1"
         >
           <button
@@ -656,13 +681,13 @@ export function BodyEditor({ initial, instruments = [], onChange, editorRef, dis
             title={plusOpen ? "Close" : "Add an image, a table, a list or a quote"}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setPlusAt(plusOpen ? null : state.at)}
-            className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-full border bg-[#F7F5EF] transition ${plusOpen ? "rotate-45 border-slate-400 text-slate-600" : "border-slate-300 text-slate-400 hover:border-slate-500 hover:text-slate-600"}`}
+            className={`h-8 w-8 shrink-0 flex items-center justify-center rounded-full border bg-[#F7F5EF] transition ${plusOpen ? "rotate-45 border-[#C49A3C] text-[#8A6A28]" : "border-[#D9D0BC] text-[#a8a29e] hover:border-[#C49A3C] hover:text-[#8A6A28]"}`}
           >
             <Plus className="h-4 w-4" />
           </button>
           {plusOpen && (
             // Laid over the line, to the + button's right.
-            <div className="absolute left-full ml-2 flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-1 shadow-sm">
+            <div className="absolute left-full ml-2 flex items-center gap-1 rounded-full border border-[#E7E1D3] bg-white px-1.5 py-1 shadow-md shadow-[#1c1917]/5">
               <ToolButton label="Image" disabled={uploading} onClick={() => insert(() => fileRef.current?.click())}>
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
               </ToolButton>
