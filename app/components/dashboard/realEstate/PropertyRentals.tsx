@@ -26,7 +26,7 @@ const flatRateAllowed = (property: Property, kind: RentalContractKind) =>
  * LEASES — a property's long-term contracts, by start: their kind, dates, monthly rent (the whole
  * property's), tax regime and tenant; each one changed or deleted, a new one added. Their rents are
  * taxed as they fall due, paid or not (the rents' tax, PropertyTaxModule); one at an agreed rent
- * lowers IMU to 75%.
+ * lowers IMU to 75%. Nothing without a lease: the first is added from the page's actions.
  */
 export function LeasesModule({ property, readOnly, onChanged }: { property: Property; readOnly: boolean; onChanged: () => void }) {
   const list = useRealEstateRead<RentalContract[]>(["rentalContracts", property.uuid], (source) => source.rentalContracts(property.uuid));
@@ -51,6 +51,7 @@ export function LeasesModule({ property, readOnly, onChanged }: { property: Prop
     }
   };
 
+  if (list === undefined || list?.length === 0) return null;
   return (
     <Module>
       <ModuleHead
@@ -63,12 +64,8 @@ export function LeasesModule({ property, readOnly, onChanged }: { property: Prop
         ) : undefined}
       />
       <div className={MODULE_BODY}>
-        {list === undefined ? (
-          <p className="text-[12.5px] text-[#857e78]">Loading…</p>
-        ) : list === null ? (
+        {list === null ? (
           <p className="text-[12.5px] text-rose-600">Unable to load the leases.</p>
-        ) : list.length === 0 ? (
-          <p className="text-[12.5px] text-[#857e78]">No lease. Add one to have its rent taxed (cedolare secca or IRPEF) and, at an agreed rent, IMU lowered.</p>
         ) : (
           <ul className="divide-y divide-[#EEE9DD]">
             {list.map((l) => {
@@ -124,7 +121,7 @@ export function LeasesModule({ property, readOnly, onChanged }: { property: Prop
 }
 
 /** A lease, new or to change: kind, dates, the whole property's monthly rent, regime, tenant. */
-function LeaseDialog({ property, lease, onClose, onSaved }: { property: Property; lease?: RentalContract; onClose: () => void; onSaved: () => void }) {
+export function LeaseDialog({ property, lease, onClose, onSaved }: { property: Property; lease?: RentalContract; onClose: () => void; onSaved: () => void }) {
   const italy = property.address.country === "IT";
   const kinds = italy ? RENTAL_CONTRACT_KINDS : RENTAL_CONTRACT_KINDS.filter((k) => !AGREED_KINDS.includes(k));
   const [kind, setKind] = useState<RentalContractKind>(lease?.kind ?? "residential");

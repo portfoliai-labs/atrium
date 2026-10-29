@@ -327,12 +327,15 @@ export function usePropertyFields(initial?: Property, defaultCurrency = "EUR") {
             What IMU is computed from, as the visura catastale writes it: the municipality, the category and the cadastral income are needed.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
-            <Field label="Municipality" className="sm:col-span-3">
+            {/* Not a Field: inside a <label>, the click that picks a municipality, its result's button
+                gone by then, reaches the chip's clear button that replaced the list, and clears it. */}
+            <div className="block space-y-1.5 sm:col-span-3">
+              <span className="block text-[11px] font-black uppercase tracking-widest text-slate-400">Municipality</span>
               <MunicipalityPicker
                 code={cadastre.municipalityCode}
                 onChange={(code) => { setCadastre({ ...cadastre, municipalityCode: code }); if (code !== cadastre.municipalityCode) setOmiZone(""); }}
               />
-            </Field>
+            </div>
             {zoneMunicipality && municipalityZones !== null && (municipalityZones === undefined || municipalityZones.length > 0) && (
               <Field label="Market zone (OMI)" className="sm:col-span-3" hint="The zone its market range comes from. Automatic finds it from the address's location.">
                 <select value={omiZone} onChange={(e) => setOmiZone(e.target.value)} disabled={municipalityZones === undefined} className={INPUT}>

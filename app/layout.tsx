@@ -4,8 +4,8 @@ import { Playfair_Display } from "next/font/google";
 const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://portfoliai.online";
-const SITE_TITLE = "PortfoliAI: Portfolio Monitoring & Real Costs";
-const SITE_DESCRIPTION = "Track your portfolio with a daily dashboard and automatic monthly, quarterly and annual reports. The only tool that reveals hidden bid-ask spread costs.";
+const SITE_TITLE = "PortfoliAI: All of Your Wealth, Understood";
+const SITE_DESCRIPTION = "Investment portfolios, bank accounts and property in one place, analysed with professional tools: returns, risk, costs, taxes and projections. An AI assistant that only quotes your real figures, and verified advisors when you want one.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
