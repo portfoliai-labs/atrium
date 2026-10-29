@@ -5,18 +5,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Editor, JSONContent } from "@tiptap/core";
 import {
-  AlertTriangle, Check, CheckCircle2, Circle, Eye, ImagePlus, Loader2, PenLine, RotateCcw, Send, Trash2, Undo2, X,
+  AlertTriangle, Check, CheckCircle2, Eye, Loader2, PenLine, RotateCcw, Send, Trash2, Undo2, X,
 } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
 import { journalKey, useJournal, useJournalQuery } from "../../../context/JournalContext";
 import { ApiError } from "../../../services/apiClient";
-import { IMAGE_ACCEPT, journalService, uploadArticleImage } from "../../../services/journalService";
+import { journalService } from "../../../services/journalService";
 import type {
   Article, ArticleAudience, ArticleCategory, ArticleContent, ArticleImage, ArticleInstrument, ArticleLanguage, Block,
 } from "../../../models/Journal";
 import { instrumentRef } from "../../../models/Journal";
 import {
-  ALT_TEXT_MAX, CAPTION_MAX, DEFAULT_CATEGORY, DEK_MAX, DISCLOSURE_HELP, DISCLOSURE_MAX, DISCLOSURE_TITLE, MAX_INSTRUMENTS,
+  DEFAULT_CATEGORY, DEK_MAX, DISCLOSURE_HELP, DISCLOSURE_MAX, DISCLOSURE_TITLE, MAX_INSTRUMENTS,
   NOTE_MAX, TITLE_MAX, dateLabel, journalErrorText,
 } from "../../../lib/journal";
 import { serif } from "../../preview/PreviewKit";
@@ -30,13 +30,12 @@ import { ArticleDocument, HiddenNotice } from "./ArticleReader";
 const AUTOSAVE_MS = 1500;
 
 // The category and language aren't asked for now: an article keeps its own, a new one is filed
-// under DEFAULT_CATEGORY in the reader's language.
+// under DEFAULT_CATEGORY in the reader's language. The cover is the body's first image (coverOf).
 interface Form {
   title: string;
   dek: string;
   category: ArticleCategory;
   language: ArticleLanguage;
-  cover: ArticleImage | null;
   audience: ArticleAudience;
   interestDisclosure: string;
 }
@@ -46,7 +45,6 @@ const formOf = (article: Article | null, language: ArticleLanguage): Form => ({
   dek: article?.dek ?? "",
   category: article?.category ?? DEFAULT_CATEGORY,
   language: article?.language ?? language,
-  cover: article?.cover ?? null,
   audience: article?.audience ?? "everyone",
   interestDisclosure: article?.interestDisclosure ?? "",
 });
@@ -72,8 +70,14 @@ const fieldRoot = (field: string | null) => field?.split(".")[0] ?? null;
 const inputClass = (flagged: boolean) =>
   `w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#C49A3C] ${flagged ? "border-rose-400" : "border-slate-200"}`;
 
-function SideLabel({ children }: { children: React.ReactNode }) {
+function FieldLabel({ children }: { children: React.ReactNode }) {
   return <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">{children}</span>;
+}
+
+/** An article's cover: its body's first image, if any. */
+function coverOf(blocks: Block[]): ArticleImage | null {
+  const first = blocks.find((b): b is Extract<Block, { type: "image" }> => b.type === "image");
+  return first ? { imageUuid: first.imageUuid, altText: first.altText, caption: null, file: first.file } : null;
 }
 
 /** The images' short-lived links in the editor's document, by block, for the preview. */
@@ -87,9 +91,9 @@ function blocksWithFiles(doc: JSONContent, blocks: Block[], nodeIndex: number[])
 
 /**
  * THE EDITOR — one of the caller's articles (or a new one, created at its first save): its title,
- * the line under it and its body (BodyEditor), one page; the instruments it's about are those
- * tagged with "#" in the body. On the side, its cover and, for an advisor, who reads it and their
- * interests. A draft saves itself as the author writes; a published or hidden article is checked
+ * the line under it and its body (BodyEditor), one column; the instruments it's about are those
+ * tagged with "#" in the body, its cover the body's first image. Under it, for an advisor, who
+ * reads it and their interests. Publishing names what's still missing, if anything. A draft saves itself as the author writes; a published or hidden article is checked
  * as publishing and goes live on save, so it's saved by hand. Each save sends the updatedAt last read: an article
  * changed elsewhere since (another tab) is a conflict to resolve, not overwritten.
  */
@@ -139,9 +143,6 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
-  const [coverUploading, setCoverUploading] = useState(false);
-  const [coverError, setCoverError] = useState<string | null>(null);
-  const coverInput = useRef<HTMLInputElement>(null);
 
   const status = article?.status ?? "draft";
   const autosave = status === "draft";
@@ -191,7 +192,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
       dek: f.dek.trim() || null,
       category: f.category,
       language: f.language,
-      cover: f.cover ? { imageUuid: f.cover.imageUuid, altText: f.cover.altText.trim(), caption: f.cover.caption?.trim() || null } : null,
+      cover: coverOf(blocks),
       body: blocks,
       instruments: instruments.map(instrumentRef),
       audience: isAdvisor ? f.audience : null,
@@ -287,7 +288,11 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     }
   };
 
-  const publish = async () => {
+  const publish = async (missing: string[]) => {
+    if (missing.length) {
+      setActionError(`To publish it, it still needs ${missing.join(", ").replace(/, ([^,]*)$/, " and $1")}.`);
+      return;
+    }
     const next = await run("publish", journalService.publish);
     if (next) setJustPublished(true);
   };
@@ -310,21 +315,6 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     }
   };
 
-  const uploadCover = async (file: File | undefined) => {
-    if (!file) return;
-    setCoverUploading(true);
-    setCoverError(null);
-    try {
-      const { imageUuid, file: stored } = await uploadArticleImage(file);
-      change({ cover: { imageUuid, altText: "", caption: null, file: stored } });
-    } catch (err) {
-      setCoverError(journalErrorText(err, "The image couldn't be uploaded."));
-    } finally {
-      setCoverUploading(false);
-      if (coverInput.current) coverInput.current.value = "";
-    }
-  };
-
   if (loadError) return <div className="pb-12 space-y-5"><BackLink label="Your articles" onClick={onBack} /><ErrorState message={loadError} /></div>;
   if (!loaded) return <div className="pb-12 space-y-5"><BackLink label="Your articles" onClick={onBack} /><Spinner /></div>;
 
@@ -332,14 +322,13 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   const { blocks, nodeIndex, instruments } = docToBlocks(docRef.current);
   const images = blocks.filter((b): b is Extract<Block, { type: "image" }> => b.type === "image");
   const needsDisclosure = isAdvisor && instruments.length > 0;
-  const checklist = [
-    { label: "A title", done: !!form.title.trim() },
-    { label: "Some text", done: blocks.some((b) => b.type !== "image") },
-    ...(instruments.length > MAX_INSTRUMENTS ? [{ label: `At most ${MAX_INSTRUMENTS} instruments tagged`, done: false }] : []),
-    ...(images.length || form.cover ? [{ label: "Alt text for every image", done: images.every((i) => i.altText) && (!form.cover || !!form.cover.altText.trim()) }] : []),
-    ...(needsDisclosure ? [{ label: "Your interests in the instruments", done: !!form.interestDisclosure.trim() }] : []),
-  ];
-  const ready = checklist.every((c) => c.done);
+  const missing = [
+    !form.title.trim() && "a title",
+    !blocks.some((b) => b.type !== "image") && "some text",
+    instruments.length > MAX_INSTRUMENTS && `no more than ${MAX_INSTRUMENTS} instruments tagged`,
+    !images.every((i) => i.altText) && "the alt text of every image",
+    needsDisclosure && !form.interestDisclosure.trim() && "your interests in the instruments",
+  ].filter((m): m is string => !!m);
   const flagged = fieldRoot(refusal?.field ?? null);
 
   const saveState = saving
@@ -350,6 +339,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
         ? <span className="flex items-center gap-1"><Check className="h-3 w-3" /> Saved</span>
         : article ? <span>{article.publishedAt ? `Published ${dateLabel(article.publishedAt)}` : "Draft"}</span> : <span>New article</span>;
 
+  const previewBody = preview ? blocksWithFiles(docRef.current, blocks, nodeIndex) : [];
   const previewArticle: Article | null = preview ? {
     uuid: article?.uuid ?? "preview",
     author: article?.author.kind ? article.author : { kind: isEditor ? "editor" : isAdvisor ? "advisor" : "user", userUuid: user?.uuid ?? null, displayName: [user?.first_name, user?.last_name].filter(Boolean).join(" ") || null },
@@ -358,7 +348,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     dek: form.dek || null,
     category: form.category,
     language: form.language,
-    cover: form.cover,
+    cover: coverOf(previewBody),
     instruments,
     audience: form.audience,
     slug: article?.slug ?? null,
@@ -369,7 +359,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     applauseCount: article?.applauseCount ?? 0,
     applauded: false,
     commentCount: article?.commentCount ?? 0,
-    body: blocksWithFiles(docRef.current, blocks, nodeIndex),
+    body: previewBody,
     interestDisclosure: isAdvisor ? form.interestDisclosure || null : null,
     moderation: null,
     createdAt: article?.createdAt ?? "",
@@ -379,9 +369,8 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   const primary = status === "draft" ? (
     <button
       type="button"
-      onClick={() => void publish()}
-      disabled={!!busy || !ready || conflict}
-      title={ready ? undefined : "See what publishing needs, on the side"}
+      onClick={() => void publish(missing)}
+      disabled={!!busy || conflict}
       className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-colors disabled:opacity-50"
     >
       {busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Publish
@@ -486,7 +475,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
+      <div className="max-w-3xl mx-auto">
         <div className={preview ? "hidden" : "space-y-4"}>
           <textarea
             value={form.title}
@@ -506,105 +495,47 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             className={`w-full resize-none field-sizing-content bg-transparent text-base md:text-lg text-slate-500 leading-relaxed outline-none placeholder:text-slate-400 ${flagged === "dek" ? "underline decoration-rose-400" : ""}`}
           />
           <BodyEditor key={bodyKey} initial={initialBody} instruments={initialInstruments} onChange={onBodyChange} editorRef={editorRef} />
-          <div className={`flex flex-wrap items-center gap-1.5 border-t pt-3 text-xs ${flagged === "instruments" ? "border-rose-300" : "border-[#E7E1D3]"}`}>
-            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-1">About</span>
-            {instruments.length ? instruments.map((i, idx) => (
-              <span
-                key={i.instrumentId ?? i.listingId ?? i.ticker}
-                title={i.name ?? undefined}
-                className={`rounded-full px-2.5 py-0.5 font-bold ${(flagged === "instruments" && refusal?.index === idx) || idx >= MAX_INSTRUMENTS ? "bg-rose-100 text-rose-700" : "bg-[#C49A3C]/12 text-[#9a7424]"}`}
-              >
-                #{i.ticker}
-              </span>
-            )) : <span className="text-slate-400">Type # in the text to tag an instrument: readers find the article from the instruments it names.</span>}
-            {instruments.length > MAX_INSTRUMENTS && <span className="text-rose-600 font-semibold">Up to {MAX_INSTRUMENTS} instruments.</span>}
-          </div>
-        </div>
-        {previewArticle && <ArticleDocument article={previewArticle} />}
-
-        <aside className="space-y-4 xl:sticky xl:top-4">
-          {status === "draft" && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5">
-              <SideLabel>To publish</SideLabel>
-              <ul className="space-y-1.5">
-                {checklist.map((c) => (
-                  <li key={c.label} className={`flex items-center gap-2 text-xs font-semibold ${c.done ? "text-slate-400" : "text-slate-700"}`}>
-                    {c.done ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Circle className="h-3.5 w-3.5 text-slate-300" />}
-                    {c.label}
-                  </li>
-                ))}
-              </ul>
+          {instruments.length > 0 && (
+            <div className={`flex flex-wrap items-center gap-1.5 border-t pt-3 text-xs ${flagged === "instruments" ? "border-rose-300" : "border-[#E7E1D3]"}`}>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-1">About</span>
+              {instruments.map((i, idx) => (
+                <span
+                  key={i.instrumentId ?? i.listingId ?? i.ticker}
+                  title={i.name ?? undefined}
+                  className={`rounded-full px-2.5 py-0.5 font-bold ${(flagged === "instruments" && refusal?.index === idx) || idx >= MAX_INSTRUMENTS ? "bg-rose-100 text-rose-700" : "bg-[#C49A3C]/12 text-[#9a7424]"}`}
+                >
+                  #{i.ticker}
+                </span>
+              ))}
+              {instruments.length > MAX_INSTRUMENTS && <span className="text-rose-600 font-semibold">Up to {MAX_INSTRUMENTS} instruments.</span>}
             </div>
           )}
-
           {isAdvisor && (
-            <label className="block rounded-2xl border border-slate-200 bg-white p-5">
-              <SideLabel>Who reads it</SideLabel>
-              <select value={form.audience} onChange={(e) => change({ audience: e.target.value as ArticleAudience })} className={inputClass(flagged === "audience")}>
-                <option value="everyone">Everyone on PortfoliAI</option>
-                <option value="advisor_clients">Only my clients</option>
-              </select>
-            </label>
+            <div className="space-y-4 border-t border-[#E7E1D3] pt-4">
+              <label className="flex flex-wrap items-center gap-3">
+                <FieldLabel>Who reads it</FieldLabel>
+                <select value={form.audience} onChange={(e) => change({ audience: e.target.value as ArticleAudience })} className={`${inputClass(flagged === "audience")} w-auto`}>
+                  <option value="everyone">Everyone on PortfoliAI</option>
+                  <option value="advisor_clients">Only my clients</option>
+                </select>
+              </label>
+              {(needsDisclosure || form.interestDisclosure) && (
+                <label className="block">
+                  <FieldLabel>{DISCLOSURE_TITLE}{needsDisclosure ? " (required)" : ""}</FieldLabel>
+                  <textarea
+                    value={form.interestDisclosure}
+                    maxLength={DISCLOSURE_MAX}
+                    onChange={(e) => change({ interestDisclosure: e.target.value })}
+                    rows={3}
+                    className={`${inputClass(flagged === "interestDisclosure")} resize-none`}
+                  />
+                  <span className="mt-1.5 block text-[11px] text-slate-400 leading-relaxed">{DISCLOSURE_HELP}</span>
+                </label>
+              )}
+            </div>
           )}
-
-          <div className={`rounded-2xl border bg-white p-5 space-y-3 ${flagged === "cover" ? "border-rose-400" : "border-slate-200"}`}>
-            <SideLabel>Cover image</SideLabel>
-            {form.cover ? (
-              <>
-                <div className="relative">
-                  {form.cover.file?.url && (
-                    // A signed link to a private bucket: next/image can't optimise it.
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={form.cover.file.url} alt={form.cover.altText} className="w-full h-36 object-cover rounded-xl" />
-                  )}
-                  <button type="button" onClick={() => change({ cover: null })} className="absolute top-2 right-2 p-1.5 rounded-lg bg-white/90 text-slate-500 hover:text-rose-600 shadow-sm" aria-label="Remove cover">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                <input
-                  value={form.cover.altText}
-                  maxLength={ALT_TEXT_MAX}
-                  onChange={(e) => change({ cover: { ...form.cover!, altText: e.target.value } })}
-                  placeholder="Alt text (required): what it shows"
-                  className={inputClass(!form.cover.altText.trim())}
-                />
-                <input
-                  value={form.cover.caption ?? ""}
-                  maxLength={CAPTION_MAX}
-                  onChange={(e) => change({ cover: { ...form.cover!, caption: e.target.value } })}
-                  placeholder="Caption (optional)"
-                  className={inputClass(false)}
-                />
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => coverInput.current?.click()}
-                disabled={coverUploading}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-6 text-xs font-bold text-slate-500 hover:border-[#C49A3C] hover:text-[#9a7424] disabled:opacity-60"
-              >
-                {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                {coverUploading ? "Uploading…" : "Add a cover (JPEG, PNG or WebP, up to 5 MB)"}
-              </button>
-            )}
-            <input ref={coverInput} type="file" accept={IMAGE_ACCEPT} className="hidden" onChange={(e) => void uploadCover(e.target.files?.[0])} />
-            {coverError && <p className="text-xs font-medium text-rose-600">{coverError}</p>}
-          </div>
-
-          {isAdvisor && (needsDisclosure || form.interestDisclosure) && (
-            <label className={`block rounded-2xl border bg-white p-5 ${flagged === "interestDisclosure" ? "border-rose-400" : "border-slate-200"}`}>
-              <SideLabel>{DISCLOSURE_TITLE}{needsDisclosure ? " (required)" : ""}</SideLabel>
-              <textarea
-                value={form.interestDisclosure}
-                maxLength={DISCLOSURE_MAX}
-                onChange={(e) => change({ interestDisclosure: e.target.value })}
-                rows={4}
-                className={`${inputClass(false)} resize-none`}
-              />
-              <span className="mt-1.5 block text-[11px] text-slate-400 leading-relaxed">{DISCLOSURE_HELP}</span>
-            </label>
-          )}
-        </aside>
+        </div>
+        {previewArticle && <ArticleDocument article={previewArticle} />}
       </div>
 
       {confirmDelete && (

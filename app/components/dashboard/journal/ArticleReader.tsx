@@ -54,7 +54,10 @@ export function ArticleDocument({ article, actions, onAuthor, onInstrument, bare
           </p>
           {actions}
         </div>
-        {article.cover && <ArticleFigure image={article.cover} className="mt-8" />}
+        {/* The cover is the body's first image, now: shown there, not twice. */}
+        {article.cover && !article.body.some((b) => b.type === "image" && b.imageUuid === article.cover!.imageUuid) && (
+          <ArticleFigure image={article.cover} className="mt-8" />
+        )}
         <div className="mt-8 pt-8 border-t border-slate-100">
           <ArticleBody blocks={article.body} instruments={article.instruments} onInstrument={onInstrument} />
         </div>
