@@ -3829,16 +3829,19 @@ function FigureRow({
  */
 /**
  * FACTOR EXPOSURES MODULE ("Behaves like") — what the equity holdings' monthly returns moved like:
- * on the card, the closest mix of factor ETFs (its largest styles); its detail the whole mix with
- * how it was measured and, where the backend serves Fama-French's factors (development only for
- * now), their loadings. From the risk section's `factorExposures` (the overnight analysis): under
- * three years of equity history, or without equity, the card says so and opens nothing.
+ * on the card, the closest mix of factor ETFs; where the backend serves Fama-French's factors
+ * (development only for now), the card shows its largest styles and opens a detail with the whole
+ * mix and their loadings, else the whole mix is on the card and nothing opens. From the risk
+ * section's `factorExposures` (the overnight analysis): under three years of equity history, or
+ * without equity, the card says so and opens nothing.
  */
 function FactorExposuresModule({ slot }: { slot: ModuleSlot<InsightsFactorExposuresModule> }) {
   const data = slot.module;
   const [exploring, setExploring] = useState(false);
-  const canExplore = data !== null && !slot.updating && data.status === "ok" && data.sets.length > 0;
+  // Its detail is Fama-French's loadings: where the backend serves none (staging, production for
+  // now), there is nothing to open, and the card shows the whole mix instead.
   const loadings = loadingsSet(data);
+  const canExplore = data !== null && !slot.updating && loadings !== null;
 
   return (
     <Module>
@@ -3851,7 +3854,7 @@ function FactorExposuresModule({ slot }: { slot: ModuleSlot<InsightsFactorExposu
       {data !== null && !slot.updating && (
         <div className={`${MODULE_BODY} space-y-4`}>
           {slot.lagging && <UpdatingNote />}
-          <StyleMix exposures={data} compact />
+          <StyleMix exposures={data} compact={canExplore} />
         </div>
       )}
       {canExplore && exploring && (
