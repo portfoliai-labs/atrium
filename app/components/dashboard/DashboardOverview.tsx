@@ -76,6 +76,11 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
     if (onNavigate && target) openPortfolioPage(onNavigate, target.uuid, "alerts");
   };
 
+  // The same list the Alerts module reads (shared in the cache): past one row of dials at half
+  // width it'd stand far taller than the Budgets beside it, so it takes the row alone.
+  const { rules: alertRules } = useOwnAlertRules(60_000);
+  const alertsAlone = (alertRules?.length ?? 0) > ALERTS_BESIDE_MAX;
+
   // A portfolio opens on its page in Investments, or on its Transactions to add some.
   const openPortfolio = (uuid: string, section: string) => {
     selectPortfolio(uuid);
@@ -104,6 +109,8 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
   // (the other has nothing to say) takes the row, and with neither the row isn't there.
   // A grid rather than a flex row, so the two stretch to the same height (their cards are h-full).
   const pair = "grid grid-cols-1 @[56rem]:grid-flow-col @[56rem]:auto-cols-fr gap-6 *:min-w-0 empty:hidden";
+  // The same row with each module on its own, for one that grows too tall to sit beside another.
+  const stack = "grid grid-cols-1 gap-6 *:min-w-0 empty:hidden";
 
   return (
     // Sized by the room the page has (the Sidebar collapsed gives it more), not the window's.
@@ -137,8 +144,8 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
       </div>
 
       {/* ALERTS — every portfolio's, aggregate included, as one list sorted by urgency; beside
-          them, the month's budgets. */}
-      <div className={pair}>
+          them, the month's budgets (under them, with more dials than one row holds). */}
+      <div className={alertsAlone ? stack : pair}>
         {!noDataAtAll && (
           <AlertsModule
             portfolios={portfolios}
@@ -420,6 +427,9 @@ const ALERT_ORDER: Record<AlertState["kind"], number> = {
 // A user can have up to 20 alerts per portfolio, far too many dials to show at once. The most
 // urgent get a dial each; the rest sit behind "Show all".
 const ALERTS_SHOWN_COLLAPSED = 6;
+// The dials that fit in one row with the module at half width (two to a row): any more and it
+// takes its row alone, the Budgets under it (see DashboardOverview).
+const ALERTS_BESIDE_MAX = 2;
 
 // How the states roll up into the one-line summary above the dials.
 const SUMMARY_GROUPS: { tone: AlertTone; label: string; dot: string }[] = [

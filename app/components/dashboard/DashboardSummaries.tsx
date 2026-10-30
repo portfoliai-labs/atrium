@@ -41,7 +41,10 @@ export function BudgetsSummaryModule({ onOpen }: { onOpen?: () => void }) {
   return (
     <Module>
       <ModuleHead title="Budgets this month" desc="What you've spent of your monthly limits, across your wallets, and where you should be by today." onExplore={onOpen} />
-      <div className={`${MODULE_BODY} space-y-4`}>
+      {/* Its own container: on a row of its own (under a long list of alerts), the total and the
+          most used side by side. */}
+      <div className={`@container ${MODULE_BODY}`}>
+        <div className="grid grid-cols-1 @2xl:grid-cols-2 gap-x-10 gap-y-4 @2xl:items-center">
         {month === undefined ? (
           <p className="text-[12.5px] text-[#857e78]">Loading…</p>
         ) : month.budgets.length === 0 ? (
@@ -75,6 +78,7 @@ export function BudgetsSummaryModule({ onOpen }: { onOpen?: () => void }) {
             </ul>
           </>
         )}
+        </div>
       </div>
     </Module>
   );
