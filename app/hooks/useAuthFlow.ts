@@ -14,6 +14,8 @@ export function useAuthFlow(mode: 'default' | 'addon' = 'default', next?: string
   // Set to the email just signed up with once Supabase requires clicking a
   // confirmation link before a session is issued. null the rest of the time.
   const [needsEmailConfirmation, setNeedsEmailConfirmation] = useState<string | null>(null);
+  // Set to the email a password reset was asked for, once asked. null the rest of the time.
+  const [resetRequestedFor, setResetRequestedFor] = useState<string | null>(null);
 
   // Where to send the user once they're actually let into the app. Falls
   // back to the dashboard when there's no specific page they were trying
@@ -124,14 +126,36 @@ export function useAuthFlow(mode: 'default' | 'addon' = 'default', next?: string
     }
   };
 
+  // Emails a link to set a new password, landing on /auth/reset-password (no query string, so
+  // Supabase's allowed redirect URLs can name it exactly). Whether an account has the email is
+  // never told: the answer is the same either way (a failure only logged), so the form can't be
+  // used to find out who has an account.
+  const requestPasswordReset = async (email: string) => {
+    setStatus('Sending reset link...');
+    setIsError(false);
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: new URL('/auth/reset-password', window.location.origin).toString(),
+    });
+
+    if (error) console.error("Password reset error:", error);
+    setResetRequestedFor(email);
+  };
+
+  // Back to the form a reset is asked from, to ask again.
+  const clearPasswordReset = () => setResetRequestedFor(null);
+
   return {
     login,
     loginWithPassword,
     signUpWithPassword,
     resendConfirmation,
+    requestPasswordReset,
+    clearPasswordReset,
     status,
     isError,
     addonToken,
     needsEmailConfirmation,
+    resetRequestedFor,
   };
 }

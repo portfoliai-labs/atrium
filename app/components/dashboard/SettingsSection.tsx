@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, Landmark, FolderTree } from "lucide-react";
 import { userService } from "../../services/userService";
 import { supabase } from "../../lib/supabaseClient";
+import { MIN_PASSWORD_LENGTH, newPasswordError } from "../../lib/password";
 import type { NotificationPreferences, UserProfile } from "../../models/User";
 import { accountKey, useAccountQuery, useAccountRead } from "../../hooks/useAccountQuery";
 import { DeleteAccountModal } from "./DeleteAccountModal";
@@ -206,13 +207,9 @@ export function SettingsSection() {
 
   const handleUpdatePassword = async () => {
     if (isDemo) return;
-    if (newPassword.length < 6) {
-      setMessage({ type: "error", text: "Password must be at least 6 characters" });
-      setTimeout(() => setMessage(null), 3000);
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setMessage({ type: "error", text: "Passwords don't match" });
+    const invalid = newPasswordError(newPassword, confirmPassword);
+    if (invalid) {
+      setMessage({ type: "error", text: invalid });
       setTimeout(() => setMessage(null), 3000);
       return;
     }
@@ -423,7 +420,7 @@ export function SettingsSection() {
                 </label>
                 <input
                   type="password"
-                  minLength={6}
+                  minLength={MIN_PASSWORD_LENGTH}
                   placeholder="••••••••"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
@@ -436,7 +433,7 @@ export function SettingsSection() {
                 </label>
                 <input
                   type="password"
-                  minLength={6}
+                  minLength={MIN_PASSWORD_LENGTH}
                   placeholder="••••••••"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}

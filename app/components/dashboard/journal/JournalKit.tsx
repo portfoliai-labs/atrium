@@ -5,7 +5,7 @@ import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/r
 import { ArrowLeft, ArrowUpRight, Clock, HandHeart, Loader2, MessageCircle } from "lucide-react";
 import { journalKey, useJournal } from "../../../context/JournalContext";
 import type { ArticleAuthor, ArticleFilters, ArticleStatus, ArticleSummary, Page } from "../../../models/Journal";
-import { CATEGORY_LABELS, STATUS_LABELS, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
+import { CATEGORY_LABELS, DEFAULT_CATEGORY, STATUS_LABELS, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
 import { serif } from "../../preview/PreviewKit";
 import { JournalMenu } from "./JournalMenu";
 
@@ -47,7 +47,7 @@ export function AuthorBadge({ author, dark = false }: { author: ArticleAuthor; d
 export function Meta({ article, dark = false }: { article: ArticleSummary; dark?: boolean }) {
   return (
     <p className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold ${dark ? "text-stone-400" : "text-slate-400"}`}>
-      {article.category && <span className="font-black uppercase tracking-wider text-[#C49A3C]">{CATEGORY_LABELS[article.category]}</span>}
+      {article.category && article.category !== DEFAULT_CATEGORY && <span className="font-black uppercase tracking-wider text-[#C49A3C]">{CATEGORY_LABELS[article.category]}</span>}
       {article.publishedAt && <><span>·</span><span>{dateLabel(article.publishedAt)}</span></>}
       <span>·</span>
       <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{article.readMinutes} min read</span>
@@ -144,7 +144,7 @@ export function ArticleCard({ article, onOpen, footer }: { article: ArticleSumma
 }
 
 const STATUS_TONES: Record<ArticleStatus, string> = {
-  draft: "bg-slate-100 text-slate-500",
+  draft: "bg-[#F1EADB] text-[#8A6A28]",
   published: "bg-emerald-50 text-emerald-700",
   hidden: "bg-rose-50 text-rose-700",
 };

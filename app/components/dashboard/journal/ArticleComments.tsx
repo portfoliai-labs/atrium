@@ -3,14 +3,28 @@
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CornerDownRight, Eye, EyeOff, Flag, Loader2, MessageCircle, PenLine, Trash2 } from "lucide-react";
+import { CornerDownRight, Eye, EyeOff, Flag, Loader2, PenLine, Trash2 } from "lucide-react";
 import { journalKey, useJournal } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
 import type { Article, Comment } from "../../../models/Journal";
 import { COMMENT_MAX, REASON_LABELS, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
 import { ApiError } from "../../../services/apiClient";
-import { AuthorBadge, EmptyState, ErrorState, LoadMore, PAGE_SIZE, Spinner, usePaged } from "./JournalKit";
+import { AuthorBadge, ErrorState, LoadMore, PAGE_SIZE, Spinner, usePaged } from "./JournalKit";
 import { ReportDialog, type ReportTarget } from "./ReportDialog";
+import { serif, serifText } from "../../preview/PreviewKit";
+
+/** Who wrote a comment, as a round of their initials (PortfoliAI's "P" for the editors'). */
+function Initials({ name, small = false }: { name: string; small?: boolean }) {
+  const letters = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
+  return (
+    <span
+      aria-hidden
+      className={`shrink-0 flex items-center justify-center rounded-full bg-[#F1EADB] font-bold text-[#8A6A28] ${small ? "h-7 w-7 text-[10px]" : "h-9 w-9 text-xs"}`}
+    >
+      {letters}
+    </span>
+  );
+}
 
 /** Where a new comment goes: under the article, or as a reply to a top-level comment. */
 function Composer({ articleUuid, parentUuid, initial, placeholder, submitLabel, onDone, onCancel }: {
@@ -46,19 +60,20 @@ function Composer({ articleUuid, parentUuid, initial, placeholder, submitLabel, 
   };
 
   return (
-    <div className="space-y-2">
+    <div className="rounded-2xl border border-[#E7E1D3] bg-white/70 px-4 pt-3 pb-2.5 transition-colors focus-within:border-[#C49A3C] focus-within:bg-white">
       <textarea
         value={text}
         maxLength={COMMENT_MAX}
         onChange={(e) => setText(e.target.value)}
         rows={initial || parentUuid ? 2 : 3}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-[#C49A3C] resize-y"
+        style={serifText}
+        className="w-full bg-transparent text-[17px] leading-relaxed text-[#292524] placeholder:italic placeholder:text-[#b5ad9e] outline-none resize-none field-sizing-content min-h-[3.2em]"
       />
       {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
       <div className="flex items-center justify-end gap-2">
         {onCancel && (
-          <button type="button" onClick={onCancel} disabled={sending} className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100">
+          <button type="button" onClick={onCancel} disabled={sending} className="px-4 py-1.5 rounded-full text-xs font-bold text-[#78716c] hover:text-[#1c1917]">
             Cancel
           </button>
         )}
@@ -66,7 +81,7 @@ function Composer({ articleUuid, parentUuid, initial, placeholder, submitLabel, 
           type="button"
           onClick={() => void send()}
           disabled={empty || sending}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold text-white bg-[#C49A3C] hover:bg-[#B08932] disabled:opacity-40"
         >
           {sending && <Loader2 className="h-3.5 w-3.5 animate-spin" />} {submitLabel}
         </button>
@@ -127,105 +142,109 @@ function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemov
   });
 
   const hidden = comment.status !== "visible";
-  const action = "flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-slate-700 disabled:opacity-50";
+  const action = "flex items-center gap-1 text-[11px] font-bold text-[#a8a29e] hover:text-[#1c1917] disabled:opacity-50";
+  const name = authorName(comment.author);
   return (
-    <li className={topLevel ? "py-5" : "py-3"}>
-      <div className={hidden ? "opacity-70" : undefined}>
-        <p className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="font-bold text-slate-800">{authorName(comment.author)}</span>
-          <AuthorBadge author={comment.author} />
-          {comment.byArticleAuthor && (
-            <span className="rounded-full bg-[#C49A3C]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#9a7424]">Author</span>
-          )}
-          <span className="text-slate-400">{dateLabel(comment.createdAt)}{comment.editedAt && " · edited"}</span>
-        </p>
-        {hidden && comment.status !== "visible" && (
-          <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-rose-700">
-            <EyeOff className="h-3 w-3" /> {HIDDEN_LABELS[comment.status]}
-            {comment.moderation && ` (${REASON_LABELS[comment.moderation.reason]})`}
+    <li className={`flex gap-3 ${topLevel ? "py-6" : "py-3"}`}>
+      <Initials name={name} small={!topLevel} />
+      <div className="min-w-0 flex-1">
+        <div className={hidden ? "opacity-70" : undefined}>
+          <p className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-bold text-[#1c1917]">{name}</span>
+            <AuthorBadge author={comment.author} />
+            {comment.byArticleAuthor && (
+              <span className="rounded-full bg-[#C49A3C]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#8A6A28]">Author</span>
+            )}
+            <span className="text-[#a8a29e]">{dateLabel(comment.createdAt)}{comment.editedAt && " · edited"}</span>
           </p>
-        )}
-        {comment.moderation?.note && <p className="mt-1 text-[11px] italic text-rose-700 whitespace-pre-line">“{comment.moderation.note}”</p>}
-        {editing ? (
-          <div className="mt-2">
-            <Composer
-              articleUuid={article.uuid}
-              initial={comment}
-              placeholder="Your comment"
-              submitLabel="Save"
-              onDone={(c) => { onChange(c); setEditing(false); }}
-              onCancel={() => setEditing(false)}
-            />
-          </div>
-        ) : (
-          <p className="mt-1.5 text-sm text-slate-700 leading-relaxed whitespace-pre-line wrap-break-word">{comment.text}</p>
-        )}
-      </div>
-
-      {!editing && (
-        <div className="mt-2 flex flex-wrap items-center gap-4">
-          {topLevel && canWrite && !hidden && (
-            <button type="button" onClick={() => setReplying((r) => !r)} className={action}>
-              <CornerDownRight className="h-3 w-3" /> Reply
-            </button>
+          {hidden && comment.status !== "visible" && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-rose-700">
+              <EyeOff className="h-3 w-3" /> {HIDDEN_LABELS[comment.status]}
+              {comment.moderation && ` (${REASON_LABELS[comment.moderation.reason]})`}
+            </p>
           )}
-          {comment.mine && canWrite && (
-            <>
-              <button type="button" onClick={() => setEditing(true)} className={action}><PenLine className="h-3 w-3" /> Edit</button>
-              <button type="button" onClick={() => void remove()} disabled={busy} className={action}><Trash2 className="h-3 w-3" /> Delete</button>
-            </>
-          )}
-          {ownArticle && canWrite && comment.status !== "hidden_by_editors" && (
-            <button type="button" onClick={() => void toggleHidden()} disabled={busy} className={action}>
-              {comment.status === "visible" ? <><EyeOff className="h-3 w-3" /> Hide</> : <><Eye className="h-3 w-3" /> Show</>}
-            </button>
-          )}
-          {!comment.mine && canWrite && !hidden && (
-            <button type="button" onClick={() => onReport({ kind: "comment", uuid: comment.uuid })} className={`${action} hover:text-rose-600`}>
-              <Flag className="h-3 w-3" /> Report
-            </button>
-          )}
-          {busy && <Loader2 className="h-3 w-3 animate-spin text-slate-400" />}
-        </div>
-      )}
-      {error && <p className="mt-1.5 text-xs font-medium text-rose-600">{error}</p>}
-
-      {topLevel && (
-        <div className="mt-2 ml-4 pl-4 border-l-2 border-slate-100">
-          {replying && (
-            <div className="py-2">
+          {comment.moderation?.note && <p className="mt-1 text-[11px] italic text-rose-700 whitespace-pre-line">“{comment.moderation.note}”</p>}
+          {editing ? (
+            <div className="mt-2">
               <Composer
                 articleUuid={article.uuid}
-                parentUuid={comment.uuid}
-                placeholder={`Reply to ${authorName(comment.author)}`}
-                submitLabel="Reply"
-                onDone={() => {
-                  setReplying(false);
-                  setShowReplies(true);
-                  // The thread is read again, the newest reply at its end.
-                  void queryClient.invalidateQueries({ queryKey: journalKey("comments", article.uuid, comment.uuid) });
-                  onChange({ ...comment, replyCount: comment.replyCount + 1 });
-                }}
-                onCancel={() => setReplying(false)}
+                initial={comment}
+                placeholder="Your comment"
+                submitLabel="Save"
+                onDone={(c) => { onChange(c); setEditing(false); }}
+                onCancel={() => setEditing(false)}
               />
             </div>
-          )}
-          {comment.replyCount > 0 && !showReplies && (
-            <button type="button" onClick={() => setShowReplies(true)} className="py-1 text-[11px] font-bold text-[#9a7424] hover:text-[#C49A3C]">
-              {comment.replyCount === 1 ? "View 1 reply" : `View ${comment.replyCount} replies`}
-            </button>
-          )}
-          {showReplies && (
-            <CommentThread
-              article={article}
-              parentUuid={comment.uuid}
-              canWrite={canWrite}
-              ownArticle={ownArticle}
-              onReport={onReport}
-            />
+          ) : (
+            <p className="mt-1.5 text-[17px] text-[#292524] leading-relaxed whitespace-pre-line wrap-break-word" style={serifText}>{comment.text}</p>
           )}
         </div>
-      )}
+
+        {!editing && (
+          <div className="mt-2 flex flex-wrap items-center gap-4">
+            {topLevel && canWrite && !hidden && (
+              <button type="button" onClick={() => setReplying((r) => !r)} className={action}>
+                <CornerDownRight className="h-3 w-3" /> Reply
+              </button>
+            )}
+            {comment.mine && canWrite && (
+              <>
+                <button type="button" onClick={() => setEditing(true)} className={action}><PenLine className="h-3 w-3" /> Edit</button>
+                <button type="button" onClick={() => void remove()} disabled={busy} className={action}><Trash2 className="h-3 w-3" /> Delete</button>
+              </>
+            )}
+            {ownArticle && canWrite && comment.status !== "hidden_by_editors" && (
+              <button type="button" onClick={() => void toggleHidden()} disabled={busy} className={action}>
+                {comment.status === "visible" ? <><EyeOff className="h-3 w-3" /> Hide</> : <><Eye className="h-3 w-3" /> Show</>}
+              </button>
+            )}
+            {!comment.mine && canWrite && !hidden && (
+              <button type="button" onClick={() => onReport({ kind: "comment", uuid: comment.uuid })} className={`${action} hover:text-rose-600`}>
+                <Flag className="h-3 w-3" /> Report
+              </button>
+            )}
+            {busy && <Loader2 className="h-3 w-3 animate-spin text-[#a8a29e]" />}
+          </div>
+        )}
+        {error && <p className="mt-1.5 text-xs font-medium text-rose-600">{error}</p>}
+
+        {topLevel && (
+          <div className="mt-2 -ml-px pl-4 border-l-2 border-[#EEE9DD]">
+            {replying && (
+              <div className="py-2">
+                <Composer
+                  articleUuid={article.uuid}
+                  parentUuid={comment.uuid}
+                  placeholder={`Reply to ${authorName(comment.author)}`}
+                  submitLabel="Reply"
+                  onDone={() => {
+                    setReplying(false);
+                    setShowReplies(true);
+                    // The thread is read again, the newest reply at its end.
+                    void queryClient.invalidateQueries({ queryKey: journalKey("comments", article.uuid, comment.uuid) });
+                    onChange({ ...comment, replyCount: comment.replyCount + 1 });
+                  }}
+                  onCancel={() => setReplying(false)}
+                />
+              </div>
+            )}
+            {comment.replyCount > 0 && !showReplies && (
+              <button type="button" onClick={() => setShowReplies(true)} className="py-1 text-[11px] font-bold text-[#8A6A28] hover:text-[#C49A3C]">
+                {comment.replyCount === 1 ? "View 1 reply" : `View ${comment.replyCount} replies`}
+              </button>
+            )}
+            {showReplies && (
+              <CommentThread
+                article={article}
+                parentUuid={comment.uuid}
+                canWrite={canWrite}
+                ownArticle={ownArticle}
+                onReport={onReport}
+              />
+            )}
+          </div>
+        )}
+      </div>
     </li>
   );
 }
@@ -257,10 +276,12 @@ function CommentThread({ article, parentUuid, canWrite, ownArticle, onReport, on
 
   if (list.error) return <ErrorState message={list.error} onRetry={list.retry} />;
   if (!list.items) return <Spinner />;
-  if (list.items.length === 0) return parentUuid ? null : <EmptyState>No comments yet.</EmptyState>;
+  if (list.items.length === 0) {
+    return parentUuid ? null : <p className="py-6 text-center text-[17px] italic text-[#a8a29e]" style={serifText}>No comments yet.</p>;
+  }
   return (
     <>
-      <ul className={parentUuid ? "divide-y divide-slate-50" : "divide-y divide-slate-100"}>
+      <ul className={parentUuid ? "divide-y divide-[#F1EADB]" : "divide-y divide-[#E7E1D3]"}>
         {list.items.map((c) => (
           <CommentItem
             key={c.uuid}
@@ -296,11 +317,10 @@ export function ArticleComments({ article, canWrite, ownArticle, onCount }: {
   const [reporting, setReporting] = useState<ReportTarget | null>(null);
 
   return (
-    <section className="pt-4">
-      <div className="max-w-2xl mx-auto space-y-5 pt-8 border-t border-[#E0DACC]">
-        <h2 className="flex items-center gap-2 text-lg font-black text-slate-900">
-          <MessageCircle className="h-5 w-5 text-[#C49A3C]" />
-          Comments{article.commentCount > 0 && <span className="text-slate-400 font-bold">{article.commentCount}</span>}
+    <section className="pt-6">
+      <div className="max-w-2xl mx-auto space-y-6 pt-10 border-t border-[#E0DACC]">
+        <h2 className="flex items-baseline gap-2.5 text-[26px] font-black text-[#1c1917]" style={serif}>
+          Comments{article.commentCount > 0 && <span className="text-lg font-bold text-[#C49A3C]">{article.commentCount}</span>}
         </h2>
         {canWrite && article.status === "published" && (
           <Composer

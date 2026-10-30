@@ -11,7 +11,7 @@ import type { Article, ArticleInstrument } from "../../../models/Journal";
 import {
   DISCLOSURE_TITLE, EDITORS_NOTICE, NOT_ADVICE_NOTICE, REASON_LABELS, authorName, dateLabel, isArticleNotFound, journalErrorText,
 } from "../../../lib/journal";
-import { serif } from "../../preview/PreviewKit";
+import { serif, serifText } from "../../preview/PreviewKit";
 import type { JournalFilters } from "../JournalSection";
 import { ArticleBody, ArticleFigure } from "./ArticleBody";
 import { AuthorBadge, EmptyState, ErrorState, Meta, Spinner } from "./JournalKit";
@@ -39,8 +39,8 @@ export function ArticleDocument({ article, actions, onAuthor, onInstrument, bare
     <article className={bare ? "pt-4 md:pt-6" : "bg-white rounded-3xl border border-slate-200 shadow-sm px-6 py-8 md:px-14 md:py-12"}>
       <div className="max-w-2xl mx-auto">
         <Meta article={article} />
-        <h1 className="text-3xl md:text-4xl font-black text-slate-900 mt-3 leading-tight" style={serif}>{article.title || "Untitled"}</h1>
-        {article.dek && <p className="text-base md:text-lg text-slate-500 mt-4 leading-relaxed">{article.dek}</p>}
+        <h1 className="text-4xl md:text-[46px] font-black text-[#1c1917] mt-3 leading-[1.1] tracking-[-0.015em]" style={serif}>{article.title || "Untitled"}</h1>
+        {article.dek && <p className="text-lg md:text-[21px] italic text-[#57534e] mt-4 leading-snug" style={serifText}>{article.dek}</p>}
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <p className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
             <span>By</span>
@@ -54,9 +54,12 @@ export function ArticleDocument({ article, actions, onAuthor, onInstrument, bare
           </p>
           {actions}
         </div>
-        {article.cover && <ArticleFigure image={article.cover} className="mt-8" />}
+        {/* The cover is the body's first image, now: shown there, not twice. */}
+        {article.cover && !article.body.some((b) => b.type === "image" && b.imageUuid === article.cover!.imageUuid) && (
+          <ArticleFigure image={article.cover} className="mt-8" />
+        )}
         <div className="mt-8 pt-8 border-t border-slate-100">
-          <ArticleBody blocks={article.body} />
+          <ArticleBody blocks={article.body} instruments={article.instruments} onInstrument={onInstrument} />
         </div>
 
         {article.instruments.length > 0 && (

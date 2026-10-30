@@ -27,6 +27,26 @@ export const PROPERTY_KIND_LABELS: Record<PropertyKind, string> = {
 };
 export const PROPERTY_KINDS = Object.keys(PROPERTY_KIND_LABELS) as PropertyKind[];
 
+/** The OMI building types a property's market estimate may be picked as, by their code. */
+export const OMI_BUILDING_TYPE_LABELS: Record<number, string> = {
+  20: "Civil home (abitazione civile)",
+  21: "Economic home (abitazione di tipo economico)",
+  19: "Upscale home (abitazione signorile)",
+  1: "Villa or detached house (villa, villino)",
+  22: "Local traditional home (abitazione tipica dei luoghi)",
+  13: "Garage (box)",
+  5: "Shop (negozio)",
+  6: "Office (ufficio)",
+};
+export const OMI_BUILDING_TYPES = [20, 21, 19, 1, 22, 13, 5, 6];
+
+/** The states of repair the OMI quotes, as it writes them. */
+export const OMI_STATE_LABELS: Record<string, string> = {
+  OTTIMO: "Excellent (ottimo)",
+  NORMALE: "Normal (normale)",
+  SCADENTE: "Poor (scadente)",
+};
+
 export const PROPERTY_USE_LABELS: Record<PropertyUse, string> = {
   primary_residence: "Primary residence",
   second_home: "Second home",
@@ -203,6 +223,8 @@ export const PROPERTY_FIELD_LABELS: Record<string, string> = {
   // Mortgage simulations.
   prepaidOn: "The day", refinancedOn: "The day", amount: "Amount", costs: "Costs", "rate.fixedPct": "Rate",
   "details.omiZone": "Market zone", "details.omi_zone": "Market zone",
+  "details.omiBuildingType": "Kind for the estimate", "details.omi_building_type": "Kind for the estimate",
+  "details.omiState": "Condition for the estimate", "details.omi_state": "Condition for the estimate",
   "rate.variable.spreadPct": "Spread", "rate.variable.initialPct": "Rate today", termMonths: "Term", frequency: "Frequency",
 };
 export const fieldLabel = (field: string) => PROPERTY_FIELD_LABELS[field] ?? field;

@@ -14,11 +14,12 @@ import { useInvestorPolicy } from "../../hooks/useInvestorPolicy";
 import { useUser } from "../../context/UserContext";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { AdvisorMatchSection } from "./AdvisorMatchSection";
+import { AdvisorProfileSection } from "./AdvisorProfileSection";
 import { InvestorPolicyEditor, riskToleranceLabel } from "./InvestorPolicyDialog";
 import { PROFILE_GRID, PolicyCards, ProfileCard, ProfileDialog, ProfileRows } from "./ips/PolicyCards";
 import { Breadcrumb } from "./Breadcrumb";
 
-// Profile's own page (the preferences), an investor's Investment Policy (set up step by step, then
+// Profile's own page (the preferences, and an advisor's declaration), an investor's Investment Policy (set up step by step, then
 // its cards) or Find an advisor, each opened from the account menu (an older entry's `page:
 // "setup"`, `tab: "policy"` and `tab: "advisor"` too).
 export type ProfilePage = "home" | "policy" | "advisor";
@@ -45,7 +46,9 @@ const CURRENCIES = [
 
 /**
  * PROFILE — the user's Preferences (language, currency and, for an investor, the tax residence
- * their taxes are computed by), once Settings' tab, and two pages of an investor's, each an entry
+ * their taxes are computed by), once Settings' tab, under them an advisor's declaration (their OCF
+ * register number and what they offer, which investors are matched on: see AdvisorProfileSection),
+ * and two pages of an investor's, each an entry
  * of the account menu: the Investment Policy and Find an advisor. The first time, the policy is
  * set up step by step (InvestorPolicyEditor); once it's complete, its page shows it as cards, a
  * step each, each edited on its own (PolicyCards). Advisors are matched on it, so Find an advisor
@@ -120,6 +123,7 @@ export function MyProfileSection() {
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-500">
       <div className={PROFILE_GRID}><PreferencesCard /></div>
+      {isAdvisor && <AdvisorProfileSection />}
     </div>
   );
 }

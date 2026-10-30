@@ -128,4 +128,6 @@ export function Pills<T extends string>({ options, value, onChange }: { options:
 }
 
 export const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
+// The Journal's text face (globals.css' --font-serif-text).
+export const serifText = { fontFamily: "'Source Serif 4', Georgia, serif" } as const;
 export const formatPct = (pct: number, decimals = 1) => `${pct >= 0 ? "+" : ""}${pct.toFixed(decimals)}%`;

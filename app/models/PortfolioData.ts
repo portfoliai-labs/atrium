@@ -21,6 +21,7 @@
 import type { InstrumentProfile } from "./InstrumentProfile";
 import type { Listing } from "./Listing";
 import type { Portfolio, DailyValueChange } from "./Portfolio";
+import type { FactorSetExposures } from "./PublishedStrategy";
 
 // "unavailable" only ever appears on the risk model.
 type AnalyticsStatus = "ok" | "insufficient_history" | "unavailable";
@@ -469,11 +470,22 @@ interface InsightsFrontierModule extends ModuleState {
   minVolatility: RiskPointResponse | null;
 }
 
+// What the equity holdings' monthly returns behaved like, against each factor set the backend
+// serves (the factor ETFs' long-only mix everywhere, Fama-French's long-short loadings in
+// development only): PublishedStrategy's FactorExposures, with the module's state.
+// insufficient_history: under three years of the equity holdings; unavailable: no equity.
+interface InsightsFactorExposuresModule extends ModuleState {
+  equityWeightPct: number;
+  sets: FactorSetExposures[];
+}
+
 interface InsightsRiskResponse {
   currency: string;
   isAggregate: boolean;
   volatility: InsightsVolatilityModule | null;
   frontier: InsightsFrontierModule | null;
+  // Null until the overnight analysis first measured them; absent from an ianus before them.
+  factorExposures?: InsightsFactorExposuresModule | null;
 }
 
 // ========== GET /insights/status ==========
@@ -497,6 +509,7 @@ interface InsightsStatusModules {
   benchmark: FacetState | null;
   volatility: FacetState | null;
   riskModel: FacetState | null;
+  factorExposures?: FacetState | null;
 }
 
 // Poll this (not the sections) every 15s while anything is stale, for up to 5 minutes; when a
@@ -845,7 +858,7 @@ export type {
   AllocationEntryResponse, ClassificationDimension, InsightsPortfoliosModule, InsightsComovementModule, InsightsCompositionResponse,
   InsightsDividendsModule, InsightsTradingCostsModule, InsightsRealizedPnlModule, InsightsIncomeCostsResponse,
   InsightsValueModule, InsightsThisMonthModule, InsightsHeatmapModule, InsightsPerformanceResponse,
-  InsightsVolatilityModule, InsightsFrontierModule, InsightsRiskResponse,
+  InsightsVolatilityModule, InsightsFrontierModule, InsightsFactorExposuresModule, InsightsRiskResponse,
   FacetState, InsightsStatusModules, InsightsStatusResponse,
   BrokerTotal, AssetClassTotal, CurrencyHolding, CurrencyDetail, HoldingsByCurrencyResponse,
   PositionResponse, DividendsResponse, TradingCostsResponse, RealizedPnlResponse, ReturnsResponse, PeriodDashboard,

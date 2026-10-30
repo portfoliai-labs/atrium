@@ -8,8 +8,6 @@ import { usePortfolio } from "../../context/PortfolioContext";
 import { DashboardHeader } from "../../components/dashboard/DashboardHeader";
 import { Sidebar } from "../../components/dashboard/Sidebar";
 import { FileUploader } from "../../components/dashboard/FileUploader";
-import { ProfileSection } from "../../components/dashboard/ProfileSection";
-import { AdvisorProfileSection } from "../../components/dashboard/AdvisorProfileSection";
 import { ReportsList } from "../../components/dashboard/ReportsList";
 import { ClientsSection } from "../../components/dashboard/ClientsSection";
 import { AdvisorRequestsSection } from "../../components/dashboard/AdvisorRequestsSection";
@@ -36,10 +34,9 @@ import {
   PROFILE_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, WALLETS_SECTION, SUBSCRIPTION_SECTION, DashboardPageContext, openPortfolioPage,
 } from "../../lib/dashboardNav";
 
-// 'reports' and 'profile' are omitted here on purpose: neither investors nor advisors have a
-// sidebar entry for them anymore (Reports and Profile are hidden for now, Profile's
-// language/currency moved into Settings), so a stale deep link should fall back to overview
-// rather than open them.
+// 'reports' is omitted here on purpose: neither investors nor advisors have a sidebar entry for
+// it anymore (Reports is hidden for now), so a stale deep link should fall back to overview
+// rather than open it.
 // 'performance' is the investor's Investments (once Wealth; an advisor's Insights).
 // Some are gone, kept so a link or history entry to them lands on where their pages went (see
 // relocate, below): 'discover' (its News, Journal and Explore), 'plan' (its Projection is each
@@ -68,8 +65,9 @@ const VALID_SECTIONS = [
   NEWS_SECTION, ASSET_SECTION, PROFILE_SECTION, SUBSCRIPTION_SECTION, 'settings', 'notifications', PLAN_SECTION, EXPLORE_SECTION, 'discover',
 ];
 // Sections that became another, under a new name. A link or a history entry to the old one lands
-// on the new.
-const MOVED_SECTIONS: Record<string, string> = { blog: JOURNAL_SECTION };
+// on the new: the old 'profile' (an investor's profile, an advisor's declaration), Profile's (see
+// MyProfileSection).
+const MOVED_SECTIONS: Record<string, string> = { blog: JOURNAL_SECTION, profile: PROFILE_SECTION };
 const resolveSection = (section: string | null | undefined) => (section ? MOVED_SECTIONS[section] ?? section : section);
 
 /**
@@ -269,8 +267,6 @@ function DashboardPageContent() {
       case 'discover':
         // Until it lands where its page went (see relocate).
         return null;
-      case 'profile':
-        return isAdvisor ? <AdvisorProfileSection /> : <ProfileSection />;
       case 'settings':
         return <SettingsSection />;
       case SUBSCRIPTION_SECTION:

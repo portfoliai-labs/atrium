@@ -31,6 +31,7 @@ import { NoDataEmptyState } from "./NoDataEmptyState";
 import { InstrumentProfileModule } from "./InstrumentProfileModule";
 import { DonutList, type DonutItem } from "./DonutList";
 import { CompareModule } from "./CompareModule";
+import { StrategiesModule } from "./StrategiesModule";
 import { StressTestModule, StressTestPanel } from "./stress/StressTest";
 import { ProjectionModule, ProjectionPanel, type ProjectionStart } from "./projection/ProjectionPage";
 import { AssetArticlesModule } from "./journal/AssetArticlesModule";
@@ -42,6 +43,7 @@ import { MarketDataModule } from "./MarketDataModule";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { PageHeader } from "./PageHeader";
 import { ExploreView, ExploreHostContext, ExplorePanel, DataTable, useExploreHost, type DataColumn } from "./ExploreView";
+import { FactorLoadings, StyleMix, loadingsSet } from "./StrategyProfile";
 import type {
   ExposureEntryResponse, RiskModelResponse, RiskPointResponse, RiskPortfolioEntry, RiskModelUnavailableReason, WeightGapEntry,
   BenchmarkResponse, BenchmarkComponentEntry, TimeSeries, HorizonEntry, DividendsResponse, TradingCostsResponse,
@@ -50,7 +52,7 @@ import type {
   PositionResponse, InsightsHoldingsModule, InsightsExposureModule, InsightsClassificationsModule, InsightsPortfoliosModule,
   InsightsComovementModule, ClassificationDimension,
   InsightsTradingCostsModule, InsightsRealizedPnlModule, InsightsThisMonthModule,
-  InsightsValueModule, InsightsVolatilityModule, InsightsFrontierModule, InsightsPerformanceResponse, PortfolioComparisonEntry,
+  InsightsValueModule, InsightsVolatilityModule, InsightsFrontierModule, InsightsFactorExposuresModule, InsightsPerformanceResponse, PortfolioComparisonEntry,
 } from "../../models/PortfolioData";
 import type { TransactionResponse } from "../../models/Transaction";
 import { DIMENSION_PANELS, LOOK_THROUGH_INFO, allocationRows, dimensionOf, isInformative } from "../../lib/classifications";
@@ -87,7 +89,7 @@ export const TOOLTIP_STYLE: React.CSSProperties = {
  * in as they arrive. Stale modules are followed through /insights/status (see useInsights).
  */
 export function PerformanceSection({
-  portfolioUuid, isAggregate = false, backtest = false, strategyShown = false, onNavigate, trail, pageLabel = "Insights", trailInTop = false, top, onOpenPortfolio, onCompare, onOpenTaxes, comparison = null,
+  portfolioUuid, isAggregate = false, backtest = false, strategyShown = false, onNavigate, trail, pageLabel = "Insights", trailInTop = false, top, onOpenPortfolio, onCompare, onOpenStrategy, onOpenTaxes, comparison = null,
 }: {
   portfolioUuid: string; isAggregate?: boolean; onNavigate?: (section: string) => void;
   // A strategy's backtest (a virtual portfolio): its header carries BacktestBanner, and before
@@ -113,6 +115,9 @@ export function PerformanceSection({
   onOpenPortfolio?: (uuid: string) => void;
   // Opens Compare: with it, All portfolios shows its Compare module (CompareModule) under its Portfolios.
   onCompare?: () => void;
+  // Opens a portfolio's Strategy page: with it, the investments' page shows its Strategies module
+  // (StrategiesModule), beside Compare on All portfolios.
+  onOpenStrategy?: (portfolioUuid: string) => void;
   // Opens the investments' Taxes page, on a year: with it, the Realized P&L shows the taxes (the
   // investments' year by year in its detail, a portfolio's this year's under it).
   onOpenTaxes?: (year?: number) => void;
@@ -244,11 +249,15 @@ export function PerformanceSection({
             message="Its trades are being generated on historical prices, then its history is built like any portfolio's. Come back in a few minutes."
           />
         ) : (
-          <NoDataEmptyState
-            title="No performance data yet"
-            message="Add or upload your transactions and this is where you'll track how your portfolio moves over time."
-            onNavigate={onNavigate}
-          />
+          <div className="space-y-6">
+            <NoDataEmptyState
+              title="No performance data yet"
+              message="Add or upload your transactions and this is where you'll track how your portfolio moves over time."
+              onNavigate={onNavigate}
+            />
+            {/* Strategies need no transactions: backtesting one is a way to start. */}
+            {onOpenStrategy && onNavigate && <StrategiesModule investmentsUuid={portfolioUuid} onOpenStrategy={onOpenStrategy} onNavigate={onNavigate} />}
+          </div>
         )
       ) : (
         <>
@@ -286,6 +295,8 @@ export function PerformanceSection({
               isAggregate={isAggregate}
               onOpenPortfolio={onOpenPortfolio}
               onCompare={onCompare}
+              onOpenStrategy={onNavigate ? onOpenStrategy : undefined}
+              onNavigate={onNavigate}
               onOpenTaxes={onOpenTaxes}
               comparison={comparison}
               backtest={backtest}
@@ -3816,6 +3827,49 @@ function FigureRow({
  * to the portfolio's return, and which platforms it went to (the section sends the top
  * TOP_ROWS). Its detail (TradingCostsExplore) is /insights/trading-costs.
  */
+/**
+ * FACTOR EXPOSURES MODULE ("Behaves like") — what the equity holdings' monthly returns moved like:
+ * on the card, the closest mix of factor ETFs (its largest styles); its detail the whole mix with
+ * how it was measured and, where the backend serves Fama-French's factors (development only for
+ * now), their loadings. From the risk section's `factorExposures` (the overnight analysis): under
+ * three years of equity history, or without equity, the card says so and opens nothing.
+ */
+function FactorExposuresModule({ slot }: { slot: ModuleSlot<InsightsFactorExposuresModule> }) {
+  const data = slot.module;
+  const [exploring, setExploring] = useState(false);
+  const canExplore = data !== null && !slot.updating && data.status === "ok" && data.sets.length > 0;
+  const loadings = loadingsSet(data);
+
+  return (
+    <Module>
+      <ModuleHead
+        title="Behaves like"
+        desc="The mix of factor ETFs whose monthly returns come closest to its equity holdings': how they behaved, not what they hold."
+        onExplore={canExplore ? () => setExploring(true) : undefined}
+      />
+      <SlotPlaceholder slot={slot} />
+      {data !== null && !slot.updating && (
+        <div className={`${MODULE_BODY} space-y-4`}>
+          {slot.lagging && <UpdatingNote />}
+          <StyleMix exposures={data} compact />
+        </div>
+      )}
+      {canExplore && exploring && (
+        <ExploreView title="Behaves like" onClose={() => setExploring(false)}>
+          <ExplorePanel title="Factor ETF Mix" desc="The mix of factor ETFs whose monthly returns come closest to its equity holdings'.">
+            <div className="px-6 md:px-7 pb-6"><StyleMix exposures={data} /></div>
+          </ExplorePanel>
+          {loadings && (
+            <ExplorePanel title="Factor Loadings (Fama-French)" desc="Its equity holdings regressed on Fama and French's factors: the tilts that stand out from the noise.">
+              <div className="px-6 md:px-7 pb-6"><FactorLoadings set={loadings} equityWeightPct={data.equityWeightPct} /></div>
+            </ExplorePanel>
+          )}
+        </ExploreView>
+      )}
+    </Module>
+  );
+}
+
 function TradingCostsModule({ slot, currency, portfolioUuid }: { slot: ModuleSlot<InsightsTradingCostsModule>; currency: string; portfolioUuid: string }) {
   const data = slot.module;
   const [exploring, setExploring] = useState(false);
@@ -4492,7 +4546,7 @@ function MonthPage({
  * Performance's detail (see PerformanceSection).
  */
 function HistoryPage({
-  insights, performance, value, portfolioUuid, onSelectMonth, onOpenStress, onOpenProjection, isAggregate, onOpenPortfolio, onCompare, onOpenTaxes, comparison, backtest, strategyShown,
+  insights, performance, value, portfolioUuid, onSelectMonth, onOpenStress, onOpenProjection, isAggregate, onOpenPortfolio, onCompare, onOpenStrategy, onNavigate, onOpenTaxes, comparison, backtest, strategyShown,
 }: {
   insights: Insights;
   // The Performance section, already loaded, and its value (PerformanceSection checks both).
@@ -4509,6 +4563,10 @@ function HistoryPage({
   onOpenPortfolio?: (uuid: string) => void;
   // Opens Compare, from the aggregate's Compare module.
   onCompare?: () => void;
+  // Opens a portfolio's Strategy page, from the Strategies module; with Strategies through
+  // onNavigate. Both, the module is shown.
+  onOpenStrategy?: (portfolioUuid: string) => void;
+  onNavigate?: (section: string) => void;
   // Opens the investments' Taxes page, from the Realized P&L.
   onOpenTaxes?: (year?: number) => void;
   comparison: PortfolioComparisonEntry | null;
@@ -4528,10 +4586,16 @@ function HistoryPage({
   const own = <S, M extends { isStale: boolean }>(section: SectionState<S>, pick: (data: S) => M | null) =>
     slotOf(section, timedOut, pick, ownStale);
 
+  // The investments' Strategies module (StrategiesModule), in the grid or under an empty history.
+  const strategies = onOpenStrategy && onNavigate && (
+    <StrategiesModule investmentsUuid={portfolioUuid} onOpenStrategy={onOpenStrategy} onNavigate={onNavigate} />
+  );
+
   if (isHistoryEmpty(value)) {
     return (
       <div className="space-y-6">
         <EmptyPeriodState message="Add or upload transactions to build your full portfolio history." />
+        {strategies}
       </div>
     );
   }
@@ -4583,6 +4647,12 @@ function HistoryPage({
   );
   const updatingNote = !historyUpdating && performance.historyIsStale && <Tile><UpdatingNote /></Tile>;
   const riskModel = <Tile id={moduleAnchor("risk")}><RiskModelModule slot={own(risk, (d) => d.frontier)} portfolioUuid={portfolioUuid} /></Tile>;
+  const factorExposuresModule = <FactorExposuresModule slot={own(risk, (d) => d.factorExposures ?? null)} />;
+  const factorExposures = <Tile>{factorExposuresModule}</Tile>;
+  // Behaves like goes up under the Composition while it has a mix to show, or may (the risk
+  // section still loading); once it says it can't measure (no equity, under three years, not
+  // measured yet), it waits at the bottom by the risk model.
+  const behavesUp = !risk.failed && (risk.data === null || risk.data.factorExposures?.status === "ok");
 
   const tradingCosts = <TradingCostsModule slot={own(incomeCosts, (d) => d.tradingCosts)} currency={currency} portfolioUuid={portfolioUuid} />;
 
@@ -4598,6 +4668,7 @@ function HistoryPage({
         <Tile span="wide" id={moduleAnchor("composition")}>{compositionModule}</Tile>
         <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>
         <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>
+        {factorExposures}
         {riskModel}
       </div>
     );
@@ -4628,9 +4699,15 @@ function HistoryPage({
           <ThisMonthCard slot={slotOf(insights.performance, timedOut, (d) => d.thisMonth, (_, d) => d.historyIsStale)} currency={currency} onOpen={onSelectMonth} />
         )}
       </Tile>
+      {/* What it holds, then the styles it moved like, beside the strategies the portfolios
+          follow; without those, across the page. */}
+      {behavesUp && <Tile span={strategies ? "half" : "full"}>{factorExposuresModule}</Tile>}
+      {behavesUp && strategies && <Tile span="half">{strategies}</Tile>}
       {/* All portfolios: how they did next to each other, across the page under them, their
           colours the donut's. */}
-      {aggregate && onCompare && <Tile><CompareModule onOpen={onCompare} /></Tile>}
+      {aggregate && onCompare && <Tile span={strategies && !behavesUp ? "wide" : "full"}><CompareModule onOpen={onCompare} /></Tile>}
+      {/* The strategies, while Behaves like waits at the bottom: beside Compare, else across the page. */}
+      {!behavesUp && strategies && <Tile span={aggregate && onCompare ? "narrow" : "full"}>{strategies}</Tile>}
       {/* What was made, sold (realized, dividends) and still held (gains & losses), beside what
           trading cost; then the risk. */}
       <Tile span="narrow" id={moduleAnchor("realized")}>
@@ -4646,6 +4723,7 @@ function HistoryPage({
       </Tile>
       <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>
       <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>
+      {!behavesUp && factorExposures}
       {riskModel}
     </div>
   );

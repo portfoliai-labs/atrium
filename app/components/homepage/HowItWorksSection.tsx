@@ -8,20 +8,20 @@ interface Step {
 
 const STEPS: Step[] = [
   {
-    title: "Upload your history",
-    description: "Once, ever. Export the CSV or Excel file from your broker and upload it.",
+    title: "Bring your data in",
+    description: "Upload your broker's CSV or Excel export, connect your bank, add your home with its mortgage. The AI maps the columns; you confirm once.",
   },
   {
-    title: "Let AI read it for you",
-    description: "Performance, risk, costs and allocation, explained in plain language — right away, no spreadsheets.",
+    title: "Everything is valued, every day",
+    description: "Prices, exchange rates and interest rates from market data with the source cited. Positions revalued through the day, the full history rebuilt every night.",
   },
   {
-    title: "Follow the dashboard",
-    description: "Value, P/L, composition and costs, updated every day after markets close.",
+    title: "Read it, and ask",
+    description: "Insights widgets with a detail page behind each one. Next to every chart, a button that asks the assistant to explain what you're looking at, from your data.",
   },
   {
-    title: "Get alerted when it matters",
-    description: "Set thresholds on value, drawdown or allocation, and PortfoliAI tells you the moment one is crossed.",
+    title: "Act, or get help",
+    description: "Set alerts, adopt a strategy and be told when you drift from it, or share your policy with a verified advisor and work on the plan together.",
     highlight: true,
   },
 ];
@@ -33,60 +33,51 @@ export default function HowItWorksSection() {
         <div className="flex items-center gap-2 mb-4">
           <span className="w-5 h-px" style={{ background: "#C49A3C" }} />
           <span className="text-[11px] font-medium tracking-[0.12em] uppercase" style={{ color: "#8A6A28" }}>
-            How it works now
+            How it works
           </span>
         </div>
         <h2
           className="text-[clamp(26px,3.5vw,46px)] font-bold leading-[1.1] tracking-tight mb-3"
           style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#1c1917" }}
         >
-          Set it up once.<br />Let AI take it from there.
+          Set it up once.<br />Then it keeps the books for you.
         </h2>
         <p className="mb-14 text-[14px] font-light max-w-lg" style={{ color: "#78716c" }}>
-          No spreadsheets to maintain, no analysis to run by hand. You set up your portfolio once, and PortfoliAI keeps reading it for you.
+          No spreadsheet to maintain, no analysis to run by hand. You bring the data in once and
+          add to it as life happens; PortfoliAI does the rest.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-px" style={{ background: "#e7e5e0" }}>
-          {STEPS.map((step, i) => {
-            return (
-              <motion.div
-                key={step.title}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-50px" }}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
-                className="relative flex flex-col p-7"
-                style={{ background: step.highlight ? "#1c1917" : "#FDFCF8" }}
+          {STEPS.map((step, i) => (
+            <motion.div
+              key={step.title}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.5, delay: i * 0.1 }}
+              className="relative flex flex-col p-7"
+              style={{ background: step.highlight ? "#1c1917" : "#FDFCF8" }}
+            >
+              <span
+                className="text-[34px] font-bold leading-none mb-5"
+                style={{ fontFamily: "'Playfair Display', Georgia, serif", color: step.highlight ? "#C49A3C" : "#E0DACC" }}
               >
-                <span
-                  className="text-[34px] font-bold leading-none mb-5"
-                  style={{ fontFamily: "'Playfair Display', Georgia, serif", color: step.highlight ? "#C49A3C" : "#E0DACC" }}
-                >
-                  0{i + 1}
-                </span>
-                {step.highlight && (
-                  <span
-                    className="absolute top-6 right-6 text-[9px] font-semibold tracking-[0.1em] uppercase px-2 py-0.5 rounded-sm"
-                    style={{ background: "#C49A3C", color: "#1c1917" }}
-                  >
-                    New
-                  </span>
-                )}
-                <h3
-                  className="text-[16px] font-bold mb-2 tracking-tight"
-                  style={{ fontFamily: "'Playfair Display', Georgia, serif", color: step.highlight ? "#fff" : "#1c1917" }}
-                >
-                  {step.title}
-                </h3>
-                <p
-                  className="text-[13px] leading-relaxed"
-                  style={{ color: step.highlight ? "rgba(255,255,255,0.5)" : "#78716c" }}
-                >
-                  {step.description}
-                </p>
-              </motion.div>
-            );
-          })}
+                0{i + 1}
+              </span>
+              <h3
+                className="text-[16px] font-bold mb-2 tracking-tight"
+                style={{ fontFamily: "'Playfair Display', Georgia, serif", color: step.highlight ? "#fff" : "#1c1917" }}
+              >
+                {step.title}
+              </h3>
+              <p
+                className="text-[13px] leading-relaxed"
+                style={{ color: step.highlight ? "rgba(255,255,255,0.5)" : "#78716c" }}
+              >
+                {step.description}
+              </p>
+            </motion.div>
+          ))}
         </div>
       </div>
     </section>

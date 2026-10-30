@@ -5,23 +5,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Editor, JSONContent } from "@tiptap/core";
 import {
-  AlertTriangle, Check, CheckCircle2, Circle, Eye, ImagePlus, Loader2, PenLine, RotateCcw, Send, Trash2, Undo2, X,
+  AlertTriangle, Check, CheckCircle2, Eye, Loader2, PenLine, RotateCcw, Send, Trash2, Undo2, X,
 } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
 import { journalKey, useJournal, useJournalQuery } from "../../../context/JournalContext";
 import { ApiError } from "../../../services/apiClient";
-import { IMAGE_ACCEPT, journalService, uploadArticleImage } from "../../../services/journalService";
+import { journalService } from "../../../services/journalService";
 import type {
   Article, ArticleAudience, ArticleCategory, ArticleContent, ArticleImage, ArticleInstrument, ArticleLanguage, Block,
 } from "../../../models/Journal";
 import { instrumentRef } from "../../../models/Journal";
-import type { Listing } from "../../../models/Listing";
 import {
-  ALT_TEXT_MAX, CAPTION_MAX, CATEGORIES, CATEGORY_LABELS, DEK_MAX, DISCLOSURE_HELP, DISCLOSURE_MAX, DISCLOSURE_TITLE,
-  LANGUAGES, LANGUAGE_LABELS, MAX_INSTRUMENTS, NOTE_MAX, TITLE_MAX, dateLabel, journalErrorText,
+  DEFAULT_CATEGORY, DEK_MAX, DISCLOSURE_HELP, DISCLOSURE_MAX, DISCLOSURE_TITLE, MAX_INSTRUMENTS,
+  NOTE_MAX, TITLE_MAX, dateLabel, journalErrorText,
 } from "../../../lib/journal";
-import { serif } from "../../preview/PreviewKit";
-import { AssetPicker } from "../AssetPicker";
+import { serif, serifText } from "../../preview/PreviewKit";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { BackLink, ErrorState, Spinner, StatusChip } from "./JournalKit";
 import { BodyEditor, focusNode } from "./BodyEditor";
@@ -31,13 +29,13 @@ import { ArticleDocument, HiddenNotice } from "./ArticleReader";
 // A draft saves itself once the author pauses.
 const AUTOSAVE_MS = 1500;
 
+// The category and language aren't asked for now: an article keeps its own, a new one is filed
+// under DEFAULT_CATEGORY in the reader's language. The cover is the body's first image (coverOf).
 interface Form {
   title: string;
   dek: string;
-  category: ArticleCategory | null;
+  category: ArticleCategory;
   language: ArticleLanguage;
-  cover: ArticleImage | null;
-  instruments: ArticleInstrument[];
   audience: ArticleAudience;
   interestDisclosure: string;
 }
@@ -45,10 +43,8 @@ interface Form {
 const formOf = (article: Article | null, language: ArticleLanguage): Form => ({
   title: article?.title ?? "",
   dek: article?.dek ?? "",
-  category: article?.category ?? null,
+  category: article?.category ?? DEFAULT_CATEGORY,
   language: article?.language ?? language,
-  cover: article?.cover ?? null,
-  instruments: article?.instruments ?? [],
   audience: article?.audience ?? "everyone",
   interestDisclosure: article?.interestDisclosure ?? "",
 });
@@ -74,8 +70,14 @@ const fieldRoot = (field: string | null) => field?.split(".")[0] ?? null;
 const inputClass = (flagged: boolean) =>
   `w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#C49A3C] ${flagged ? "border-rose-400" : "border-slate-200"}`;
 
-function SideLabel({ children }: { children: React.ReactNode }) {
+function FieldLabel({ children }: { children: React.ReactNode }) {
   return <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">{children}</span>;
+}
+
+/** An article's cover: its body's first image, if any. */
+function coverOf(blocks: Block[]): ArticleImage | null {
+  const first = blocks.find((b): b is Extract<Block, { type: "image" }> => b.type === "image");
+  return first ? { imageUuid: first.imageUuid, altText: first.altText, caption: null, file: first.file } : null;
 }
 
 /** The images' short-lived links in the editor's document, by block, for the preview. */
@@ -89,10 +91,10 @@ function blocksWithFiles(doc: JSONContent, blocks: Block[], nodeIndex: number[])
 
 /**
  * THE EDITOR — one of the caller's articles (or a new one, created at its first save): its title,
- * the line under it, its body (BodyEditor), and, on the side, its category, language, cover, the
- * instruments it's about and, for an advisor, who reads it and their interests. A draft saves
- * itself as the author writes; a published or hidden article is checked as publishing and goes
- * live on save, so it's saved by hand. Each save sends the updatedAt last read: an article
+ * the line under it and its body (BodyEditor), one column; the instruments it's about are those
+ * tagged with "#" in the body, its cover the body's first image. Under it, for an advisor, who
+ * reads it and their interests. Publishing names what's still missing, if anything. A draft saves itself as the author writes; a published or hidden article is checked
+ * as publishing and goes live on save, so it's saved by hand. Each save sends the updatedAt last read: an article
  * changed elsewhere since (another tab) is a conflict to resolve, not overwritten.
  */
 export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
@@ -113,6 +115,8 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   const [loaded, setLoaded] = useState(!uuid);
   const [form, setForm] = useState<Form>(() => formOf(null, language));
   const [initialBody, setInitialBody] = useState<Block[]>([]);
+  // The instruments the body's tags name, as it was read.
+  const [initialInstruments, setInitialInstruments] = useState<ArticleInstrument[]>([]);
   // Bumped to start the body editor over from initialBody (a reload).
   const [bodyKey, setBodyKey] = useState(0);
   const docRef = useRef<JSONContent>({ type: "doc", content: [] });
@@ -139,9 +143,6 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
-  const [coverUploading, setCoverUploading] = useState(false);
-  const [coverError, setCoverError] = useState<string | null>(null);
-  const coverInput = useRef<HTMLInputElement>(null);
 
   const status = article?.status ?? "draft";
   const autosave = status === "draft";
@@ -151,6 +152,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     setArticle(a);
     setForm(formOf(a, language));
     setInitialBody(a.body);
+    setInitialInstruments(a.instruments);
     setBodyKey((k) => k + 1);
     setVersion(0);
     setSavedVersion(0);
@@ -183,16 +185,16 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   }, []);
 
   const contentOf = (f: Form): ArticleContent => {
-    const { blocks, nodeIndex } = docToBlocks(docRef.current);
+    const { blocks, nodeIndex, instruments } = docToBlocks(docRef.current);
     sentNodeIndex.current = nodeIndex;
     return {
       title: f.title.trim() || null,
       dek: f.dek.trim() || null,
       category: f.category,
       language: f.language,
-      cover: f.cover ? { imageUuid: f.cover.imageUuid, altText: f.cover.altText.trim(), caption: f.cover.caption?.trim() || null } : null,
+      cover: coverOf(blocks),
       body: blocks,
-      instruments: f.instruments.map(instrumentRef),
+      instruments: instruments.map(instrumentRef),
       audience: isAdvisor ? f.audience : null,
       interestDisclosure: isAdvisor ? f.interestDisclosure.trim() || null : null,
     };
@@ -286,7 +288,11 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     }
   };
 
-  const publish = async () => {
+  const publish = async (missing: string[]) => {
+    if (missing.length) {
+      setActionError(`To publish it, it still needs ${missing.join(", ").replace(/, ([^,]*)$/, " and $1")}.`);
+      return;
+    }
     const next = await run("publish", journalService.publish);
     if (next) setJustPublished(true);
   };
@@ -309,43 +315,20 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     }
   };
 
-  const uploadCover = async (file: File | undefined) => {
-    if (!file) return;
-    setCoverUploading(true);
-    setCoverError(null);
-    try {
-      const { imageUuid, file: stored } = await uploadArticleImage(file);
-      change({ cover: { imageUuid, altText: "", caption: null, file: stored } });
-    } catch (err) {
-      setCoverError(journalErrorText(err, "The image couldn't be uploaded."));
-    } finally {
-      setCoverUploading(false);
-      if (coverInput.current) coverInput.current.value = "";
-    }
-  };
-
-  const addInstrument = (listing: Listing | null) => {
-    if (!listing || form.instruments.length >= MAX_INSTRUMENTS) return;
-    if (form.instruments.some((i) => i.instrumentId === listing.instrumentId)) return;
-    const { listingId, instrumentId, name, ticker, isin } = listing;
-    change({ instruments: [...form.instruments, { listingId, instrumentId, name, ticker, isin }] });
-  };
-
   if (loadError) return <div className="pb-12 space-y-5"><BackLink label="Your articles" onClick={onBack} /><ErrorState message={loadError} /></div>;
   if (!loaded) return <div className="pb-12 space-y-5"><BackLink label="Your articles" onClick={onBack} /><Spinner /></div>;
 
   // What publishing needs, as acta checks it.
-  const { blocks, nodeIndex } = docToBlocks(docRef.current);
+  const { blocks, nodeIndex, instruments } = docToBlocks(docRef.current);
   const images = blocks.filter((b): b is Extract<Block, { type: "image" }> => b.type === "image");
-  const needsDisclosure = isAdvisor && form.instruments.length > 0;
-  const checklist = [
-    { label: "A title", done: !!form.title.trim() },
-    { label: "A category", done: !!form.category },
-    { label: "Some text", done: blocks.some((b) => b.type !== "image") },
-    ...(images.length || form.cover ? [{ label: "Alt text for every image", done: images.every((i) => i.altText) && (!form.cover || !!form.cover.altText.trim()) }] : []),
-    ...(needsDisclosure ? [{ label: "Your interests in the instruments", done: !!form.interestDisclosure.trim() }] : []),
-  ];
-  const ready = checklist.every((c) => c.done);
+  const needsDisclosure = isAdvisor && instruments.length > 0;
+  const missing = [
+    !form.title.trim() && "a title",
+    !blocks.some((b) => b.type !== "image") && "some text",
+    instruments.length > MAX_INSTRUMENTS && `no more than ${MAX_INSTRUMENTS} instruments tagged`,
+    !images.every((i) => i.altText) && "the alt text of every image",
+    needsDisclosure && !form.interestDisclosure.trim() && "your interests in the instruments",
+  ].filter((m): m is string => !!m);
   const flagged = fieldRoot(refusal?.field ?? null);
 
   const saveState = saving
@@ -356,6 +339,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
         ? <span className="flex items-center gap-1"><Check className="h-3 w-3" /> Saved</span>
         : article ? <span>{article.publishedAt ? `Published ${dateLabel(article.publishedAt)}` : "Draft"}</span> : <span>New article</span>;
 
+  const previewBody = preview ? blocksWithFiles(docRef.current, blocks, nodeIndex) : [];
   const previewArticle: Article | null = preview ? {
     uuid: article?.uuid ?? "preview",
     author: article?.author.kind ? article.author : { kind: isEditor ? "editor" : isAdvisor ? "advisor" : "user", userUuid: user?.uuid ?? null, displayName: [user?.first_name, user?.last_name].filter(Boolean).join(" ") || null },
@@ -364,8 +348,8 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     dek: form.dek || null,
     category: form.category,
     language: form.language,
-    cover: form.cover,
-    instruments: form.instruments,
+    cover: coverOf(previewBody),
+    instruments,
     audience: form.audience,
     slug: article?.slug ?? null,
     readMinutes: article?.readMinutes ?? 1,
@@ -375,7 +359,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     applauseCount: article?.applauseCount ?? 0,
     applauded: false,
     commentCount: article?.commentCount ?? 0,
-    body: blocksWithFiles(docRef.current, blocks, nodeIndex),
+    body: previewBody,
     interestDisclosure: isAdvisor ? form.interestDisclosure || null : null,
     moderation: null,
     createdAt: article?.createdAt ?? "",
@@ -385,10 +369,9 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   const primary = status === "draft" ? (
     <button
       type="button"
-      onClick={() => void publish()}
-      disabled={!!busy || !ready || conflict}
-      title={ready ? undefined : "See what publishing needs, on the side"}
-      className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-colors disabled:opacity-50"
+      onClick={() => void publish(missing)}
+      disabled={!!busy || conflict}
+      className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold text-white bg-[#C49A3C] hover:bg-[#B08932] shadow-sm shadow-[#C49A3C]/30 transition-colors disabled:opacity-50"
     >
       {busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Publish
     </button>
@@ -397,7 +380,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
       type="button"
       onClick={() => void save()}
       disabled={!dirty || saving || conflict}
-      className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-colors disabled:opacity-50"
+      className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold text-white bg-[#C49A3C] hover:bg-[#B08932] shadow-sm shadow-[#C49A3C]/30 transition-colors disabled:opacity-50"
     >
       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save changes
     </button>
@@ -409,13 +392,13 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
         <div className="flex items-center gap-3">
           <BackLink label="Your articles" onClick={() => void leave()} />
           <StatusChip status={status} />
-          <span className="text-[11px] font-semibold text-slate-400">{saveState}</span>
+          <span className="text-[11px] font-semibold text-[#a8a29e]">{saveState}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setPreview((p) => !p)}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 border border-slate-200 bg-white hover:border-slate-300"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold text-[#57534e] border border-[#E0DACC] bg-transparent hover:border-[#C49A3C] hover:text-[#1c1917]"
           >
             {preview ? <><PenLine className="h-3.5 w-3.5" /> Edit</> : <><Eye className="h-3.5 w-3.5" /> Preview</>}
           </button>
@@ -425,7 +408,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
               onClick={() => void unpublish()}
               disabled={!!busy}
               title="Back to a draft: only you can read it"
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 border border-slate-200 bg-white hover:border-slate-300 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold text-[#57534e] border border-[#E0DACC] bg-transparent hover:border-[#C49A3C] hover:text-[#1c1917] disabled:opacity-50"
             >
               {busy === "unpublish" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />} Unpublish
             </button>
@@ -436,7 +419,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
               onClick={() => setReviewOpen(true)}
               disabled={!!busy || dirty}
               title={dirty ? "Save your changes first" : undefined}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 border border-slate-200 bg-white hover:border-slate-300 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold text-[#57534e] border border-[#E0DACC] bg-transparent hover:border-[#C49A3C] hover:text-[#1c1917] disabled:opacity-50"
             >
               <RotateCcw className="h-3.5 w-3.5" /> Ask for a review
             </button>
@@ -446,7 +429,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             type="button"
             onClick={() => setConfirmDelete(true)}
             disabled={!!busy}
-            className="p-2.5 rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+            className="p-2.5 rounded-full text-[#a8a29e] hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
             aria-label="Delete article"
             title="Delete article"
           >
@@ -492,7 +475,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
+      <div className="max-w-2xl mx-auto">
         <div className={preview ? "hidden" : "space-y-4"}>
           <textarea
             value={form.title}
@@ -501,7 +484,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             rows={1}
             placeholder="Title"
             style={serif}
-            className={`w-full resize-none field-sizing-content bg-transparent text-3xl md:text-4xl font-black text-slate-900 leading-tight outline-none placeholder:text-slate-400 ${flagged === "title" ? "underline decoration-rose-400" : ""}`}
+            className={`w-full resize-none field-sizing-content bg-transparent text-4xl md:text-[46px] font-black text-[#1c1917] leading-[1.1] tracking-[-0.015em] outline-none placeholder:text-[#c8c0b0] ${flagged === "title" ? "underline decoration-rose-400" : ""}`}
           />
           <textarea
             value={form.dek}
@@ -509,145 +492,51 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
             onChange={(e) => change({ dek: e.target.value.replace(/\n/g, " ") })}
             rows={1}
             placeholder="Subtitle (optional): one line on what the reader will take away"
-            className={`w-full resize-none field-sizing-content bg-transparent text-base md:text-lg text-slate-500 leading-relaxed outline-none placeholder:text-slate-400 ${flagged === "dek" ? "underline decoration-rose-400" : ""}`}
+            style={serifText}
+            className={`w-full resize-none field-sizing-content bg-transparent text-lg md:text-[21px] italic text-[#57534e] leading-snug outline-none placeholder:text-[#b5ad9e] ${flagged === "dek" ? "underline decoration-rose-400" : ""}`}
           />
-          <BodyEditor key={bodyKey} initial={initialBody} onChange={onBodyChange} editorRef={editorRef} />
-        </div>
-        {previewArticle && <ArticleDocument article={previewArticle} />}
-
-        <aside className="space-y-4 xl:sticky xl:top-4">
-          {status === "draft" && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5">
-              <SideLabel>To publish</SideLabel>
-              <ul className="space-y-1.5">
-                {checklist.map((c) => (
-                  <li key={c.label} className={`flex items-center gap-2 text-xs font-semibold ${c.done ? "text-slate-400" : "text-slate-700"}`}>
-                    {c.done ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Circle className="h-3.5 w-3.5 text-slate-300" />}
-                    {c.label}
-                  </li>
-                ))}
-              </ul>
+          <BodyEditor key={bodyKey} initial={initialBody} instruments={initialInstruments} onChange={onBodyChange} editorRef={editorRef} />
+          {instruments.length > 0 && (
+            <div className={`flex flex-wrap items-center gap-1.5 border-t pt-3 text-xs ${flagged === "instruments" ? "border-rose-300" : "border-[#E7E1D3]"}`}>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-1">About</span>
+              {instruments.map((i, idx) => (
+                <span
+                  key={i.instrumentId ?? i.listingId ?? i.ticker}
+                  title={i.name ?? undefined}
+                  className={`rounded-full px-2.5 py-0.5 font-bold ${(flagged === "instruments" && refusal?.index === idx) || idx >= MAX_INSTRUMENTS ? "bg-rose-100 text-rose-700" : "bg-[#C49A3C]/12 text-[#9a7424]"}`}
+                >
+                  #{i.ticker}
+                </span>
+              ))}
+              {instruments.length > MAX_INSTRUMENTS && <span className="text-rose-600 font-semibold">Up to {MAX_INSTRUMENTS} instruments.</span>}
             </div>
           )}
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
-            <label className="block">
-              <SideLabel>Category</SideLabel>
-              <select
-                value={form.category ?? ""}
-                onChange={(e) => change({ category: (e.target.value || null) as ArticleCategory | null })}
-                className={inputClass(flagged === "category")}
-              >
-                <option value="">Choose one</option>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
-              </select>
-            </label>
-            <label className="block">
-              <SideLabel>Language</SideLabel>
-              <select value={form.language} onChange={(e) => change({ language: e.target.value as ArticleLanguage })} className={inputClass(flagged === "language")}>
-                {LANGUAGES.map((l) => <option key={l} value={l}>{LANGUAGE_LABELS[l]}</option>)}
-              </select>
-            </label>
-            {isAdvisor && (
-              <label className="block">
-                <SideLabel>Who reads it</SideLabel>
-                <select value={form.audience} onChange={(e) => change({ audience: e.target.value as ArticleAudience })} className={inputClass(flagged === "audience")}>
+          {isAdvisor && (
+            <div className="space-y-4 border-t border-[#E7E1D3] pt-4">
+              <label className="flex flex-wrap items-center gap-3">
+                <FieldLabel>Who reads it</FieldLabel>
+                <select value={form.audience} onChange={(e) => change({ audience: e.target.value as ArticleAudience })} className={`${inputClass(flagged === "audience")} w-auto`}>
                   <option value="everyone">Everyone on PortfoliAI</option>
                   <option value="advisor_clients">Only my clients</option>
                 </select>
               </label>
-            )}
-          </div>
-
-          <div className={`rounded-2xl border bg-white p-5 space-y-3 ${flagged === "cover" ? "border-rose-400" : "border-slate-200"}`}>
-            <SideLabel>Cover image</SideLabel>
-            {form.cover ? (
-              <>
-                <div className="relative">
-                  {form.cover.file?.url && (
-                    // A signed link to a private bucket: next/image can't optimise it.
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={form.cover.file.url} alt={form.cover.altText} className="w-full h-36 object-cover rounded-xl" />
-                  )}
-                  <button type="button" onClick={() => change({ cover: null })} className="absolute top-2 right-2 p-1.5 rounded-lg bg-white/90 text-slate-500 hover:text-rose-600 shadow-sm" aria-label="Remove cover">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                <input
-                  value={form.cover.altText}
-                  maxLength={ALT_TEXT_MAX}
-                  onChange={(e) => change({ cover: { ...form.cover!, altText: e.target.value } })}
-                  placeholder="Alt text (required): what it shows"
-                  className={inputClass(!form.cover.altText.trim())}
-                />
-                <input
-                  value={form.cover.caption ?? ""}
-                  maxLength={CAPTION_MAX}
-                  onChange={(e) => change({ cover: { ...form.cover!, caption: e.target.value } })}
-                  placeholder="Caption (optional)"
-                  className={inputClass(false)}
-                />
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => coverInput.current?.click()}
-                disabled={coverUploading}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-6 text-xs font-bold text-slate-500 hover:border-[#C49A3C] hover:text-[#9a7424] disabled:opacity-60"
-              >
-                {coverUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                {coverUploading ? "Uploading…" : "Add a cover (JPEG, PNG or WebP, up to 5 MB)"}
-              </button>
-            )}
-            <input ref={coverInput} type="file" accept={IMAGE_ACCEPT} className="hidden" onChange={(e) => void uploadCover(e.target.files?.[0])} />
-            {coverError && <p className="text-xs font-medium text-rose-600">{coverError}</p>}
-          </div>
-
-          <div className={`rounded-2xl border bg-white p-5 space-y-3 ${flagged === "instruments" ? "border-rose-400" : "border-slate-200"}`}>
-            <SideLabel>Instruments it&apos;s about</SideLabel>
-            {form.instruments.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {form.instruments.map((i, idx) => (
-                  <span
-                    key={i.listingId ?? i.ticker}
-                    className={`inline-flex items-center gap-1 rounded-full pl-3 pr-1.5 py-1 text-xs font-bold ${flagged === "instruments" && refusal?.index === idx ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700"}`}
-                  >
-                    {i.ticker}
-                    <button type="button" onClick={() => change({ instruments: form.instruments.filter((x) => x !== i) })} className="p-0.5 rounded-full hover:bg-slate-200" aria-label={`Remove ${i.ticker}`}>
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            {form.instruments.length < MAX_INSTRUMENTS ? (
-              <AssetPicker
-                key={form.instruments.length}
-                value={null}
-                onChange={addInstrument}
-                label="Add one"
-                excludeInstrumentIds={form.instruments.flatMap((i) => (i.instrumentId ? [i.instrumentId] : []))}
-              />
-            ) : (
-              <p className="text-xs text-slate-400">Up to {MAX_INSTRUMENTS} instruments.</p>
-            )}
-            <p className="text-[11px] text-slate-400 leading-relaxed">Readers find the article from the instruments it names.</p>
-          </div>
-
-          {isAdvisor && (needsDisclosure || form.interestDisclosure) && (
-            <label className={`block rounded-2xl border bg-white p-5 ${flagged === "interestDisclosure" ? "border-rose-400" : "border-slate-200"}`}>
-              <SideLabel>{DISCLOSURE_TITLE}{needsDisclosure ? " (required)" : ""}</SideLabel>
-              <textarea
-                value={form.interestDisclosure}
-                maxLength={DISCLOSURE_MAX}
-                onChange={(e) => change({ interestDisclosure: e.target.value })}
-                rows={4}
-                className={`${inputClass(false)} resize-none`}
-              />
-              <span className="mt-1.5 block text-[11px] text-slate-400 leading-relaxed">{DISCLOSURE_HELP}</span>
-            </label>
+              {(needsDisclosure || form.interestDisclosure) && (
+                <label className="block">
+                  <FieldLabel>{DISCLOSURE_TITLE}{needsDisclosure ? " (required)" : ""}</FieldLabel>
+                  <textarea
+                    value={form.interestDisclosure}
+                    maxLength={DISCLOSURE_MAX}
+                    onChange={(e) => change({ interestDisclosure: e.target.value })}
+                    rows={3}
+                    className={`${inputClass(flagged === "interestDisclosure")} resize-none`}
+                  />
+                  <span className="mt-1.5 block text-[11px] text-slate-400 leading-relaxed">{DISCLOSURE_HELP}</span>
+                </label>
+              )}
+            </div>
           )}
-        </aside>
+        </div>
+        {previewArticle && <ArticleDocument article={previewArticle} />}
       </div>
 
       {confirmDelete && (
