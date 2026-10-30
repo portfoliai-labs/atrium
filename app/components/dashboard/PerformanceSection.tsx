@@ -4647,7 +4647,12 @@ function HistoryPage({
   );
   const updatingNote = !historyUpdating && performance.historyIsStale && <Tile><UpdatingNote /></Tile>;
   const riskModel = <Tile id={moduleAnchor("risk")}><RiskModelModule slot={own(risk, (d) => d.frontier)} portfolioUuid={portfolioUuid} /></Tile>;
-  const factorExposures = <Tile><FactorExposuresModule slot={own(risk, (d) => d.factorExposures ?? null)} /></Tile>;
+  const factorExposuresModule = <FactorExposuresModule slot={own(risk, (d) => d.factorExposures ?? null)} />;
+  const factorExposures = <Tile>{factorExposuresModule}</Tile>;
+  // Behaves like goes up under the Composition while it has a mix to show, or may (the risk
+  // section still loading); once it says it can't measure (no equity, under three years, not
+  // measured yet), it waits at the bottom by the risk model.
+  const behavesUp = !risk.failed && (risk.data === null || risk.data.factorExposures?.status === "ok");
 
   const tradingCosts = <TradingCostsModule slot={own(incomeCosts, (d) => d.tradingCosts)} currency={currency} portfolioUuid={portfolioUuid} />;
 
@@ -4694,11 +4699,15 @@ function HistoryPage({
           <ThisMonthCard slot={slotOf(insights.performance, timedOut, (d) => d.thisMonth, (_, d) => d.historyIsStale)} currency={currency} onOpen={onSelectMonth} />
         )}
       </Tile>
+      {/* What it holds, then the styles it moved like, beside the strategies the portfolios
+          follow; without those, across the page. */}
+      {behavesUp && <Tile span={strategies ? "half" : "full"}>{factorExposuresModule}</Tile>}
+      {behavesUp && strategies && <Tile span="half">{strategies}</Tile>}
       {/* All portfolios: how they did next to each other, across the page under them, their
           colours the donut's. */}
-      {aggregate && onCompare && <Tile span={strategies ? "wide" : "full"}><CompareModule onOpen={onCompare} /></Tile>}
-      {/* The strategies the portfolios follow: beside Compare, else across the page. */}
-      {strategies && <Tile span={aggregate && onCompare ? "narrow" : "full"}>{strategies}</Tile>}
+      {aggregate && onCompare && <Tile span={strategies && !behavesUp ? "wide" : "full"}><CompareModule onOpen={onCompare} /></Tile>}
+      {/* The strategies, while Behaves like waits at the bottom: beside Compare, else across the page. */}
+      {!behavesUp && strategies && <Tile span={aggregate && onCompare ? "narrow" : "full"}>{strategies}</Tile>}
       {/* What was made, sold (realized, dividends) and still held (gains & losses), beside what
           trading cost; then the risk. */}
       <Tile span="narrow" id={moduleAnchor("realized")}>
@@ -4714,7 +4723,7 @@ function HistoryPage({
       </Tile>
       <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>
       <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>
-      {factorExposures}
+      {!behavesUp && factorExposures}
       {riskModel}
     </div>
   );
