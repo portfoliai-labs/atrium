@@ -1,6 +1,7 @@
 // components/dashboard/StrategyProfile.tsx
 "use client";
 
+import { assetClassLabel, toAssetClassCode } from "../../lib/assetClasses";
 import { allocationLabel } from "../../lib/classifications";
 import type { FactorExposures, FactorSetExposures, ProfileDimension, ProfileShare, StrategyProfile } from "../../models/PublishedStrategy";
 
@@ -16,10 +17,11 @@ const DIMENSION_TITLES: Record<ProfileDimension, string> = {
 const CARD_DIMENSIONS: ProfileDimension[] = ["category", "region", "index_factors"];
 const CARD_SHARES = 2;
 
-/** A share's value as the user reads it: census' values labelled, the look-through's as they are. */
+/** A share's value as the user reads it: census' values and asset-class codes labelled, the rest as they are. */
 function shareLabel(dimension: ProfileDimension, share: ProfileShare): string {
   if (share.value === null) return "Unknown";
   if (dimension === "category" || dimension === "index_factors") return allocationLabel(dimension, share.value);
+  if (dimension === "asset_class") return assetClassLabel(toAssetClassCode(share.value));
   return share.value;
 }
 
