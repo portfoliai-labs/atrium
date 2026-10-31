@@ -178,9 +178,9 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
   // Pickers and portfolio labels only make sense with a choice to make.
   const pickable = ownPortfolios.length > 1 ? ownPortfolios : undefined;
   // Where new rows go unless the user picks otherwise: the portfolio open elsewhere in the
-  // app, or the default one while that's the aggregate.
+  // app, or the oldest one while that's the aggregate.
   const defaultTarget = fixedPortfolioUuid
-    ?? (current && !current.isVirtual ? current.uuid : (ownPortfolios.find(p => p.isDefault) ?? ownPortfolios[0])?.uuid)
+    ?? (current && !current.isVirtual ? current.uuid : ownPortfolios[0]?.uuid)
     ?? "";
   const portfolioName = (uuid?: string) => allPortfolios.find(p => p.uuid === uuid)?.name ?? "";
   const [loading, setLoading] = useState(false);

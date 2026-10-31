@@ -27,6 +27,7 @@ import type { CompareStrategy } from "./ComparisonView";
 import { ManagePortfolios } from "./ManagePortfolios";
 import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { NewPortfolioDialog } from "./NewPortfolioDialog";
+import { NoDataEmptyState } from "./NoDataEmptyState";
 import { RenamePortfolioDialog } from "./RenamePortfolioDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AdoptStrategyDialog } from "./AdoptStrategyDialog";
@@ -179,7 +180,7 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
   // Where the asset categories and manual assets are: the user's Settings unless said (a client's settings).
   onOpenAssetSettings?: () => void;
 }) {
-  const { portfolios, selectPortfolio, client } = usePortfolio();
+  const { portfolios, failed, selectPortfolio, client } = usePortfolio();
   const hasStrategies = !client;
   const [view, setView] = useState<InvestmentsView>(() => viewFromHistory(hasStrategies, portfolios, section, scope));
 
@@ -218,7 +219,16 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
   }
 
   const portfolio = (view.kind === "portfolio" && portfolios.find((p) => p.uuid === view.uuid)) || investments;
-  if (!portfolio) return null;
+  if (!portfolio) {
+    if (failed) return <p className="text-sm font-semibold text-rose-600 py-6">Unable to load the portfolios.</p>;
+    return (
+      <NoPortfoliosNode
+        trail={rootTrail}
+        extraActions={extraActions}
+        onOpenStrategies={hasStrategies ? () => openStrategies(strategiesViewOf({})) : undefined}
+      />
+    );
+  }
   const page = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.page : "overview";
   const simulation = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.simulation : undefined;
   const compareWith = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.compareWith : undefined;
@@ -255,6 +265,40 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
       onOpenAssetSettings={onOpenAssetSettings}
       onNavigate={onNavigate}
     />
+  );
+}
+
+/**
+ * NO PORTFOLIOS — the investments' page while the user (or the client) has none: they deleted them
+ * all, and none comes back on its own. Its header holds the way to a new one, then the page's own
+ * actions (a client's settings) and, for an investor, their Strategies.
+ */
+function NoPortfoliosNode({ trail, extraActions = [], onOpenStrategies }: {
+  trail: Crumb[];
+  extraActions?: PageAction[];
+  onOpenStrategies?: () => void;
+}) {
+  const { client } = usePortfolio();
+  const { isDemo } = useUser();
+  const [creating, setCreating] = useState(false);
+  const demo = isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
+  const actions: PageAction[] = [
+    { label: "New portfolio", primary: true, onClick: () => setCreating(true), ...demo },
+    ...(onOpenStrategies ? [{ label: "Strategies", onClick: onOpenStrategies }] : []),
+    ...extraActions,
+  ];
+
+  return (
+    <div className="space-y-6 pb-12">
+      <PageHeader eyebrow={`${client ? `${client.name} · ` : ""}Investments`} crumbs={trail} title="No portfolios" actions={actions} />
+      <NoDataEmptyState
+        title="No portfolios yet"
+        message={client
+          ? `${client.name} has no portfolio: create one to record their transactions and follow their investments here.`
+          : "Create a portfolio to record your transactions: its value, returns and alerts will be here."}
+      />
+      {creating && <NewPortfolioDialog onClose={() => setCreating(false)} />}
+    </div>
   );
 }
 
@@ -320,7 +364,7 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  * activity (each count opens its page) and holds what can be done with it:
  * - All portfolios: Manage portfolios (a new one is made there), Alerts, Compare. It's read only: its transactions
  *   list every portfolio's, and a new one says which it goes in.
- * - a portfolio: its Transactions, Alerts and Reports, rename, delete (not the default one).
+ * - a portfolio: its Transactions, Alerts and Reports, rename, delete.
  * - a backtest: adopt its strategy, delete. Its figures are a simulation's (returns and risk over
  *   its run), its transactions generated and read only, and its Insights leave out what a
  *   simulation doesn't have (see PerformanceSection's `backtest`).
@@ -359,7 +403,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const { portfolios, deletePortfolio, client, canManage } = usePortfolio();
   const { isDemo } = useUser();
   const colorOf = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
-  const real = useMemo(() => portfolios.filter((p) => !p.isVirtual).sort((a, b) => Number(b.isDefault) - Number(a.isDefault)), [portfolios]);
+  const real = useMemo(() => portfolios.filter((p) => !p.isVirtual), [portfolios]);
   const backtest = isBacktest(portfolio);
   const entry = useComparisonEntry(portfolio.uuid);
   const counts = useActivityCounts(portfolio, real);
@@ -428,7 +472,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
               label: "Delete portfolio",
               danger: true,
               onClick: () => setDialog("delete"),
-              ...(portfolio.isDefault ? { disabled: true, title: "The default portfolio can't be deleted" } : demo),
+              ...demo,
             },
           ] : []),
         ];

@@ -8,8 +8,8 @@ import { TrendingUp } from "lucide-react";
  * better than a page of individually hidden modules that would leave nothing on screen.
  */
 export function NoDataEmptyState({
-  title, message, onNavigate,
-}: { title: string; message: string; onNavigate?: (section: string) => void }) {
+  title, message, action = "Add transactions", onNavigate,
+}: { title: string; message: string; action?: string; onNavigate?: (section: string) => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-24 px-6 text-center bg-white border border-slate-200 border-dashed rounded-4xl">
       <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center mb-4">
@@ -24,7 +24,7 @@ export function NoDataEmptyState({
           onClick={() => onNavigate("upload")}
           className="mt-5 flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-blue-600 transition-colors shadow-md shadow-slate-200"
         >
-          Add transactions
+          {action}
         </button>
       )}
     </div>
