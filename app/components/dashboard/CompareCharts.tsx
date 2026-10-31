@@ -7,16 +7,12 @@ import {
 } from "recharts";
 import { toChartPoints } from "../../lib/series";
 import type { PortfolioComparisonEntry } from "../../models/PortfolioData";
+import { assetClassCodeOf, assetClassLabel, type AssetClassCode } from "../../lib/assetClasses";
 
 // Compare's pieces under its table (see ComparisonView), and what the table shares with them.
 
 const AXIS_TICK_COLOR = "#64748b";
 const TOOLTIP_STYLE: React.CSSProperties = { borderRadius: 8, borderColor: "#e2e8f0", fontSize: 12, color: "#334155" };
-
-const ASSET_CLASS_LABELS: Record<string, string> = {
-  EQUITY: "Stocks", ETF: "ETFs", MUTUALFUND: "Funds", CRYPTOCURRENCY: "Crypto", BOND: "Bonds", UNKNOWN: "Other", REAL_ESTATE: "Real estate",
-};
-const assetClassLabel = (c: string) => ASSET_CLASS_LABELS[c] ?? c.charAt(0) + c.slice(1).toLowerCase();
 
 export const formatPct = (pct: number) => `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
 const monthShortYearLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", year: "2-digit" });
@@ -281,13 +277,14 @@ export function ReturnsByWindowModule({ entries, colorOf }: { entries: Portfolio
 export function AllocationModule({ entries, colorOf }: { entries: PortfolioComparisonEntry[]; colorOf: (uuid: string) => string }) {
   const withAllocation = useMemo(() => entries.filter((e) => e.allocation && e.allocation.length > 0), [entries]);
   const rows = useMemo(() => {
-    const maxWeight = new Map<string, number>();
-    for (const e of withAllocation) {
-      for (const a of e.allocation!) maxWeight.set(a.assetClass, Math.max(maxWeight.get(a.assetClass) ?? 0, a.weightPct));
-    }
+    // Summed per code: an older ianus' legacy strings may fold two into one (step 3 drops it).
+    const weightOf = (e: PortfolioComparisonEntry, code: AssetClassCode) =>
+      e.allocation!.reduce((sum, a) => (assetClassCodeOf(a) === code ? sum + a.weightPct : sum), 0);
+    const codes = new Set(withAllocation.flatMap((e) => e.allocation!.map(assetClassCodeOf)));
+    const maxWeight = new Map([...codes].map((c) => [c, Math.max(...withAllocation.map((e) => weightOf(e, c)))]));
     return [...maxWeight.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => {
       const row: Record<string, string | number> = { label: assetClassLabel(c) };
-      for (const e of withAllocation) row[e.portfolio.uuid] = e.allocation!.find((a) => a.assetClass === c)?.weightPct ?? 0;
+      for (const e of withAllocation) row[e.portfolio.uuid] = weightOf(e, c);
       return row;
     });
   }, [withAllocation]);
