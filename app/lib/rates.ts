@@ -2,9 +2,10 @@
 // Which market rates (see models/Rates) go with a bond or a mortgage, and how they read.
 import type { RateIndex } from "../models/RealEstate";
 import type { BenchmarkCode, YieldHistory } from "../models/Rates";
+import type { AssetClassCode } from "./assetClasses";
 
-// The holdings' assetClass of a single bond (a bond fund is an ETF or a MUTUALFUND, and isn't one).
-export const isBondClass = (assetClass: string) => assetClass.toUpperCase() === "BOND";
+// The asset class code of a single bond (a bond fund is an ETF or a MUTUAL_FUND, and isn't one).
+export const isBondClass = (code: AssetClassCode) => code === "BOND";
 
 // The curve a corporate bond is read against: its currency's. EUR → the euro area's AAA curve; a
 // currency of one country → that country's.

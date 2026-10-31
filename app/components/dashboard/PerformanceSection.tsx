@@ -38,6 +38,7 @@ import { AssetArticlesModule } from "./journal/AssetArticlesModule";
 import { AssetNewsModule } from "./AssetNewsModule";
 import { BondRatesModule } from "./MarketRates";
 import { isBondClass } from "../../lib/rates";
+import { assetClassCodeOf, assetClassLabel, assetClassSingularLabel, type AssetClassCode } from "../../lib/assetClasses";
 import { CompanyDescriptionModule } from "./CompanyDescriptionModule";
 import { MarketDataModule } from "./MarketDataModule";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
@@ -810,6 +811,10 @@ const isHistoryEmpty = (value: InsightsValueModule) =>
 const UNKNOWN_EXPOSURE_COLOR = "#cbd5e1";
 // The cash, beside the classified holdings: neutral too, a shade apart from the unclassified.
 const CASH_SLICE_COLOR = "#a8a29e";
+// An asset class's fixed colour, as the classifications' rows: cash its own, an unclassified asset
+// the data gap's; undefined for a class that takes the palette's next.
+const assetClassColor = (code: AssetClassCode): string | undefined =>
+  code === "CASH" ? CASH_SLICE_COLOR : code === "UNKNOWN" ? UNKNOWN_EXPOSURE_COLOR : undefined;
 
 // Correlation cells share the returns heatmap's emerald/rose scheme (positive/negative) but
 // scale intensity linearly over [-1, 1] rather than a capped magnitude — correlation is
@@ -1509,7 +1514,7 @@ function HoldingsExplorer({
   const members = useMemo(() => membersModule?.members ?? [], [membersModule]);
   // Only the breakdowns with more than one slice: a donut of one (a single asset class, all of
   // it in one region) says nothing. By holding stays when none has more, for the card to show it.
-  const classCount = useMemo(() => new Set(holdings.map((h) => h.assetClass)).size, [holdings]);
+  const classCount = useMemo(() => new Set(holdings.map(assetClassCodeOf)).size, [holdings]);
   const classified = (b: Breakdown) => {
     const dimension = CLASSIFICATION_BREAKDOWNS[b];
     return dimension !== undefined && isInformative(dimensionOf(classifications, dimension)) ? [b] : [];
@@ -1559,10 +1564,18 @@ function HoldingsExplorer({
       }));
     }
     if (breakdown === "class") {
-      const byClass = new Map<string, number>();
-      for (const h of holdings) byClass.set(h.assetClass, (byClass.get(h.assetClass) ?? 0) + h.marketValue);
-      return [...byClass.entries()].sort((a, b) => b[1] - a[1]).map(([label, value], i) => ({
-        key: label, label, value, weightPct: total > 0 ? (value / total) * 100 : 0, color: palette(i),
+      const byClass = new Map<AssetClassCode, number>();
+      for (const h of holdings) {
+        const code = assetClassCodeOf(h);
+        byClass.set(code, (byClass.get(code) ?? 0) + h.marketValue);
+      }
+      let classColor = 0;
+      return [...byClass.entries()].sort((a, b) => b[1] - a[1]).map(([code, value]) => ({
+        key: code,
+        label: assetClassLabel(code),
+        value,
+        weightPct: total > 0 ? (value / total) * 100 : 0,
+        color: assetClassColor(code) ?? palette(classColor++),
       }));
     }
     const dimension = CLASSIFICATION_BREAKDOWNS[breakdown];
@@ -1842,13 +1855,20 @@ function CompositionExplore({
 
   // Asset classes, largest first, each with its colour (the map's and the bars').
   const classes = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const h of holdings) map.set(h.assetClass, (map.get(h.assetClass) ?? 0) + h.marketValue);
-    return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([label, value], i) => ({
-      label, value, color: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length],
+    const map = new Map<AssetClassCode, number>();
+    for (const h of holdings) {
+      const code = assetClassCodeOf(h);
+      map.set(code, (map.get(code) ?? 0) + h.marketValue);
+    }
+    let colorIndex = 0;
+    return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([code, value]) => ({
+      code, label: assetClassLabel(code), value, color: assetClassColor(code) ?? CATEGORICAL_PALETTE[colorIndex++ % CATEGORICAL_PALETTE.length],
     }));
   }, [holdings]);
-  const classColor = (assetClass: string) => classes.find((c) => c.label === assetClass)?.color ?? COMPOSITION_OTHER_COLOR;
+  const classColor = (h: PortfolioHoldingResponse) => {
+    const code = assetClassCodeOf(h);
+    return classes.find((c) => c.code === code)?.color ?? COMPOSITION_OTHER_COLOR;
+  };
 
   // Concentration: the largest holding, the largest five, and the effective number of holdings
   // (1 / Σw², the count of equal-sized holdings that would be as concentrated).
@@ -1886,7 +1906,7 @@ function CompositionExplore({
     size: h.marketValue,
     fullName: h.name,
     weightPct: weightOf(h.marketValue),
-    color: classColor(h.assetClass),
+    color: classColor(h),
     assetId: h.assetId,
   }));
 
@@ -1904,10 +1924,10 @@ function CompositionExplore({
     {
       key: "class",
       label: "Class",
-      sortValue: (h) => h.assetClass,
+      sortValue: (h) => assetClassSingularLabel(assetClassCodeOf(h)),
       render: (h) => (
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[#78716c]">
-          <span className="h-2 w-2 rounded-[2px]" style={{ background: classColor(h.assetClass) }} />{h.assetClass}
+          <span className="h-2 w-2 rounded-[2px]" style={{ background: classColor(h) }} />{assetClassSingularLabel(assetClassCodeOf(h))}
         </span>
       ),
     },
@@ -2167,11 +2187,12 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
   const rising = (changePct ?? 0) >= 0;
   const lineColor = changePct === null ? PORTFOLIO_COLOR : rising ? "#10b981" : "#f43f5e";
 
+  const assetClassCode = assetClassCodeOf(data);
   const facts: { label: string; value: string }[] = [
     { label: "Ticker", value: data.ticker },
     ...(data.listing?.exchangeMic ? [{ label: "Market", value: exchangeLabel(data.listing.exchangeMic, data.listing.exchangeName)! }] : []),
     ...(data.isin ? [{ label: "ISIN", value: data.isin }] : []),
-    { label: "Asset class", value: data.assetClass },
+    { label: "Asset class", value: assetClassSingularLabel(assetClassCode) },
     // census' GICS sector and industry, with their sources, are under Key facts.
     ...(data.sector && data.profile?.sector == null ? [{ label: "Sector", value: data.sector }] : []),
     ...(data.industry && data.profile?.industry == null ? [{ label: "Industry", value: data.industry }] : []),
@@ -2200,7 +2221,7 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
     // The header, the chart and the cards as far apart as the cards are from each other.
     <div className="space-y-[22px]">
       <PageHeader
-        eyebrow={`Holding · ${data.assetClass}`}
+        eyebrow={`Holding · ${assetClassSingularLabel(assetClassCode)}`}
         title={data.name}
         value={held ? formatCurrency(held.marketValue, posCurrency, 0) : last !== undefined ? formatCurrency(last, unit, 2) : undefined}
         change={held ? { text: `${formatPct(held.roiPct)} since first buy`, tone: toneOfValue(held.roiPct) } : null}
@@ -2311,7 +2332,7 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
 
       <MarketDataModule listingId={listingId} />
 
-      {isBondClass(data.assetClass) && <BondRatesModule isin={data.isin} name={data.name} currency={data.quoteCurrency} />}
+      {isBondClass(assetClassCode) && <BondRatesModule isin={data.isin} name={data.name} currency={data.quoteCurrency} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-[22px]">
         {/* Two to a row, a row's lone card the whole of it: your position and its dividends, then
