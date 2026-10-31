@@ -57,7 +57,7 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
   const loaded = list !== undefined;
   const byUuid = useMemo(() => new Map((list ?? []).map((e) => [e.portfolio.uuid, e])), [list]);
 
-  const real = portfolios.filter((p) => !p.isVirtual).sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+  const real = portfolios.filter((p) => !p.isVirtual);
   const backtests = portfolios.filter((p) => p.isVirtual && !p.isAggregate);
   const hasAggregate = portfolios.some((p) => p.isAggregate);
   const { rules } = usePortfoliosAlertRules(real.map((p) => p.uuid));
@@ -115,7 +115,7 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
       <ManageGroup
         title="Portfolios"
         note={canManage
-          ? `${real.length} ${real.length === 1 ? "portfolio" : "portfolios"} · the default one can be renamed, not deleted`
+          ? `${real.length} ${real.length === 1 ? "portfolio" : "portfolios"} · each can be renamed or deleted`
           : `${real.length} ${real.length === 1 ? "portfolio" : "portfolios"} · ${client?.name} renames and deletes them`}
       >
         {real.map((p) => row(p, colorOf(p.uuid)))}
@@ -171,8 +171,7 @@ function ManageGroup({ title, note, tone, children }: { title: string; note?: st
 /**
  * One portfolio in the list: its colour and name (which Rename turns into a field, saved on Enter
  * or the tick), its alerts (a pill leading to them), its value and when it was created,
- * then Open, Rename and Delete. The default portfolio's Delete is disabled,
- * with why. Without `manageable` (a client's, for their advisor), Open only.
+ * then Open, Rename and Delete. Without `manageable` (a client's, for their advisor), Open only.
  */
 function ManageRow({
   portfolio, color, entry, readOnly, manageable, alertCount, onOpenAlerts, taxable, onOpen, onDelete,
@@ -256,9 +255,6 @@ function ManageRow({
           ) : (
             <>
               <span className="text-[15px] font-black text-slate-900 truncate" style={serif}>{portfolio.name}</span>
-              {portfolio.isDefault && (
-                <span className="shrink-0 px-2 py-0.5 rounded-full bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500">Default</span>
-              )}
               {portfolio.isVirtual && <VirtualBadge portfolio={portfolio} />}
               {alertCount !== undefined && (
                 <button
@@ -309,9 +305,9 @@ function ManageRow({
               <button
                 type="button"
                 onClick={onDelete}
-                disabled={readOnly || portfolio.isDefault}
+                disabled={readOnly}
                 aria-label={`Delete ${portfolio.name}`}
-                title={readOnly ? DEMO_DISABLED_TITLE : portfolio.isDefault ? "The default portfolio can't be deleted" : "Delete"}
+                title={readOnly ? DEMO_DISABLED_TITLE : "Delete"}
                 className={`${iconButton} text-rose-500 hover:bg-rose-50`}
               >
                 <Trash2 className="h-4 w-4" />

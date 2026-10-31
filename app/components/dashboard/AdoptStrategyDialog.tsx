@@ -11,7 +11,7 @@ import { useClientPortfolios } from "../../hooks/useClientPortfolios";
 import { portfoliosService } from "../../services/portfoliosService";
 import { adoptionService } from "../../services/adoptionService";
 import { ApiError } from "../../services/apiClient";
-import { isBacktest, type Portfolio } from "../../models/Portfolio";
+import { firstRealOf, isBacktest, type Portfolio } from "../../models/Portfolio";
 import { Toggle } from "./Toggle";
 
 // The destination select's last option: a portfolio made for it.
@@ -58,10 +58,10 @@ export function AdoptStrategyDialog({ strategyUuid, strategyName, destination, o
   const [pickedClient, setClientUuid] = useState<string | null>(null);
   const clientUuid = pickedClient ?? clients[0]?.uuid ?? "";
   const clientPortfolios = useClientPortfolios(picksClient ? clientUuid : null);
-  // All portfolios first, then the default, then the others: the order of the list elsewhere.
+  // All portfolios first, then oldest first: the order of the list elsewhere.
   const destinations = destination ? [destination] : picksClient ? clientPortfolios.portfolios : portfolios.filter((p) => !isBacktest(p));
   const [chosen, setChosen] = useState<string | null>(null);
-  const defaultTarget = (destinations.find((p) => p.isDefault) ?? destinations[0])?.uuid ?? NEW_PORTFOLIO;
+  const defaultTarget = (firstRealOf(destinations) ?? destinations[0])?.uuid ?? NEW_PORTFOLIO;
   const target = chosen !== null && (chosen === NEW_PORTFOLIO || destinations.some((p) => p.uuid === chosen)) ? chosen : defaultTarget;
   const setTarget = (uuid: string) => setChosen(uuid);
   const [newName, setNewName] = useState("");

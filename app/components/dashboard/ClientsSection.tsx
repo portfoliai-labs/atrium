@@ -272,7 +272,7 @@ function ClientPage({ client, onBack, onNavigate }: { client: Client; onBack: ()
 }
 
 function ClientWealth({ client, onBack, onNavigate }: { client: Client; onBack: () => void; onNavigate: (section: string) => void }) {
-  const { loading, portfolios } = usePortfolio();
+  const { loading, failed } = usePortfolio();
   const { updated, removed } = useClients();
   const [dialog, setDialog] = useState<"settings" | "remove" | null>(null);
   // The Client settings tab it opens on.
@@ -287,7 +287,7 @@ function ClientWealth({ client, onBack, onNavigate }: { client: Client; onBack: 
   if (loading) {
     return <div className="flex items-center justify-center py-32"><Loader2 className="w-7 h-7 animate-spin text-[#C49A3C]" /></div>;
   }
-  if (portfolios.length === 0) {
+  if (failed) {
     return <p className="text-sm font-semibold text-rose-600 py-6">Unable to load {clientDisplayName(client)}&apos;s portfolios.</p>;
   }
 

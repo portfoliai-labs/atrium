@@ -797,13 +797,13 @@ function useSuggestions(): string[] {
   const { wallets, available } = useWallets();
   const real = portfolios.filter((p) => !p.isVirtual && !p.isAggregate);
   const hasWallets = available && wallets.some((w) => !w.archived);
-  const main = real.find((p) => p.isDefault) ?? real[0];
+  const main = real[0];
   return [
     ...(real.length > 0 ? ["How are my investments doing?"] : []),
     ...(real.length > 1 ? ["Compare my portfolios"] : []),
     ...(hasWallets ? ["How are my savings going?", "Where did my money go this month?"] : []),
     ...(real.length > 0 ? ["Is my portfolio too concentrated?"] : []),
-    // On their main portfolio, by its name: the assistant proposes it, the user confirms it (ActionCard).
+    // On their oldest portfolio, by its name: the assistant proposes it, the user confirms it (ActionCard).
     ...(main ? [`Generate a report on ${main.name}`] : []),
   ];
 }

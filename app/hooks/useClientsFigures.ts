@@ -34,7 +34,7 @@ export function useClientsFigures(clients: Client[]): Map<string, ClientFigures>
     results.forEach((r, i) => {
       if (!r.data) return;
       const real = r.data.filter((e) => !e.portfolio.isVirtual);
-      const investments = r.data.find((e) => e.portfolio.isAggregate) ?? real.find((e) => e.portfolio.isDefault) ?? real[0];
+      const investments = r.data.find((e) => e.portfolio.isAggregate) ?? real[0];
       if (!investments?.value) return;
       byUuid.set(uuids[i], {
         marketValue: investments.value.marketValue,

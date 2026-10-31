@@ -8,7 +8,7 @@ import type { TaxationMode } from "../models/Tax";
 import { apiFetch } from "./apiClient";
 
 export const portfoliosService = {
-  // GET /v1/portfolios — the caller's own portfolios, default one first.
+  // GET /v1/portfolios — the caller's own portfolios, the aggregate first, then oldest first.
   async list(): Promise<Portfolio[]> {
     return apiFetch<Portfolio[]>("/v1/portfolios");
   },
@@ -78,13 +78,13 @@ export const portfoliosService = {
     });
   },
 
-  // DELETE /v1/portfolios/{p} — 204; deletes its transactions and all its data. 409 for the
-  // default portfolio, which can never be deleted.
+  // DELETE /v1/portfolios/{p} — 204; deletes its transactions and all its data, the last
+  // portfolio too. 409 for the aggregate.
   async remove(portfolioUuid: string): Promise<void> {
     return apiFetch<void>(`/v1/portfolios/${portfolioUuid}`, { method: "DELETE" });
   },
 
-  // GET /v1/advisor/clients/{client_uuid}/portfolios — a client's portfolios, default one
+  // GET /v1/advisor/clients/{client_uuid}/portfolios — a client's portfolios, the aggregate
   // first. The advisor then reaches each through the same /v1/portfolios/{p}/... paths the
   // client would.
   async listForClient(clientUuid: string): Promise<Portfolio[]> {

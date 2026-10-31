@@ -10,7 +10,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { portfolioService } from "../../services/portfolioService";
-import type { Portfolio, PortfolioSnapshot, TodayDashboard } from "../../models/Portfolio";
+import { investmentsOf, isBacktest, type Portfolio, type PortfolioSnapshot, type TodayDashboard } from "../../models/Portfolio";
 import { formatCurrency } from "../../lib/format";
 import { NoDataEmptyState } from "./NoDataEmptyState";
 import { useInvestmentsQuery, useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
@@ -64,15 +64,17 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
   const overviewRead = useInvestmentsQuery(
     ["overview", headlineUuid], () => portfolioService.getPortfolioOverview(headlineUuid), { enabled: headlineUuid !== "" },
   );
-  // On a read again, the previous figures stay up until the new ones land.
-  const headlineState: SnapshotState = overviewRead.data !== undefined ? { status: "ready", snapshot: overviewRead.data }
+  // On a read again, the previous figures stay up until the new ones land. No portfolio at all
+  // reads as one with no data yet.
+  const headlineState: SnapshotState = !headline ? { status: "ready", snapshot: null }
+    : overviewRead.data !== undefined ? { status: "ready", snapshot: overviewRead.data }
     : overviewRead.isError ? { status: "failed" }
     : { status: "loading" };
 
   // "Manage alerts" (and the empty state's button) open the Alerts page of the selected portfolio
-  // (a real one or All portfolios: the default while a backtest is selected).
+  // (a real one or All portfolios: the oldest real one while a backtest is selected).
   const openAlertSettings = () => {
-    const target = current && !(current.isVirtual && !current.isAggregate) ? current : portfolios.find((p) => p.isDefault);
+    const target = current && !isBacktest(current) ? current : investmentsOf(portfolios);
     if (onNavigate && target) openPortfolioPage(onNavigate, target.uuid, "alerts");
   };
 
@@ -90,9 +92,7 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
     else onNavigate(section);
   };
   // The investments: All portfolios, or the only portfolio.
-  const investments = portfolios.find((p) => p.isAggregate) ?? portfolios.find((p) => p.isDefault);
-
-  if (!headline) return null;
+  const investments = investmentsOf(portfolios);
   // A lone portfolio with no data gets the full-page "no data" window and nothing else: an
   // alert with no portfolio to watch has nothing to measure.
   const noDataAtAll = headlineState.status === "ready" && headlineState.snapshot === null && !aggregate;
@@ -120,11 +120,21 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
       {headlineState.status === "failed" ? (
         <ErrorBanner message="Failed to load portfolio data" />
       ) : noDataAtAll && !wallets && !realEstate ? (
-        <NoDataEmptyState
-          title="No portfolio data yet"
-          message="Add or upload your transactions and this is where you'll see what your portfolio is worth today."
-          onNavigate={onNavigate ? (section) => openPortfolio(headline.uuid, section) : undefined}
-        />
+        headline ? (
+          <NoDataEmptyState
+            title="No portfolio data yet"
+            message="Add or upload your transactions and this is where you'll see what your portfolio is worth today."
+            onNavigate={onNavigate ? (section) => openPortfolio(headline.uuid, section) : undefined}
+          />
+        ) : (
+          // Every portfolio deleted: Investments, where a new one is created.
+          <NoDataEmptyState
+            title="No portfolios yet"
+            message="Create a portfolio to record your transactions and this is where you'll see what it's worth today."
+            action="Create a portfolio"
+            onNavigate={onNavigate ? () => openPortfolioPage(onNavigate, "") : undefined}
+          />
+        )
       ) : (
         <NetWorthModule
           portfolio={headline}
@@ -194,7 +204,8 @@ function NetWorthModule({
   portfolio, snapshot, wallets, realEstate,
   onOpenPortfolios, onOpenWallets, onOpenRealEstate,
 }: {
-  portfolio: Portfolio;
+  // None: the user has no portfolio (wallets or properties only).
+  portfolio: Portfolio | undefined;
   // null: nothing computed yet (the aggregate's first build, or a portfolio with no data).
   snapshot: PortfolioSnapshot | null;
   wallets: WalletsOverview | null;
@@ -203,7 +214,7 @@ function NetWorthModule({
   onOpenWallets?: () => void;
   onOpenRealEstate?: () => void;
 }) {
-  const moves = useRecentMoves(portfolio.uuid);
+  const moves = useRecentMoves(portfolio?.uuid);
   // The bar's piece under the pointer: its name, kind, value and share over it.
   const [hovered, setHovered] = useState<string | null>(null);
   const { sample } = useWallets();
@@ -294,9 +305,11 @@ function NetWorthModule({
           title="Investments"
           color={GOLD}
           value={snapshot ? formatCurrency(snapshot.totalMarketValue, snapshot.currency, 0) : null}
-          pending={portfolio.isAggregate
-            ? "The combined figures across your portfolios are being prepared. Check back in a few minutes."
-            : "No transactions yet: add some to see what your portfolio is worth."}
+          pending={!portfolio
+            ? "No portfolios yet: create one to see what your investments are worth."
+            : portfolio.isAggregate
+              ? "The combined figures across your portfolios are being prepared. Check back in a few minutes."
+              : "No transactions yet: add some to see what your portfolio is worth."}
           onOpen={onOpenPortfolios}
         />
         {wallets && (
@@ -413,8 +426,10 @@ function GroupColumn({
  * Insights ("This month"). Null while there's nothing yet, or while the document is stale (it
  * can mix two versions of the portfolio then).
  */
-function useRecentMoves(portfolioUuid: string) {
-  const today = useInvestmentsRead<TodayDashboard | null>(["today", portfolioUuid], () => portfolioService.getTodayDashboard(portfolioUuid));
+function useRecentMoves(portfolioUuid: string | undefined) {
+  const today = useInvestmentsRead<TodayDashboard | null>(
+    ["today", portfolioUuid], () => portfolioService.getTodayDashboard(portfolioUuid!), portfolioUuid !== undefined,
+  );
   return today && !today.isStale ? today : null;
 }
 
