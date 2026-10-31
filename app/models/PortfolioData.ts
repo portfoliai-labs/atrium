@@ -54,9 +54,7 @@ interface ModuleState {
 // A position held now, in the reference currency except `currency`, the one it trades in.
 // assetClassCode is the asset class, one of lib/assetClasses' codes (read it through
 // assetClassCodeOf, which closes it to the vocabulary and labels it); the per-currency detail,
-// the realized P&L and the comparison carry the same. assetClass, wherever it sits next to it, is
-// the legacy string (the metadata provider's quoteType: EQUITY, MUTUALFUND, CRYPTOCURRENCY, …),
-// deprecated: read only as the fallback for an older ianus without the code (goes with step 3).
+// the realized P&L and the comparison carry the same.
 interface PortfolioHoldingResponse {
   assetId: string;
   ticker: string | null;
@@ -65,10 +63,7 @@ interface PortfolioHoldingResponse {
   listingId?: string | null;
   isin: string | null;
   name: string;
-  /** @deprecated Read assetClassCode (via assetClassCodeOf). */
-  assetClass?: string;
-  // Optional only while an older ianus may still answer without it (step 3 makes it required).
-  assetClassCode?: string;
+  assetClassCode: string;
   currency: string;
   quantity: number;
   currentPrice: number;
@@ -185,10 +180,7 @@ interface RealizedPnlEntryResponse {
   // in documents built before listings.
   listingId?: string | null;
   name: string;
-  /** @deprecated Read assetClassCode (via assetClassCodeOf). */
-  assetClass?: string;
-  // Optional only while an older ianus may still answer without it (step 3 makes it required).
-  assetClassCode?: string;
+  assetClassCode: string;
   realizedTradingPnl: number;
   dividendIncome: number;
   realizedPnl: number;
@@ -537,10 +529,7 @@ interface BrokerTotal {
 }
 
 interface AssetClassTotal {
-  /** @deprecated Read assetClassCode (via assetClassCodeOf). */
-  assetClass?: string;
-  // Optional only while an older ianus may still answer without it (step 3 makes it required).
-  assetClassCode?: string;
+  assetClassCode: string;
   totalInvested: number;
 }
 
@@ -550,10 +539,7 @@ interface CurrencyHolding {
   ticker: string | null;
   isin: string | null;
   name: string;
-  /** @deprecated Read assetClassCode (via assetClassCodeOf). */
-  assetClass?: string;
-  // Optional only while an older ianus may still answer without it (step 3 makes it required).
-  assetClassCode?: string;
+  assetClassCode: string;
   quantity: string;
   investedValue: number;
   currency: string;
@@ -770,10 +756,7 @@ interface ComparisonVolatility {
 }
 
 interface ComparisonAllocationEntry {
-  /** @deprecated Read assetClassCode (via assetClassCodeOf). */
-  assetClass?: string;
-  // Optional only while an older ianus may still answer without it (step 3 makes it required).
-  assetClassCode?: string;
+  assetClassCode: string;
   weightPct: number;
   marketValue: number;
 }
@@ -841,10 +824,7 @@ interface AssetDetailResponse {
   ticker: string;
   isin: string | null;
   name: string;
-  /** @deprecated Read assetClassCode (via assetClassCodeOf). */
-  assetClass?: string;
-  // Optional only while an older ianus may still answer without it (step 3 makes it required).
-  assetClassCode?: string;
+  assetClassCode: string;
   sector: string | null;
   industry: string | null;
   country: string | null;

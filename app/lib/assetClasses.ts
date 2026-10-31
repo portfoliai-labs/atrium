@@ -57,36 +57,13 @@ const SINGULAR_LABELS: Record<AssetClassCode, string> = {
   UNKNOWN: "Unclassified",
 };
 
-// The legacy strings (`assetClass` / `asset_class`, the metadata provider's quoteType) that
-// differ from their code; any other known string is its own code. Goes with step 3 of the
-// InstrumentType migration, when ianus stops serving the legacy fields: until then a response
-// from an older ianus, without the code, still reads right.
-const LEGACY_CODES: Record<string, AssetClassCode> = {
-  MUTUALFUND: "MUTUAL_FUND",
-  CRYPTOCURRENCY: "CRYPTO",
-  MONEYMARKET: "MONEY_MARKET",
-  CASH: "CASH",
-  UNKNOWN: "UNKNOWN",
-};
-
 /** A served code, closed to the vocabulary: anything else is unclassified. */
 export const toAssetClassCode = (code: string | null | undefined): AssetClassCode =>
   code && KNOWN.has(code) ? (code as AssetClassCode) : UNKNOWN_ASSET_CLASS;
 
-/**
- * The code of a camelCase body (`assetClassCode`), or — from an older ianus without it — the one
- * its legacy `assetClass` string stands for (fallback goes with step 3).
- */
-export function assetClassCodeOf(entry: { assetClassCode?: string | null; assetClass?: string | null }): AssetClassCode {
-  if (entry.assetClassCode) return toAssetClassCode(entry.assetClassCode);
-  return fromLegacy(entry.assetClass);
-}
-
-function fromLegacy(legacy: string | null | undefined): AssetClassCode {
-  if (!legacy) return UNKNOWN_ASSET_CLASS;
-  const upper = legacy.toUpperCase();
-  return LEGACY_CODES[upper] ?? toAssetClassCode(upper);
-}
+/** The code of a camelCase body (`assetClassCode`), closed to the vocabulary. */
+export const assetClassCodeOf = (entry: { assetClassCode?: string | null }): AssetClassCode =>
+  toAssetClassCode(entry.assetClassCode);
 
 /** A class as a group of assets ("Bonds"). */
 export const assetClassLabel = (code: AssetClassCode): string => PLURAL_LABELS[code];
