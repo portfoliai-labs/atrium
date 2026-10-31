@@ -26,9 +26,19 @@ export const reportService = {
     });
   },
 
-  // GET /v1/portfolios/{p}/reports
+  // GET /v1/portfolios/{p}/reports — the caller's own reports on the portfolio.
   async getAllDocuments(portfolioUuid: string): Promise<Document[]> {
     return apiFetch<Document[]>(`/v1/portfolios/${portfolioUuid}/reports`);
+  },
+
+  // GET /v1/portfolios/reports — the caller's own reports on every portfolio, the deleted ones' too.
+  async ownReports(): Promise<Document[]> {
+    return apiFetch<Document[]>(`/v1/portfolios/reports`);
+  },
+
+  // DELETE /v1/portfolios/{p}/reports/{d} — the report and its file (the caller's own).
+  async deleteReport(portfolioUuid: string, documentId: string): Promise<void> {
+    await apiFetch(`/v1/portfolios/${portfolioUuid}/reports/${documentId}`, { method: 'DELETE' });
   },
 
   async downloadReport(portfolioUuid: string, documentId: string): Promise<PresignedUrl> {

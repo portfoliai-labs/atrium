@@ -8,7 +8,9 @@ type DocumentStatus = 'UPLOADED' | 'PROCESSING' | 'FAILED';
 // PERIODIC covers a custom period (period_start..period_end)
 type ReportType = 'FULL' | 'PERIODIC';
 
-// Matches DocumentResponse DTO (GET /v1/portfolios/{p}/reports, GET .../reports/{id}/download)
+// Matches DocumentResponse DTO (GET /v1/portfolios/{p}/reports, GET /v1/portfolios/reports). A
+// report is its requester's only (an advisor's on a client's portfolio is the advisor's), and it
+// outlives its portfolio: `subject_deleted`, its name as it was in `subject_name`.
 interface Document {
   document_id: string;
   user_id: string;
@@ -28,6 +30,10 @@ interface Document {
   report_type: ReportType | null;
   period_start: string | null;
   period_end: string | null;
+  // The portfolio's name when the report was made; null on reports made before it was kept.
+  subject_name: string | null;
+  // The portfolio was deleted: the report stays.
+  subject_deleted: boolean;
 }
 
 // Matches PresignedUrlResponse DTO (GET /v1/reports/{id}/download)

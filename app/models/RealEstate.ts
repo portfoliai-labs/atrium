@@ -1069,6 +1069,10 @@ export interface PropertyReport {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  // The property's name when the report was made; null on reports made before it was kept.
+  subjectName: string | null;
+  // The property was deleted: the report stays.
+  subjectDeleted: boolean;
 }
 
 // A property's full report: its whole history, from its acquisition to today.

@@ -472,6 +472,10 @@ export interface WalletReport {
   generatedByUuid: string | null;
   createdAt: string;
   updatedAt: string;
+  // The wallet's name when the report was made; null on reports made before it was kept.
+  subjectName: string | null;
+  // The wallet was deleted: the report stays.
+  subjectDeleted: boolean;
 }
 
 // A wallet's full report: its whole history, from its opening to today.

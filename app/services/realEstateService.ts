@@ -318,9 +318,14 @@ export const realEstateService = {
     return apiFetch<Municipality[]>(`${BASE}/municipalities?${params}`);
   },
 
-  // GET /v1/real-estate/reports — every property's reports (archived ones' too), newest first.
+  // GET /v1/real-estate/reports — the caller's properties' reports (archived and deleted ones' too), newest first.
   async reports(): Promise<PropertyReport[]> {
     return apiFetch<PropertyReport[]>(`${BASE}/reports`);
+  },
+
+  // DELETE /v1/real-estate/reports/{propertyUuid}/{d} — the report and its file.
+  async deleteReport(propertyUuid: string, documentId: string): Promise<void> {
+    await apiFetch(`${BASE}/reports/${propertyUuid}/${documentId}`, { method: "DELETE" });
   },
 
   /**
