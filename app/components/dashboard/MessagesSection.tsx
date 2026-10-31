@@ -94,7 +94,8 @@ export function MessagesSection() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // The collection open in place of a chat, read again once the assistant makes something.
   const [showCollection, setShowCollection] = useState(false);
-  const collection = useCollection(!isAdvisor && !isDemo);
+  // An advisor's too: the reports they asked for, on their clients' portfolios, are theirs.
+  const collection = useCollection(!isDemo);
   const selectedRef = useRef<Selected | null>(selected);
   // The chats listed, by kind, for the stream.
   const peopleRef = useRef<Set<string>>(new Set());
@@ -552,15 +553,13 @@ export function MessagesSection() {
                   <Plus className="w-4 h-4 shrink-0 text-[#C49A3C]" />
                   <span className="flex-1 font-semibold text-[#1c1917]">New chat</span>
                 </button>
-                {!isAdvisor && (
-                  <button onClick={() => { select(null); setShowCollection(true); }} className={rowClass(showCollection)}>
-                    <Library className="w-4 h-4 shrink-0 text-[#C49A3C]" />
-                    <span className="flex-1 font-semibold text-[#1c1917]">Collection</span>
-                    {collection && collection.items.length > 0 && (
-                      <span className="text-xs font-semibold text-[#78716c] tabular-nums">{collection.items.length}</span>
-                    )}
-                  </button>
-                )}
+                <button onClick={() => { select(null); setShowCollection(true); }} className={rowClass(showCollection)}>
+                  <Library className="w-4 h-4 shrink-0 text-[#C49A3C]" />
+                  <span className="flex-1 font-semibold text-[#1c1917]">Collection</span>
+                  {collection && collection.items.length > 0 && (
+                    <span className="text-xs font-semibold text-[#78716c] tabular-nums">{collection.items.length}</span>
+                  )}
+                </button>
               </div>
             )}
             <div className={`flex-1 min-h-0 overflow-y-auto px-3 pb-3 ${isDemo ? "pt-3" : "border-t border-[rgba(196,154,60,0.15)] pt-3"}`}>

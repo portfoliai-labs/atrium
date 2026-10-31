@@ -244,7 +244,7 @@ export const walletService = {
     return apiFetchForm<StatementImportResult>(`/v1/wallets/${walletUuid}/import/commit`, form);
   },
 
-  // GET /v1/wallets/reports — every wallet's reports (archived ones' too), newest first.
+  // GET /v1/wallets/reports — the caller's wallets' reports (archived and deleted ones' too), newest first.
   async reports(): Promise<WalletReport[]> {
     return apiFetch<WalletReport[]>(`/v1/wallets/reports`);
   },
@@ -262,6 +262,11 @@ export const walletService = {
   // GET /v1/wallets/reports/{walletUuid}/{d}/download — an hour's link to the file.
   async reportDownloadUrl(walletUuid: string, documentId: string): Promise<{ url: string }> {
     return apiFetch<{ url: string }>(`/v1/wallets/reports/${walletUuid}/${documentId}/download`);
+  },
+
+  // DELETE /v1/wallets/reports/{walletUuid}/{d} — the report and its file.
+  async deleteReport(walletUuid: string, documentId: string): Promise<void> {
+    await apiFetch(`/v1/wallets/reports/${walletUuid}/${documentId}`, { method: "DELETE" });
   },
 
   async addReportTag(walletUuid: string, documentId: string, name: string): Promise<void> {

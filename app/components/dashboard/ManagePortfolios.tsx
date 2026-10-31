@@ -139,7 +139,7 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
           title={`Delete "${toDelete.name}"?`}
           description={toDelete.isVirtual
             ? "This permanently deletes this backtest and everything computed from it. The strategy isn't kept: you'd have to set it up again."
-            : "This permanently deletes this portfolio and every transaction, alert and report in it. This can't be undone."}
+            : "This permanently deletes this portfolio and every transaction and alert in it. Its reports stay among your reports, until you delete them. This can't be undone."}
           confirming={deleting}
           onConfirm={handleDelete}
           onClose={() => setToDelete(null)}

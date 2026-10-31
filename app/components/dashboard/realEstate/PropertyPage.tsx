@@ -219,7 +219,7 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
       {dialog === "delete" && (
         <ConfirmDialog
           title={`Delete "${property.name}"?`}
-          description="Its transactions, mortgages and valuations are deleted with it. To keep its history, archive it instead. This can't be undone."
+          description="Its transactions, mortgages and valuations are deleted with it; its reports stay among your reports. To keep its history, archive it instead. This can't be undone."
           confirming={busy}
           error={dialogError}
           onConfirm={() => run(() => realEstateService.remove(property.uuid), "Unable to delete this property.", onGone)}
