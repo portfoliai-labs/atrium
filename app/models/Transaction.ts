@@ -59,7 +59,11 @@ interface TransactionResponse {
   isin: string | null;
   ticker: string | null;
   name: string | null;
-  asset_class: string | null;
+  /** @deprecated Read asset_class_code (via transactionAssetClassCode). */
+  asset_class?: string | null;
+  // One of lib/assetClasses' codes; null for a cash movement or an instrument with unknown
+  // metadata. Optional only while an older ianus may answer without it (step 3).
+  asset_class_code?: string | null;
   date: string;
   operation: TransactionOperation;
   amount: number;
