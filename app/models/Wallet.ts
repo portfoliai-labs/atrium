@@ -461,26 +461,17 @@ export interface StatementImportResult {
   lastBookedOn: string | null;
 }
 
-// A wallet's report (scriba's, on arca's figures): one wallet's month or year, or all of them.
+// The wallets' report (scriba's, on arca's figures): the owner's money, all their wallets together.
+// The routes on one name it by its document id alone.
 export interface WalletReport {
   documentId: string;
-  // The wallet it's about: what the download and tag routes name it by.
-  walletUuid: string;
   name: string;
   size: number;
   tags: string[];
   generatedByUuid: string | null;
   createdAt: string;
   updatedAt: string;
-  // The wallet's name when the report was made; null on reports made before it was kept.
+  // What it's about, as scriba named it ("All wallets").
   subjectName: string | null;
-  // The wallet was deleted: the report stays.
   subjectDeleted: boolean;
-}
-
-// A wallet's full report: its whole history, from its opening to today.
-export interface WalletReportRequest {
-  name: string;
-  walletUuid: string;
-  force?: boolean;
 }

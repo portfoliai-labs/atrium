@@ -33,7 +33,7 @@ export interface CollectionItem {
 
 const KINDS: Record<ReportKind, { label: string; icon: typeof PieChart }> = {
   portfolio: { label: "Portfolio", icon: PieChart },
-  wallet: { label: "Wallet", icon: Wallet },
+  wallet: { label: "Wallets", icon: Wallet },
   property: { label: "Property", icon: Building2 },
 };
 
@@ -55,7 +55,7 @@ export function collectionChanged(queryClient: QueryClient) {
  */
 export function useCollection(enabled = true) {
   const { portfolios } = usePortfolio();
-  const { wallets, available: hasWallets } = useWallets();
+  const { available: hasWallets } = useWallets();
   const { properties, available: hasProperties } = useRealEstate();
   const portfolioReports = useQuery({ queryKey: accountKey("reports", "own"), queryFn: () => reportService.ownReports(), enabled });
   const walletReports = useQuery({ queryKey: walletKey("reports"), queryFn: () => walletService.reports(), enabled: enabled && hasWallets });
@@ -78,10 +78,11 @@ export function useCollection(enabled = true) {
       })),
     ...(hasWallets ? walletReports.data ?? [] : []).map((r): CollectionItem => ({
       key: `wallet:${r.documentId}`, kind: "wallet", name: r.name, createdAt: r.createdAt,
-      subject: named(wallets.find((w) => w.uuid === r.walletUuid)?.name, r.subjectName, "A wallet"),
-      deleted: r.subjectDeleted,
-      download: () => walletService.reportDownloadUrl(r.walletUuid, r.documentId),
-      remove: () => walletService.deleteReport(r.walletUuid, r.documentId),
+      // On all the wallets together: no one wallet's name.
+      subject: "All wallets",
+      deleted: false,
+      download: () => walletService.reportDownloadUrl(r.documentId),
+      remove: () => walletService.deleteReport(r.documentId),
     })),
     ...(hasProperties ? propertyReports.data ?? [] : []).map((r): CollectionItem => ({
       key: `property:${r.documentId}`, kind: "property", name: r.name, createdAt: r.createdAt,
