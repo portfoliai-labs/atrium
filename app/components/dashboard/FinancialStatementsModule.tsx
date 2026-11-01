@@ -2,8 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { ExternalLink, Loader2, X } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { portfolioService } from "../../services/portfolioService";
 import { useInvestmentsRead } from "../../context/PortfolioContext";
 import {
@@ -12,12 +11,13 @@ import {
   STATEMENTS,
   type FinancialStatements,
   type StatementFigure,
-  type StatementKey,
   type StatementPeriod,
   type StatementsFrequency,
   type StatementsSource,
 } from "../../models/FinancialStatements";
+import { ExplorePanel } from "./ExploreView";
 import { CardFoot, CardInfo, LINK_CLASS } from "./InstrumentProfileModule";
+import { PageHeader } from "./PageHeader";
 import { MODULE_BODY, Module, ModuleHead } from "./PerformanceSection";
 
 const DESC = "The company's income statement, balance sheet and cash flow, as it filed them.";
@@ -113,17 +113,16 @@ function StatementsBody({ data, rows, periods }: { data: FinancialStatements | u
  * figures that say most (revenue, gross profit, operating and net income, diluted EPS, free cash
  * flow, total assets, long-term debt) over its latest CARD_PERIODS years or quarters, which fit
  * beside the labels on any screen (GET /v1/assets/{listing_id}/financial-statements). Its arrow
- * opens the full statements (FullStatements). Amounts in the currency the company reports in, as
- * filed: compact, negatives in brackets, per-share figures with cents. A computed figure (a
- * fourth quarter's flow, the free cash flow) is marked; each column links to the filing its
- * figures were read from, a figure's own filing (a later one, for a restated value) in its
- * tooltip. The foot names the source: the SEC (never its seal or logos), the ESEF reports via
- * filings.xbrl.org, or the price provider. Left out for a fund, and for a company no source has
- * statements of.
+ * (`onExplore`) opens the full statements, a page of the asset's (FinancialStatementsPage).
+ * Amounts in the currency the company reports in, as filed: compact, negatives in brackets,
+ * per-share figures with cents. A computed figure (a fourth quarter's flow, the free cash flow) is
+ * marked; each column links to the filing its figures were read from, a figure's own filing (a
+ * later one, for a restated value) in its tooltip. The foot names the source: the SEC (never its
+ * seal or logos), the ESEF reports via filings.xbrl.org, or the price provider. Left out for a
+ * fund, and for a company no source has statements of.
  */
-export function FinancialStatementsModule({ listingId }: { listingId: string }) {
+export function FinancialStatementsModule({ listingId, onExplore }: { listingId: string; onExplore: () => void }) {
   const [frequency, setFrequency] = useState<StatementsFrequency>("annual");
-  const [exploring, setExploring] = useState(false);
   // undefined while it's read, null when it couldn't be.
   const data = useStatements(listingId, frequency);
   // A company with no quarters (an ESEF one) keeps its annual table rather than an empty one.
@@ -135,7 +134,7 @@ export function FinancialStatementsModule({ listingId }: { listingId: string }) 
       <ModuleHead
         title={currency ? `Financial statements · ${currency}` : "Financial statements"}
         desc={DESC}
-        onExplore={data && data.periods.length > 0 ? () => setExploring(true) : undefined}
+        onExplore={data && data.periods.length > 0 ? onExplore : undefined}
         right={
           <div className="flex flex-wrap items-center gap-1.5">
             <FrequencySwitch frequency={frequency} onChange={setFrequency} />
@@ -147,66 +146,65 @@ export function FinancialStatementsModule({ listingId }: { listingId: string }) 
         <StatementsBody data={data} rows={KEY_ITEMS} periods={CARD_PERIODS} />
         {data && data.source && <StatementsFoot source={data.source} />}
       </div>
-      {exploring && <FullStatements listingId={listingId} initial={frequency} onClose={() => setExploring(false)} />}
     </Module>
   );
 }
 
 /**
- * The full statements, over the page (the asset's page is itself a detail view): the income
- * statement, the balance sheet or the cash flow, every item and every period (ten years, twelve
- * quarters), the values scrolling sideways beside the labels where they don't fit. Esc, the
- * cross or a click outside closes it.
+ * FINANCIAL STATEMENTS PAGE — the full statements, a page of the asset's (`name` its title in the
+ * trail, the step back to it; Esc too): the income statement, the balance sheet and the cash flow,
+ * one panel each, every item and every period (ten years, twelve quarters), by year or quarter
+ * (one switch for the three), the values scrolling sideways beside the labels where they don't
+ * fit. The page opens at its top, and the asset's page comes back where it was left.
  */
-function FullStatements({ listingId, initial, onClose }: { listingId: string; initial: StatementsFrequency; onClose: () => void }) {
-  const [frequency, setFrequency] = useState<StatementsFrequency>(initial);
-  const [statement, setStatement] = useState<StatementKey>("income");
+export function FinancialStatementsPage({ listingId, name, onClose }: { listingId: string; name: string; onClose: () => void }) {
+  const [frequency, setFrequency] = useState<StatementsFrequency>("annual");
   const data = useStatements(listingId, frequency);
+  useEffect(() => {
+    const before = window.scrollY;
+    window.scrollTo({ top: 0 });
+    return () => {
+      requestAnimationFrame(() => window.scrollTo({ top: before }));
+    };
+  }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  const chip = (on: boolean) =>
-    `px-2.5 py-1 rounded-full border text-[11.5px] font-semibold transition-colors ${on ? "bg-[#1c1917] border-[#1c1917] text-white" : "border-[#E0DACC] text-[#78716c] hover:text-[#1c1917]"}`;
   const currency = data ? currencyOf(data.periods) : null;
-  const items = STATEMENTS.find((s) => s.key === statement)?.items ?? [];
+  const sourceNote = data?.source === "sec_filing" ? "From the company's filings with the SEC"
+    : data?.source === "esef_report" ? "From the company's annual financial reports (ESEF)"
+    : data?.source === "price_provider" ? "From Yahoo Finance" : undefined;
 
-  return createPortal(
-    <div className="fixed inset-0 z-100 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="financial-statements-title"
-        className="bg-white rounded-[1.75rem] shadow-2xl border border-[#EEE9DD] max-w-6xl w-full max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-6 pt-[22px] pb-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5">
-          <h2 id="financial-statements-title" className="text-[10px] font-black uppercase tracking-[0.14em] text-[#78716c]">
-            {currency ? `Financial statements · ${currency}` : "Financial statements"}
-          </h2>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {STATEMENTS.map((s) => (
-              <button key={s.key} type="button" aria-pressed={s.key === statement} onClick={() => setStatement(s.key)} className={chip(s.key === statement)}>
-                {s.title}
-              </button>
-            ))}
-            <span className="ml-1.5"><FrequencySwitch frequency={frequency} onChange={setFrequency} /></span>
-            <CardInfo text={infoOf(data, currency)} />
-            <button type="button" onClick={onClose} aria-label="Close" className="ml-1 rounded-full p-1 text-[#78716c] hover:bg-[#F3EFE6] hover:text-[#1c1917]">
-              <X className="h-4 w-4" />
-            </button>
+  return (
+    <div className="space-y-[22px]">
+      <PageHeader
+        crumbs={[{ label: name, onClick: onClose }]}
+        title="Financial statements"
+        note={[sourceNote, currency && `amounts in ${currency}`].filter(Boolean).join(" · ") || undefined}
+      />
+      {data === null ? (
+        <Module><div className={`${MODULE_BODY} pt-[22px]`}><p className="text-[12.5px] text-[#857e78]">The statements couldn&apos;t be read.</p></div></Module>
+      ) : STATEMENTS.map((statement, i) => (
+        <ExplorePanel
+          key={statement.key}
+          title={statement.title === "Income" ? "Income statement" : statement.title}
+          desc={DESC}
+          right={
+            <div className="flex flex-wrap items-center gap-1.5">
+              <FrequencySwitch frequency={frequency} onChange={setFrequency} />
+              {i === 0 && <CardInfo text={infoOf(data, currency)} />}
+            </div>
+          }
+        >
+          <div className={`${MODULE_BODY} flex flex-col gap-5`}>
+            <StatementsBody data={data} rows={statement.items} periods={Infinity} />
+            {i === STATEMENTS.length - 1 && data && data.source && <StatementsFoot source={data.source} />}
           </div>
-        </div>
-        <div className={`${MODULE_BODY} flex flex-col gap-5`}>
-          {data === null
-            ? <p className="text-[12.5px] text-[#857e78]">The statements couldn&apos;t be read.</p>
-            : <StatementsBody data={data} rows={items} periods={Infinity} />}
-          {data && data.source && <StatementsFoot source={data.source} />}
-        </div>
-      </div>
-    </div>,
-    document.body,
+        </ExplorePanel>
+      ))}
+    </div>
   );
 }
 
