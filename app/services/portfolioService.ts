@@ -7,6 +7,7 @@ import type {
   AssetDetailResponse, AssetChartRange,
 } from "../models/PortfolioData";
 import type { AssetMarketData } from "../models/MarketData";
+import type { FinancialStatements, StatementsFrequency } from "../models/FinancialStatements";
 import { apiFetch } from "./apiClient";
 
 const buildQuery = (params: Record<string, string | number | null | undefined>) => {
@@ -134,5 +135,14 @@ export const portfolioService = {
   // Throws ApiError 404 as getAssetDetail.
   async getAssetMarketData(listingId: string): Promise<AssetMarketData> {
     return apiFetch<AssetMarketData>(`/v1/assets/${encodeURIComponent(listingId)}/market-data`);
+  },
+
+  // GET /v1/assets/{listing_id}/financial-statements?frequency= — the listing's company's income
+  // statement, balance sheet and cash flow, by year or quarter (none for a fund). Throws ApiError
+  // 404 as getAssetDetail.
+  async getAssetFinancialStatements(listingId: string, frequency: StatementsFrequency): Promise<FinancialStatements> {
+    return apiFetch<FinancialStatements>(
+      `/v1/assets/${encodeURIComponent(listingId)}/financial-statements${buildQuery({ frequency })}`,
+    );
   },
 };
