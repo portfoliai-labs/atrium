@@ -57,8 +57,8 @@ const SOURCE_NOTES: Record<StatementsSource, string> = {
 /**
  * FINANCIAL STATEMENTS — on a share's page (AssetExplore), under Market data: the company's income
  * statement, balance sheet and cash flow (GET /v1/assets/{listing_id}/financial-statements), by
- * fiscal year or quarter, a statement at a time; periods as columns, the latest first, scrolling
- * sideways on a narrow screen. Amounts in the currency the company reports in, as filed: compact,
+ * fiscal year or quarter, a statement at a time; periods as columns, the latest first, the values
+ * scrolling sideways beside the labels on a narrow screen. Amounts in the currency the company reports in, as filed: compact,
  * negatives in brackets, per-share figures with cents. A computed figure (a fourth quarter's flow,
  * the free cash flow) is marked; each column links to the filing its figures were read from, a
  * figure's own filing (a later one, for a restated value) in its tooltip. The foot names the
@@ -132,6 +132,15 @@ export function FinancialStatementsModule({ listingId }: { listingId: string }) 
   );
 }
 
+// Every row the same height, the labels' and the values', so the two sides line up.
+const ROW = "h-10 border-b border-[#EEE9DD] last:border-b-0";
+const HEAD_ROW = "h-8 border-b border-[#EEE9DD]";
+
+/**
+ * A statement as a table: its labels in a column of their own that stays put, its periods'
+ * values beside them in the only part that scrolls sideways (a narrow screen, twelve quarters),
+ * so a value never passes over a label.
+ */
 function StatementTable({ data, statement }: { data: FinancialStatements; statement: StatementKey }) {
   const items = STATEMENTS.find((s) => s.key === statement)?.items ?? [];
   const byPeriod = data.periods.map((period) => new Map(period.figures.map((f) => [f.item, f])));
@@ -140,47 +149,63 @@ function StatementTable({ data, statement }: { data: FinancialStatements; statem
     return <p className="text-[12.5px] text-[#857e78]">The company&apos;s filings report none of this statement&apos;s items.</p>;
   }
   return (
-    <div className="-mx-6 overflow-x-auto px-6">
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="border-b border-[#EEE9DD]">
-            <th scope="col" className="sticky left-0 bg-white py-2 pr-4 text-left text-[11px] font-semibold text-[#857e78]" />
-            {data.periods.map((period) => {
-              const filing = filingOf(period);
-              const label = periodLabel(period, data.frequency);
-              return (
-                <th key={period.end} scope="col" title={`${dayLabel(period.start)} to ${dayLabel(period.end)}`} className="py-2 pl-4 text-right text-[11px] font-semibold text-[#857e78] whitespace-nowrap">
-                  {filing ? (
-                    <a href={filing} target="_blank" rel="noopener noreferrer" className={LINK_CLASS} title="Open the filing">
-                      {label}<ExternalLink className="h-2.5 w-2.5 shrink-0" />
-                    </a>
-                  ) : label}
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(([item, label]) => (
-            <tr key={item} className="border-b border-[#EEE9DD] last:border-b-0">
-              <th scope="row" className="sticky left-0 bg-white py-2.5 pr-4 text-left text-[12.5px] font-normal text-[#78716c] whitespace-nowrap">{label}</th>
-              {byPeriod.map((figures, i) => {
-                const figure = figures.get(item);
+    // The values' side scrolls with a trackpad, a touch or shift and the wheel, its scrollbar
+    // hidden; the labels' column runs as tall as it.
+    <div className="flex items-stretch">
+      <div className="shrink-0 border-r border-[#EEE9DD]">
+        <table className="border-collapse">
+          <thead>
+            <tr className={HEAD_ROW}><th scope="col" /></tr>
+          </thead>
+          <tbody>
+            {rows.map(([item, label]) => (
+              <tr key={item} className={ROW}>
+                <th scope="row" className="pr-4 text-left text-[12.5px] font-normal text-[#78716c] whitespace-nowrap">{label}</th>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className={HEAD_ROW}>
+              {data.periods.map((period) => {
+                const filing = filingOf(period);
+                const label = periodLabel(period, data.frequency);
                 return (
-                  <td
-                    key={data.periods[i].end}
-                    title={figure ? (figure.computed ? "Computed" : figure.filed ? `Filed ${dayLabel(figure.filed)}` : undefined) : undefined}
-                    className="py-2.5 pl-4 text-right text-[13px] font-bold tabular-nums text-[#1c1917] whitespace-nowrap"
-                  >
-                    {figure ? amount(figure) : <span className="font-normal text-[#c4bdb4]">—</span>}
-                    {figure?.computed && <sup className="ml-0.5 text-[9.5px] font-semibold text-[#857e78]">*</sup>}
-                  </td>
+                  <th key={period.end} scope="col" title={`${dayLabel(period.start)} to ${dayLabel(period.end)}`} className="pl-4 text-right text-[11px] font-semibold text-[#857e78] whitespace-nowrap">
+                    {filing ? (
+                      <a href={filing} target="_blank" rel="noopener noreferrer" className={LINK_CLASS} title="Open the filing">
+                        {label}<ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                      </a>
+                    ) : label}
+                  </th>
                 );
               })}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map(([item]) => (
+              <tr key={item} className={ROW}>
+                {byPeriod.map((figures, i) => {
+                  const figure = figures.get(item);
+                  return (
+                    <td
+                      key={data.periods[i].end}
+                      title={figure ? (figure.computed ? "Computed" : figure.filed ? `Filed ${dayLabel(figure.filed)}` : undefined) : undefined}
+                      className="pl-4 text-right text-[13px] font-bold tabular-nums text-[#1c1917] whitespace-nowrap"
+                    >
+                      {figure ? amount(figure) : <span className="font-normal text-[#c4bdb4]">—</span>}
+                      {figure?.computed && <sup className="ml-0.5 text-[9.5px] font-semibold text-[#857e78]">*</sup>}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
