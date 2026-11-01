@@ -184,7 +184,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
       {dialog === "delete" && wallet && (
         <ConfirmDialog
           title={`Delete "${wallet.name}"?`}
-          description="Its movements are deleted with it, and a transfer with another wallet loses that wallet's side too; its reports stay among your reports. To keep its history, archive it instead. This can't be undone."
+          description="Its movements are deleted with it, and a transfer with another wallet loses that wallet's side too. To keep its history, archive it instead. This can't be undone."
           confirming={busy}
           error={dialogError}
           onConfirm={() => run(() => walletService.remove(wallet.uuid), "Unable to delete this wallet.", () => onOpen(ALL_WALLETS, "insights"))}

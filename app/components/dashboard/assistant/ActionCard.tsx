@@ -12,6 +12,7 @@ const FAILURES: Record<string, string> = {
   PLAN_LIMIT_EXCEEDED: "Your plan doesn't include reports.",
   REPORT_ALREADY_EXISTS: "A report on it is already being generated.",
   VIRTUAL_PORTFOLIO_OPERATION: "Reports aren't available for a virtual portfolio.",
+  NO_WALLETS: "There are no wallets to report on.",
 };
 
 const STATES: ActionState[] = ["proposed", "running", "done", "failed", "cancelled", "expired"];
