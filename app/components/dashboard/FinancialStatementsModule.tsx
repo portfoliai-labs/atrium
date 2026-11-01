@@ -1,11 +1,14 @@
 // components/dashboard/FinancialStatementsModule.tsx
 "use client";
 
-import { useState } from "react";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { ExternalLink, Loader2, X } from "lucide-react";
 import { portfolioService } from "../../services/portfolioService";
 import { useInvestmentsRead } from "../../context/PortfolioContext";
 import {
+  CARD_PERIODS,
+  KEY_ITEMS,
   STATEMENTS,
   type FinancialStatements,
   type StatementFigure,
@@ -54,81 +57,156 @@ const SOURCE_NOTES: Record<StatementsSource, string> = {
   price_provider: "The company files neither with the SEC nor in ESEF: these are the price provider's statements (Yahoo Finance), not read from a filing.",
 };
 
-/**
- * FINANCIAL STATEMENTS — on a share's page (AssetExplore), under Market data: the company's income
- * statement, balance sheet and cash flow (GET /v1/assets/{listing_id}/financial-statements), by
- * fiscal year or quarter, a statement at a time; periods as columns, the latest first, the values
- * scrolling sideways beside the labels on a narrow screen. Amounts in the currency the company reports in, as filed: compact,
- * negatives in brackets, per-share figures with cents. A computed figure (a fourth quarter's flow,
- * the free cash flow) is marked; each column links to the filing its figures were read from, a
- * figure's own filing (a later one, for a restated value) in its tooltip. The foot names the
- * source: the SEC (never its seal or logos), the ESEF reports via filings.xbrl.org, or the price
- * provider. Left out for a fund, and for a company no source has statements of.
- */
-export function FinancialStatementsModule({ listingId }: { listingId: string }) {
-  const [frequency, setFrequency] = useState<StatementsFrequency>("annual");
-  const [statement, setStatement] = useState<StatementKey>("income");
-  // undefined while it's read, null when it couldn't be.
-  const data = useInvestmentsRead<FinancialStatements>(
+// The Annual/Quarterly switch, the card's and the full statements'.
+function FrequencySwitch({ frequency, onChange }: { frequency: StatementsFrequency; onChange: (f: StatementsFrequency) => void }) {
+  return (
+    <div role="group" aria-label="Periods" className="inline-flex rounded-lg bg-[#F3EFE6] p-0.5">
+      {(["annual", "quarterly"] as const).map((f) => (
+        <button
+          key={f}
+          type="button"
+          aria-pressed={f === frequency}
+          onClick={() => onChange(f)}
+          className={`px-2 py-0.5 rounded-md text-[11px] font-bold tracking-[0.04em] transition-colors ${f === frequency ? "bg-white text-[#1c1917] shadow-sm" : "text-[#78716c] hover:text-[#1c1917]"}`}
+        >
+          {f === "annual" ? "Annual" : "Quarterly"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// What the "i" says: the source, the currency, how the items and the computed figures are made.
+const infoOf = (data: FinancialStatements | null | undefined, currency: string | null) => [
+  DESC,
+  data?.source && SOURCE_NOTES[data.source],
+  currency && `Amounts in ${currency}, as the company reports them; per-share figures with cents, shares as a count.`,
+  "Each line is a standard item, the same for every company: a company's own items aren't shown, and an item it doesn't report stays empty.",
+  "Where the company restated a figure, the latest filing's is shown. Marked * are computed: the free cash flow (from operations less capital expenditure), a fourth quarter's flows (the year's less its first three quarters').",
+].filter(Boolean).join("\n\n");
+
+// The statements of a frequency, as the card and the full statements read them (one request
+// each, shared).
+const useStatements = (listingId: string, frequency: StatementsFrequency) =>
+  useInvestmentsRead<FinancialStatements>(
     ["asset", listingId, "financialStatements", frequency],
     () => portfolioService.getAssetFinancialStatements(listingId, frequency),
   );
+
+// A table's body: loading, a frequency with none (an ESEF company's quarters), or the table.
+function StatementsBody({ data, rows, periods }: { data: FinancialStatements | undefined; rows: [string, string][]; periods: number }) {
+  if (data === undefined) {
+    return (
+      <p className="flex items-center gap-2 text-[12.5px] text-[#857e78]">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#C49A3C]" /> Loading…
+      </p>
+    );
+  }
+  if (data.periods.length === 0) {
+    return <p className="text-[12.5px] text-[#857e78]">No quarterly statements: the company files its accounts by year.</p>;
+  }
+  return <StatementTable data={data} rows={rows} periods={periods} />;
+}
+
+/**
+ * FINANCIAL STATEMENTS — on a share's page (AssetExplore), under Market data: the company's
+ * figures that say most (revenue, gross profit, operating and net income, diluted EPS, free cash
+ * flow, total assets, long-term debt) over its latest CARD_PERIODS years or quarters, which fit
+ * beside the labels on any screen (GET /v1/assets/{listing_id}/financial-statements). Its arrow
+ * opens the full statements (FullStatements). Amounts in the currency the company reports in, as
+ * filed: compact, negatives in brackets, per-share figures with cents. A computed figure (a
+ * fourth quarter's flow, the free cash flow) is marked; each column links to the filing its
+ * figures were read from, a figure's own filing (a later one, for a restated value) in its
+ * tooltip. The foot names the source: the SEC (never its seal or logos), the ESEF reports via
+ * filings.xbrl.org, or the price provider. Left out for a fund, and for a company no source has
+ * statements of.
+ */
+export function FinancialStatementsModule({ listingId }: { listingId: string }) {
+  const [frequency, setFrequency] = useState<StatementsFrequency>("annual");
+  const [exploring, setExploring] = useState(false);
+  // undefined while it's read, null when it couldn't be.
+  const data = useStatements(listingId, frequency);
   // A company with no quarters (an ESEF one) keeps its annual table rather than an empty one.
   if (data === null || (data && frequency === "annual" && data.periods.length === 0)) return null;
-
-  const chip = (on: boolean) =>
-    `px-2.5 py-1 rounded-full border text-[11.5px] font-semibold transition-colors ${on ? "bg-[#1c1917] border-[#1c1917] text-white" : "border-[#E0DACC] text-[#78716c] hover:text-[#1c1917]"}`;
   const currency = data ? currencyOf(data.periods) : null;
-  const info = [
-    DESC,
-    data?.source && SOURCE_NOTES[data.source],
-    currency && `Amounts in ${currency}, as the company reports them; per-share figures with cents, shares as a count.`,
-    "Each line is a standard item, the same for every company: a company's own items aren't shown, and an item it doesn't report stays empty.",
-    "Where the company restated a figure, the latest filing's is shown. Marked * are computed: the free cash flow (from operations less capital expenditure), a fourth quarter's flows (the year's less its first three quarters').",
-  ].filter(Boolean).join("\n\n");
 
   return (
     <Module>
       <ModuleHead
         title={currency ? `Financial statements · ${currency}` : "Financial statements"}
         desc={DESC}
+        onExplore={data && data.periods.length > 0 ? () => setExploring(true) : undefined}
         right={
+          <div className="flex flex-wrap items-center gap-1.5">
+            <FrequencySwitch frequency={frequency} onChange={setFrequency} />
+            <CardInfo text={infoOf(data, currency)} />
+          </div>
+        }
+      />
+      <div className={`${MODULE_BODY} flex flex-col gap-5`}>
+        <StatementsBody data={data} rows={KEY_ITEMS} periods={CARD_PERIODS} />
+        {data && data.source && <StatementsFoot source={data.source} />}
+      </div>
+      {exploring && <FullStatements listingId={listingId} initial={frequency} onClose={() => setExploring(false)} />}
+    </Module>
+  );
+}
+
+/**
+ * The full statements, over the page (the asset's page is itself a detail view): the income
+ * statement, the balance sheet or the cash flow, every item and every period (ten years, twelve
+ * quarters), the values scrolling sideways beside the labels where they don't fit. Esc, the
+ * cross or a click outside closes it.
+ */
+function FullStatements({ listingId, initial, onClose }: { listingId: string; initial: StatementsFrequency; onClose: () => void }) {
+  const [frequency, setFrequency] = useState<StatementsFrequency>(initial);
+  const [statement, setStatement] = useState<StatementKey>("income");
+  const data = useStatements(listingId, frequency);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const chip = (on: boolean) =>
+    `px-2.5 py-1 rounded-full border text-[11.5px] font-semibold transition-colors ${on ? "bg-[#1c1917] border-[#1c1917] text-white" : "border-[#E0DACC] text-[#78716c] hover:text-[#1c1917]"}`;
+  const currency = data ? currencyOf(data.periods) : null;
+  const items = STATEMENTS.find((s) => s.key === statement)?.items ?? [];
+
+  return createPortal(
+    <div className="fixed inset-0 z-100 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="financial-statements-title"
+        className="bg-white rounded-[1.75rem] shadow-2xl border border-[#EEE9DD] max-w-6xl w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 pt-[22px] pb-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5">
+          <h2 id="financial-statements-title" className="text-[10px] font-black uppercase tracking-[0.14em] text-[#78716c]">
+            {currency ? `Financial statements · ${currency}` : "Financial statements"}
+          </h2>
           <div className="flex flex-wrap items-center gap-1.5">
             {STATEMENTS.map((s) => (
               <button key={s.key} type="button" aria-pressed={s.key === statement} onClick={() => setStatement(s.key)} className={chip(s.key === statement)}>
                 {s.title}
               </button>
             ))}
-            <div role="group" aria-label="Periods" className="ml-1.5 inline-flex rounded-lg bg-[#F3EFE6] p-0.5">
-              {(["annual", "quarterly"] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  aria-pressed={f === frequency}
-                  onClick={() => setFrequency(f)}
-                  className={`px-2 py-0.5 rounded-md text-[11px] font-bold tracking-[0.04em] transition-colors ${f === frequency ? "bg-white text-[#1c1917] shadow-sm" : "text-[#78716c] hover:text-[#1c1917]"}`}
-                >
-                  {f === "annual" ? "Annual" : "Quarterly"}
-                </button>
-              ))}
-            </div>
-            <CardInfo text={info} />
+            <span className="ml-1.5"><FrequencySwitch frequency={frequency} onChange={setFrequency} /></span>
+            <CardInfo text={infoOf(data, currency)} />
+            <button type="button" onClick={onClose} aria-label="Close" className="ml-1 rounded-full p-1 text-[#78716c] hover:bg-[#F3EFE6] hover:text-[#1c1917]">
+              <X className="h-4 w-4" />
+            </button>
           </div>
-        }
-      />
-      <div className={`${MODULE_BODY} flex flex-col gap-5`}>
-        {data === undefined ? (
-          <p className="flex items-center gap-2 text-[12.5px] text-[#857e78]">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-[#C49A3C]" /> Loading…
-          </p>
-        ) : data.periods.length === 0 ? (
-          <p className="text-[12.5px] text-[#857e78]">No quarterly statements: the company files its accounts by year.</p>
-        ) : (
-          <StatementTable data={data} statement={statement} />
-        )}
-        {data && data.source && <StatementsFoot source={data.source} />}
+        </div>
+        <div className={`${MODULE_BODY} flex flex-col gap-5`}>
+          {data === null
+            ? <p className="text-[12.5px] text-[#857e78]">The statements couldn&apos;t be read.</p>
+            : <StatementsBody data={data} rows={items} periods={Infinity} />}
+          {data && data.source && <StatementsFoot source={data.source} />}
+        </div>
       </div>
-    </Module>
+    </div>,
+    document.body,
   );
 }
 
@@ -141,12 +219,12 @@ const HEAD_ROW = "h-8 border-b border-[#EEE9DD]";
  * values beside them in the only part that scrolls sideways (a narrow screen, twelve quarters),
  * so a value never passes over a label.
  */
-function StatementTable({ data, statement }: { data: FinancialStatements; statement: StatementKey }) {
-  const items = STATEMENTS.find((s) => s.key === statement)?.items ?? [];
-  const byPeriod = data.periods.map((period) => new Map(period.figures.map((f) => [f.item, f])));
+function StatementTable({ data, rows: items, periods: shown }: { data: FinancialStatements; rows: [string, string][]; periods: number }) {
+  const periods = data.periods.slice(0, shown);
+  const byPeriod = periods.map((period) => new Map(period.figures.map((f) => [f.item, f])));
   const rows = items.filter(([item]) => byPeriod.some((figures) => figures.has(item)));
   if (rows.length === 0) {
-    return <p className="text-[12.5px] text-[#857e78]">The company&apos;s filings report none of this statement&apos;s items.</p>;
+    return <p className="text-[12.5px] text-[#857e78]">The company&apos;s filings report none of these items.</p>;
   }
   return (
     // The values' side scrolls with a trackpad, a touch or shift and the wheel, its scrollbar
@@ -170,7 +248,7 @@ function StatementTable({ data, statement }: { data: FinancialStatements; statem
         <table className="w-full border-collapse">
           <thead>
             <tr className={HEAD_ROW}>
-              {data.periods.map((period) => {
+              {periods.map((period) => {
                 const filing = filingOf(period);
                 const label = periodLabel(period, data.frequency);
                 return (
@@ -192,7 +270,7 @@ function StatementTable({ data, statement }: { data: FinancialStatements; statem
                   const figure = figures.get(item);
                   return (
                     <td
-                      key={data.periods[i].end}
+                      key={periods[i].end}
                       title={figure ? (figure.computed ? "Computed" : figure.filed ? `Filed ${dayLabel(figure.filed)}` : undefined) : undefined}
                       className="pl-4 text-right text-[13px] font-bold tabular-nums text-[#1c1917] whitespace-nowrap"
                     >
