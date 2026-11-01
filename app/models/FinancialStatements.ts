@@ -83,3 +83,18 @@ export const STATEMENTS: { key: StatementKey; title: string; items: [string, str
     ],
   },
 ];
+
+// The card's lines on the asset's page: the few that say most, from all three statements (the
+// full statements open from it).
+export const KEY_ITEMS: [string, string][] = [
+  ["revenue", "Revenue"],
+  ["gross_profit", "Gross profit"],
+  ["operating_income", "Operating income"],
+  ["net_income", "Net income"],
+  ["eps_diluted", "EPS (diluted)"],
+  ["free_cash_flow", "Free cash flow"],
+  ["total_assets", "Total assets"],
+  ["long_term_debt", "Long-term debt"],
+];
+// The latest periods the card shows: as many as fit beside the labels on any screen.
+export const CARD_PERIODS = 4;

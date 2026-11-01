@@ -1,20 +1,23 @@
 // components/dashboard/FinancialStatementsModule.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { portfolioService } from "../../services/portfolioService";
 import { useInvestmentsRead } from "../../context/PortfolioContext";
 import {
+  CARD_PERIODS,
+  KEY_ITEMS,
   STATEMENTS,
   type FinancialStatements,
   type StatementFigure,
-  type StatementKey,
   type StatementPeriod,
   type StatementsFrequency,
   type StatementsSource,
 } from "../../models/FinancialStatements";
+import { ExplorePanel } from "./ExploreView";
 import { CardFoot, CardInfo, LINK_CLASS } from "./InstrumentProfileModule";
+import { PageHeader } from "./PageHeader";
 import { MODULE_BODY, Module, ModuleHead } from "./PerformanceSection";
 
 const DESC = "The company's income statement, balance sheet and cash flow, as it filed them.";
@@ -54,133 +57,231 @@ const SOURCE_NOTES: Record<StatementsSource, string> = {
   price_provider: "The company files neither with the SEC nor in ESEF: these are the price provider's statements (Yahoo Finance), not read from a filing.",
 };
 
-/**
- * FINANCIAL STATEMENTS — on a share's page (AssetExplore), under Market data: the company's income
- * statement, balance sheet and cash flow (GET /v1/assets/{listing_id}/financial-statements), by
- * fiscal year or quarter, a statement at a time; periods as columns, the latest first, scrolling
- * sideways on a narrow screen. Amounts in the currency the company reports in, as filed: compact,
- * negatives in brackets, per-share figures with cents. A computed figure (a fourth quarter's flow,
- * the free cash flow) is marked; each column links to the filing its figures were read from, a
- * figure's own filing (a later one, for a restated value) in its tooltip. The foot names the
- * source: the SEC (never its seal or logos), the ESEF reports via filings.xbrl.org, or the price
- * provider. Left out for a fund, and for a company no source has statements of.
- */
-export function FinancialStatementsModule({ listingId }: { listingId: string }) {
-  const [frequency, setFrequency] = useState<StatementsFrequency>("annual");
-  const [statement, setStatement] = useState<StatementKey>("income");
-  // undefined while it's read, null when it couldn't be.
-  const data = useInvestmentsRead<FinancialStatements>(
+// The Annual/Quarterly switch, the card's and the full statements'.
+function FrequencySwitch({ frequency, onChange }: { frequency: StatementsFrequency; onChange: (f: StatementsFrequency) => void }) {
+  return (
+    <div role="group" aria-label="Periods" className="inline-flex rounded-lg bg-[#F3EFE6] p-0.5">
+      {(["annual", "quarterly"] as const).map((f) => (
+        <button
+          key={f}
+          type="button"
+          aria-pressed={f === frequency}
+          onClick={() => onChange(f)}
+          className={`px-2 py-0.5 rounded-md text-[11px] font-bold tracking-[0.04em] transition-colors ${f === frequency ? "bg-white text-[#1c1917] shadow-sm" : "text-[#78716c] hover:text-[#1c1917]"}`}
+        >
+          {f === "annual" ? "Annual" : "Quarterly"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// What the "i" says: the source, the currency, how the items and the computed figures are made.
+const infoOf = (data: FinancialStatements | null | undefined, currency: string | null) => [
+  DESC,
+  data?.source && SOURCE_NOTES[data.source],
+  currency && `Amounts in ${currency}, as the company reports them; per-share figures with cents, shares as a count.`,
+  "Each line is a standard item, the same for every company: a company's own items aren't shown, and an item it doesn't report stays empty.",
+  "Where the company restated a figure, the latest filing's is shown. Marked * are computed: the free cash flow (from operations less capital expenditure), a fourth quarter's flows (the year's less its first three quarters').",
+].filter(Boolean).join("\n\n");
+
+// The statements of a frequency, as the card and the full statements read them (one request
+// each, shared).
+const useStatements = (listingId: string, frequency: StatementsFrequency) =>
+  useInvestmentsRead<FinancialStatements>(
     ["asset", listingId, "financialStatements", frequency],
     () => portfolioService.getAssetFinancialStatements(listingId, frequency),
   );
+
+// A table's body: loading, a frequency with none (an ESEF company's quarters), or the table.
+function StatementsBody({ data, rows, periods }: { data: FinancialStatements | undefined; rows: [string, string][]; periods: number }) {
+  if (data === undefined) {
+    return (
+      <p className="flex items-center gap-2 text-[12.5px] text-[#857e78]">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#C49A3C]" /> Loading…
+      </p>
+    );
+  }
+  if (data.periods.length === 0) {
+    return <p className="text-[12.5px] text-[#857e78]">No quarterly statements: the company files its accounts by year.</p>;
+  }
+  return <StatementTable data={data} rows={rows} periods={periods} />;
+}
+
+/**
+ * FINANCIAL STATEMENTS — on a share's page (AssetExplore), under Market data: the company's
+ * figures that say most (revenue, gross profit, operating and net income, diluted EPS, free cash
+ * flow, total assets, long-term debt) over its latest CARD_PERIODS years or quarters, which fit
+ * beside the labels on any screen (GET /v1/assets/{listing_id}/financial-statements). Its arrow
+ * (`onExplore`) opens the full statements, a page of the asset's (FinancialStatementsPage).
+ * Amounts in the currency the company reports in, as filed: compact, negatives in brackets,
+ * per-share figures with cents. A computed figure (a fourth quarter's flow, the free cash flow) is
+ * marked; each column links to the filing its figures were read from, a figure's own filing (a
+ * later one, for a restated value) in its tooltip. The foot names the source: the SEC (never its
+ * seal or logos), the ESEF reports via filings.xbrl.org, or the price provider. Left out for a
+ * fund, and for a company no source has statements of.
+ */
+export function FinancialStatementsModule({ listingId, onExplore }: { listingId: string; onExplore: () => void }) {
+  const [frequency, setFrequency] = useState<StatementsFrequency>("annual");
+  // undefined while it's read, null when it couldn't be.
+  const data = useStatements(listingId, frequency);
   // A company with no quarters (an ESEF one) keeps its annual table rather than an empty one.
   if (data === null || (data && frequency === "annual" && data.periods.length === 0)) return null;
-
-  const chip = (on: boolean) =>
-    `px-2.5 py-1 rounded-full border text-[11.5px] font-semibold transition-colors ${on ? "bg-[#1c1917] border-[#1c1917] text-white" : "border-[#E0DACC] text-[#78716c] hover:text-[#1c1917]"}`;
   const currency = data ? currencyOf(data.periods) : null;
-  const info = [
-    DESC,
-    data?.source && SOURCE_NOTES[data.source],
-    currency && `Amounts in ${currency}, as the company reports them; per-share figures with cents, shares as a count.`,
-    "Each line is a standard item, the same for every company: a company's own items aren't shown, and an item it doesn't report stays empty.",
-    "Where the company restated a figure, the latest filing's is shown. Marked * are computed: the free cash flow (from operations less capital expenditure), a fourth quarter's flows (the year's less its first three quarters').",
-  ].filter(Boolean).join("\n\n");
 
   return (
     <Module>
       <ModuleHead
         title={currency ? `Financial statements · ${currency}` : "Financial statements"}
         desc={DESC}
+        onExplore={data && data.periods.length > 0 ? onExplore : undefined}
         right={
           <div className="flex flex-wrap items-center gap-1.5">
-            {STATEMENTS.map((s) => (
-              <button key={s.key} type="button" aria-pressed={s.key === statement} onClick={() => setStatement(s.key)} className={chip(s.key === statement)}>
-                {s.title}
-              </button>
-            ))}
-            <div role="group" aria-label="Periods" className="ml-1.5 inline-flex rounded-lg bg-[#F3EFE6] p-0.5">
-              {(["annual", "quarterly"] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  aria-pressed={f === frequency}
-                  onClick={() => setFrequency(f)}
-                  className={`px-2 py-0.5 rounded-md text-[11px] font-bold tracking-[0.04em] transition-colors ${f === frequency ? "bg-white text-[#1c1917] shadow-sm" : "text-[#78716c] hover:text-[#1c1917]"}`}
-                >
-                  {f === "annual" ? "Annual" : "Quarterly"}
-                </button>
-              ))}
-            </div>
-            <CardInfo text={info} />
+            <FrequencySwitch frequency={frequency} onChange={setFrequency} />
+            <CardInfo text={infoOf(data, currency)} />
           </div>
         }
       />
       <div className={`${MODULE_BODY} flex flex-col gap-5`}>
-        {data === undefined ? (
-          <p className="flex items-center gap-2 text-[12.5px] text-[#857e78]">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-[#C49A3C]" /> Loading…
-          </p>
-        ) : data.periods.length === 0 ? (
-          <p className="text-[12.5px] text-[#857e78]">No quarterly statements: the company files its accounts by year.</p>
-        ) : (
-          <StatementTable data={data} statement={statement} />
-        )}
+        <StatementsBody data={data} rows={KEY_ITEMS} periods={CARD_PERIODS} />
         {data && data.source && <StatementsFoot source={data.source} />}
       </div>
     </Module>
   );
 }
 
-function StatementTable({ data, statement }: { data: FinancialStatements; statement: StatementKey }) {
-  const items = STATEMENTS.find((s) => s.key === statement)?.items ?? [];
-  const byPeriod = data.periods.map((period) => new Map(period.figures.map((f) => [f.item, f])));
+/**
+ * FINANCIAL STATEMENTS PAGE — the full statements, a page of the asset's (`name` its title in the
+ * trail, the step back to it; Esc too): the income statement, the balance sheet and the cash flow,
+ * one panel each, every item and every period (ten years, twelve quarters), by year or quarter
+ * (one switch for the three), the values scrolling sideways beside the labels where they don't
+ * fit. The page opens at its top, and the asset's page comes back where it was left.
+ */
+export function FinancialStatementsPage({ listingId, name, onClose }: { listingId: string; name: string; onClose: () => void }) {
+  const [frequency, setFrequency] = useState<StatementsFrequency>("annual");
+  const data = useStatements(listingId, frequency);
+  useEffect(() => {
+    const before = window.scrollY;
+    window.scrollTo({ top: 0 });
+    return () => {
+      requestAnimationFrame(() => window.scrollTo({ top: before }));
+    };
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const currency = data ? currencyOf(data.periods) : null;
+  const sourceNote = data?.source === "sec_filing" ? "From the company's filings with the SEC"
+    : data?.source === "esef_report" ? "From the company's annual financial reports (ESEF)"
+    : data?.source === "price_provider" ? "From Yahoo Finance" : undefined;
+
+  return (
+    <div className="space-y-[22px]">
+      <PageHeader
+        crumbs={[{ label: name, onClick: onClose }]}
+        title="Financial statements"
+        note={[sourceNote, currency && `amounts in ${currency}`].filter(Boolean).join(" · ") || undefined}
+      />
+      {data === null ? (
+        <Module><div className={`${MODULE_BODY} pt-[22px]`}><p className="text-[12.5px] text-[#857e78]">The statements couldn&apos;t be read.</p></div></Module>
+      ) : STATEMENTS.map((statement, i) => (
+        <ExplorePanel
+          key={statement.key}
+          title={statement.title === "Income" ? "Income statement" : statement.title}
+          desc={DESC}
+          right={
+            <div className="flex flex-wrap items-center gap-1.5">
+              <FrequencySwitch frequency={frequency} onChange={setFrequency} />
+              {i === 0 && <CardInfo text={infoOf(data, currency)} />}
+            </div>
+          }
+        >
+          <div className={`${MODULE_BODY} flex flex-col gap-5`}>
+            <StatementsBody data={data} rows={statement.items} periods={Infinity} />
+            {i === STATEMENTS.length - 1 && data && data.source && <StatementsFoot source={data.source} />}
+          </div>
+        </ExplorePanel>
+      ))}
+    </div>
+  );
+}
+
+// Every row the same height, the labels' and the values', so the two sides line up.
+const ROW = "h-10 border-b border-[#EEE9DD] last:border-b-0";
+const HEAD_ROW = "h-8 border-b border-[#EEE9DD]";
+
+/**
+ * A statement as a table: its labels in a column of their own that stays put, its periods'
+ * values beside them in the only part that scrolls sideways (a narrow screen, twelve quarters),
+ * so a value never passes over a label.
+ */
+function StatementTable({ data, rows: items, periods: shown }: { data: FinancialStatements; rows: [string, string][]; periods: number }) {
+  const periods = data.periods.slice(0, shown);
+  const byPeriod = periods.map((period) => new Map(period.figures.map((f) => [f.item, f])));
   const rows = items.filter(([item]) => byPeriod.some((figures) => figures.has(item)));
   if (rows.length === 0) {
-    return <p className="text-[12.5px] text-[#857e78]">The company&apos;s filings report none of this statement&apos;s items.</p>;
+    return <p className="text-[12.5px] text-[#857e78]">The company&apos;s filings report none of these items.</p>;
   }
   return (
-    <div className="-mx-6 overflow-x-auto px-6">
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="border-b border-[#EEE9DD]">
-            <th scope="col" className="sticky left-0 bg-white py-2 pr-4 text-left text-[11px] font-semibold text-[#857e78]" />
-            {data.periods.map((period) => {
-              const filing = filingOf(period);
-              const label = periodLabel(period, data.frequency);
-              return (
-                <th key={period.end} scope="col" title={`${dayLabel(period.start)} to ${dayLabel(period.end)}`} className="py-2 pl-4 text-right text-[11px] font-semibold text-[#857e78] whitespace-nowrap">
-                  {filing ? (
-                    <a href={filing} target="_blank" rel="noopener noreferrer" className={LINK_CLASS} title="Open the filing">
-                      {label}<ExternalLink className="h-2.5 w-2.5 shrink-0" />
-                    </a>
-                  ) : label}
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(([item, label]) => (
-            <tr key={item} className="border-b border-[#EEE9DD] last:border-b-0">
-              <th scope="row" className="sticky left-0 bg-white py-2.5 pr-4 text-left text-[12.5px] font-normal text-[#78716c] whitespace-nowrap">{label}</th>
-              {byPeriod.map((figures, i) => {
-                const figure = figures.get(item);
+    // The values' side scrolls with a trackpad, a touch or shift and the wheel, its scrollbar
+    // hidden; the labels' column runs as tall as it.
+    <div className="flex items-stretch">
+      <div className="shrink-0 border-r border-[#EEE9DD]">
+        <table className="border-collapse">
+          <thead>
+            <tr className={HEAD_ROW}><th scope="col" /></tr>
+          </thead>
+          <tbody>
+            {rows.map(([item, label]) => (
+              <tr key={item} className={ROW}>
+                <th scope="row" className="pr-4 text-left text-[12.5px] font-normal text-[#78716c] whitespace-nowrap">{label}</th>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className={HEAD_ROW}>
+              {periods.map((period) => {
+                const filing = filingOf(period);
+                const label = periodLabel(period, data.frequency);
                 return (
-                  <td
-                    key={data.periods[i].end}
-                    title={figure ? (figure.computed ? "Computed" : figure.filed ? `Filed ${dayLabel(figure.filed)}` : undefined) : undefined}
-                    className="py-2.5 pl-4 text-right text-[13px] font-bold tabular-nums text-[#1c1917] whitespace-nowrap"
-                  >
-                    {figure ? amount(figure) : <span className="font-normal text-[#c4bdb4]">—</span>}
-                    {figure?.computed && <sup className="ml-0.5 text-[9.5px] font-semibold text-[#857e78]">*</sup>}
-                  </td>
+                  <th key={period.end} scope="col" title={`${dayLabel(period.start)} to ${dayLabel(period.end)}`} className="pl-4 text-right text-[11px] font-semibold text-[#857e78] whitespace-nowrap">
+                    {filing ? (
+                      <a href={filing} target="_blank" rel="noopener noreferrer" className={LINK_CLASS} title="Open the filing">
+                        {label}<ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                      </a>
+                    ) : label}
+                  </th>
                 );
               })}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map(([item]) => (
+              <tr key={item} className={ROW}>
+                {byPeriod.map((figures, i) => {
+                  const figure = figures.get(item);
+                  return (
+                    <td
+                      key={periods[i].end}
+                      title={figure ? (figure.computed ? "Computed" : figure.filed ? `Filed ${dayLabel(figure.filed)}` : undefined) : undefined}
+                      className="pl-4 text-right text-[13px] font-bold tabular-nums text-[#1c1917] whitespace-nowrap"
+                    >
+                      {figure ? amount(figure) : <span className="font-normal text-[#c4bdb4]">—</span>}
+                      {figure?.computed && <sup className="ml-0.5 text-[9.5px] font-semibold text-[#857e78]">*</sup>}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

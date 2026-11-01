@@ -41,7 +41,7 @@ import { isBondClass } from "../../lib/rates";
 import { assetClassCodeOf, assetClassLabel, assetClassSingularLabel, type AssetClassCode } from "../../lib/assetClasses";
 import { CompanyDescriptionModule } from "./CompanyDescriptionModule";
 import { MarketDataModule } from "./MarketDataModule";
-import { FinancialStatementsModule } from "./FinancialStatementsModule";
+import { FinancialStatementsModule, FinancialStatementsPage } from "./FinancialStatementsModule";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { PageHeader } from "./PageHeader";
 import { ExploreView, ExploreHostContext, ExplorePanel, DataTable, useExploreHost, type DataColumn } from "./ExploreView";
@@ -2148,6 +2148,8 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
   );
   const [range, setRange] = useState<AssetChartRange>("1Y");
   const [inQuoteCurrency, setInQuoteCurrency] = useState(false);
+  // The company's full statements open as a page of the asset's, over it.
+  const [statementsOpen, setStatementsOpen] = useState(false);
   // The last range's answer stays up while another range's loads (keepPrevious).
   const detail = useInvestmentsQuery<AssetDetailResponse>(
     ["asset", listingId, range], () => portfolioService.getAssetDetail(listingId, range), { keepPrevious: true },
@@ -2180,6 +2182,10 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
     ) : (
       <Module><ModuleMessage>{error}</ModuleMessage></Module>
     );
+  }
+
+  if (statementsOpen) {
+    return <FinancialStatementsPage listingId={listingId} name={data.name} onClose={() => setStatementsOpen(false)} />;
   }
 
   const first = series?.values[0];
@@ -2333,7 +2339,7 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
 
       <MarketDataModule listingId={listingId} />
 
-      <FinancialStatementsModule listingId={listingId} />
+      <FinancialStatementsModule listingId={listingId} onExplore={() => setStatementsOpen(true)} />
 
       {isBondClass(assetClassCode) && <BondRatesModule isin={data.isin} name={data.name} currency={data.quoteCurrency} />}
 
