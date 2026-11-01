@@ -41,6 +41,7 @@ import { isBondClass } from "../../lib/rates";
 import { assetClassCodeOf, assetClassLabel, assetClassSingularLabel, type AssetClassCode } from "../../lib/assetClasses";
 import { CompanyDescriptionModule } from "./CompanyDescriptionModule";
 import { MarketDataModule } from "./MarketDataModule";
+import { FinancialStatementsModule } from "./FinancialStatementsModule";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { PageHeader } from "./PageHeader";
 import { ExploreView, ExploreHostContext, ExplorePanel, DataTable, useExploreHost, type DataColumn } from "./ExploreView";
@@ -2331,6 +2332,8 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
       <CompanyDescriptionModule profile={data.profile ?? null} />
 
       <MarketDataModule listingId={listingId} />
+
+      <FinancialStatementsModule listingId={listingId} />
 
       {isBondClass(assetClassCode) && <BondRatesModule isin={data.isin} name={data.name} currency={data.quoteCurrency} />}
 
