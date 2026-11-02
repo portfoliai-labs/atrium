@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Archive, Landmark, Loader2, Plus } from "lucide-react";
+import { Archive, Landmark, Loader2, Plus, Wallet as WalletIcon } from "lucide-react";
 import { useWalletQuery, useWalletRead, useWallets, useWalletSummary } from "../../../context/WalletsContext";
 // The retired hub's (see below): import { useWalletSummaries } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
@@ -21,6 +21,7 @@ import { WalletsComposition } from "./WalletsComposition";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { PreviewBadge } from "../../preview/PreviewKit";
 import { WalletAlerts } from "./WalletAlerts";
+import { WalletAddresses } from "./WalletAddresses";
 import { WalletBankDialog, WalletBanks, useWalletLinked } from "./WalletBanks";
 import { WalletBudgets } from "./WalletBudgets";
 import { AddMovementDialog, WalletFormDialog } from "./WalletDialogs";
@@ -29,11 +30,11 @@ import { WalletImportDialog } from "./WalletImportDialog";
 import { WalletInsights } from "./WalletInsights";
 import { WalletTransactions } from "./WalletTransactions";
 
-export type WalletPage = "insights" | "transactions" | "budgets" | "alerts" | "banks" | "manage";
+export type WalletPage = "insights" | "transactions" | "budgets" | "alerts" | "banks" | "addresses" | "manage";
 
 export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
   insights: "Insights", transactions: "Transactions", budgets: "Budgets", alerts: "Alerts", banks: "Banks",
-  manage: "Manage wallets",
+  addresses: "On-chain", manage: "Manage wallets",
 };
 
 const ARCHIVED_TITLE = "An archived wallet is read only";
@@ -50,7 +51,8 @@ const CONNECT_PARAM = "connectBank";
  * balance, its activity (each count opening its page), what can be done with it and its year in
  * figures; under it, on All wallets, its Composition, a row per wallet going down to that wallet
  * (the archived ones listed after it), then the Insights. Its Transactions, Budgets and Alerts are pages of
- * their own, and All wallets' Banks (the banks connected through open banking) and Manage wallets (each
+ * their own, and All wallets' Banks (the banks connected through open banking), On-chain (the user's
+ * own wallets on a blockchain, each proved theirs by a signature) and Manage wallets (each
  * wallet's bank account linked there). A wallet that's gone (deleted, or from an old link) opens all
  * of them. Archived wallets are read only, and so is everything for a demo account.
  */
@@ -199,6 +201,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     const right = page === "manage" ? (
       <div className="flex gap-2">
         <SmallButton icon={<Landmark className="h-3.5 w-3.5" />} onClick={() => onOpen(ALL_WALLETS, "banks")}>Connect a bank</SmallButton>
+        <SmallButton icon={<WalletIcon className="h-3.5 w-3.5" />} onClick={() => onOpen(ALL_WALLETS, "addresses")}>Connect a wallet</SmallButton>
         <SmallButton icon={<Plus className="h-3.5 w-3.5" />} dark onClick={() => setDialog("new")} {...sampleLock}>New wallet</SmallButton>
       </div>
     ) : undefined;
@@ -221,6 +224,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         )}
         {page === "alerts" && <WalletAlerts scope={scope} />}
         {page === "banks" && <WalletBanks />}
+        {page === "addresses" && <WalletAddresses />}
         {page === "manage" && <ManageWallets onOpenWallet={(uuid) => onOpen(uuid, "insights")} onOpenBanks={() => onOpen(ALL_WALLETS, "banks")} />}
         {dialogs}
       </div>
