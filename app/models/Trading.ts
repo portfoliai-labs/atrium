@@ -19,6 +19,8 @@ export interface OnchainAddress {
   chain: string;
   address: string;
   registeredAt: string;
+  // When the chain was last read for it; null before its first read.
+  readAt: string | null;
 }
 
 export type TradingAccountKind = "chain_address" | "broker_account";

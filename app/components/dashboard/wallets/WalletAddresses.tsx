@@ -3,7 +3,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowDownToLine, Check, Copy, ExternalLink, Plus, Trash2, TriangleAlert, Wallet as WalletIcon } from "lucide-react";
+import { ArrowDownToLine, Check, Copy, ExternalLink, Plus, RefreshCw, Trash2, TriangleAlert, Wallet as WalletIcon } from "lucide-react";
 import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
 import { tradingService } from "../../../services/tradingService";
 import {
@@ -14,6 +14,7 @@ import {
   signMessage,
   subscribeSolanaWallets,
 } from "../../../lib/solanaWallets";
+import { formatCurrency } from "../../../lib/format";
 import { dayLabel, errorText } from "../../../lib/wallets";
 import type { OnchainAddress } from "../../../models/Trading";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
@@ -44,7 +45,7 @@ export function useOnchainAddresses() {
  * when the address is removed. A demo account's are read only.
  */
 export function WalletAddresses() {
-  const { sample, changed } = useWallets();
+  const { wallets, sample, changed } = useWallets();
   const read = useOnchainAddresses();
   const [connecting, setConnecting] = useState(false);
   const [removing, setRemoving] = useState<OnchainAddress | null>(null);
@@ -52,8 +53,31 @@ export function WalletAddresses() {
   const [error, setError] = useState<string | null>(null);
   // The address whose Add funds is open, under its row.
   const [funding, setFunding] = useState<string | null>(null);
+  // The address being read now, and what each read found.
+  const [reading, setReading] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
 
   const addresses = read.isError ? null : read.data;
+  // Its stablecoins' balances: the crypto wallets the chain's reads made.
+  const cash = wallets.filter((w) => w.kind === "crypto" && !w.archived);
+
+  const readNow = async (address: OnchainAddress) => {
+    setReading(address.uuid);
+    setError(null);
+    try {
+      const { movements } = await tradingService.read(address.uuid);
+      setNotes((n) => ({
+        ...n,
+        [address.uuid]: movements === 0 ? "Read: nothing new." : `Read: ${movements} new movement${movements === 1 ? "" : "s"}, in its wallets in a moment.`,
+      }));
+      changed();
+    } catch (err) {
+      setError(errorText(err, "Unable to read this address now."));
+    } finally {
+      setReading(null);
+      void read.refetch();
+    }
+  };
 
   const remove = async () => {
     if (!removing) return;
@@ -110,9 +134,18 @@ export function WalletAddresses() {
                     <span className="min-w-0 flex-1">
                       <span className="block text-[13px] font-bold text-slate-800">Solana {shortAddress(address.address)}</span>
                       <span className="block text-[11.5px] text-slate-500 truncate" title={address.address}>
-                        {address.address} · added {dayLabel(address.registeredAt.slice(0, 10))}
+                        {address.address} · {address.readAt ? `read ${dayLabel(address.readAt.slice(0, 10))}` : "not read yet"}
                       </span>
                     </span>
+                    <IconButton
+                      label="Read now"
+                      onClick={() => void readNow(address)}
+                      spinning={reading === address.uuid}
+                      disabled={sample}
+                      title={sample ? DEMO_DISABLED_TITLE : undefined}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    </IconButton>
                     <button
                       type="button"
                       onClick={() => setFunding((open) => (open === address.uuid ? null : address.uuid))}
@@ -131,6 +164,7 @@ export function WalletAddresses() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </IconButton>
                   </div>
+                  {notes[address.uuid] && <p className="pl-12 text-[11.5px] font-semibold text-emerald-700">{notes[address.uuid]}</p>}
                   {funding === address.uuid && <AddFunds address={address.address} />}
                 </li>
               ))}
@@ -139,6 +173,30 @@ export function WalletAddresses() {
           {error && !removing && <p className="mt-3 text-xs font-medium text-rose-600">{error}</p>}
         </div>
       </Module>
+
+      {cash.length > 0 && (
+        <Module>
+          <ModuleHead
+            title="Stablecoins"
+            desc="What your addresses hold as cash, read from the chain: each one a wallet, its movements in and out booked as a bank's. A card payment that bought one is suggested as a transfer to it."
+          />
+          <div className={MODULE_BODY}>
+            <ul className="divide-y divide-[#EEE9DD]">
+              {cash.map((wallet) => (
+                <li key={wallet.uuid} className="py-3 flex items-center gap-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-bold text-slate-800">{wallet.name}</span>
+                    <span className="block text-[11.5px] text-slate-500">
+                      {[wallet.institution, wallet.lastMovementDate && `last movement ${dayLabel(wallet.lastMovementDate)}`].filter(Boolean).join(" · ")}
+                    </span>
+                  </span>
+                  <span className="text-[13px] font-bold text-slate-800 tabular-nums">{formatCurrency(wallet.balance, wallet.currency, 2)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Module>
+      )}
 
       {connecting && (
         <ConnectWalletDialog

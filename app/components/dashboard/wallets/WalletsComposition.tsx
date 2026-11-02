@@ -4,13 +4,13 @@
 import { useMemo } from "react";
 import { useWallets } from "../../../context/WalletsContext";
 import { formatCurrency } from "../../../lib/format";
-import { KIND_LABELS, WALLET_KINDS, walletColor } from "../../../lib/wallets";
+import { KIND_LABELS, walletColor } from "../../../lib/wallets";
 import type { WalletKind } from "../../../models/Wallet";
 import { DonutList, type DonutItem } from "../DonutList";
 import { HBars, MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 
 const KIND_COLORS: Record<WalletKind, string> = {
-  current_account: "#2a78d6", credit_card: "#e34948", savings: "#1baf7a", cash: "#eda100",
+  current_account: "#2a78d6", credit_card: "#e34948", savings: "#1baf7a", cash: "#eda100", crypto: "#7c5cd6",
 };
 
 /**
@@ -39,7 +39,8 @@ export function WalletsComposition({ currency, onOpen }: { currency: string; onO
     };
   }), [active, currency, onOpen]);
 
-  const kinds = WALLET_KINDS.map((kind) => {
+  // Every kind, a crypto wallet's too (WALLET_KINDS are those made by hand).
+  const kinds = (Object.keys(KIND_LABELS) as WalletKind[]).map((kind) => {
     const own = active.filter(({ w }) => w.kind === kind && w.currency === currency);
     return { kind, count: own.length, value: own.reduce((s, { w }) => s + w.balance, 0) };
   }).filter((k) => k.count > 0);

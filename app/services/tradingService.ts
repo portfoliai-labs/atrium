@@ -24,6 +24,12 @@ export const tradingService = {
     return apiFetch<OnchainAddress[]>(`/v1/addresses`);
   },
 
+  // POST /v1/addresses/{a}/read — its stablecoins read now; their movements come into its wallets
+  // moments later. 503 while the Solana node fails.
+  async read(addressUuid: string): Promise<{ movements: number }> {
+    return apiFetch<{ movements: number }>(`/v1/addresses/${addressUuid}/read`, { method: "POST" });
+  },
+
   // DELETE /v1/addresses/{a} — nothing is read from it any more; its portfolio and wallets stay.
   async remove(addressUuid: string): Promise<void> {
     await apiFetch(`/v1/addresses/${addressUuid}`, { method: "DELETE" });
