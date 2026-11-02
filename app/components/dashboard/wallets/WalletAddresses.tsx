@@ -2,7 +2,8 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { ExternalLink, Plus, Trash2, Wallet as WalletIcon } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { ArrowDownToLine, Check, Copy, ExternalLink, Plus, Trash2, TriangleAlert, Wallet as WalletIcon } from "lucide-react";
 import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
 import { tradingService } from "../../../services/tradingService";
 import {
@@ -49,6 +50,8 @@ export function WalletAddresses() {
   const [removing, setRemoving] = useState<OnchainAddress | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The address whose Add funds is open, under its row.
+  const [funding, setFunding] = useState<string | null>(null);
 
   const addresses = read.isError ? null : read.data;
 
@@ -99,25 +102,36 @@ export function WalletAddresses() {
           ) : (
             <ul className="divide-y divide-[#EEE9DD]">
               {addresses.map((address) => (
-                <li key={address.uuid} className="py-4 flex items-center gap-3">
-                  <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-[#C49A3C]/10 text-[#C49A3C]">
-                    <WalletIcon className="h-4 w-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-bold text-slate-800">Solana {shortAddress(address.address)}</span>
-                    <span className="block text-[11.5px] text-slate-500 truncate" title={address.address}>
-                      {address.address} · added {dayLabel(address.registeredAt.slice(0, 10))}
+                <li key={address.uuid} className="py-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-[#C49A3C]/10 text-[#C49A3C]">
+                      <WalletIcon className="h-4 w-4" />
                     </span>
-                  </span>
-                  <IconButton
-                    label="Remove"
-                    danger
-                    onClick={() => { setError(null); setRemoving(address); }}
-                    disabled={sample}
-                    title={sample ? DEMO_DISABLED_TITLE : undefined}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </IconButton>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-bold text-slate-800">Solana {shortAddress(address.address)}</span>
+                      <span className="block text-[11.5px] text-slate-500 truncate" title={address.address}>
+                        {address.address} · added {dayLabel(address.registeredAt.slice(0, 10))}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFunding((open) => (open === address.uuid ? null : address.uuid))}
+                      aria-expanded={funding === address.uuid}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11.5px] font-bold border border-slate-200 text-slate-700 hover:border-[#C49A3C]/60 transition-colors"
+                    >
+                      <ArrowDownToLine className="h-3.5 w-3.5" /> Add funds
+                    </button>
+                    <IconButton
+                      label="Remove"
+                      danger
+                      onClick={() => { setError(null); setRemoving(address); }}
+                      disabled={sample}
+                      title={sample ? DEMO_DISABLED_TITLE : undefined}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </IconButton>
+                  </div>
+                  {funding === address.uuid && <AddFunds address={address.address} />}
                 </li>
               ))}
             </ul>
@@ -144,6 +158,55 @@ export function WalletAddresses() {
         />
       )}
     </>
+  );
+}
+
+// The stablecoins an address' account counts as cash (catena's stablecoins), as the user picks them
+// in their wallet or exchange.
+const STABLECOINS = "USDC or EURC";
+
+/**
+ * ADD FUNDS — how money reaches an address without the platform selling anything (forum's service
+ * map, "Funding an address"): the user buys a stablecoin in their own wallet, or at an exchange, and
+ * sends it here on Solana. The QR code holds the plain address, which any wallet or exchange reads.
+ * Its arrival comes into the address' account with the chain's reads.
+ */
+function AddFunds({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* the address stays on screen to copy by hand */ }
+  };
+  return (
+    <div className="ml-12 rounded-2xl border border-[#EEE9DD] bg-[#FAF8F3] p-4 flex flex-col sm:flex-row gap-5">
+      <div className="shrink-0 self-center rounded-xl bg-white p-3 border border-[#EEE9DD]">
+        <QRCodeSVG value={address} size={132} level="M" />
+      </div>
+      <div className="min-w-0 space-y-3 text-[12.5px] text-slate-600">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">Your Solana address</p>
+          <div className="mt-1 flex items-center gap-2">
+            <code className="min-w-0 break-all text-[12px] font-semibold text-slate-800">{address}</code>
+            <IconButton label={copied ? "Copied" : "Copy the address"} onClick={() => void copy()}>
+              {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+            </IconButton>
+          </div>
+        </div>
+        <ol className="list-decimal pl-4 space-y-1">
+          <li>Buy {STABLECOINS} in your wallet (Phantom and Solflare have a Buy button), or at an exchange where you have an account.</li>
+          <li>From an exchange, withdraw it to this address, choosing the <strong>Solana</strong> network.</li>
+          <li>It shows in this address&apos; account once the chain is read; the card or bank payment can then be linked to it as a transfer.</li>
+        </ol>
+        <p className="flex gap-2 rounded-xl bg-amber-50 px-3 py-2 text-[11.5px] font-medium text-amber-800">
+          <TriangleAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          Send only {STABLECOINS} on the Solana network: funds sent on another network, or another token, may be lost. The
+          platform never holds them: the purchase is between you and your wallet&apos;s or exchange&apos;s provider.
+        </p>
+      </div>
+    </div>
   );
 }
 
