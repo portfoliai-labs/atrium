@@ -3,7 +3,8 @@
 // come back as numbers and are accepted as numbers or decimal strings. Dates are YYYY-MM-DD,
 // months YYYY-MM.
 
-export type WalletKind = "current_account" | "credit_card" | "savings" | "cash";
+// "crypto": a stablecoin's balance on an on-chain address, made by the chain's reads (never by hand).
+export type WalletKind = "current_account" | "credit_card" | "savings" | "cash" | "crypto";
 
 // Whether a movement is income or spending is its sign (money in positive), never its category.
 // The 16 presets every user's categories start from (see Category). As a field next to a
@@ -13,7 +14,8 @@ export type MovementCategory =
   | "housing" | "groceries" | "restaurants" | "transport" | "utilities" | "subscriptions"
   | "shopping" | "health" | "travel" | "leisure" | "other_spending";
 
-export type MovementSource = "manual" | "import" | "bank";
+// "chain": read from an on-chain address (a crypto wallet's).
+export type MovementSource = "manual" | "import" | "bank" | "chain";
 
 // Who gave a movement its category: the user (it stays until they change it) or their rule for
 // the payee (it follows the rule).

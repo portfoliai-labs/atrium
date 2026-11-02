@@ -20,8 +20,11 @@ export const KIND_LABELS: Record<WalletKind, string> = {
   credit_card: "Credit card",
   savings: "Savings",
   cash: "Cash",
+  crypto: "Crypto",
 };
-export const WALLET_KINDS = Object.keys(KIND_LABELS) as WalletKind[];
+// The kinds a wallet is made with by hand: a crypto one is made by the chain's reads, in its
+// address' account.
+export const WALLET_KINDS: WalletKind[] = ["current_account", "credit_card", "savings", "cash"];
 
 // The presets, as every user's categories start: worded and coloured here until renamed or recoloured.
 export const INCOME_CATEGORIES: MovementCategory[] = ["salary", "freelance", "refunds", "interest", "other_income"];
