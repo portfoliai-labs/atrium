@@ -80,6 +80,15 @@ export interface Wallet {
   balance: number;
   lastMovementDate: string | null;
   createdAt: string;
+  // The account it is one of the balances of (models/Account), if any: a bank's or an address'.
+  accountUuid: string | null;
+  // Whole only on a single wallet's read (walletService.get and the writes); null in the list.
+  iban: string | null;
+  // Wherever it has an IBAN.
+  ibanLast4: string | null;
+  // A credit card's only: the wallet it is settled from, and the day of the month.
+  settlesFromWalletUuid: string | null;
+  settlementDay: number | null;
 }
 
 export interface WalletCreateRequest {
@@ -90,10 +99,16 @@ export interface WalletCreateRequest {
   openingBalance?: Amount;
   openingDate?: string;
   color?: string | null;
+  // Spaces allowed; its check digits are checked (InvalidWalletError).
+  iban?: string | null;
+  settlesFromWalletUuid?: string | null;
+  // 1-31.
+  settlementDay?: number | null;
 }
 
-// The fields to change: null or left out keeps the value. The currency changes only while the
-// wallet has no movements.
+// The fields to change: null or left out keeps the value; "" clears the institution, the colour,
+// the IBAN and the wallet settled from, 0 the settlement day. The currency changes only while the
+// wallet has no movements, the kind only while its cards still fit it.
 export type WalletUpdateRequest = Partial<WalletCreateRequest>;
 
 export interface Movement {
@@ -116,6 +131,8 @@ export interface Movement {
   transferUuid: string | null;
   counterpartWalletUuid: string | null;
   createdAt: string;
+  // The card that made it, one of its wallet's.
+  cardUuid: string | null;
 }
 
 /**
@@ -140,6 +157,8 @@ export interface MovementInput {
   categoryUuid?: string | null;
   counterparty?: string | null;
   note?: string | null;
+  // One of its wallet's cards; "" clears it in a change.
+  cardUuid?: string | null;
 }
 
 // The fields to change. A transfer's leg takes no date, amount or category change; a category is

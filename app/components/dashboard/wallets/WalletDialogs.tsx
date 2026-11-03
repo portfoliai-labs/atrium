@@ -1,14 +1,16 @@
 // components/dashboard/wallets/WalletDialogs.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeftRight, Loader2, Pencil, Plus, X } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
 import { COMMON_CURRENCIES, KIND_LABELS, WALLET_COLORS, WALLET_KINDS, errorText, today } from "../../../lib/wallets";
 import type { Movement, Wallet, WalletKind } from "../../../models/Wallet";
+import { useCards } from "../../../hooks/useAccounts";
 import { WalletBankSync } from "./WalletBanks";
+import { cardLabel } from "./WalletCards";
 import { CategoryPicker } from "./WalletCategories";
 
 // ── The pieces every dialog here is made of ──
@@ -100,8 +102,11 @@ const amountText = (v: number) => String(Math.abs(v));
 
 /**
  * New wallet, or a wallet's settings: name, kind, institution, currency (only while it has no
- * movements), opening balance and day (no movement can be booked before it), colour; and, for a
- * wallet linked to a bank account, reading it now.
+ * movements), opening balance and day (no movement can be booked before it), colour, its IBAN (read
+ * whole when the dialog opens: the list has only its last four characters) and, for a credit card,
+ * the wallet it is settled from and the day; and, for a wallet linked to a bank account, reading it
+ * now. An address' stablecoin (crypto) has no IBAN. Its account is the bank's or the address' that
+ * brings its movements, never chosen here.
  */
 export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }: {
   wallet?: Wallet;
@@ -117,13 +122,39 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
   const [opening, setOpening] = useState(wallet ? String(wallet.openingBalance) : "0");
   const [openingDate, setOpeningDate] = useState(wallet?.openingDate ?? today());
   const [color, setColor] = useState(wallet?.color ?? WALLET_COLORS.find((c) => !takenColors.includes(c)) ?? WALLET_COLORS[0]);
+  // The stored IBAN, whole: undefined until read (a new wallet has none).
+  const [storedIban, setStoredIban] = useState<string | null | undefined>(wallet ? (wallet.ibanLast4 ? undefined : null) : null);
+  const [iban, setIban] = useState("");
+  const [settlesFrom, setSettlesFrom] = useState(wallet?.settlesFromWalletUuid ?? "");
+  const [settlementDay, setSettlementDay] = useState(wallet?.settlementDay ? String(wallet.settlementDay) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { wallets } = useWallets();
+
+  useEffect(() => {
+    if (!wallet || storedIban !== undefined) return;
+    let current = true;
+    walletService.get(wallet.uuid).then(
+      (read) => { if (current) { setStoredIban(read.iban); setIban(read.iban ?? ""); } },
+      () => { if (current) setStoredIban(null); },
+    );
+    return () => { current = false; };
+  }, [wallet, storedIban]);
+
+  const credit = kind === "credit_card";
+  const banked = kind !== "crypto" && kind !== "cash";
+  // The wallets a credit card can be settled from: the others, not credit cards, not archived.
+  const sources = wallets.filter((w) => w.uuid !== wallet?.uuid && w.kind !== "credit_card" && !w.archived);
+  const compactIban = banked ? iban.replace(/\s/g, "").toUpperCase() : "";
+  const day = settlementDay.trim() ? Number(settlementDay) : null;
 
   const hasMovements = !!wallet?.lastMovementDate;
   const openingAmount = parseAmount(opening);
   const code = currency.trim().toUpperCase();
-  const valid = name.trim().length > 0 && openingAmount !== null && /^[A-Z]{3}$/.test(code) && !!openingDate;
+  const valid = name.trim().length > 0 && openingAmount !== null && /^[A-Z]{3}$/.test(code) && !!openingDate
+    && (!compactIban || /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(compactIban))
+    && (day === null || (Number.isInteger(day) && day >= 1 && day <= 31))
+    && storedIban !== undefined;
 
   const submit = async () => {
     setBusy(true);
@@ -133,7 +164,8 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
       if (!wallet) {
         saved = await walletService.create({
           name: name.trim(), kind, currency: code, institution: institution.trim() || null,
-          openingBalance: openingAmount!, openingDate, color,
+          openingBalance: openingAmount!, openingDate, color, iban: compactIban || null,
+          settlesFromWalletUuid: credit ? settlesFrom || null : null, settlementDay: credit ? day : null,
         });
       } else {
         // Only what changed; "" clears the institution.
@@ -145,6 +177,11 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
           ...(Number(openingAmount) !== wallet.openingBalance ? { openingBalance: openingAmount! } : {}),
           ...(openingDate !== wallet.openingDate ? { openingDate } : {}),
           ...(color !== wallet.color ? { color } : {}),
+          // "" clears the IBAN and the wallet settled from; 0 the day. A wallet no longer a credit
+          // card's loses them in arca.
+          ...(compactIban !== (storedIban ?? "") ? { iban: compactIban } : {}),
+          ...(credit && settlesFrom !== (wallet.settlesFromWalletUuid ?? "") ? { settlesFromWalletUuid: settlesFrom } : {}),
+          ...(credit && day !== wallet.settlementDay ? { settlementDay: day ?? 0 } : {}),
         });
       }
       onSaved(saved);
@@ -201,6 +238,33 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
             className={INPUT}
           />
         </Field>
+        {banked && (
+          <Field label="IBAN" hint={storedIban === undefined ? "Reading…" : "Optional."} className="sm:col-span-2">
+            <input
+              value={iban}
+              onChange={(e) => setIban(e.target.value.toUpperCase())}
+              disabled={storedIban === undefined}
+              maxLength={42}
+              autoComplete="off"
+              placeholder={wallet?.ibanLast4 && storedIban === undefined ? `•••• ${wallet.ibanLast4}` : "IT60 X054 2811 1010 0000 0123 456"}
+              className={INPUT}
+            />
+          </Field>
+        )}
+        {credit && (
+          <>
+            <Field label="Settled from" hint="The account its balance is paid from.">
+              <select value={settlesFrom} onChange={(e) => setSettlesFrom(e.target.value)} className={INPUT}>
+                <option value="">Not set</option>
+                {sources.map((w) => <option key={w.uuid} value={w.uuid}>{w.name}</option>)}
+                {settlesFrom && !sources.some((w) => w.uuid === settlesFrom) && <option value={settlesFrom}>…</option>}
+              </select>
+            </Field>
+            <Field label="Settlement day" hint="Of the month, 1-31.">
+              <input value={settlementDay} onChange={(e) => setSettlementDay(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="15" className={INPUT} />
+            </Field>
+          </>
+        )}
       </div>
       <div className="space-y-1.5">
         <span className="block text-[11px] font-black uppercase tracking-widest text-slate-400">Colour</span>
@@ -249,6 +313,9 @@ export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
   const [category, setCategory] = useState(movement?.categoryUuid ?? "");
   const [counterparty, setCounterparty] = useState(movement?.counterparty ?? "");
   const [note, setNote] = useState(movement?.note ?? "");
+  // A card's uuid, or "" for none.
+  const [card, setCard] = useState(movement?.cardUuid ?? "");
+  const walletCards = (useCards().data ?? []).filter((c) => c.walletUuid === wallet.uuid);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -265,7 +332,7 @@ export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
       if (!movement) {
         await walletService.addMovements(wallet.uuid, [{
           bookedOn, description: description.trim(), amount: signed!, categoryUuid: chosen,
-          counterparty: counterparty.trim() || null, note: note.trim() || null,
+          counterparty: counterparty.trim() || null, note: note.trim() || null, cardUuid: card || null,
         }]);
       } else {
         // Only what changed; "" clears the counterparty or the note.
@@ -273,6 +340,8 @@ export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
           ...(description.trim() !== movement.description ? { description: description.trim() } : {}),
           ...(counterparty.trim() !== (movement.counterparty ?? "") ? { counterparty: counterparty.trim() } : {}),
           ...(note.trim() !== (movement.note ?? "") ? { note: note.trim() } : {}),
+          // "" clears it.
+          ...(card !== (movement.cardUuid ?? "") ? { cardUuid: card } : {}),
           ...(!leg && bookedOn !== movement.bookedOn ? { bookedOn } : {}),
           ...(!leg && Number(signed) !== movement.amount ? { amount: signed! } : {}),
           ...(!leg && chosen && chosen !== movement.categoryUuid ? { categoryUuid: chosen } : {}),
@@ -344,6 +413,15 @@ export function MovementDialog({ wallet, movement, tabs, onClose, onSaved }: {
         <Field label="Counterparty">
           <input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} placeholder="Optional" className={INPUT} />
         </Field>
+        {(walletCards.length > 0 || card) && (
+          <Field label="Card" className="sm:col-span-2">
+            <select value={card} onChange={(e) => setCard(e.target.value)} className={INPUT}>
+              <option value="">None</option>
+              {walletCards.map((c) => <option key={c.uuid} value={c.uuid}>{cardLabel(c)}</option>)}
+              {card && !walletCards.some((c) => c.uuid === card) && <option value={card}>…</option>}
+            </select>
+          </Field>
+        )}
         <Field label="Note" className="sm:col-span-2">
           <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} rows={2} placeholder="Optional" className={`${INPUT} h-auto py-2.5 resize-none`} />
         </Field>
