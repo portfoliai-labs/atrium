@@ -17,7 +17,7 @@ import { portfolioService } from "../../services/portfolioService";
 import { portfoliosService } from "../../services/portfoliosService";
 import { transactionService } from "../../services/transactionService";
 import { STRATEGY_PROXIES, simulatedPeriod, targetLabel, type StrategyFrequency, type StrategyParams, type StrategyResponse } from "../../models/Strategy";
-import { exchangeLabel, listingLine } from "../../models/Listing";
+import { exchangeLabel, listingLine, type Listing } from "../../models/Listing";
 import { ApiError } from "../../services/apiClient";
 import { formatCompact, formatCurrency, formatQuantity } from "../../lib/format";
 import { toChartPoints, type SeriesPoint } from "../../lib/series";
@@ -2197,6 +2197,8 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
   const assetClassCode = assetClassCodeOf(data);
   const facts: { label: string; value: string }[] = [
     { label: "Ticker", value: data.ticker },
+    // A tracker is another issuer's security, priced as the listing it tracks.
+    ...(data.listing?.tracking ? [{ label: "Issued by", value: data.listing.tracking.issuer }] : []),
     ...(data.listing?.exchangeMic ? [{ label: "Market", value: exchangeLabel(data.listing.exchangeMic, data.listing.exchangeName)! }] : []),
     ...(data.isin ? [{ label: "ISIN", value: data.isin }] : []),
     { label: "Asset class", value: assetClassSingularLabel(assetClassCode) },
@@ -2362,6 +2364,7 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
             </dl>
           </Module>
           <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
+          {(data.trackers?.length ?? 0) > 0 && <TrackersModule trackers={data.trackers!} />}
         </div>
         <AssetNewsModule listingId={listingId} name={data.name} />
         <AssetArticlesModule instrumentId={data.listing?.instrumentId ?? null} ticker={data.ticker} isin={data.isin} />
@@ -2851,6 +2854,27 @@ function joinAssetPnl(realized: RealizedPnlResponse | null, dividends: Dividends
  * locked in, what it has paid, the total, then its dividends over the last two years and its
  * yields. Every column sorts; it scrolls sideways when it doesn't fit.
  */
+/** The instrument's tokens (census' trackers): another issuer's security each, which tracks the
+ * instrument and is priced as it, held in a wallet of the user's own. */
+function TrackersModule({ trackers }: { trackers: Listing[] }) {
+  return (
+    <Module>
+      <ModuleHead
+        title="Tokenized versions"
+        desc="Tokens tracking this asset, each another issuer's security: not a share, with the issuer's risk."
+      />
+      <dl className={MODULE_BODY}>
+        {trackers.map((t) => (
+          <div key={t.listingId} className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-4 py-2.5 border-b border-[#EEE9DD] last:border-b-0">
+            <dt className="text-[13.5px] font-bold text-[#1c1917]">{t.ticker}</dt>
+            <dd className="text-right text-[12.5px] text-[#78716c] break-words">{t.tracking?.issuer ?? "—"}</dd>
+          </div>
+        ))}
+      </dl>
+    </Module>
+  );
+}
+
 function AssetPnlTable({ realized, dividends, withDividends }: {
   realized: RealizedPnlResponse | null;
   dividends: DividendsResponse | null;

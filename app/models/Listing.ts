@@ -23,6 +23,14 @@ interface Listing {
   currencyConfirmed: boolean;
   // Whether a provider prices it; null until someone picked it.
   priced: boolean | null;
+  // A tracker's (another issuer's security tracking the instrument: Ondo's AAPLon for Apple): its
+  // issuer and the listing it tracks, priced as that one; null for the instrument's own listings.
+  tracking?: ListingTracking | null;
+}
+
+interface ListingTracking {
+  trackedListingId: string;
+  issuer: string;
 }
 
 // A security as something that names one gives it back (a saved transaction: its ticker, name
@@ -69,5 +77,5 @@ function listingLine(listing: ListingRef): string {
   ].filter(Boolean).join(" · ");
 }
 
-export type { Listing, ListingRef };
+export type { Listing, ListingRef, ListingTracking };
 export { exchangeLabel, listingLine };
