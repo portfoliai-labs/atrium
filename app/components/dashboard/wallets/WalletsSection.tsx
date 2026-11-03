@@ -3,10 +3,12 @@
 
 import { useSectionView } from "../../../lib/dashboardHistory";
 import { WALLETS_SECTION } from "../../../lib/dashboardNav";
-import { ALL_WALLETS } from "../../../lib/wallets";
+import { ALL_WALLETS, accountOfView } from "../../../lib/wallets";
+import { AccountNode } from "./AccountNode";
 import { WALLET_PAGE_LABELS, WalletNode, type WalletPage } from "./WalletNode";
 
-// A wallet, or every wallet together (ALL_WALLETS), on one of its pages.
+// A wallet, or every wallet together (ALL_WALLETS), on one of its pages; or an account's page
+// (lib/wallets' accountView), its only one being its overview.
 export type WalletsView = { id: string; page: WalletPage };
 
 // A link into a page from outside the dashboard (`/dashboard?section=wallets&walletsPage=banks`, or
@@ -25,11 +27,14 @@ function walletsViewOf(raw: unknown): WalletsView {
 }
 
 /**
- * WALLETS SECTION — the investor's wallets (a demo account's are sample data): All wallets, and
- * each wallet's pages (WalletNode), each a browser history entry (see lib/dashboardHistory). It
- * opens on All wallets, where the first one is added.
+ * WALLETS SECTION — the investor's wallets (a demo account's are sample data): All wallets, each
+ * account's page (AccountNode: the wallets a bank or an address brings) and each wallet's pages
+ * (WalletNode), each a browser history entry (see lib/dashboardHistory). It opens on All wallets,
+ * where the first one is added.
  */
 export function WalletsSection() {
   const [view, open] = useSectionView(WALLETS_SECTION, walletsViewOf);
+  const account = accountOfView(view.id);
+  if (account) return <AccountNode key={view.id} accountUuid={account} rootTrail={[]} onOpen={(id, page) => open({ id, page })} />;
   return <WalletNode key={view.id} id={view.id} page={view.page} rootTrail={[]} onOpen={(id, page) => open({ id, page })} />;
 }
