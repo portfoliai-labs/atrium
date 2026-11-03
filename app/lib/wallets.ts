@@ -22,12 +22,8 @@ export const KIND_LABELS: Record<WalletKind, string> = {
   cash: "Cash",
   crypto: "Crypto",
 };
-// The kinds a wallet is made with by hand: a crypto one is made by the chain's reads, in its
-// address' account.
-export const WALLET_KINDS: WalletKind[] = ["current_account", "credit_card", "savings", "cash"];
-
-/** Whether a wallet is a token's balance on an on-chain address: read from the chain, never a bank's. */
-export const isOnchain = (wallet: Wallet) => wallet.kind === "crypto";
+// The kinds a wallet is made with: a crypto one also when a stablecoin is linked to a new wallet.
+export const WALLET_KINDS: WalletKind[] = ["current_account", "credit_card", "savings", "cash", "crypto"];
 
 // The presets, as every user's categories start: worded and coloured here until renamed or recoloured.
 export const INCOME_CATEGORIES: MovementCategory[] = ["salary", "freelance", "refunds", "interest", "other_income"];

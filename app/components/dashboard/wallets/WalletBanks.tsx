@@ -6,7 +6,8 @@ import { Check, Landmark, Link2, Plus, RefreshCw, Search, Trash2, Unlink } from 
 import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
 import { bankingService } from "../../../services/bankingService";
 import { formatCurrency } from "../../../lib/format";
-import { dayLabel, errorText, isOnchain } from "../../../lib/wallets";
+import { dayLabel, errorText } from "../../../lib/wallets";
+import { useChainHoldings } from "../../../hooks/useChainHoldings";
 import type { AccountSync, BankAccount, BankLink } from "../../../models/Banking";
 import type { Wallet } from "../../../models/Wallet";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
@@ -111,7 +112,12 @@ export function WalletBanks() {
 
   const links = read.isError ? null : read.data;
   // A wallet takes one account: those linked already aren't offered again.
-  const taken = useMemo(() => new Set((links ?? []).flatMap((l) => l.accounts.map((a) => a.walletUuid)).filter(Boolean)), [links]);
+  const holdings = useChainHoldings();
+  // One source each: a wallet a stablecoin comes into takes no bank account.
+  const taken = useMemo(() => new Set([
+    ...(links ?? []).flatMap((l) => l.accounts.map((a) => a.walletUuid)),
+    ...(holdings.data ?? []).map((h) => h.walletUuid),
+  ].filter(Boolean)), [links, holdings.data]);
 
   const act = async (key: string, action: () => Promise<unknown>, fallback: string) => {
     setBusy(key);
@@ -288,7 +294,7 @@ function BankAccountRow({ account, wallets, taken, readOnly, busy, onLink, onUnl
   onUnlink: () => void;
 }) {
   const linked = account.walletUuid ? wallets.find((w) => w.uuid === account.walletUuid) : undefined;
-  const choices = wallets.filter((w) => !w.archived && !isOnchain(w) && w.currency === account.currency && !taken.has(w.uuid));
+  const choices = wallets.filter((w) => !w.archived && w.currency === account.currency && !taken.has(w.uuid));
   const [choice, setChoice] = useState("");
   const balance = account.reportedBalance === null ? null : formatCurrency(account.reportedBalance, account.currency, 2);
   return (

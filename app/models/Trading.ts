@@ -4,7 +4,8 @@
 // mercatura's trading_accounts/v1). An address is proved the user's by signing, with the wallet
 // that holds it, a message the backend composes: nothing else of the wallet is ever sent, no key
 // is kept. Each registered address becomes a trading account, and with it a portfolio (its assets)
-// and a wallets' account (its stablecoins).
+// and a wallets' account; its stablecoins (/v1/chain-holdings, arca's chain/v1) come into the
+// wallets the user links them to, as a bank's accounts do.
 
 export interface AddressProof {
   nonce: string;
@@ -33,5 +34,28 @@ export interface TradingAccount {
   // As the executor describes it ("Solana 7xKX…gAsU", "Solana").
   name: string;
   institution: string | null;
+  // What its executor calls it: a chain address' is its OnchainAddress' uuid.
+  reference: string;
   createdAt: string;
+}
+
+/** A stablecoin of one of the user's addresses: as a bank's account, linked to one wallet. */
+export interface ChainHolding {
+  uuid: string;
+  // Its address' TradingAccount.
+  tradingAccountUuid: string;
+  // The address' account's name ("Solana 7xKX…gAsU"), while that account is there.
+  accountName: string | null;
+  // "USDC".
+  symbol: string;
+  // ISO 4217: what it is pegged to; it links only to a wallet of it.
+  currency: string;
+  // Its balance at its first read plus every movement since.
+  balance: number;
+  // Its first read: where its history starts.
+  openedAt: string;
+  // The wallet its movements come into; null while not linked.
+  walletUuid: string | null;
+  syncFrom: string | null;
+  lastMovementAt: string | null;
 }
