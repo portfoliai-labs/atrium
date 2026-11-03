@@ -6,7 +6,7 @@ import { Check, Landmark, Link2, Plus, RefreshCw, Search, Trash2, Unlink } from 
 import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
 import { bankingService } from "../../../services/bankingService";
 import { formatCurrency } from "../../../lib/format";
-import { dayLabel, errorText } from "../../../lib/wallets";
+import { dayLabel, errorText, isOnchain } from "../../../lib/wallets";
 import type { AccountSync, BankAccount, BankLink } from "../../../models/Banking";
 import type { Wallet } from "../../../models/Wallet";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
@@ -288,7 +288,7 @@ function BankAccountRow({ account, wallets, taken, readOnly, busy, onLink, onUnl
   onUnlink: () => void;
 }) {
   const linked = account.walletUuid ? wallets.find((w) => w.uuid === account.walletUuid) : undefined;
-  const choices = wallets.filter((w) => !w.archived && w.currency === account.currency && !taken.has(w.uuid));
+  const choices = wallets.filter((w) => !w.archived && !isOnchain(w) && w.currency === account.currency && !taken.has(w.uuid));
   const [choice, setChoice] = useState("");
   const balance = account.reportedBalance === null ? null : formatCurrency(account.reportedBalance, account.currency, 2);
   return (

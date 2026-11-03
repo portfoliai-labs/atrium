@@ -6,7 +6,7 @@ import { ArrowUpRight, Landmark, Pencil, RefreshCw, Unlink } from "lucide-react"
 import { useWallets } from "../../../context/WalletsContext";
 import { bankingService } from "../../../services/bankingService";
 import { formatCurrency } from "../../../lib/format";
-import { KIND_LABELS, dayLabel, errorText, walletColor } from "../../../lib/wallets";
+import { KIND_LABELS, dayLabel, errorText, isOnchain, walletColor } from "../../../lib/wallets";
 import type { BankAccount, BankLink } from "../../../models/Banking";
 import type { Wallet } from "../../../models/Wallet";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
@@ -25,10 +25,12 @@ type Linked = { link: BankLink; account: BankAccount };
  * a linked one can be read now or unlinked (the movements it brought stay). A demo account sees
  * the list but can't change anything.
  */
-export function ManageWallets({ onOpenWallet, onOpenBanks }: {
+export function ManageWallets({ onOpenWallet, onOpenBanks, onOpenAddresses }: {
   onOpenWallet: (uuid: string) => void;
   // All wallets' Banks, where a bank is connected.
   onOpenBanks: () => void;
+  // All wallets' On-chain, where an address' wallets are read.
+  onOpenAddresses: () => void;
 }) {
   const { wallets, sample, changed } = useWallets();
   const links = useBankLinks();
@@ -90,6 +92,7 @@ export function ManageWallets({ onOpenWallet, onOpenBanks }: {
         onOpen={() => onOpenWallet(wallet.uuid)}
         onEdit={() => setEditing(wallet)}
         onOpenBanks={onOpenBanks}
+        onOpenAddresses={onOpenAddresses}
         onLink={(chosen) => void link(wallet, chosen)}
         onRead={() => linked && void act(wallet.uuid, () => readNow(linked), "Unable to read this bank now.")}
         onUnlink={() => linked && void act(wallet.uuid, async () => { await bankingService.unlinkAccount(linked.account.uuid); }, "Unable to unlink this account.")}
@@ -104,7 +107,7 @@ export function ManageWallets({ onOpenWallet, onOpenBanks }: {
       {links.isError && <p className="text-sm font-semibold text-rose-600">{errorText(links.error, "Unable to load your banks.")}</p>}
       <ManageGroup
         title="Wallets"
-        note={`${active.length} ${active.length === 1 ? "wallet" : "wallets"} · each takes one bank account of its currency, read twice a day`}
+        note={`${active.length} ${active.length === 1 ? "wallet" : "wallets"} · each takes one bank account of its currency, read twice a day, or is read from an on-chain address`}
       >
         {active.length === 0 ? <li className="px-6 md:px-7 py-4 text-[13px] text-slate-500">No wallets yet.</li> : active.map(row)}
       </ManageGroup>
@@ -133,10 +136,10 @@ function ManageGroup({ title, note, children }: { title: string; note?: string; 
 /**
  * One wallet in the list: its colour, name, kind and balance, then Open and Edit; under it, its
  * bank account: the one linked (Read now, Unlink), or a choice among the free ones of its currency
- * (Link), or why there's none.
+ * (Link), or why there's none. An on-chain address' wallet takes none: it is read from the chain.
  */
 function WalletRow({
-  wallet, color, banks, linked, choices, readOnly, busy, note, error, onOpen, onEdit, onOpenBanks, onLink, onRead, onUnlink,
+  wallet, color, banks, linked, choices, readOnly, busy, note, error, onOpen, onEdit, onOpenBanks, onOpenAddresses, onLink, onRead, onUnlink,
 }: {
   wallet: Wallet;
   color: string;
@@ -151,6 +154,7 @@ function WalletRow({
   onOpen: () => void;
   onEdit: () => void;
   onOpenBanks: () => void;
+  onOpenAddresses: () => void;
   onLink: (chosen: Linked) => void;
   onRead: () => void;
   onUnlink: () => void;
@@ -161,7 +165,14 @@ function WalletRow({
   const iconButton = "w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 
   let bank: React.ReactNode;
-  if (linked) {
+  if (isOnchain(wallet)) {
+    bank = (
+      <span className="text-slate-400">
+        Read from the chain{wallet.institution ? ` (${wallet.institution})` : ""}.{" "}
+        <button type="button" onClick={onOpenAddresses} className="font-semibold text-[#C49A3C] hover:underline">On-chain</button>
+      </span>
+    );
+  } else if (linked) {
     const active = linked.link.status === "active";
     const meta = [
       active ? (linked.link.lastSyncedAt ? `read ${dayLabel(linked.link.lastSyncedAt.slice(0, 10))}` : "not read yet") : "Consent ended: renew it on the Banks page",

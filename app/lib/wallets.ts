@@ -26,6 +26,9 @@ export const KIND_LABELS: Record<WalletKind, string> = {
 // address' account.
 export const WALLET_KINDS: WalletKind[] = ["current_account", "credit_card", "savings", "cash"];
 
+/** Whether a wallet is a token's balance on an on-chain address: read from the chain, never a bank's. */
+export const isOnchain = (wallet: Wallet) => wallet.kind === "crypto";
+
 // The presets, as every user's categories start: worded and coloured here until renamed or recoloured.
 export const INCOME_CATEGORIES: MovementCategory[] = ["salary", "freelance", "refunds", "interest", "other_income"];
 export const SPENDING_CATEGORIES: MovementCategory[] = [

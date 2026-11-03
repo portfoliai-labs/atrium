@@ -7,7 +7,7 @@ import { useWalletQuery, useWalletRead, useWallets, useWalletSummary } from "../
 // The retired hub's (see below): import { useWalletSummaries } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
 import { formatCurrency } from "../../../lib/format";
-import { ALL_WALLETS, currentAlertFindings, errorText, savingsRate, walletColor } from "../../../lib/wallets";
+import { ALL_WALLETS, currentAlertFindings, errorText, isOnchain, savingsRate, walletColor } from "../../../lib/wallets";
 import type { Wallet } from "../../../models/Wallet";
 // The retired hub's (see below): import type { WalletSummary } from "../../../models/Wallet";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
@@ -83,6 +83,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   const count = useMovementCount(scope);
   const attention = useAttention(scope);
   const linked = useWalletLinked(wallet?.uuid);
+  const onchain = !!wallet && isOnchain(wallet);
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
 
@@ -117,8 +118,10 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         // Its movements' page, where they're added (by hand or from a statement), as a portfolio's Transactions.
         { label: "Movements", primary: true, plus: false, onClick: () => onOpen(id, "transactions") },
         // Its own bank account: one of the banks connected, or another bank connected for it.
-        // Not once it takes one's movements (nor while that's being read): its account is in its settings.
-        ...(linked === false ? [{ label: "Connect a bank", onClick: () => setDialog("bank"), ...locked }] : []),
+        // Not once it takes one's movements (nor while that's being read): its account is in its
+        // settings. Nor an on-chain address' wallet, read from the chain: its page is On-chain.
+        ...(onchain ? [{ label: "On-chain", onClick: () => onOpen(ALL_WALLETS, "addresses") }] : []),
+        ...(linked === false && !onchain ? [{ label: "Connect a bank", onClick: () => setDialog("bank"), ...locked }] : []),
         { label: "Edit wallet", onClick: () => setDialog("edit"), ...locked },
         { label: wallet.archived ? "Unarchive" : "Archive", onClick: () => setDialog("archive"), ...sampleLock },
         { label: "Delete wallet", danger: true, onClick: () => setDialog("delete"), ...sampleLock },
@@ -225,7 +228,13 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         {page === "alerts" && <WalletAlerts scope={scope} />}
         {page === "banks" && <WalletBanks />}
         {page === "addresses" && <WalletAddresses />}
-        {page === "manage" && <ManageWallets onOpenWallet={(uuid) => onOpen(uuid, "insights")} onOpenBanks={() => onOpen(ALL_WALLETS, "banks")} />}
+        {page === "manage" && (
+          <ManageWallets
+            onOpenWallet={(uuid) => onOpen(uuid, "insights")}
+            onOpenBanks={() => onOpen(ALL_WALLETS, "banks")}
+            onOpenAddresses={() => onOpen(ALL_WALLETS, "addresses")}
+          />
+        )}
         {dialogs}
       </div>
     );
