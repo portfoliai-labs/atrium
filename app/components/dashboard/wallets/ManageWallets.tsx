@@ -2,12 +2,14 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, Landmark, Pencil, RefreshCw, Unlink } from "lucide-react";
+import { ArrowUpRight, Landmark, Pencil, RefreshCw, Unlink, Wallet as WalletIcon } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
 import { bankingService } from "../../../services/bankingService";
 import { formatCurrency } from "../../../lib/format";
 import { KIND_LABELS, dayLabel, errorText, walletColor } from "../../../lib/wallets";
+import { useAccounts } from "../../../hooks/useAccounts";
 import { useChainHoldings } from "../../../hooks/useChainHoldings";
+import type { Account } from "../../../models/Account";
 import type { ChainHolding } from "../../../models/Trading";
 import type { BankAccount, BankLink } from "../../../models/Banking";
 import type { Wallet } from "../../../models/Wallet";
@@ -19,13 +21,17 @@ const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 
 type Linked = { link: BankLink; account: BankAccount };
 
+type View = "wallets" | "accounts";
+
 /**
  * MANAGE WALLETS — All wallets / Manage wallets, like Manage portfolios: every wallet in one list,
  * to open or edit (a new one is made from the breadcrumb, see WalletNode), the archived ones after,
  * read only. Each wallet's row is also its bank account through open banking: a wallet takes one
  * account of its currency, from a bank connected on the Banks page, linked here and read at once;
- * a linked one can be read now or unlinked (the movements it brought stay). A demo account sees
- * the list but can't change anything.
+ * a linked one can be read now or unlinked (the movements it brought stay). By account, the same
+ * rows are grouped by the account a bank connected or an on-chain address made (none is made by
+ * hand), each with what its wallets hold together in the reference currency (arca's, at today's
+ * rate). A demo account sees the list but can't change anything.
  */
 export function ManageWallets({ onOpenWallet, onOpenBanks, onOpenAddresses }: {
   onOpenWallet: (uuid: string) => void;
@@ -41,6 +47,8 @@ export function ManageWallets({ onOpenWallet, onOpenBanks, onOpenAddresses }: {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Wallet | null>(null);
+  const [view, setView] = useState<View>("wallets");
+  const accounts = useAccounts(view === "accounts");
 
   const list = links.data ?? [];
   const linkedOf = (w: Wallet): Linked | null => {
@@ -106,15 +114,47 @@ export function ManageWallets({ onOpenWallet, onOpenBanks, onOpenAddresses }: {
   const active = colored.filter((c) => !c.wallet.archived);
   const archived = colored.filter((c) => c.wallet.archived);
 
+  const accountList = accounts.data ?? [];
+  const inAccount = (uuid: string) => active.filter((c) => c.wallet.accountUuid === uuid);
+  // A wallet whose account isn't listed (yet) shows with the ones in none.
+  const loose = active.filter((c) => !accountList.some((a) => a.uuid === c.wallet.accountUuid));
+
   return (
     <>
       {links.isError && <p className="text-sm font-semibold text-rose-600">{errorText(links.error, "Unable to load your banks.")}</p>}
-      <ManageGroup
-        title="Wallets"
-        note={`${active.length} ${active.length === 1 ? "wallet" : "wallets"} · each takes one bank account of its currency, read twice a day, or an on-chain address' stablecoin`}
-      >
-        {active.length === 0 ? <li className="px-6 md:px-7 py-4 text-[13px] text-slate-500">No wallets yet.</li> : active.map(row)}
-      </ManageGroup>
+      <ViewTabs value={view} onChange={setView} />
+      {view === "wallets" ? (
+        <ManageGroup
+          title="Wallets"
+          note={`${active.length} ${active.length === 1 ? "wallet" : "wallets"} · each takes one bank account of its currency, read twice a day, or an on-chain address' stablecoin`}
+        >
+          {active.length === 0 ? <li className="px-6 md:px-7 py-4 text-[13px] text-slate-500">No wallets yet.</li> : active.map(row)}
+        </ManageGroup>
+      ) : accounts.isPending ? (
+        <p className="text-[13px] text-[#857e78]">Loading…</p>
+      ) : accounts.isError ? (
+        <p className="text-sm font-semibold text-rose-600">{errorText(accounts.error, "Unable to load your accounts.")}</p>
+      ) : (
+        <>
+          {accountList.length === 0 && (
+            <p className="text-[13px] text-slate-500">
+              No accounts yet: a bank connected or an on-chain address makes one, holding the wallets it brings.
+            </p>
+          )}
+          {accountList.map((a) => (
+            <ManageGroup key={a.uuid} title={a.name} note={accountNote(a, inAccount(a.uuid).length)} icon={accountIcon(a)} figure={accountTotal(a)}>
+              {inAccount(a.uuid).length === 0
+                ? <li className="px-6 md:px-7 py-4 text-[13px] text-slate-500">No wallets in it now.</li>
+                : inAccount(a.uuid).map(row)}
+            </ManageGroup>
+          ))}
+          {loose.length > 0 && (
+            <ManageGroup title="Without an account" note="Entered by hand, not brought by a bank or an address">
+              {loose.map(row)}
+            </ManageGroup>
+          )}
+        </>
+      )}
       {archived.length > 0 && (
         <ManageGroup title="Archived" note="Read only: no bank account comes into them">
           {archived.map(row)}
@@ -125,12 +165,66 @@ export function ManageWallets({ onOpenWallet, onOpenBanks, onOpenAddresses }: {
   );
 }
 
-function ManageGroup({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+function ViewTabs({ value, onChange }: { value: View; onChange: (view: View) => void }) {
+  const labels: Record<View, string> = { wallets: "By wallet", accounts: "By account" };
+  return (
+    <div role="tablist" className="flex gap-1 border-b border-slate-200">
+      {(["wallets", "accounts"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          role="tab"
+          aria-selected={value === v}
+          onClick={() => onChange(v)}
+          className={`-mb-px px-4 py-2.5 text-sm font-bold border-b-2 transition-colors ${
+            value === v ? "border-[#C49A3C] text-slate-900" : "border-transparent text-slate-400 hover:text-slate-600"
+          }`}
+        >
+          {labels[v]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** "Revolut Bank UAB · connected bank · 3 wallets". */
+function accountNote(account: Account, wallets: number): string {
+  const source = account.bankLinkUuid ? "connected bank" : account.tradingAccountUuid ? "on-chain address" : null;
+  return [account.institution !== account.name ? account.institution : null, account.holder, source, `${wallets} ${wallets === 1 ? "wallet" : "wallets"}`]
+    .filter(Boolean).join(" · ");
+}
+
+function accountIcon(account: Account): React.ReactNode {
+  return account.tradingAccountUuid
+    ? <WalletIcon className="h-4 w-4 shrink-0 text-[#C49A3C]" />
+    : <Landmark className="h-4 w-4 shrink-0 text-[#C49A3C]" />;
+}
+
+/** Its wallets together, in the reference currency; a dash, said why, while a rate is missing. */
+function accountTotal(account: Account): React.ReactNode {
+  if (account.balance === null || !account.balanceCurrency) {
+    return <span title="An exchange rate is missing: the total can't be told now">—</span>;
+  }
+  return <span title="Its wallets together, at today's rate">{formatCurrency(account.balance, account.balanceCurrency, 0)}</span>;
+}
+
+function ManageGroup({ title, note, icon, figure, children }: {
+  title: string;
+  note?: string;
+  icon?: React.ReactNode;
+  // On the right of the title: an account's total.
+  figure?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="bg-white rounded-3xl shadow-sm overflow-hidden border border-slate-200">
-      <div className="px-6 md:px-7 pt-5 pb-4 border-b border-slate-100">
-        <h3 className="text-sm font-black text-slate-900">{title}</h3>
-        {note && <p className="text-xs text-slate-500 mt-0.5">{note}</p>}
+      <div className="px-6 md:px-7 pt-5 pb-4 border-b border-slate-100 flex items-center gap-3">
+        {icon}
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-black text-slate-900 truncate">{title}</h3>
+          {note && <p className="text-xs text-slate-500 mt-0.5">{note}</p>}
+        </div>
+        {figure && <span className="text-[15px] font-black tabular-nums text-slate-900">{figure}</span>}
       </div>
       <ul className="divide-y divide-slate-100 pb-1">{children}</ul>
     </section>

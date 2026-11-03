@@ -8,6 +8,7 @@ import { useWalletQuery, useWalletRead, useWallets, useWalletSummary } from "../
 import { walletService } from "../../../services/walletService";
 import { formatCurrency } from "../../../lib/format";
 import { ALL_WALLETS, currentAlertFindings, errorText, savingsRate, walletColor } from "../../../lib/wallets";
+import { useCards } from "../../../hooks/useAccounts";
 import { useWalletHolding } from "../../../hooks/useChainHoldings";
 import type { Wallet } from "../../../models/Wallet";
 // The retired hub's (see below): import type { WalletSummary } from "../../../models/Wallet";
@@ -25,16 +26,17 @@ import { WalletAlerts } from "./WalletAlerts";
 import { WalletAddresses } from "./WalletAddresses";
 import { WalletBankDialog, WalletBanks, useWalletLinked } from "./WalletBanks";
 import { WalletBudgets } from "./WalletBudgets";
+import { WalletCards, cardKindsFor } from "./WalletCards";
 import { AddMovementDialog, WalletFormDialog } from "./WalletDialogs";
 import { ManageWallets } from "./ManageWallets";
 import { WalletImportDialog } from "./WalletImportDialog";
 import { WalletInsights } from "./WalletInsights";
 import { WalletTransactions } from "./WalletTransactions";
 
-export type WalletPage = "insights" | "transactions" | "budgets" | "alerts" | "banks" | "addresses" | "manage";
+export type WalletPage = "insights" | "transactions" | "budgets" | "alerts" | "cards" | "banks" | "addresses" | "manage";
 
 export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
-  insights: "Insights", transactions: "Transactions", budgets: "Budgets", alerts: "Alerts", banks: "Banks",
+  insights: "Insights", transactions: "Transactions", budgets: "Budgets", alerts: "Alerts", cards: "Cards", banks: "Banks",
   addresses: "On-chain", manage: "Manage wallets",
 };
 
@@ -87,6 +89,10 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   // A stablecoin of an address it takes its movements from, if any.
   const holding = useWalletHolding(wallet?.uuid);
   const onchain = !!holding;
+  // A wallet's cards, on its own page: one that takes cards, or still has some.
+  const cards = useCards(!!wallet);
+  const walletCards = wallet && cards.data ? cards.data.filter((c) => c.walletUuid === wallet.uuid) : undefined;
+  const takesCards = !!wallet && (cardKindsFor(wallet).length > 0 || !!walletCards?.length);
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
 
@@ -145,6 +151,10 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
       key: "alerts", label: "alerts", count: attention?.rules ?? null, onClick: () => onOpen(id, "alerts"),
       attention: attention?.found ? { count: attention.found, label: "found" } : undefined,
     },
+    ...(takesCards ? [{
+      key: "cards", label: "cards", count: walletCards?.length ?? null, onClick: () => onOpen(id, "cards"),
+      attention: walletCards?.some((c) => c.expired) ? { count: walletCards.filter((c) => c.expired).length, label: "expired" } : undefined,
+    }] : []),
   ];
 
   const currency = wallet?.currency ?? summary?.currency ?? "EUR";
@@ -229,6 +239,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
           <WalletBudgets scope={scope} onManage={() => onOpen(ALL_WALLETS, "budgets")} />
         )}
         {page === "alerts" && <WalletAlerts scope={scope} />}
+        {page === "cards" && wallet && <WalletCards wallet={wallet} />}
         {page === "banks" && <WalletBanks />}
         {page === "addresses" && <WalletAddresses />}
         {page === "manage" && (
