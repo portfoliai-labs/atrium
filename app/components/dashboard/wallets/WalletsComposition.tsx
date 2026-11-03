@@ -7,7 +7,7 @@ import { useAccounts } from "../../../hooks/useAccounts";
 import { formatCurrency } from "../../../lib/format";
 import { KIND_LABELS, walletColor } from "../../../lib/wallets";
 import type { Wallet, WalletKind } from "../../../models/Wallet";
-import { DonutList, type DonutItem, type DonutPart } from "../DonutList";
+import { DonutList, type DonutItem } from "../DonutList";
 import type { Account } from "../../../models/Account";
 import { HBars, MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 
@@ -39,77 +39,44 @@ function impliedRates(accounts: Account[], wallets: Wallet[], currency: string):
   return rates;
 }
 
-/** A wallet in no account, by itself: its share only in the total's currency. */
-function walletItem(w: Wallet, color: string, currency: string, onOpen: () => void): DonutItem {
-  const sameCurrency = w.currency === currency;
-  return {
-    key: w.uuid,
-    label: w.name,
-    sub: [KIND_LABELS[w.kind], w.institution, sameCurrency ? null : `in ${w.currency}, not in the total`].filter(Boolean).join(" · "),
-    value: w.balance,
-    currency: w.currency,
-    counted: sameCurrency && w.balance > 0,
-    color,
-    onOpen,
-  };
-}
-
 /**
- * WALLETS COMPOSITION — All wallets' Composition, as All portfolios' Portfolios: every account (a
- * bank's or an address', with a wallet that isn't archived) and every wallet in none on a donut
- * and in a list, each with its balance and share, a slice or a row opening its page — the way to
- * each account's and wallet's. An account's balance is arca's, every wallet of it at today's rate
- * in `currency`; while the accounts are read (or when they can't be), each wallet is by itself.
- * Around the accounts' ring, a thinner one splits each into its wallets (in `currency`, at the
- * rates the accounts' totals tell: see impliedRates); an account's slice is as wide as its wallets
- * there together, its total listed as arca tells it.
- * Beside it, to read only, the balances by kind (current accounts, cards, savings, cash). Shares
- * are of the total in `currency` (the user's reference one): a wallet in another currency is
- * listed in its own but takes no share, and neither does a card in debt, nor an account whose
- * total can't be told now (a rate missing).
+ * LIQUIDITY'S COMPOSITION — every wallet that isn't archived on a donut and in a list, each with
+ * its balance and share, a slice or a row opening its page. A bank's or an address' wallets sit
+ * together, under a thin arc naming their account (DonutList's groups): accounts have no page of
+ * their own. Shares are of the total in `currency` (the user's reference one): a wallet in
+ * another currency counts at the rate its account's total tells (impliedRates), or, with none,
+ * is listed in its own without a share; a card in debt takes none either. Beside it, to read
+ * only, the balances by kind (current accounts, cards, savings, cash).
  */
-export function WalletsComposition({ currency, onOpen, onOpenAccount }: {
-  currency: string;
-  onOpen: (uuid: string) => void;
-  onOpenAccount: (uuid: string) => void;
-}) {
+export function WalletsComposition({ currency, onOpen }: { currency: string; onOpen: (uuid: string) => void }) {
   const { wallets } = useWallets();
   const accounts = useAccounts();
 
   const active = useMemo(() => wallets.map((w, i) => ({ w, color: walletColor(w, i) })).filter(({ w }) => !w.archived), [wallets]);
   const items = useMemo((): DonutItem[] => {
     const listed = accounts.data ?? [];
-    const own = (uuid: string) => active.filter(({ w }) => w.accountUuid === uuid);
     const rates = impliedRates(listed, active.map(({ w }) => w), currency);
-    // An account's wallets on the outer ring, in `currency`: those worth something (a card in debt
-    // takes no part, as it takes no share). None when one's rate isn't known: the account is
-    // drawn whole there too.
-    const parts = (uuid: string): DonutPart[] | undefined => {
-      const held = own(uuid).filter(({ w }) => w.balance > 0);
-      if (held.some(({ w }) => !rates.has(w.currency))) return undefined;
-      return held.map(({ w, color }) => ({ key: w.uuid, label: w.name, value: w.balance * rates.get(w.currency)!, color, onOpen: () => onOpen(w.uuid) }));
-    };
-    const accountItems = listed.filter((a) => own(a.uuid).length > 0).map((a): DonutItem => {
-      const count = own(a.uuid).length;
+    return active.map(({ w, color }) => {
+      const account = listed.find((a) => a.uuid === w.accountUuid);
+      const rate = rates.get(w.currency);
+      const sameCurrency = w.currency === currency;
       return {
-        key: a.uuid,
-        label: a.name,
+        key: w.uuid,
+        label: w.name,
         sub: [
-          a.institution !== a.name ? a.institution : null,
-          `${count} ${count === 1 ? "wallet" : "wallets"}`,
-          a.balance === null ? "its total can't be told now" : null,
+          account?.name, KIND_LABELS[w.kind], account ? null : w.institution,
+          sameCurrency ? null : rate === undefined ? `in ${w.currency}, not in the total` : `in ${w.currency}`,
         ].filter(Boolean).join(" · "),
-        value: a.balance,
-        currency: a.balanceCurrency ?? currency,
-        counted: a.balance !== null && a.balanceCurrency === currency && a.balance > 0,
-        color: own(a.uuid)[0].color,
-        onOpen: () => onOpenAccount(a.uuid),
-        parts: parts(a.uuid),
+        value: w.balance,
+        currency: w.currency,
+        counted: rate !== undefined && w.balance > 0,
+        inTotal: rate === undefined || sameCurrency ? undefined : w.balance * rate,
+        color,
+        onOpen: () => onOpen(w.uuid),
+        group: account ? { key: account.uuid, label: account.name } : undefined,
       };
     });
-    const loose = active.filter(({ w }) => !listed.some((a) => a.uuid === w.accountUuid));
-    return [...accountItems, ...loose.map(({ w, color }) => walletItem(w, color, currency, () => onOpen(w.uuid)))];
-  }, [accounts.data, active, currency, onOpen, onOpenAccount]);
+  }, [accounts.data, active, currency, onOpen]);
 
   // Every kind, a crypto wallet's too (WALLET_KINDS are those made by hand).
   const kinds = (Object.keys(KIND_LABELS) as WalletKind[]).map((kind) => {
@@ -122,7 +89,7 @@ export function WalletsComposition({ currency, onOpen, onOpenAccount }: {
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-[22px]">
       <div className={kinds.length > 1 ? "lg:col-span-8" : "lg:col-span-12"}>
         <Module>
-          <ModuleHead title="Accounts" desc="Each account's balance and share, and each wallet in none: open one for its page." />
+          <ModuleHead title="Wallets" desc="Each wallet's balance and share, a bank's together under its name: open one for its page." />
           <div className={MODULE_BODY}><DonutList items={items} currency={currency} /></div>
         </Module>
       </div>

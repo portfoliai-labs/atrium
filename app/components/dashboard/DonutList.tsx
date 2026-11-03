@@ -13,21 +13,21 @@ export interface DonutItem {
   // null: not known (yet).
   value: number | null;
   currency: string;
-  // Counted in the donut and the shares: in the total's currency, and worth something.
+  // Counted in the donut and the shares: in the total's currency (or with `inTotal`), and worth
+  // something.
   counted: boolean;
+  // Its value in the donut's currency, when it is listed in another (converted): its slice and share.
+  inTotal?: number;
   color: string;
   onOpen?: () => void;
-  // What it is made of, on an outer ring under its slice (an account's wallets): each in the
-  // donut's currency, positive. With parts, its slice is as wide as they are together.
-  parts?: DonutPart[];
+  // What it is one of (a wallet's account): on a thin outer ring, an arc over its group's slices,
+  // which sit together.
+  group?: DonutGroup;
 }
 
-export interface DonutPart {
+export interface DonutGroup {
   key: string;
   label: string;
-  value: number;
-  color: string;
-  onOpen?: () => void;
 }
 
 // The least share of the circle a slice (or an outer part) is drawn with, however small its value:
@@ -53,82 +53,83 @@ export function drawnShares(values: number[]): number[] {
   }
 }
 
-// The space between slices, and between an account's wallets on the outer ring (shares of the
-// circle): air, not a drawn edge.
+// The space between slices (more between groups than within one), as shares of the circle: air,
+// not a drawn edge.
 const SLICE_GAP = 0.012;
-const PART_GAP = 0.006;
-// An account's wallets on the outer ring: its colour, each a step lighter, back to it past the last.
-const PART_SHADES = [1, 0.7, 0.48, 0.32];
+const GROUP_GAP = 0.022;
+// The groups' arcs: one quiet tone for all, a bracket over their slices rather than a series.
+const GROUP_COLOR = "#A8A29E";
 const TRACK = "#EEE9DD";
 
-// A segment of a ring as drawn: a slice, a part, the air between them, or (on the outer ring) a
-// slice's place where it has nothing to split.
-type Segment = { key: string; drawn: number; color: string; opacity: number; label?: string; parent?: string; onOpen?: () => void; air?: true };
+// A segment of a ring as drawn: a slice, a group's arc, the air between them, or (on the outer
+// ring) the place of slices in no group.
+type Segment = { key: string; drawn: number; color: string; label?: string; group?: string; onOpen?: () => void; air?: true };
 
 /**
- * DONUT LIST — the parts of a whole (All portfolios' portfolios, All wallets' wallets) on a donut
- * and in a list beside it, each with its value and share, a slice or a row opening that part's
- * page. Shares are of the counted parts' total, in `currency`; a part not counted (another
- * currency, a card in debt, a value not known yet) is listed, without a share. When a part splits
- * into parts of its own (an account into its wallets), a thin outer ring shows them just outside
- * its slice, in shades of its colour, hovered and opened as the slices are; nothing is drawn there
- * for a part that doesn't split. Slices start at the top, clockwise, the largest first, with air
- * between them and rounded ends; each is drawn at least MIN_DRAWN_SHARE wide (drawnShares).
+ * DONUT LIST — the parts of a whole (All portfolios' portfolios, Liquidity's wallets) on a donut and
+ * in a list beside it, each with its value and share, a slice or a row opening that part's page.
+ * Shares are of the counted parts' total, in `currency`; a part not counted (another currency
+ * with no `inTotal`, a card in debt, a value not known yet) is listed, without a share. Parts of a
+ * group (a bank's wallets) sit together, the groups largest first, and a thin outer ring draws an
+ * arc over each group's slices, hovered as they are (its share, its name). Slices start at the
+ * top, clockwise, with air between them and rounded ends; each is drawn at least
+ * MIN_DRAWN_SHARE wide (drawnShares).
  */
 export function DonutList({ items, currency }: { items: DonutItem[]; currency: string }) {
   const [hovered, setHovered] = useState<string | null>(null);
 
-  const sorted = [...items].sort((a, b) => Number(b.counted) - Number(a.counted) || (b.value ?? 0) - (a.value ?? 0));
-  // A slice's width: its parts together when it has some.
-  const width = (i: DonutItem) => (i.parts ? i.parts.reduce((s, p) => s + p.value, 0) : i.value ?? 0);
-  const slices = sorted.filter((i) => i.counted && width(i) > 0).map((i) => ({ ...i, value: width(i) }));
-  const total = slices.reduce((s, i) => s + i.value, 0);
-  // Split: in two parts or more (one part is the slice itself).
-  const split = (i: DonutItem) => (i.parts?.length ?? 0) > 1;
-  const nested = slices.some(split);
+  const amount = (i: DonutItem) => (i.counted ? i.inTotal ?? i.value ?? 0 : 0);
+  const counted = (i: DonutItem) => amount(i) > 0;
+  const groupKey = (i: DonutItem) => i.group?.key ?? `item:${i.key}`;
+  const groupTotals = new Map<string, number>();
+  for (const i of items) groupTotals.set(groupKey(i), (groupTotals.get(groupKey(i)) ?? 0) + (counted(i) ? amount(i) : 0));
+  // The counted first; a group's together, the largest group first, then by value within it.
+  const sorted = [...items].sort((a, b) =>
+    Number(counted(b)) - Number(counted(a))
+    || groupTotals.get(groupKey(b))! - groupTotals.get(groupKey(a))!
+    || groupKey(a).localeCompare(groupKey(b))
+    || amount(b) - amount(a) || (b.value ?? 0) - (a.value ?? 0));
+  const slices = sorted.filter(counted);
+  const total = slices.reduce((s, i) => s + amount(i), 0);
+  const grouped = slices.some((i) => i.group);
 
-  // The leaves, drawn at least the minimum share: a split slice's parts, or the slice itself.
-  const leaves = slices.map((i) => (split(i) ? i.parts!.map((p) => p.value) : [i.value]));
-  const gaps = slices.length > 1 ? slices.length * SLICE_GAP : 0;
-  const partGaps = leaves.reduce((s, l) => s + (l.length - 1) * PART_GAP, 0);
-  const drawn = drawnShares(leaves.flat()).map((d) => d * (1 - gaps - partGaps));
+  // Air after each slice: more where the next is another group's.
+  const after: number[] = slices.map((i, n) => (slices.length < 2 ? 0 : groupKey(slices[(n + 1) % slices.length]) === groupKey(i) ? SLICE_GAP : GROUP_GAP));
+  const air = after.reduce((s, g) => s + g, 0);
+  const drawn = drawnShares(slices.map(amount)).map((d) => d * (1 - air));
   const inner: Segment[] = [];
   const outer: Segment[] = [];
-  let next = 0;
   slices.forEach((i, n) => {
-    const own = drawn.slice(next, next + leaves[n].length);
-    next += leaves[n].length;
-    const wide = own.reduce((s, d) => s + d, 0) + (own.length - 1) * PART_GAP;
-    inner.push({ key: i.key, drawn: wide, color: i.color, opacity: 1, label: i.label, onOpen: i.onOpen });
-    if (split(i)) {
-      i.parts!.forEach((p, k) => {
-        if (k > 0) outer.push({ key: `${i.key}:air:${k}`, drawn: PART_GAP, color: "transparent", opacity: 0, air: true });
-        outer.push({ key: p.key, drawn: own[k], color: i.color, opacity: PART_SHADES[k % PART_SHADES.length], label: p.label, parent: i.key, onOpen: p.onOpen });
-      });
-    } else {
-      outer.push({ key: `${i.key}:place`, drawn: wide, color: "transparent", opacity: 0, air: true });
-    }
-    if (gaps) {
-      inner.push({ key: `${i.key}:air`, drawn: SLICE_GAP, color: "transparent", opacity: 0, air: true });
-      outer.push({ key: `${i.key}:air`, drawn: SLICE_GAP, color: "transparent", opacity: 0, air: true });
-    }
+    inner.push({ key: i.key, drawn: drawn[n], color: i.color, label: i.label, group: i.group?.key, onOpen: i.onOpen });
+    if (after[n]) inner.push({ key: `${i.key}:air`, drawn: after[n], color: "transparent", air: true });
+    const first = n === 0 || groupKey(slices[n - 1]) !== groupKey(i);
+    if (!first) return;
+    // The group's arc, from its first slice to its last (n to last): them and the air between.
+    let last = n;
+    while (last + 1 < slices.length && groupKey(slices[last + 1]) === groupKey(i)) last++;
+    let wide = 0;
+    for (let k = n; k <= last; k++) wide += drawn[k] + (k < last ? after[k] : 0);
+    outer.push(i.group
+      ? { key: `group:${i.group.key}`, drawn: wide, color: GROUP_COLOR, label: i.group.label, group: i.group.key }
+      : { key: `${i.key}:place`, drawn: wide, color: "transparent", air: true });
+    if (after[last]) outer.push({ key: `${i.key}:group-air`, drawn: after[last], color: "transparent", air: true });
   });
 
-  const share = (i: DonutItem) => {
-    const slice = slices.find((s) => s.key === i.key);
-    return slice && total > 0 ? (slice.value / total) * 100 : null;
-  };
-  const partOf = (key: string | null) => slices.flatMap((i) => (split(i) ? i.parts!.map((p) => ({ ...p, parent: i.key })) : [])).find((p) => p.key === key);
-  const part = partOf(hovered);
-  const focus = part ?? sorted.find((i) => i.key === hovered);
-  const focusShare = part ? (total > 0 ? (part.value / total) * 100 : null) : focus ? share(focus as DonutItem) : null;
-  // A slice is lit with its parts, a part with its slice.
-  const lit = (s: Segment) => !hovered || hovered === s.key || hovered === s.parent || part?.parent === s.key;
+  const hoveredGroup = hovered?.startsWith("group:") ? hovered.slice("group:".length) : null;
+  const share = (i: DonutItem) => (counted(i) && total > 0 ? (amount(i) / total) * 100 : null);
+  const focusGroup = hoveredGroup ? slices.find((i) => i.group?.key === hoveredGroup)?.group : undefined;
+  const focus = sorted.find((i) => i.key === hovered);
+  const focusShare = focusGroup
+    ? (total > 0 ? ((groupTotals.get(focusGroup.key) ?? 0) / total) * 100 : null)
+    : focus ? share(focus) : null;
+  const hoveredItemGroup = focus?.group?.key;
+  // A slice is lit with its group's arc, an arc with its slices.
+  const lit = (s: Segment) => !hovered || hovered === s.key || (!!hoveredGroup && s.group === hoveredGroup) || (s.key.startsWith("group:") && s.group === hoveredItemGroup);
   const ring = (segments: Segment[]) => segments.map((s) => (
     <Cell
       key={s.key}
       fill={s.color}
-      fillOpacity={s.air ? 0 : s.opacity * (lit(s) ? 1 : 0.28)}
+      fillOpacity={s.air ? 0 : lit(s) ? 1 : 0.28}
       stroke="none"
       cursor={s.onOpen ? "pointer" : "default"}
       onMouseEnter={() => !s.air && setHovered(s.key)}
@@ -153,8 +154,8 @@ export function DonutList({ items, currency }: { items: DonutItem[]; currency: s
                 dataKey="drawn"
                 nameKey="label"
                 {...angles}
-                innerRadius={nested ? "70%" : "72%"}
-                outerRadius={nested ? "86%" : "96%"}
+                innerRadius={grouped ? "68%" : "72%"}
+                outerRadius={grouped ? "90%" : "96%"}
                 cornerRadius={slices.length > 1 ? 4 : 0}
                 isAnimationActive={false}
                 onMouseLeave={() => setHovered(null)}
@@ -162,15 +163,15 @@ export function DonutList({ items, currency }: { items: DonutItem[]; currency: s
                 {ring(inner)}
               </Pie>
             )}
-            {nested && (
+            {grouped && (
               <Pie
                 data={outer}
                 dataKey="drawn"
                 nameKey="label"
                 {...angles}
-                innerRadius="90%"
+                innerRadius="94%"
                 outerRadius="98%"
-                cornerRadius={outer.length > 1 ? 3 : 0}
+                cornerRadius={2}
                 isAnimationActive={false}
                 onMouseLeave={() => setHovered(null)}
               >
@@ -180,9 +181,9 @@ export function DonutList({ items, currency }: { items: DonutItem[]; currency: s
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-[24%] text-center">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[#857e78] truncate max-w-full">{focus ? focus.label : "Total"}</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-[#857e78] truncate max-w-full">{focusGroup?.label ?? focus?.label ?? "Total"}</span>
           <span className="mt-0.5 text-lg font-bold text-[#1c1917] tabular-nums leading-tight">
-            {focus && focusShare !== null ? `${focusShare.toFixed(1)}%` : slices.length ? formatCurrency(total, currency, 0) : "—"}
+            {(focusGroup || focus) && focusShare !== null ? `${focusShare.toFixed(1)}%` : slices.length ? formatCurrency(total, currency, 0) : "—"}
           </span>
         </div>
       </div>
@@ -205,7 +206,7 @@ export function DonutList({ items, currency }: { items: DonutItem[]; currency: s
               <span className="w-[18px] shrink-0">{i.onOpen && <ChevronRight className="h-4 w-4 text-[#857e78]" />}</span>
             </>
           );
-          const row = `w-full flex items-center gap-3 px-2.5 py-[11px] rounded-[14px] text-left transition-colors ${index < sorted.length - 1 ? "border-b border-[#EEE9DD]" : ""} ${hovered === i.key || part?.parent === i.key ? "bg-[#F7F5EF]" : ""}`;
+          const row = `w-full flex items-center gap-3 px-2.5 py-[11px] rounded-[14px] text-left transition-colors ${index < sorted.length - 1 ? "border-b border-[#EEE9DD]" : ""} ${hovered === i.key || (!!hoveredGroup && i.group?.key === hoveredGroup) ? "bg-[#F7F5EF]" : ""}`;
           return (
             <li key={i.key} onMouseEnter={() => setHovered(i.key)} onMouseLeave={() => setHovered(null)}>
               {i.onOpen ? (

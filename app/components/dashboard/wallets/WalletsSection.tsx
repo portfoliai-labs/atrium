@@ -3,12 +3,10 @@
 
 import { useSectionView } from "../../../lib/dashboardHistory";
 import { WALLETS_SECTION } from "../../../lib/dashboardNav";
-import { ALL_WALLETS, accountOfView } from "../../../lib/wallets";
-import { AccountNode } from "./AccountNode";
+import { ALL_WALLETS } from "../../../lib/wallets";
 import { WALLET_PAGE_LABELS, WalletNode, type WalletPage } from "./WalletNode";
 
-// A wallet, or every wallet together (ALL_WALLETS), on one of its pages; or an account's page
-// (lib/wallets' accountView), its only one being its overview.
+// A wallet, or every wallet together (ALL_WALLETS), on one of its pages.
 export type WalletsView = { id: string; page: WalletPage };
 
 // A link into a page from outside the dashboard (`/dashboard?section=wallets&walletsPage=banks`, or
@@ -27,14 +25,12 @@ function walletsViewOf(raw: unknown): WalletsView {
 }
 
 /**
- * WALLETS SECTION — the investor's wallets (a demo account's are sample data): All wallets, each
- * account's page (AccountNode: the wallets a bank or an address brings) and each wallet's pages
- * (WalletNode), each a browser history entry (see lib/dashboardHistory). It opens on All wallets,
- * where the first one is added.
+ * WALLETS SECTION — Liquidity, the investor's wallets (a demo account's are sample data): all of
+ * them together, and each wallet's pages (WalletNode), each a browser history entry (see
+ * lib/dashboardHistory). It opens on all of them, where the first one is added. An id that is no
+ * wallet's (one gone, an account's page that was) opens them all.
  */
 export function WalletsSection() {
   const [view, open] = useSectionView(WALLETS_SECTION, walletsViewOf);
-  const account = accountOfView(view.id);
-  if (account) return <AccountNode key={view.id} accountUuid={account} rootTrail={[]} onOpen={(id, page) => open({ id, page })} />;
   return <WalletNode key={view.id} id={view.id} page={view.page} rootTrail={[]} onOpen={(id, page) => open({ id, page })} />;
 }

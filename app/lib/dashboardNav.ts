@@ -19,6 +19,9 @@ import type { RealEstateView } from "../components/dashboard/realEstate/RealEsta
 export const INVESTMENTS_SECTION = "performance";
 // The wallets and the real estate, each a section of its own (they were Wealth's).
 export const WALLETS_SECTION = "wallets";
+// Its name, and its first page's (every wallet together): what is ready to spend, beside
+// Investments and Real estate (the user, 2026-11-03).
+export const LIQUIDITY = "Liquidity";
 export const REAL_ESTATE_SECTION = "realEstate";
 // The strategies: the user's backtests and the published ones (see StrategiesSection). An
 // advisor's own section; an investor's is Investments', beside All portfolios, where a link to
