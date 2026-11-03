@@ -842,6 +842,9 @@ interface AssetDetailResponse {
   // census' profile of the listing's instrument, each field citing its source; null for an asset
   // asked by its ticker, or when census couldn't be asked.
   profile?: InstrumentProfile | null;
+  // The instrument's trackers but this listing (its tokens: Ondo's AAPLon for Apple), by issuer
+  // and ticker; empty when it has none.
+  trackers?: Listing[];
 }
 
 export type {
