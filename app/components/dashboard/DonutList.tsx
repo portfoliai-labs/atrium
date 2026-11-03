@@ -30,6 +30,29 @@ export interface DonutPart {
   onOpen?: () => void;
 }
 
+// The least share of the circle a slice (or an outer part) is drawn with, however small its value:
+// a 15 beside a million is still seen. Only the drawing; shares and totals stay the values'.
+const MIN_DRAWN_SHARE = 0.025;
+
+/**
+ * How wide each value is drawn, as shares of the circle: its own, but at least the minimum (less
+ * when there are so many that the minima would fill half the circle), the others shrunk in
+ * proportion to make room, again until none of them falls under it.
+ */
+export function drawnShares(values: number[]): number[] {
+  const total = values.reduce((s, v) => s + v, 0);
+  if (total <= 0 || values.length < 2) return values.map(() => (total > 0 ? 1 : 0));
+  const min = Math.min(MIN_DRAWN_SHARE, 0.5 / values.length);
+  const raised = new Set<number>();
+  for (;;) {
+    const rest = 1 - raised.size * min;
+    const free = values.reduce((s, v, i) => (raised.has(i) ? s : s + v), 0);
+    const next = values.findIndex((v, i) => !raised.has(i) && (v / free) * rest < min);
+    if (next < 0) return values.map((v, i) => (raised.has(i) ? min : (v / free) * rest));
+    raised.add(next);
+  }
+}
+
 // The rings' edges, white as the module they're on: slices and parts meet, so the outer ring
 // lines up with the inner one.
 const EDGE = { stroke: "#fff", strokeWidth: 1.5 };
@@ -56,6 +79,13 @@ export function DonutList({ items, currency }: { items: DonutItem[]; currency: s
     ? slices.flatMap((i) => (i.parts?.length ? i.parts : [{ key: i.key, label: i.label, value: i.value, color: i.color, onOpen: i.onOpen }])
       .map((p) => ({ ...p, parent: i.key })))
     : [];
+  // As drawn: each leaf (an outer part, or a slice without parts) at least the minimum share, a
+  // slice as wide as its parts drawn together, so the rings still line up.
+  const drawn = drawnShares(nested ? outer.map((p) => p.value) : slices.map((i) => i.value));
+  const drawnOuter = nested ? outer.map((p, n) => ({ ...p, drawn: drawn[n] })) : [];
+  const drawnSlices = slices.map((i, n) => ({
+    ...i, drawn: nested ? drawnOuter.filter((p) => p.parent === i.key).reduce((s, p) => s + p.drawn, 0) : drawn[n],
+  }));
   const share = (i: DonutItem) => {
     const slice = slices.find((s) => s.key === i.key);
     return slice && total > 0 ? (slice.value / total) * 100 : null;
@@ -72,8 +102,8 @@ export function DonutList({ items, currency }: { items: DonutItem[]; currency: s
         <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 210, height: 210 }}>
           <PieChart>
             <Pie
-              data={slices.length ? slices : [{ key: "none", label: "", value: 1, color: "#EEE9DD" }]}
-              dataKey="value"
+              data={drawnSlices.length ? drawnSlices : [{ key: "none", label: "", drawn: 1, color: "#EEE9DD" }]}
+              dataKey="drawn"
               nameKey="label"
               innerRadius={nested ? "56%" : "67%"}
               outerRadius={nested ? "80%" : "98%"}
@@ -95,8 +125,8 @@ export function DonutList({ items, currency }: { items: DonutItem[]; currency: s
             </Pie>
             {nested && (
               <Pie
-                data={outer}
-                dataKey="value"
+                data={drawnOuter}
+                dataKey="drawn"
                 nameKey="label"
                 innerRadius="83%"
                 outerRadius="98%"
@@ -104,7 +134,7 @@ export function DonutList({ items, currency }: { items: DonutItem[]; currency: s
                 isAnimationActive={false}
                 onMouseLeave={() => setHovered(null)}
               >
-                {outer.map((p) => (
+                {drawnOuter.map((p) => (
                   <Cell
                     key={`${p.parent}:${p.key}`}
                     fill={p.color}
