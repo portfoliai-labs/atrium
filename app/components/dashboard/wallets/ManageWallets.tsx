@@ -6,7 +6,9 @@ import { ArrowUpRight, Landmark, Pencil, RefreshCw, Unlink } from "lucide-react"
 import { useWallets } from "../../../context/WalletsContext";
 import { bankingService } from "../../../services/bankingService";
 import { formatCurrency } from "../../../lib/format";
-import { KIND_LABELS, dayLabel, errorText, isOnchain, walletColor } from "../../../lib/wallets";
+import { KIND_LABELS, dayLabel, errorText, walletColor } from "../../../lib/wallets";
+import { useChainHoldings } from "../../../hooks/useChainHoldings";
+import type { ChainHolding } from "../../../models/Trading";
 import type { BankAccount, BankLink } from "../../../models/Banking";
 import type { Wallet } from "../../../models/Wallet";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
@@ -34,6 +36,7 @@ export function ManageWallets({ onOpenWallet, onOpenBanks, onOpenAddresses }: {
 }) {
   const { wallets, sample, changed } = useWallets();
   const links = useBankLinks();
+  const holdings = useChainHoldings();
   const [busy, setBusy] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -93,6 +96,7 @@ export function ManageWallets({ onOpenWallet, onOpenBanks, onOpenAddresses }: {
         onEdit={() => setEditing(wallet)}
         onOpenBanks={onOpenBanks}
         onOpenAddresses={onOpenAddresses}
+        holding={holdings.data?.find((h) => h.walletUuid === wallet.uuid) ?? null}
         onLink={(chosen) => void link(wallet, chosen)}
         onRead={() => linked && void act(wallet.uuid, () => readNow(linked), "Unable to read this bank now.")}
         onUnlink={() => linked && void act(wallet.uuid, async () => { await bankingService.unlinkAccount(linked.account.uuid); }, "Unable to unlink this account.")}
@@ -107,7 +111,7 @@ export function ManageWallets({ onOpenWallet, onOpenBanks, onOpenAddresses }: {
       {links.isError && <p className="text-sm font-semibold text-rose-600">{errorText(links.error, "Unable to load your banks.")}</p>}
       <ManageGroup
         title="Wallets"
-        note={`${active.length} ${active.length === 1 ? "wallet" : "wallets"} · each takes one bank account of its currency, read twice a day, or is read from an on-chain address`}
+        note={`${active.length} ${active.length === 1 ? "wallet" : "wallets"} · each takes one bank account of its currency, read twice a day, or an on-chain address' stablecoin`}
       >
         {active.length === 0 ? <li className="px-6 md:px-7 py-4 text-[13px] text-slate-500">No wallets yet.</li> : active.map(row)}
       </ManageGroup>
@@ -136,16 +140,18 @@ function ManageGroup({ title, note, children }: { title: string; note?: string; 
 /**
  * One wallet in the list: its colour, name, kind and balance, then Open and Edit; under it, its
  * bank account: the one linked (Read now, Unlink), or a choice among the free ones of its currency
- * (Link), or why there's none. An on-chain address' wallet takes none: it is read from the chain.
+ * (Link), or why there's none. A wallet a stablecoin comes into takes none: it is read from the chain.
  */
 function WalletRow({
-  wallet, color, banks, linked, choices, readOnly, busy, note, error, onOpen, onEdit, onOpenBanks, onOpenAddresses, onLink, onRead, onUnlink,
+  wallet, color, banks, linked, holding, choices, readOnly, busy, note, error, onOpen, onEdit, onOpenBanks, onOpenAddresses, onLink, onRead, onUnlink,
 }: {
   wallet: Wallet;
   color: string;
   // How many banks are connected; undefined while they load.
   banks: number | undefined;
   linked: Linked | null;
+  // The stablecoin it takes its movements from instead, if any.
+  holding: ChainHolding | null;
   choices: Linked[];
   readOnly: boolean;
   busy: boolean;
@@ -165,10 +171,11 @@ function WalletRow({
   const iconButton = "w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 
   let bank: React.ReactNode;
-  if (isOnchain(wallet)) {
+  if (holding) {
     bank = (
       <span className="text-slate-400">
-        Read from the chain{wallet.institution ? ` (${wallet.institution})` : ""}.{" "}
+        {[holding.accountName, holding.symbol].filter(Boolean).join(" · ")}, read from the chain
+        {holding.syncFrom ? ` from ${dayLabel(holding.syncFrom)}` : ""}.{" "}
         <button type="button" onClick={onOpenAddresses} className="font-semibold text-[#C49A3C] hover:underline">On-chain</button>
       </span>
     );

@@ -1,11 +1,12 @@
 // components/dashboard/wallets/WalletAddresses.tsx
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowDownToLine, Check, Copy, ExternalLink, Plus, RefreshCw, Trash2, TriangleAlert, Wallet as WalletIcon } from "lucide-react";
+import { ArrowDownToLine, Check, Copy, ExternalLink, Plus, RefreshCw, Trash2, TriangleAlert, Unlink, Wallet as WalletIcon } from "lucide-react";
 import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
 import { tradingService } from "../../../services/tradingService";
+import { useChainHoldings, useTradingAccounts } from "../../../hooks/useChainHoldings";
 import {
   WALLET_DOWNLOADS,
   connectWallet,
@@ -16,15 +17,17 @@ import {
 } from "../../../lib/solanaWallets";
 import { formatCurrency } from "../../../lib/format";
 import { dayLabel, errorText } from "../../../lib/wallets";
-import type { OnchainAddress } from "../../../models/Trading";
+import type { ChainHolding, OnchainAddress } from "../../../models/Trading";
+import type { Wallet } from "../../../models/Wallet";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { DialogShell } from "./WalletDialogs";
-import { IconButton } from "./WalletBanks";
+import { IconButton, useBankLinks } from "./WalletBanks";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 
-// The chain an address is proved on: Solana's, for now (forum's service map, "Buying from the app").
+// The chains an address can be proved on: Solana's, for now (forum's service map, "Buying from the app").
 const SOLANA = "solana";
+const CHAINS = [{ id: SOLANA, label: "Solana" }];
 
 // A read's balances and movements reach the wallets by events (catena → mercatura → arca), a moment
 // after the read answers: the wallets are read again now and after each of these delays.
@@ -45,8 +48,9 @@ export function useOnchainAddresses() {
  * ON-CHAIN ADDRESSES — the user's own wallets on a blockchain (Solana's: Phantom, Solflare), each
  * proved theirs by signing a message in it. Nothing is ever sent of the wallet but its address and
  * that signature; no key is kept, and nothing here can move money. Each address becomes a portfolio
- * (what it holds) and an account among the wallets (its stablecoins), which stay with their history
- * when the address is removed. A demo account's are read only.
+ * (what it holds) and, as a bank link's accounts, its stablecoins: each one linked to a wallet of its
+ * currency (one of the user's, or a new one), whose movements come in from the chain's reads. They
+ * stay with their history when the address is removed. A demo account's are read only.
  */
 export function WalletAddresses() {
   const { wallets, sample, changed } = useWallets();
@@ -62,8 +66,46 @@ export function WalletAddresses() {
   const [notes, setNotes] = useState<Record<string, string>>({});
 
   const addresses = read.isError ? null : read.data;
-  // Its stablecoins' balances: the crypto wallets the chain's reads made.
-  const cash = wallets.filter((w) => w.kind === "crypto" && !w.archived);
+  const holdings = useChainHoldings();
+  const accounts = useTradingAccounts();
+  const banks = useBankLinks();
+  // An address' stablecoins, through its trading account (its reference is the address).
+  const holdingsOf = (address: OnchainAddress) => {
+    const account = accounts.data?.find((a) => a.reference === address.uuid);
+    return account ? (holdings.data ?? []).filter((h) => h.tradingAccountUuid === account.uuid) : [];
+  };
+  // The wallets taking a bank account's or a stablecoin's movements already: one source each.
+  const taken = useMemo(() => new Set([
+    ...(banks.data ?? []).flatMap((l) => l.accounts.map((a) => a.walletUuid)),
+    ...(holdings.data ?? []).map((h) => h.walletUuid),
+  ].filter((uuid): uuid is string => !!uuid)), [banks.data, holdings.data]);
+  // The holding being linked or unlinked, and why it couldn't be.
+  const [linking, setLinking] = useState<string | null>(null);
+  const [linkErrors, setLinkErrors] = useState<Record<string, string>>({});
+
+  const link = async (holding: ChainHolding, walletUuid: string | null) => {
+    setLinking(holding.uuid);
+    setLinkErrors((e) => ({ ...e, [holding.uuid]: "" }));
+    try {
+      await tradingService.linkHolding(holding.uuid, walletUuid);
+      changed();
+    } catch (err) {
+      setLinkErrors((e) => ({ ...e, [holding.uuid]: errorText(err, "Unable to link this stablecoin.") }));
+    } finally {
+      setLinking(null);
+    }
+  };
+  const unlink = async (holding: ChainHolding) => {
+    setLinking(holding.uuid);
+    try {
+      await tradingService.unlinkHolding(holding.uuid);
+      changed();
+    } catch (err) {
+      setLinkErrors((e) => ({ ...e, [holding.uuid]: errorText(err, "Unable to unlink this stablecoin.") }));
+    } finally {
+      setLinking(null);
+    }
+  };
 
   const changedSoon = () => {
     changed();
@@ -124,7 +166,7 @@ export function WalletAddresses() {
       <Module>
         <ModuleHead
           title="On-chain"
-          desc="Your own wallets on Solana, proved yours by a signature. Each one gets a portfolio for what it holds and an account for its stablecoins. Your keys stay in your wallet: nothing here can move money."
+          desc="Your own wallets on Solana, proved yours by a signature. Each one gets a portfolio for what it holds; link each of its stablecoins to a wallet, as a bank's accounts, and its movements come in from the chain. Your keys stay in your wallet: nothing here can move money."
         />
         <div className={MODULE_BODY}>
           {addresses.length === 0 ? (
@@ -175,6 +217,25 @@ export function WalletAddresses() {
                   </div>
                   {notes[address.uuid] && <p className="pl-12 text-[11.5px] font-semibold text-emerald-700">{notes[address.uuid]}</p>}
                   {funding === address.uuid && <AddFunds address={address.address} />}
+                  <ul className="pl-12 space-y-2">
+                    {holdingsOf(address).length === 0 ? (
+                      <li className="text-[11.5px] text-slate-400">
+                        {address.readAt ? "No stablecoin read yet." : "Its stablecoins show here after its first read."}
+                      </li>
+                    ) : holdingsOf(address).map((holding) => (
+                      <HoldingRow
+                        key={holding.uuid}
+                        holding={holding}
+                        wallets={wallets}
+                        taken={taken}
+                        readOnly={sample}
+                        busy={linking === holding.uuid}
+                        error={linkErrors[holding.uuid]}
+                        onLink={(walletUuid) => void link(holding, walletUuid)}
+                        onUnlink={() => void unlink(holding)}
+                      />
+                    ))}
+                  </ul>
                 </li>
               ))}
             </ul>
@@ -182,30 +243,6 @@ export function WalletAddresses() {
           {error && !removing && <p className="mt-3 text-xs font-medium text-rose-600">{error}</p>}
         </div>
       </Module>
-
-      {cash.length > 0 && (
-        <Module>
-          <ModuleHead
-            title="Stablecoins"
-            desc="What your addresses hold as cash, read from the chain: each one a wallet, its movements in and out booked as a bank's. A card payment that bought one is suggested as a transfer to it."
-          />
-          <div className={MODULE_BODY}>
-            <ul className="divide-y divide-[#EEE9DD]">
-              {cash.map((wallet) => (
-                <li key={wallet.uuid} className="py-3 flex items-center gap-3">
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-bold text-slate-800">{wallet.name}</span>
-                    <span className="block text-[11.5px] text-slate-500">
-                      {[wallet.institution, wallet.lastMovementDate && `last movement ${dayLabel(wallet.lastMovementDate)}`].filter(Boolean).join(" · ")}
-                    </span>
-                  </span>
-                  <span className="text-[13px] font-bold text-slate-800 tabular-nums">{formatCurrency(wallet.balance, wallet.currency, 2)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Module>
-      )}
 
       {connecting && (
         <ConnectWalletDialog
@@ -231,6 +268,76 @@ export function WalletAddresses() {
 // The stablecoins an address' account counts as cash (catena's stablecoins), as the user picks them
 // in their wallet or exchange.
 const STABLECOINS = "USDC or EURC";
+
+// HoldingRow's choice for a new wallet, beside the user's own.
+const NEW_WALLET = "new";
+
+/**
+ * One stablecoin of an address, as a bank's account: its balance read from the chain; linked, the
+ * wallet it comes into (Unlink); not yet, a choice among the user's wallets of its currency free of
+ * another source, or a new one named after it.
+ */
+function HoldingRow({ holding, wallets, taken, readOnly, busy, error, onLink, onUnlink }: {
+  holding: ChainHolding;
+  wallets: Wallet[];
+  taken: Set<string>;
+  readOnly: boolean;
+  busy: boolean;
+  error?: string;
+  onLink: (walletUuid: string | null) => void;
+  onUnlink: () => void;
+}) {
+  const linked = holding.walletUuid ? wallets.find((w) => w.uuid === holding.walletUuid) : undefined;
+  const choices = wallets.filter((w) => !w.archived && w.currency === holding.currency && !taken.has(w.uuid));
+  const [choice, setChoice] = useState("");
+  const meta = [
+    holding.currency,
+    `balance ${formatCurrency(holding.balance, holding.currency, 2)}`,
+    holding.walletUuid && holding.syncFrom && `from ${dayLabel(holding.syncFrom)}`,
+  ].filter(Boolean).join(" · ");
+  return (
+    <li className="rounded-xl border border-[#EEE9DD] px-3 py-2.5 space-y-1.5">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[12.5px] font-bold text-slate-700">{holding.symbol}</span>
+          <span className="block text-[11px] text-slate-500">{meta}</span>
+        </span>
+        {holding.walletUuid ? (
+          <span className="flex items-center gap-2">
+            <span className="text-[12px] font-semibold text-slate-600">→ {linked?.name ?? "A wallet"}</span>
+            {!readOnly && (
+              <IconButton label="Unlink from the wallet" onClick={onUnlink} spinning={busy}><Unlink className="h-3.5 w-3.5" /></IconButton>
+            )}
+          </span>
+        ) : readOnly ? (
+          <span className="text-[11.5px] text-slate-400">Not linked to a wallet</span>
+        ) : (
+          <span className="flex items-center gap-2">
+            <select
+              value={choice}
+              onChange={(e) => setChoice(e.target.value)}
+              aria-label="Wallet"
+              className="h-9 px-2.5 rounded-lg bg-white text-[12px] font-semibold text-slate-700 border border-slate-200 outline-none focus:border-[#C49A3C]/60"
+            >
+              <option value="">Choose a wallet…</option>
+              <option value={NEW_WALLET}>New wallet: {holding.symbol}</option>
+              {choices.map((w) => <option key={w.uuid} value={w.uuid}>{w.name}</option>)}
+            </select>
+            <button
+              type="button"
+              onClick={() => choice && onLink(choice === NEW_WALLET ? null : choice)}
+              disabled={!choice || busy}
+              className="px-3 py-2 rounded-lg text-[11.5px] font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40"
+            >
+              {busy ? "Linking…" : "Link"}
+            </button>
+          </span>
+        )}
+      </div>
+      {error && <p className="text-[11.5px] font-medium text-rose-600">{error}</p>}
+    </li>
+  );
+}
 
 /**
  * ADD FUNDS — how money reaches an address without the platform selling anything (forum's service
@@ -265,7 +372,7 @@ function AddFunds({ address }: { address: string }) {
         <ol className="list-decimal pl-4 space-y-1">
           <li>Buy {STABLECOINS} in your wallet (Phantom and Solflare have a Buy button), or at an exchange where you have an account.</li>
           <li>From an exchange, withdraw it to this address, choosing the <strong>Solana</strong> network.</li>
-          <li>It shows in this address&apos; account once the chain is read; the card or bank payment can then be linked to it as a transfer.</li>
+          <li>It shows under this address once the chain is read, in the wallet you link it to; the card or bank payment can then be linked to it as a transfer.</li>
         </ol>
         <p className="flex gap-2 rounded-xl bg-amber-50 px-3 py-2 text-[11.5px] font-medium text-amber-800">
           <TriangleAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -286,13 +393,15 @@ const STEP_LABELS: Record<Step, string> = {
 };
 
 /**
- * Connects a Solana wallet found in the browser and proves its address: the wallet gives it, the
- * backend composes the message (Sign-In With Solana, valid 5 minutes), the wallet signs it, the
- * backend checks the signature and adds the address.
+ * CONNECT A WALLET — as Connect a bank: a chain (Solana's, for now), a wallet of it found in the
+ * browser, then its address proved: the wallet gives it, the backend composes the message
+ * (Sign-In With Solana, valid 5 minutes), the wallet signs it, the backend checks the signature and
+ * adds the address, read at once so that its stablecoins show, each to link to a wallet.
  */
 function ConnectWalletDialog({ onClose, onConnected }: { onClose: () => void; onConnected: () => void }) {
   // The extensions announce themselves as the page loads, and later when one is installed.
   const wallets = useSyncExternalStore(subscribeSolanaWallets, getSolanaWallets, getServerSolanaWallets);
+  const [chain, setChain] = useState(SOLANA);
   const [picked, setPicked] = useState<string | null>(null);
   const [step, setStep] = useState<Step | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -306,11 +415,13 @@ function ConnectWalletDialog({ onClose, onConnected }: { onClose: () => void; on
     try {
       setStep("connect");
       const account = await connectWallet(wallet.wallet);
-      const proof = await tradingService.startProof(SOLANA, account.address);
+      const proof = await tradingService.startProof(chain, account.address);
       setStep("sign");
       const signature = await signMessage(wallet.wallet, account, proof.message);
       setStep("register");
-      await tradingService.register(proof.nonce, signature);
+      const added = await tradingService.register(proof.nonce, signature);
+      // Its first read tells its stablecoins; the job would, within 5 minutes.
+      await tradingService.read(added.uuid).catch(() => undefined);
       onConnected();
     } catch (err) {
       setError(errorText(err, "Unable to connect this wallet."));
@@ -322,7 +433,7 @@ function ConnectWalletDialog({ onClose, onConnected }: { onClose: () => void; on
     <DialogShell
       icon={<WalletIcon className="h-5 w-5" />}
       title="Connect a wallet"
-      subtitle="Solana: your wallet signs a message to prove the address is yours. It moves no funds and costs nothing."
+      subtitle="Your wallet signs a message to prove the address is yours. It moves no funds and costs nothing; its stablecoins then show, each to link to a wallet."
       busy={step !== null}
       error={error}
       submitLabel="Connect and sign"
@@ -330,6 +441,17 @@ function ConnectWalletDialog({ onClose, onConnected }: { onClose: () => void; on
       onSubmit={() => void prove()}
       onClose={onClose}
     >
+      <label className="block space-y-1.5">
+        <span className="block text-[11px] font-black uppercase tracking-widest text-slate-400">Chain</span>
+        <select
+          value={chain}
+          onChange={(e) => setChain(e.target.value)}
+          disabled={step !== null}
+          className="w-full h-10 px-3 rounded-xl bg-white text-[13px] font-semibold text-slate-700 border border-slate-200 outline-none focus:border-[#C49A3C]/60"
+        >
+          {CHAINS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+        </select>
+      </label>
       {wallets.length === 0 ? (
         <div className="space-y-3">
           <p className="text-[12.5px] text-slate-600">No Solana wallet found in this browser. Install one, then open this again:</p>
