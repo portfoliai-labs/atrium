@@ -17,22 +17,54 @@ export interface DonutItem {
   counted: boolean;
   color: string;
   onOpen?: () => void;
+  // What it is made of, on an outer ring under its slice (an account's wallets): each in the
+  // donut's currency, positive. With parts, its slice is as wide as they are together.
+  parts?: DonutPart[];
 }
+
+export interface DonutPart {
+  key: string;
+  label: string;
+  value: number;
+  color: string;
+  onOpen?: () => void;
+}
+
+// The rings' edges, white as the module they're on: slices and parts meet, so the outer ring
+// lines up with the inner one.
+const EDGE = { stroke: "#fff", strokeWidth: 1.5 };
 
 /**
  * DONUT LIST — the parts of a whole (All portfolios' portfolios, All wallets' wallets) on a donut
  * and in a list beside it, each with its value and share, a slice or a row opening that part's
  * page. Shares are of the counted parts' total, in `currency`; a part not counted (another
- * currency, a card in debt, a value not known yet) is listed, without a share.
+ * currency, a card in debt, a value not known yet) is listed, without a share. When some parts
+ * have parts of their own (an account's wallets), a thinner outer ring shows them under their
+ * part's slice, hovered and opened as the slices are; a part without any is drawn whole there too.
  */
 export function DonutList({ items, currency }: { items: DonutItem[]; currency: string }) {
   const [hovered, setHovered] = useState<string | null>(null);
 
   const sorted = [...items].sort((a, b) => Number(b.counted) - Number(a.counted) || (b.value ?? 0) - (a.value ?? 0));
-  const slices = sorted.filter((i) => i.counted);
-  const total = slices.reduce((s, i) => s + (i.value ?? 0), 0);
-  const share = (i: DonutItem) => (i.counted && total > 0 ? ((i.value ?? 0) / total) * 100 : null);
-  const focus = sorted.find((i) => i.key === hovered);
+  // A slice's width: its parts together when it has some.
+  const width = (i: DonutItem) => (i.parts ? i.parts.reduce((s, p) => s + p.value, 0) : i.value ?? 0);
+  const slices = sorted.filter((i) => i.counted && width(i) > 0).map((i) => ({ ...i, value: width(i) }));
+  const total = slices.reduce((s, i) => s + i.value, 0);
+  const nested = slices.some((i) => i.parts?.length);
+  // The outer ring, slice by slice in the same order: a slice without parts is one part.
+  const outer = nested
+    ? slices.flatMap((i) => (i.parts?.length ? i.parts : [{ key: i.key, label: i.label, value: i.value, color: i.color, onOpen: i.onOpen }])
+      .map((p) => ({ ...p, parent: i.key })))
+    : [];
+  const share = (i: DonutItem) => {
+    const slice = slices.find((s) => s.key === i.key);
+    return slice && total > 0 ? (slice.value / total) * 100 : null;
+  };
+  const part = outer.find((p) => p.key === hovered && p.parent !== p.key);
+  const focus = part ?? sorted.find((i) => i.key === hovered);
+  const focusShare = part ? (total > 0 ? (part.value / total) * 100 : null) : focus ? share(focus as DonutItem) : null;
+  // A slice is lit with its parts, a part with its slice.
+  const lit = (key: string, parent?: string) => !hovered || hovered === key || hovered === parent || outer.some((p) => p.key === hovered && p.parent === key);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[210px_minmax(0,1fr)] gap-[26px] items-center">
@@ -43,10 +75,10 @@ export function DonutList({ items, currency }: { items: DonutItem[]; currency: s
               data={slices.length ? slices : [{ key: "none", label: "", value: 1, color: "#EEE9DD" }]}
               dataKey="value"
               nameKey="label"
-              innerRadius="67%"
-              outerRadius="98%"
-              paddingAngle={slices.length > 1 ? 1.4 : 0}
-              stroke="none"
+              innerRadius={nested ? "56%" : "67%"}
+              outerRadius={nested ? "80%" : "98%"}
+              paddingAngle={!nested && slices.length > 1 ? 1.4 : 0}
+              {...(nested ? EDGE : { stroke: "none" })}
               isAnimationActive={false}
               onMouseLeave={() => setHovered(null)}
             >
@@ -54,18 +86,41 @@ export function DonutList({ items, currency }: { items: DonutItem[]; currency: s
                 <Cell
                   key={i.key}
                   fill={i.color}
-                  opacity={hovered && hovered !== i.key ? 0.25 : 1}
+                  opacity={lit(i.key) ? 1 : 0.25}
                   cursor={i.onOpen ? "pointer" : "default"}
                   onMouseEnter={() => i.key !== "none" && setHovered(i.key)}
                   onClick={i.onOpen}
                 />
               ))}
             </Pie>
+            {nested && (
+              <Pie
+                data={outer}
+                dataKey="value"
+                nameKey="label"
+                innerRadius="83%"
+                outerRadius="98%"
+                {...EDGE}
+                isAnimationActive={false}
+                onMouseLeave={() => setHovered(null)}
+              >
+                {outer.map((p) => (
+                  <Cell
+                    key={`${p.parent}:${p.key}`}
+                    fill={p.color}
+                    opacity={lit(p.key, p.parent) ? 1 : 0.25}
+                    cursor={p.onOpen ? "pointer" : "default"}
+                    onMouseEnter={() => setHovered(p.key)}
+                    onClick={p.onOpen}
+                  />
+                ))}
+              </Pie>
+            )}
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-[22%] text-center">
           <span className="text-xl font-bold text-[#1c1917] tabular-nums">
-            {focus && share(focus) !== null ? `${share(focus)!.toFixed(1)}%` : slices.length ? formatCurrency(total, currency, 0) : "—"}
+            {focus && focusShare !== null ? `${focusShare.toFixed(1)}%` : slices.length ? formatCurrency(total, currency, 0) : "—"}
           </span>
           <span className="text-[10.5px] text-[#78716c] truncate max-w-full">{focus ? focus.label : "total"}</span>
         </div>
@@ -89,7 +144,7 @@ export function DonutList({ items, currency }: { items: DonutItem[]; currency: s
               <span className="w-[18px] shrink-0">{i.onOpen && <ChevronRight className="h-4 w-4 text-[#857e78]" />}</span>
             </>
           );
-          const row = `w-full flex items-center gap-3 px-2.5 py-[11px] rounded-[14px] text-left transition-colors ${index < sorted.length - 1 ? "border-b border-[#EEE9DD]" : ""} ${hovered === i.key ? "bg-[#F7F5EF]" : ""}`;
+          const row = `w-full flex items-center gap-3 px-2.5 py-[11px] rounded-[14px] text-left transition-colors ${index < sorted.length - 1 ? "border-b border-[#EEE9DD]" : ""} ${hovered === i.key || part?.parent === i.key ? "bg-[#F7F5EF]" : ""}`;
           return (
             <li key={i.key} onMouseEnter={() => setHovered(i.key)} onMouseLeave={() => setHovered(null)}>
               {i.onOpen ? (

@@ -7,12 +7,37 @@ import { useAccounts } from "../../../hooks/useAccounts";
 import { formatCurrency } from "../../../lib/format";
 import { KIND_LABELS, walletColor } from "../../../lib/wallets";
 import type { Wallet, WalletKind } from "../../../models/Wallet";
-import { DonutList, type DonutItem } from "../DonutList";
+import { DonutList, type DonutItem, type DonutPart } from "../DonutList";
+import type { Account } from "../../../models/Account";
 import { HBars, MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 
 const KIND_COLORS: Record<WalletKind, string> = {
   current_account: "#2a78d6", credit_card: "#e34948", savings: "#1baf7a", cash: "#eda100", crypto: "#7c5cd6",
 };
+
+/**
+ * The rates into `currency` the accounts' totals tell: an account with one other currency (its
+ * total is arca's, each wallet at today's rate) gives that currency's, and a rate found makes
+ * another account's next unknown one findable. A currency no account tells stays unknown.
+ */
+function impliedRates(accounts: Account[], wallets: Wallet[], currency: string): Map<string, number> {
+  const rates = new Map<string, number>([[currency, 1]]);
+  for (let found = true; found;) {
+    found = false;
+    for (const a of accounts) {
+      if (a.balance === null || a.balanceCurrency !== currency) continue;
+      const own = wallets.filter((w) => w.accountUuid === a.uuid);
+      const unknown = [...new Set(own.map((w) => w.currency))].filter((c) => !rates.has(c));
+      if (unknown.length !== 1) continue;
+      const known = own.filter((w) => rates.has(w.currency)).reduce((s, w) => s + w.balance * rates.get(w.currency)!, 0);
+      const foreign = own.filter((w) => w.currency === unknown[0]).reduce((s, w) => s + w.balance, 0);
+      if (foreign === 0) continue;
+      const rate = (a.balance - known) / foreign;
+      if (rate > 0) { rates.set(unknown[0], rate); found = true; }
+    }
+  }
+  return rates;
+}
 
 /** A wallet in no account, by itself: its share only in the total's currency. */
 function walletItem(w: Wallet, color: string, currency: string, onOpen: () => void): DonutItem {
@@ -35,6 +60,9 @@ function walletItem(w: Wallet, color: string, currency: string, onOpen: () => vo
  * and in a list, each with its balance and share, a slice or a row opening its page — the way to
  * each account's and wallet's. An account's balance is arca's, every wallet of it at today's rate
  * in `currency`; while the accounts are read (or when they can't be), each wallet is by itself.
+ * Around the accounts' ring, a thinner one splits each into its wallets (in `currency`, at the
+ * rates the accounts' totals tell: see impliedRates); an account's slice is as wide as its wallets
+ * there together, its total listed as arca tells it.
  * Beside it, to read only, the balances by kind (current accounts, cards, savings, cash). Shares
  * are of the total in `currency` (the user's reference one): a wallet in another currency is
  * listed in its own but takes no share, and neither does a card in debt, nor an account whose
@@ -52,6 +80,15 @@ export function WalletsComposition({ currency, onOpen, onOpenAccount }: {
   const items = useMemo((): DonutItem[] => {
     const listed = accounts.data ?? [];
     const own = (uuid: string) => active.filter(({ w }) => w.accountUuid === uuid);
+    const rates = impliedRates(listed, active.map(({ w }) => w), currency);
+    // An account's wallets on the outer ring, in `currency`: those worth something (a card in debt
+    // takes no part, as it takes no share). None when one's rate isn't known: the account is
+    // drawn whole there too.
+    const parts = (uuid: string): DonutPart[] | undefined => {
+      const held = own(uuid).filter(({ w }) => w.balance > 0);
+      if (held.some(({ w }) => !rates.has(w.currency))) return undefined;
+      return held.map(({ w, color }) => ({ key: w.uuid, label: w.name, value: w.balance * rates.get(w.currency)!, color, onOpen: () => onOpen(w.uuid) }));
+    };
     const accountItems = listed.filter((a) => own(a.uuid).length > 0).map((a): DonutItem => {
       const count = own(a.uuid).length;
       return {
@@ -67,6 +104,7 @@ export function WalletsComposition({ currency, onOpen, onOpenAccount }: {
         counted: a.balance !== null && a.balanceCurrency === currency && a.balance > 0,
         color: own(a.uuid)[0].color,
         onOpen: () => onOpenAccount(a.uuid),
+        parts: parts(a.uuid),
       };
     });
     const loose = active.filter(({ w }) => !listed.some((a) => a.uuid === w.accountUuid));
