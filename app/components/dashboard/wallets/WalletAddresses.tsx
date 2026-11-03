@@ -26,6 +26,10 @@ import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 // The chain an address is proved on: Solana's, for now (forum's service map, "Buying from the app").
 const SOLANA = "solana";
 
+// A read's balances and movements reach the wallets by events (catena → mercatura → arca), a moment
+// after the read answers: the wallets are read again now and after each of these delays.
+const SETTLE_DELAYS_MS = [2_000, 6_000];
+
 /** "7xKX…gAsU": an address' ends, as the trading account names it. */
 const shortAddress = (address: string) => `${address.slice(0, 4)}…${address.slice(-4)}`;
 
@@ -61,6 +65,11 @@ export function WalletAddresses() {
   // Its stablecoins' balances: the crypto wallets the chain's reads made.
   const cash = wallets.filter((w) => w.kind === "crypto" && !w.archived);
 
+  const changedSoon = () => {
+    changed();
+    SETTLE_DELAYS_MS.forEach((ms) => setTimeout(changed, ms));
+  };
+
   const readNow = async (address: OnchainAddress) => {
     setReading(address.uuid);
     setError(null);
@@ -70,7 +79,7 @@ export function WalletAddresses() {
         ...n,
         [address.uuid]: movements === 0 ? "Read: nothing new." : `Read: ${movements} new movement${movements === 1 ? "" : "s"}, in its wallets in a moment.`,
       }));
-      changed();
+      changedSoon();
     } catch (err) {
       setError(errorText(err, "Unable to read this address now."));
     } finally {
@@ -201,7 +210,7 @@ export function WalletAddresses() {
       {connecting && (
         <ConnectWalletDialog
           onClose={() => setConnecting(false)}
-          onConnected={() => { setConnecting(false); changed(); void read.refetch(); }}
+          onConnected={() => { setConnecting(false); changedSoon(); void read.refetch(); }}
         />
       )}
       {removing && (
