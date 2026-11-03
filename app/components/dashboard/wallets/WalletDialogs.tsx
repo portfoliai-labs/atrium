@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { ArrowLeftRight, Loader2, Pencil, Plus, X } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
-import { COMMON_CURRENCIES, KIND_LABELS, WALLET_COLORS, WALLET_KINDS, errorText, today } from "../../../lib/wallets";
+import { COMMON_CURRENCIES, KIND_LABELS, WALLET_COLORS, WALLET_KINDS, errorText, isOnchain, today } from "../../../lib/wallets";
 import type { Movement, Wallet, WalletKind } from "../../../models/Wallet";
 import { WalletBankSync } from "./WalletBanks";
 import { CategoryPicker } from "./WalletCategories";
@@ -101,7 +101,8 @@ const amountText = (v: number) => String(Math.abs(v));
 /**
  * New wallet, or a wallet's settings: name, kind, institution, currency (only while it has no
  * movements), opening balance and day (no movement can be booked before it), colour; and, for a
- * wallet linked to a bank account, reading it now.
+ * wallet linked to a bank account, reading it now. An on-chain address' wallet is only named and
+ * coloured: the rest is the chain's.
  */
 export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }: {
   wallet?: Wallet;
@@ -121,6 +122,7 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
   const [error, setError] = useState<string | null>(null);
 
   const hasMovements = !!wallet?.lastMovementDate;
+  const onchain = !!wallet && isOnchain(wallet);
   const openingAmount = parseAmount(opening);
   const code = currency.trim().toUpperCase();
   const valid = name.trim().length > 0 && openingAmount !== null && /^[A-Z]{3}$/.test(code) && !!openingDate;
@@ -158,7 +160,7 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
     <DialogShell
       icon={wallet ? <Pencil className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
       title={wallet ? `Edit ${wallet.name}` : "New wallet"}
-      subtitle={wallet ? undefined : "An account, a card, savings or cash: what comes in and goes out of it."}
+      subtitle={onchain ? "Its token, balance and opening day are read from the chain." : wallet ? undefined : "An account, a card, savings or cash: what comes in and goes out of it."}
       busy={busy}
       error={error}
       submitLabel={wallet ? "Save" : "Create"}
@@ -170,37 +172,41 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
         <Field label="Name" className="sm:col-span-2">
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="Everyday account" className={INPUT} />
         </Field>
-        <Field label="Kind">
-          <select value={kind} onChange={(e) => setKind(e.target.value as WalletKind)} className={INPUT}>
-            {WALLET_KINDS.map((k) => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
-          </select>
-        </Field>
-        <Field label="Bank or provider">
-          <input value={institution} onChange={(e) => setInstitution(e.target.value)} placeholder="Optional" className={INPUT} />
-        </Field>
-        <Field label="Currency" hint={hasMovements ? "Fixed once it has movements." : undefined}>
-          <input
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-            disabled={hasMovements}
-            maxLength={3}
-            list="wallet-currencies"
-            className={INPUT}
-          />
-          <datalist id="wallet-currencies">{COMMON_CURRENCIES.map((c) => <option key={c} value={c} />)}</datalist>
-        </Field>
-        <Field label="Opening balance" hint={kind === "credit_card" ? "Negative while something is owed." : undefined}>
-          <input value={opening} onChange={(e) => setOpening(e.target.value)} inputMode="decimal" className={INPUT} aria-invalid={openingAmount === null} />
-        </Field>
-        <Field label="Opening day" hint="No movement can be booked before it." className="sm:col-span-2">
-          <input
-            type="date"
-            value={openingDate}
-            max={wallet?.lastMovementDate ?? undefined}
-            onChange={(e) => setOpeningDate(e.target.value)}
-            className={INPUT}
-          />
-        </Field>
+        {!onchain && (
+          <>
+            <Field label="Kind">
+              <select value={kind} onChange={(e) => setKind(e.target.value as WalletKind)} className={INPUT}>
+                {WALLET_KINDS.map((k) => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
+              </select>
+            </Field>
+            <Field label="Bank or provider">
+              <input value={institution} onChange={(e) => setInstitution(e.target.value)} placeholder="Optional" className={INPUT} />
+            </Field>
+            <Field label="Currency" hint={hasMovements ? "Fixed once it has movements." : undefined}>
+              <input
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                disabled={hasMovements}
+                maxLength={3}
+                list="wallet-currencies"
+                className={INPUT}
+              />
+              <datalist id="wallet-currencies">{COMMON_CURRENCIES.map((c) => <option key={c} value={c} />)}</datalist>
+            </Field>
+            <Field label="Opening balance" hint={kind === "credit_card" ? "Negative while something is owed." : undefined}>
+              <input value={opening} onChange={(e) => setOpening(e.target.value)} inputMode="decimal" className={INPUT} aria-invalid={openingAmount === null} />
+            </Field>
+            <Field label="Opening day" hint="No movement can be booked before it." className="sm:col-span-2">
+              <input
+                type="date"
+                value={openingDate}
+                max={wallet?.lastMovementDate ?? undefined}
+                onChange={(e) => setOpeningDate(e.target.value)}
+                className={INPUT}
+              />
+            </Field>
+          </>
+        )}
       </div>
       <div className="space-y-1.5">
         <span className="block text-[11px] font-black uppercase tracking-widest text-slate-400">Colour</span>
