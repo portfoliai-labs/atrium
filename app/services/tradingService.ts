@@ -1,5 +1,16 @@
 // services/tradingService.ts
-import type { AddressProof, ChainHolding, OnchainAddress, TradingAccount } from "../models/Trading";
+import type {
+  AddressProof,
+  ChainHolding,
+  EligibilityNotice,
+  OnchainAddress,
+  Order,
+  OrderExecution,
+  OrderQuote,
+  OrderSide,
+  PlaceOrderInput,
+  TradingAccount,
+} from "../models/Trading";
 import { apiFetch } from "./apiClient";
 
 // Errors come back as ApiError with the backend's `error_type`: InvalidFieldError (422, an unknown
@@ -59,5 +70,62 @@ export const tradingService = {
   // DELETE /v1/chain-holdings/{h}/wallet — the movements it brought stay.
   async unlinkHolding(holdingUuid: string): Promise<ChainHolding> {
     return apiFetch<ChainHolding>(`/v1/chain-holdings/${holdingUuid}/wallet`, { method: "DELETE" });
+  },
+
+  // GET /v1/orders/quote — the venue's quote for an order not placed yet: a buy by the cash to
+  // spend, a sale by the units to give. 409 NoRouteError, NoVenueError (devnet has none).
+  async quote(input: { tradingAccountUuid: string; listingId: string; side: OrderSide; quantity?: number; cashAmount?: number; cashCurrency: string }): Promise<OrderQuote> {
+    const params = new URLSearchParams({
+      tradingAccountUuid: input.tradingAccountUuid, listingId: input.listingId, side: input.side, cashCurrency: input.cashCurrency,
+    });
+    if (input.quantity !== undefined) params.set("quantity", String(input.quantity));
+    if (input.cashAmount !== undefined) params.set("cashAmount", String(input.cashAmount));
+    return apiFetch<OrderQuote>(`/v1/orders/quote?${params.toString()}`);
+  },
+
+  // GET /v1/orders/eligibility — the notice before the first order, and when the user accepted it.
+  async eligibility(): Promise<EligibilityNotice> {
+    return apiFetch<EligibilityNotice>(`/v1/orders/eligibility`);
+  },
+
+  // POST /v1/orders/eligibility — 409 EligibilityNoticeOutdatedError for a version not current.
+  async acceptEligibility(version: string): Promise<EligibilityNotice> {
+    return apiFetch<EligibilityNotice>(`/v1/orders/eligibility`, { method: "POST", body: JSON.stringify({ version }) });
+  },
+
+  // POST /v1/orders — once per idempotency key. 409 EligibilityNoticeNotAcceptedError.
+  async placeOrder(input: PlaceOrderInput): Promise<Order> {
+    return apiFetch<Order>(`/v1/orders`, { method: "POST", body: JSON.stringify(input) });
+  },
+
+  // GET /v1/orders — newest first; of one trading account when given.
+  async orders(tradingAccountUuid?: string): Promise<Order[]> {
+    const query = tradingAccountUuid ? `?tradingAccountUuid=${encodeURIComponent(tradingAccountUuid)}` : "";
+    return apiFetch<Order[]>(`/v1/orders${query}`);
+  },
+
+  // GET /v1/orders/{o} — with the states it went through.
+  async order(orderUuid: string): Promise<Order> {
+    return apiFetch<Order>(`/v1/orders/${orderUuid}`);
+  },
+
+  // POST /v1/orders/{o}/cancel — an order not sent yet; 409 OrderNotCancellableError once sent.
+  async cancelOrder(orderUuid: string): Promise<Order> {
+    return apiFetch<Order>(`/v1/orders/${orderUuid}/cancel`, { method: "POST" });
+  },
+
+  // POST /v1/orders/{o}/transaction — the transaction to sign now (it holds for seconds), with its
+  // quote. 404 ExecutionNotFoundError for moments after placing (the order is on its way to catena).
+  async prepareTransaction(orderUuid: string): Promise<OrderExecution> {
+    return apiFetch<OrderExecution>(`/v1/orders/${orderUuid}/transaction`, { method: "POST" });
+  },
+
+  // POST /v1/orders/{o}/signature — the signed transaction (base64): filled, failed, or submitted
+  // while its outcome isn't known. 409 TransactionExpiredError (prepare it again),
+  // 422 TransactionMismatchError.
+  async submitTransaction(orderUuid: string, signedTransaction: string): Promise<OrderExecution> {
+    return apiFetch<OrderExecution>(`/v1/orders/${orderUuid}/signature`, {
+      method: "POST", body: JSON.stringify({ signedTransaction }),
+    });
   },
 };
