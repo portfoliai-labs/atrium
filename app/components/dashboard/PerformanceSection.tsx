@@ -59,6 +59,7 @@ import type {
 import type { TransactionResponse } from "../../models/Transaction";
 import { DIMENSION_PANELS, LOOK_THROUGH_INFO, allocationRows, dimensionOf, isInformative } from "../../lib/classifications";
 import { AiHelpButton } from "./assistant/AiHelpButton";
+import { TrackerOrderButtons } from "./TrackerOrderButtons";
 
 const chartDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const fullDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
@@ -2364,7 +2365,14 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
             </dl>
           </Module>
           <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
-          {(data.trackers?.length ?? 0) > 0 && <TrackersModule trackers={data.trackers!} />}
+          {(data.trackers?.length ?? 0) > 0 && (
+            <TrackersModule
+              trackers={data.trackers!}
+              asset={{ listingId, instrumentId: data.listing?.instrumentId ?? assetId, ticker: data.ticker, name: data.name }}
+              referencePrice={data.quotePrices?.values.at(-1) ?? null}
+              referenceCurrency={data.quoteCurrency}
+            />
+          )}
         </div>
         <AssetNewsModule listingId={listingId} name={data.name} />
         <AssetArticlesModule instrumentId={data.listing?.instrumentId ?? null} ticker={data.ticker} isin={data.isin} />
@@ -2856,7 +2864,13 @@ function joinAssetPnl(realized: RealizedPnlResponse | null, dividends: Dividends
  */
 /** The instrument's tokens (census' trackers): another issuer's security each, which tracks the
  * instrument and is priced as it, held in a wallet of the user's own. */
-function TrackersModule({ trackers }: { trackers: Listing[] }) {
+function TrackersModule({ trackers, asset, referencePrice, referenceCurrency }: {
+  trackers: Listing[];
+  // The asset's page, which an order page opens under; its last price in its quote currency.
+  asset: { listingId: string; instrumentId: string; ticker: string; name: string };
+  referencePrice: number | null;
+  referenceCurrency: string;
+}) {
   return (
     <Module>
       <ModuleHead
@@ -2867,7 +2881,10 @@ function TrackersModule({ trackers }: { trackers: Listing[] }) {
         {trackers.map((t) => (
           <div key={t.listingId} className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-4 py-2.5 border-b border-[#EEE9DD] last:border-b-0">
             <dt className="text-[13.5px] font-bold text-[#1c1917]">{t.ticker}</dt>
-            <dd className="text-right text-[12.5px] text-[#78716c] break-words">{t.tracking?.issuer ?? "—"}</dd>
+            <dd className="flex items-center justify-end gap-3 text-right text-[12.5px] text-[#78716c] break-words">
+              {t.tracking?.issuer ?? "—"}
+              <TrackerOrderButtons tracker={t} asset={asset} referencePrice={referencePrice} referenceCurrency={referenceCurrency} />
+            </dd>
           </div>
         ))}
       </dl>

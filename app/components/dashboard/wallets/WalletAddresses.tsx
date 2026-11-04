@@ -24,6 +24,7 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { DialogShell } from "./WalletDialogs";
 import { IconButton, useBankLinks } from "./WalletBanks";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
+import { OnchainOrders } from "./OnchainOrders";
 
 // The chains an address can be proved on: Solana's, for now (forum's service map, "Buying from the app").
 const SOLANA = "solana";
@@ -243,6 +244,8 @@ export function WalletAddresses() {
           {error && !removing && <p className="mt-3 text-xs font-medium text-rose-600">{error}</p>}
         </div>
       </Module>
+
+      <OnchainOrders accounts={accounts.data ?? []} />
 
       {connecting && (
         <ConnectWalletDialog

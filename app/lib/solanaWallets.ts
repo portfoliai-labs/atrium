@@ -2,13 +2,19 @@
 //
 // The user's Solana wallets in the browser (Phantom, Solflare, any other), through the Wallet
 // Standard: each extension announces itself, nothing is bundled per wallet. Only what proving an
-// address needs: connecting (the wallet's address) and signing a message. The platform never holds
+// address needs (connecting: the wallet's address; signing a message) and an order needs (signing
+// the transaction catena prepared, which catena sends). The platform never holds
 // a key; the user signs in their wallet.
 
 import { getWallets } from "@wallet-standard/app";
 import type { Wallet, WalletAccount } from "@wallet-standard/base";
 import { StandardConnect, type StandardConnectFeature } from "@wallet-standard/features";
-import { SolanaSignMessage, type SolanaSignMessageFeature } from "@solana/wallet-standard-features";
+import {
+  SolanaSignMessage,
+  SolanaSignTransaction,
+  type SolanaSignMessageFeature,
+  type SolanaSignTransactionFeature,
+} from "@solana/wallet-standard-features";
 
 // Where to get one when none is installed.
 export const WALLET_DOWNLOADS: { name: string; url: string }[] = [
@@ -68,4 +74,52 @@ export async function signMessage(wallet: Wallet, account: WalletAccount, messag
   let binary = "";
   output.signature.forEach((byte) => { binary += String.fromCharCode(byte); });
   return btoa(binary);
+}
+
+const toBase64 = (bytes: Uint8Array) => {
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary);
+};
+const fromBase64 = (text: string) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+
+/** Whether the wallet can sign a transaction (not only a message). */
+export const canSignTransactions = (wallet: Wallet) => SolanaSignTransaction in wallet.features;
+
+/**
+ * The wallet and its account holding `address`: one already connected to the page first, else
+ * each wallet asked in turn (the user approves the connection in it). Null when none holds it.
+ */
+export async function walletFor(address: string): Promise<{ wallet: Wallet; account: WalletAccount } | null> {
+  const wallets = getSolanaWallets().map((w) => w.wallet).filter(canSignTransactions);
+  for (const wallet of wallets) {
+    const account = wallet.accounts.find((a) => a.address === address);
+    if (account) return { wallet, account };
+  }
+  for (const wallet of wallets) {
+    try {
+      const connect = (wallet.features as StandardConnectFeature)[StandardConnect];
+      const { accounts } = await connect.connect();
+      const account = accounts.find((a) => a.address === address);
+      if (account) return { wallet, account };
+    } catch {
+      // Refused, or not this one: the next.
+    }
+  }
+  return null;
+}
+
+/**
+ * The wallet's signature of the transaction catena prepared (base64 in, base64 out): the wallet
+ * shows the user what it does before they approve. Signed only, never sent by the wallet: catena
+ * checks it is the one prepared and sends it.
+ */
+export async function signTransaction(wallet: Wallet, account: WalletAccount, transaction: string): Promise<string> {
+  const feature = (wallet.features as SolanaSignTransactionFeature)[SolanaSignTransaction];
+  const chain = account.chains.find((c) => c.startsWith("solana:"));
+  const [output] = await feature.signTransaction({
+    account, transaction: fromBase64(transaction), ...(chain ? { chain: chain as `${string}:${string}` } : {}),
+  });
+  if (!output) throw new Error("The wallet didn't sign.");
+  return toBase64(output.signedTransaction);
 }
