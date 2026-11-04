@@ -3,13 +3,13 @@
 import { Sparkles } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
 import { readDashboardEntry } from "../../../lib/dashboardHistory";
-import { ASSET_SECTION, INVESTMENTS_SECTION, REAL_ESTATE_SECTION, WALLETS_SECTION, aiChatView, useOpenDashboardPage } from "../../../lib/dashboardNav";
+import { ASSET_SECTION, INVESTMENTS_SECTION, LIQUIDITY, REAL_ESTATE_SECTION, WALLETS_SECTION, aiChatView, useOpenDashboardPage } from "../../../lib/dashboardNav";
 
 // The page a widget is on, for the question: the sections whose widgets show the user's own data.
 const PAGE_NAMES: Record<string, string> = {
   overview: "Dashboard",
   [INVESTMENTS_SECTION]: "Investments",
-  [WALLETS_SECTION]: "Wallets",
+  [WALLETS_SECTION]: LIQUIDITY,
   [REAL_ESTATE_SECTION]: "Real estate",
   [ASSET_SECTION]: "security",
 };

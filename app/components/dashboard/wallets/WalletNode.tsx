@@ -6,9 +6,10 @@ import { Archive, Landmark, Loader2, Plus, Wallet as WalletIcon } from "lucide-r
 import { useWalletQuery, useWalletRead, useWallets, useWalletSummary } from "../../../context/WalletsContext";
 // The retired hub's (see below): import { useWalletSummaries } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
+import { LIQUIDITY } from "../../../lib/dashboardNav";
 import { formatCurrency } from "../../../lib/format";
 import { ALL_WALLETS, currentAlertFindings, errorText, savingsRate, walletColor } from "../../../lib/wallets";
-import { useCards } from "../../../hooks/useAccounts";
+import { useAccounts, useCards } from "../../../hooks/useAccounts";
 import { useWalletHolding } from "../../../hooks/useChainHoldings";
 import type { Wallet } from "../../../models/Wallet";
 // The retired hub's (see below): import type { WalletSummary } from "../../../models/Wallet";
@@ -93,15 +94,20 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   const cards = useCards(!!wallet);
   const walletCards = wallet && cards.data ? cards.data.filter((c) => c.walletUuid === wallet.uuid) : undefined;
   const takesCards = !!wallet && (cardKindsFor(wallet).length > 0 || !!walletCards?.length);
+  // The account it is one of the balances of: between Liquidity and it in the trail, said only
+  // (an account has no page of its own).
+  const accounts = useAccounts(!!wallet?.accountUuid);
+  const account = wallet?.accountUuid ? accounts.data?.find((a) => a.uuid === wallet.accountUuid) : undefined;
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
 
-  const title = wallet ? wallet.name : "All wallets";
+  const title = wallet ? wallet.name : LIQUIDITY;
   const readOnly = sample || !!wallet?.archived;
   const locked = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : wallet?.archived ? { disabled: true, title: ARCHIVED_TITLE } : {};
   const sampleLock = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
-  const allCrumb: Crumb = { label: "Wallets", onClick: () => onOpen(ALL_WALLETS, "insights") };
-  const trail = all ? rootTrail : [...rootTrail, allCrumb];
+  const allCrumb: Crumb = { label: LIQUIDITY, onClick: () => onOpen(ALL_WALLETS, "insights") };
+  const accountCrumb: Crumb[] = account ? [{ label: account.name }] : [];
+  const trail = all ? rootTrail : [...rootTrail, allCrumb, ...accountCrumb];
   const nodeCrumb: Crumb = { label: title, onClick: () => onOpen(id, "insights") };
   const close = () => { setDialog(null); setDialogError(null); };
   const done = () => { close(); changed(); };
@@ -256,7 +262,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
 
   const header = (
     <PageHeader
-      eyebrow={wallet ? (wallet.archived ? "Wallet · Archived" : "Wallet") : "Wallets"}
+      eyebrow={wallet ? (wallet.archived ? "Wallet · Archived" : "Wallet") : "Cash, accounts and cards"}
       // Wallets › the wallet, in place of the eyebrow; an archived one says so beside it.
       crumbs={trail}
       badge={(
@@ -281,7 +287,12 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         {wallet?.archived && <ArchivedNote />}
         {all && (active.length === 0
           ? <NoWallets readOnly={readOnly} onAdd={() => setDialog("new")} />
-          : <WalletsComposition currency={summary?.currency ?? active[0].currency} onOpen={(uuid) => onOpen(uuid, "insights")} />)}
+          : (
+            <WalletsComposition
+              currency={summary?.currency ?? active[0].currency}
+              onOpen={(uuid) => onOpen(uuid, "insights")}
+            />
+          ))}
         {all && <ArchivedList archived={archivedWallets} onOpen={(uuid) => onOpen(uuid, "insights")} />}
         {(wallet || active.length > 0) && <WalletInsights scope={scope} summary={summary} />}
       </ExploreHost>
@@ -501,7 +512,7 @@ function NoWallets({ readOnly, onAdd }: { readOnly: boolean; onAdd: () => void }
 //   );
 // }
 
-function ArchivedList({ archived, onOpen }: { archived: { wallet: Wallet; color: string }[]; onOpen: (uuid: string) => void }) {
+export function ArchivedList({ archived, onOpen }: { archived: { wallet: Wallet; color: string }[]; onOpen: (uuid: string) => void }) {
   if (archived.length === 0) return null;
   return (
     <section className="bg-white rounded-3xl border border-slate-200 shadow-sm">

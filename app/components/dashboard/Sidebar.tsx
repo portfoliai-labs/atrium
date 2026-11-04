@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ChevronLeft, ChevronRight, Sparkles, Users, Newspaper, BookOpen, LineChart, Wallet, Building2, History, Inbox,
 } from "lucide-react";
 import { useUser } from "../../context/UserContext";
-import { CLIENTS_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, SUBSCRIPTION_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
+import { CLIENTS_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, LIQUIDITY, NEWS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, SUBSCRIPTION_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
 import { useWallets } from "../../context/WalletsContext";
 import { useRealEstate } from "../../context/RealEstateContext";
 import { UserRole, SubscriptionTier } from "../../models/User";
@@ -51,7 +51,7 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: INVESTMENTS_SECTION, label: 'Investments', icon: LineChart },
     ...(realEstateAvailable ? [{ id: REAL_ESTATE_SECTION, label: 'Real estate', icon: Building2 }] : []),
-    ...(hasWallets ? [{ id: WALLETS_SECTION, label: 'Wallets', icon: Wallet }] : []),
+    ...(hasWallets ? [{ id: WALLETS_SECTION, label: LIQUIDITY, icon: Wallet }] : []),
     journalItem,
     newsItem,
   ];

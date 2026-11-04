@@ -25,9 +25,10 @@ function walletsViewOf(raw: unknown): WalletsView {
 }
 
 /**
- * WALLETS SECTION — the investor's wallets (a demo account's are sample data): All wallets, and
- * each wallet's pages (WalletNode), each a browser history entry (see lib/dashboardHistory). It
- * opens on All wallets, where the first one is added.
+ * WALLETS SECTION — Liquidity, the investor's wallets (a demo account's are sample data): all of
+ * them together, and each wallet's pages (WalletNode), each a browser history entry (see
+ * lib/dashboardHistory). It opens on all of them, where the first one is added. An id that is no
+ * wallet's (one gone, an account's page that was) opens them all.
  */
 export function WalletsSection() {
   const [view, open] = useSectionView(WALLETS_SECTION, walletsViewOf);
