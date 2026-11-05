@@ -23,6 +23,8 @@ const CASH_CURRENCY = "USD";
 // transaction is asked this many times, this far apart, before giving up.
 const PREPARE_TRIES = 6;
 const PREPARE_PAUSE_MS = 500;
+// A placed order reaches catena through the bus moments later: the first ask waits this long.
+const FIRST_PREPARE_WAIT_MS = 500;
 // An order sent whose outcome isn't known yet is read again this often, for this long.
 const POLL_MS = 2_000;
 const POLL_FOR_MS = 60_000;
@@ -40,7 +42,8 @@ const NOTICE_POINTS = [
 // Why an order was refused or failed, by its executor's code.
 const REASONS: Record<string, string> = {
   NO_VENUE: "There's no venue on this network: orders work on Solana's mainnet only (development runs on devnet).",
-  NO_ROUTE: "The venue can't fill this now (no liquidity for this pair or amount, or the market is closed).",
+  NO_ROUTE: "The venue can't fill this now (no liquidity for this pair or amount, the market is closed, or the amount is under its minimum).",
+  INSUFFICIENT_FUNDS: "The address doesn't hold enough for this order: send funds to it (Add funds) and try again.",
   VENUE_REFUSED: "The venue refused the order.",
   AMOUNT_UNSUPPORTED: "A buy is by the cash to spend, a sale by the units to give.",
   TOKEN_NOT_TRADABLE: "This token can't be traded here.",
@@ -188,12 +191,13 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
       return;
     }
     keyRef.current = newKey();
-    await signAndSend(order);
+    await signAndSend(order, true);
   };
 
   /** Asks catena for the transaction (retrying while the order is on its way), signs it, sends it. */
-  const signAndSend = async (order: Order) => {
+  const signAndSend = async (order: Order, justPlaced = false) => {
     setStep({ kind: "working", label: "Preparing the transaction…" });
+    if (justPlaced) await sleep(FIRST_PREPARE_WAIT_MS);
     let execution: OrderExecution | null = null;
     for (let i = 0; i < PREPARE_TRIES && alive.current; i++) {
       try {
