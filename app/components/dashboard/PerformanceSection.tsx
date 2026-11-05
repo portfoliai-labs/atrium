@@ -630,11 +630,9 @@ function StatContent({ title, value, icon, color, info }: StatProps) {
  * and breakdowns, so this stays a plain, uncluttered trend line.
  */
 function SnapshotChart({ chart, currency, className = "h-64" }: { chart: ValuePoint[]; currency: string; className?: string }) {
-  // A single point has nothing to draw a line/area between — recharts still plots its dot,
-  // which reads as a broken/empty chart rather than "not enough history yet".
-  if (chart.length < 2) {
-    return <p className="text-[12.5px] text-[#857e78]">Not enough history yet to chart.</p>;
-  }
+  // A single point has nothing to draw a line/area between (recharts would plot a lone dot):
+  // no chart until there are two.
+  if (chart.length < 2) return null;
 
   const sorted = [...chart].sort((a, b) => new Date(a.snapshotAt).getTime() - new Date(b.snapshotAt).getTime());
   const data = sorted.map(s => ({ date: s.snapshotAt, value: s.totalMarketValue }));
@@ -2647,9 +2645,8 @@ function MonthlyReturnsHeatmap({
 
   const years = useMemo(() => [...byYear.keys()].sort((a, b) => b - a), [byYear]);
 
-  if (years.length === 0) {
-    return <p className="text-sm text-slate-400 p-6 md:p-7">Not enough history yet to chart.</p>;
-  }
+  // No month yet: nothing (its module is left out, see PerformanceDetail).
+  if (years.length === 0) return null;
 
   return (
     <div className="p-6 md:p-7 overflow-x-auto">
@@ -3038,9 +3035,7 @@ function DetailBody<T extends { isStale: boolean }>({
 function RollingVolatilityChart({ series, className = "h-64" }: { series: TimeSeries; className?: string }) {
   const points = useMemo(() => toChartPoints(series), [series]);
 
-  if (points.length < 2) {
-    return <p className="text-[12.5px] text-[#857e78]">Not enough data yet to chart.</p>;
-  }
+  if (points.length < 2) return null;
 
   return (
     <div className={className}>
@@ -3178,7 +3173,7 @@ function VolatilityPanels({ data }: { data: VolatilityDetailResponse }) {
 
   return (
     <>
-      <ExplorePanel
+      {(data.rollingVolatilityPct?.dates.length ?? 0) >= 2 && <ExplorePanel
         eyebrow="Risk"
         title="Rolling Volatility"
         desc={`Annualized volatility${data.rollingWindowDays ? ` over a rolling ${data.rollingWindowDays}-day window` : ""}, day by day.`}
@@ -3188,8 +3183,8 @@ function VolatilityPanels({ data }: { data: VolatilityDetailResponse }) {
           </span>
         }
       >
-        {data.rollingVolatilityPct ? <RollingVolatilityChart series={data.rollingVolatilityPct} className={`${MODULE_BODY} h-64`} /> : <ModuleMessage>Not enough data yet to chart.</ModuleMessage>}
-      </ExplorePanel>
+        <RollingVolatilityChart series={data.rollingVolatilityPct!} className={`${MODULE_BODY} h-64`} />
+      </ExplorePanel>}
       <DrawdownSection data={data} part="chart" />
       <ExplorePanel
         eyebrow="Risk"
@@ -3237,9 +3232,7 @@ function CumulativeReturnChart({ portfolio, benchmark }: { portfolio: TimeSeries
     return toChartPoints(portfolio).map((p) => ({ date: p.date, portfolio: p.value, benchmark: benchmarkByDate.get(p.date) }));
   }, [portfolio, benchmark]);
 
-  if (data.length < 2) {
-    return <ModuleMessage>Not enough history yet to chart.</ModuleMessage>;
-  }
+  if (data.length < 2) return null;
 
   return (
     <div className="p-6 md:p-7 h-64">
@@ -3343,9 +3336,8 @@ function BenchmarkExplore({ portfolioUuid }: { portfolioUuid: string }) {
 }
 
 function BenchmarkDetail({ data }: { data: BenchmarkResponse }) {
-  if (data.status !== "ok") {
-    return <Module><ModuleMessage>Not enough overlapping history with the benchmark yet to compare.</ModuleMessage></Module>;
-  }
+  // Not enough overlapping history with the benchmark yet: left out rather than said.
+  if (data.status !== "ok") return null;
   return <BenchmarkPanels data={data} />;
 }
 
@@ -3531,9 +3523,8 @@ function ReturnsExplore({ portfolioUuid }: { portfolioUuid: string }) {
 }
 
 function ReturnsDetail({ data }: { data: ReturnsResponse }) {
-  if (data.status === "insufficient_history") {
-    return <Module><ModuleMessage>Not enough history yet to measure returns — they&apos;ll show up here soon.</ModuleMessage></Module>;
-  }
+  // Not enough history yet to measure them: left out rather than said.
+  if (data.status === "insufficient_history") return null;
   return <ReturnsPanels data={data} />;
 }
 
@@ -3684,15 +3675,8 @@ function ReturnsPanels({ data }: { data: ReturnsResponse }) {
 function DrawdownSection({ data, part }: { data: VolatilityDetailResponse; part: "chart" | "falls" }) {
   const points = useMemo(() => (data.drawdownPct ? toChartPoints(data.drawdownPct) : []), [data]);
 
-  if (!data.drawdownPct || points.length < 2) {
-    // Said once, where the chart would be.
-    if (part === "falls") return null;
-    return (
-      <ExplorePanel eyebrow="Risk" title="Drawdown" desc="How far below its previous high the portfolio stood, day by day.">
-        <ModuleMessage>Not enough history yet to chart the drawdown.</ModuleMessage>
-      </ExplorePanel>
-    );
-  }
+  // Not enough history yet to chart it: left out.
+  if (!data.drawdownPct || points.length < 2) return null;
   return <DrawdownExplore series={data.drawdownPct} points={points} maxDrawdownPct={data.maxDrawdownPct} part={part} />;
 }
 
@@ -4267,6 +4251,8 @@ function MonthToDateModule({ slot, currency, returnPct }: {
   // The month's time-weighted return so far (the month's own document); null when there's none yet.
   returnPct: number | null;
 }) {
+  // Loaded with nothing in it (no history yet for this month): left out.
+  if (!slot.loading && !slot.failed && slot.module === null) return null;
   return (
     <Module>
       <ModuleHead
@@ -4434,6 +4420,8 @@ function ThisMonthCard({ slot, currency, onOpen }: {
   onOpen: (year: number, month: number) => void;
 }) {
   const data = slot.module;
+  // Loaded with nothing in it (no history yet for this month): left out.
+  if (!slot.loading && !slot.failed && data === null) return null;
   // The month of the latest daily value (the months run on UTC dates); today's before there's one.
   const latest = data?.chart.reduce<string | null>((max, s) => (max === null || s.snapshotAt > max ? s.snapshotAt : max), null);
   const at = latest ? new Date(latest) : new Date();
@@ -4521,9 +4509,7 @@ function MonthToDateBody({ data, currency, lagging, returnPct }: { data: Insight
           color={isMtdGain ? "emerald" : "red"}
         />
       </div>
-      {points.length === 0 ? (
-        <p className="text-sm text-slate-400 p-6 md:p-7 border-t border-slate-100">Not enough history yet to chart.</p>
-      ) : (
+      {points.length === 0 ? null : (
         <div className="p-6 md:p-7 h-64 border-t border-slate-100">
           <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 500, height: 256 }}>
             <BarChart data={points} margin={{ top: 16, right: 10, left: 0, bottom: 0 }}>
@@ -4720,15 +4706,29 @@ function HistoryPage({
     />
   );
   const updatingNote = !historyUpdating && performance.historyIsStale && <Tile><UpdatingNote /></Tile>;
-  const riskModel = <Tile id={moduleAnchor("risk")}><RiskModelModule slot={own(risk, (d) => d.frontier)} portfolioUuid={portfolioUuid} /></Tile>;
+  // A module that could only say there isn't enough history yet (a portfolio under a year old,
+  // holdings too young to share a price history, equity under three years) is left off the page
+  // rather than shown empty: it appears once there's something to show.
+  const volatilityTooYoung = risk.data?.volatility?.status === "insufficient_history";
+  const frontier = risk.data?.frontier;
+  const riskModelTooYoung = frontier?.status === "insufficient_history"
+    || (frontier?.status === "unavailable" && frontier.unavailableReason === "too_few_assets");
+  const behavesTooYoung = !!risk.data?.factorExposures && risk.data.factorExposures.status !== "ok";
+  const riskModel = !riskModelTooYoung && <Tile id={moduleAnchor("risk")}><RiskModelModule slot={own(risk, (d) => d.frontier)} portfolioUuid={portfolioUuid} /></Tile>;
   const factorExposuresModule = <FactorExposuresModule slot={own(risk, (d) => d.factorExposures ?? null)} />;
-  const factorExposures = <Tile>{factorExposuresModule}</Tile>;
+  const factorExposures = !behavesTooYoung && <Tile>{factorExposuresModule}</Tile>;
   // Behaves like goes up under the Composition while it has a mix to show, or may (the risk
-  // section still loading); once it says it can't measure (no equity, under three years, not
-  // measured yet), it waits at the bottom by the risk model.
+  // section still loading); not measured yet or failed, it waits at the bottom by the risk model.
+  // With nothing it could measure (no equity, under three years), it's left out (see above).
   const behavesUp = !risk.failed && (risk.data === null || risk.data.factorExposures?.status === "ok");
 
   const tradingCosts = <TradingCostsModule slot={own(incomeCosts, (d) => d.tradingCosts)} currency={currency} portfolioUuid={portfolioUuid} />;
+  // Realized P&L with nothing sold and no dividend, Trading Costs with no cost paid: once loaded,
+  // they'd only say so, so they're left off the page.
+  const realizedData = incomeCosts.data?.realizedPnl;
+  const noRealized = !!realizedData && realizedData.topAssets.length === 0 && realizedData.totalRealizedPnl === 0;
+  const costsData = incomeCosts.data?.tradingCosts;
+  const noCosts = !!costsData && (costsData.totalTransactions === 0 || costsData.totalCosts === 0);
 
   // A backtest leads with the strategy itself (what it was set to do, which nothing else on the
   // page says), then how it did, then its mix beside what trading cost it (the costs the
@@ -4740,8 +4740,8 @@ function HistoryPage({
         {!strategyShown && <StrategyModules portfolioUuid={portfolioUuid} currency={currency} />}
         <Tile id={moduleAnchor("value")}>{valueModule}</Tile>
         <Tile span="wide" id={moduleAnchor("composition")}>{compositionModule}</Tile>
-        <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>
-        <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>
+        {!noCosts && <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>}
+        {!volatilityTooYoung && <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>}
         {factorExposures}
         {riskModel}
       </div>
@@ -4784,19 +4784,21 @@ function HistoryPage({
       {!behavesUp && strategies && <Tile span={aggregate && onCompare ? "narrow" : "full"}>{strategies}</Tile>}
       {/* What was made, sold (realized, dividends) and still held (gains & losses), beside what
           trading cost; then the risk. */}
-      <Tile span="narrow" id={moduleAnchor("realized")}>
-        <RealizedPnlModule
-          slot={own(incomeCosts, (d) => d.realizedPnl)}
-          currency={currency}
-          portfolioUuid={portfolioUuid}
-          onOpenTaxes={onOpenTaxes}
-        />
-      </Tile>
+      {!noRealized && (
+        <Tile span="narrow" id={moduleAnchor("realized")}>
+          <RealizedPnlModule
+            slot={own(incomeCosts, (d) => d.realizedPnl)}
+            currency={currency}
+            portfolioUuid={portfolioUuid}
+            onOpenTaxes={onOpenTaxes}
+          />
+        </Tile>
+      )}
       <Tile span="narrow">
         <GainsLossesCard slot={own(composition, (d) => d.holdings)} currency={currency} />
       </Tile>
-      <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>
-      <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>
+      {!noCosts && <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>}
+      {!volatilityTooYoung && <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>}
       {!behavesUp && factorExposures}
       {riskModel}
     </div>
@@ -4818,6 +4820,9 @@ function ValueModule({ value, currency, comparison, children }: {
   const inception = comparison?.performance?.totalReturnPct ?? null;
   const year = comparison?.performance?.horizons.find((h) => h.period === "1 Year")?.totalReturnPct ?? null;
   const annualized = comparison?.performance?.annualizedReturnPct ?? null;
+  // A chart needs two values; with none of the figures either, there's nothing to show yet.
+  const charted = value.chart.length >= 2;
+  if (!charted && inception === null && year === null && annualized === null) return null;
   return (
     <Module>
       <ModuleHead
@@ -4825,9 +4830,9 @@ function ValueModule({ value, currency, comparison, children }: {
         desc="Market value at each month end since inception, and today. Open it for the returns, the months and the benchmark."
         onExplore={() => setExploring(true)}
       />
-      <div className={`${MODULE_BODY} grid grid-cols-1 @2xl:grid-cols-[auto_minmax(0,1fr)] gap-[22px] @2xl:gap-8 items-center`}>
+      <div className={`${MODULE_BODY} grid grid-cols-1 ${charted ? "@2xl:grid-cols-[auto_minmax(0,1fr)]" : ""} gap-[22px] @2xl:gap-8 items-center`}>
         {/* One column beside the chart on a wide card, side by side above it on a narrow one. */}
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] @2xl:grid-cols-1 gap-x-5 gap-y-5 @2xl:min-w-[150px]">
+        <div className={`grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] ${charted ? "@2xl:grid-cols-1" : ""} gap-x-5 gap-y-5 @2xl:min-w-[150px]`}>
           {inception !== null && (
             <Fig
               label="TWR since inception"
@@ -4881,14 +4886,16 @@ function PerformanceDetail({
   return (
     <>
       <ReturnsExplore portfolioUuid={portfolioUuid} />
-      <Module>
-        <ModuleHead
-          eyebrow={currency}
-          title="Monthly Returns"
-          desc="Time-weighted return by month, since inception. Click a month for its full detail."
-        />
-        {historyUpdating ? <StaleUpdatingState /> : <MonthlyReturnsHeatmap entries={heatmap} onSelectMonth={onSelectMonth} />}
-      </Module>
+      {(historyUpdating || heatmap.length > 0) && (
+        <Module>
+          <ModuleHead
+            eyebrow={currency}
+            title="Monthly Returns"
+            desc="Time-weighted return by month, since inception. Click a month for its full detail."
+          />
+          {historyUpdating ? <StaleUpdatingState /> : <MonthlyReturnsHeatmap entries={heatmap} onSelectMonth={onSelectMonth} />}
+        </Module>
+      )}
       <BenchmarkExplore portfolioUuid={portfolioUuid} />
       <ProjectionModule portfolioUuid={portfolioUuid} withGoals={withGoals} onOpen={onOpenProjection} />
     </>
