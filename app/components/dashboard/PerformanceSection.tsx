@@ -2860,7 +2860,8 @@ function joinAssetPnl(realized: RealizedPnlResponse | null, dividends: Dividends
  * yields. Every column sorts; it scrolls sideways when it doesn't fit.
  */
 /** The instrument's tokens (census' trackers): another issuer's security each, which tracks the
- * instrument and is priced as it, held in a wallet of the user's own. */
+ * instrument and is priced as it, held in a wallet of the user's own. On a token's own page its
+ * row is there too, marked: where the user buys or sells the token they are on. */
 function TrackersModule({ trackers, asset, referencePrice, referenceCurrency }: {
   trackers: Listing[];
   // The asset's page, which an order page opens under; its last price in its quote currency.
@@ -2877,7 +2878,10 @@ function TrackersModule({ trackers, asset, referencePrice, referenceCurrency }: 
       <dl className={MODULE_BODY}>
         {trackers.map((t) => (
           <div key={t.listingId} className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-4 py-2.5 border-b border-[#EEE9DD] last:border-b-0">
-            <dt className="text-[13.5px] font-bold text-[#1c1917]">{t.ticker}</dt>
+            <dt className="text-[13.5px] font-bold text-[#1c1917]">
+              {t.ticker}
+              {t.listingId === asset.listingId && <span className="block text-[11px] font-semibold text-[#a8a29e]">This page</span>}
+            </dt>
             <dd className="flex items-center justify-end gap-3 text-right text-[12.5px] text-[#78716c] break-words">
               {t.tracking?.issuer ?? "—"}
               <TrackerOrderButtons tracker={t} asset={asset} referencePrice={referencePrice} referenceCurrency={referenceCurrency} />
