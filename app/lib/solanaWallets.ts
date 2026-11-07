@@ -120,12 +120,17 @@ export async function walletFor(address: string): Promise<{ wallet: Wallet; acco
  */
 export async function signTransaction(wallet: Wallet, account: WalletAccount, transaction: string): Promise<string> {
   const feature = (wallet.features as SolanaSignTransactionFeature)[SolanaSignTransaction];
-  const chain = account.chains.includes(SOLANA_CHAIN as `${string}:${string}`)
-    ? SOLANA_CHAIN
-    : account.chains.find((c) => c.startsWith("solana:"));
-  const [output] = await feature.signTransaction({
-    account, transaction: fromBase64(transaction), ...(chain ? { chain: chain as `${string}:${string}` } : {}),
-  });
+  // Never signed for another network: the wallet would simulate it there, where its accounts
+  // don't exist (a devnet transaction on mainnet), and reject it.
+  const chain = SOLANA_CHAIN as `${string}:${string}`;
+  const declared = account.chains.length ? account.chains : wallet.chains;
+  if (!declared.includes(chain)) {
+    const network = `Solana ${chain.slice("solana:".length)}`;
+    throw new Error(
+      `Your wallet isn't on ${network}: switch it to ${network} (MetaMask: Settings › Advanced › Show test networks, then pick it; Phantom: Settings › Developer settings › Testnet mode) and try again.`,
+    );
+  }
+  const [output] = await feature.signTransaction({ account, transaction: fromBase64(transaction), chain });
   if (!output) throw new Error("The wallet didn't sign.");
   return toBase64(output.signedTransaction);
 }
