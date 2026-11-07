@@ -16,6 +16,10 @@ import {
   type SolanaSignTransactionFeature,
 } from "@solana/wallet-standard-features";
 
+// The network the deployment trades on, as the Wallet Standard names it: the wallet signs (and
+// shows) the transaction for it. Locally "solana:devnet", where catena's devnet desk is the venue.
+const SOLANA_CHAIN = process.env.NEXT_PUBLIC_SOLANA_CHAIN || "solana:mainnet";
+
 // Where to get one when none is installed.
 export const WALLET_DOWNLOADS: { name: string; url: string }[] = [
   { name: "Phantom", url: "https://phantom.com/download" },
@@ -116,7 +120,9 @@ export async function walletFor(address: string): Promise<{ wallet: Wallet; acco
  */
 export async function signTransaction(wallet: Wallet, account: WalletAccount, transaction: string): Promise<string> {
   const feature = (wallet.features as SolanaSignTransactionFeature)[SolanaSignTransaction];
-  const chain = account.chains.find((c) => c.startsWith("solana:"));
+  const chain = account.chains.includes(SOLANA_CHAIN as `${string}:${string}`)
+    ? SOLANA_CHAIN
+    : account.chains.find((c) => c.startsWith("solana:"));
   const [output] = await feature.signTransaction({
     account, transaction: fromBase64(transaction), ...(chain ? { chain: chain as `${string}:${string}` } : {}),
   });
