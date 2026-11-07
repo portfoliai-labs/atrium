@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
 import { formatCurrency, formatQuantity } from "../../../lib/format";
+import { transactionUrl } from "../../../lib/solanaWallets";
 import { dayLabel, errorText } from "../../../lib/wallets";
 import type { Order, TradingAccount } from "../../../models/Trading";
 import { tradingService } from "../../../services/tradingService";
@@ -40,7 +41,7 @@ function orderLine(order: Order) {
  * Tokenized versions), newest first, each with its state and its transaction once sent; one not
  * sent yet may be cancelled.
  */
-export function OnchainOrders({ accounts }: { accounts: TradingAccount[] }) {
+export function OnchainOrders({ accounts, onOpen }: { accounts: TradingAccount[]; onOpen: (orderUuid: string) => void }) {
   const { sample, changed } = useWallets();
   const read = useWalletQuery(["orders"], () => tradingService.orders());
   const [cancelling, setCancelling] = useState<string | null>(null);
@@ -76,15 +77,15 @@ export function OnchainOrders({ accounts }: { accounts: TradingAccount[] }) {
                 <span className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold uppercase tracking-wide ${CHIPS[order.state]}`}>
                   {orderStateLabel(order.state)}
                 </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-bold text-slate-800">{orderLine(order)}</span>
+                <button type="button" onClick={() => onOpen(order.uuid)} className="min-w-0 flex-1 text-left group">
+                  <span className="block text-[13px] font-bold text-slate-800 group-hover:underline">{orderLine(order)}</span>
                   <span className="block text-[11.5px] text-slate-500">
                     {[accountName(order.tradingAccountUuid), dayLabel(order.createdAt.slice(0, 10)), order.reason].filter(Boolean).join(" · ")}
                   </span>
-                </span>
+                </button>
                 {order.transaction && (
                   <a
-                    href={`https://solscan.io/tx/${order.transaction}`}
+                    href={transactionUrl(order.transaction)}
                     target="_blank"
                     rel="noreferrer"
                     aria-label="View the transaction"

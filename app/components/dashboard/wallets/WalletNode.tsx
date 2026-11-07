@@ -25,6 +25,7 @@ import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { PreviewBadge } from "../../preview/PreviewKit";
 import { WalletAlerts } from "./WalletAlerts";
 import { WalletAddresses } from "./WalletAddresses";
+import { OrderDetails } from "./OrderDetails";
 import { WalletBankDialog, WalletBanks, useWalletLinked } from "./WalletBanks";
 import { WalletBudgets } from "./WalletBudgets";
 import { WalletCards, cardKindsFor } from "./WalletCards";
@@ -83,6 +84,9 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     window.history.replaceState(window.history.state, "", url);
   }, []);
   const [busy, setBusy] = useState(false);
+  // The On-chain page's order opened as its own page (On-chain › Order), back to the list when it changes.
+  const [order, setOrder] = useState<string | null>(null);
+  useEffect(() => setOrder(null), [id, page]);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const count = useMovementCount(scope);
   const attention = useAttention(scope);
@@ -227,6 +231,14 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         <SmallButton icon={<Plus className="h-3.5 w-3.5" />} dark onClick={() => setDialog("new")} {...sampleLock}>New wallet</SmallButton>
       </div>
     ) : undefined;
+    if (page === "addresses" && order) {
+      return (
+        <div className="space-y-6 pb-12">
+          <Breadcrumb trail={[...trail, nodeCrumb, { label: WALLET_PAGE_LABELS[page], onClick: () => setOrder(null) }]} current="Order" />
+          <OrderDetails orderUuid={order} />
+        </div>
+      );
+    }
     return (
       <div className="space-y-6 pb-12">
         <Breadcrumb trail={[...trail, nodeCrumb]} current={WALLET_PAGE_LABELS[page]} right={right} />
@@ -247,7 +259,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         {page === "alerts" && <WalletAlerts scope={scope} />}
         {page === "cards" && wallet && <WalletCards wallet={wallet} />}
         {page === "banks" && <WalletBanks />}
-        {page === "addresses" && <WalletAddresses />}
+        {page === "addresses" && <WalletAddresses onOpenOrder={setOrder} />}
         {page === "manage" && (
           <ManageWallets
             onOpenWallet={(uuid) => onOpen(uuid, "insights")}

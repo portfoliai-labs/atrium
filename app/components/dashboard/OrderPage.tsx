@@ -7,7 +7,8 @@ import { useTradingAccounts } from "../../hooks/useChainHoldings";
 import { useWallets } from "../../context/WalletsContext";
 import { formatCurrency, formatQuantity } from "../../lib/format";
 import { errorText } from "../../lib/wallets";
-import { signTransaction, walletFor } from "../../lib/solanaWallets";
+import { signTransaction, transactionUrl, walletFor } from "../../lib/solanaWallets";
+import { OrderDetails } from "./wallets/OrderDetails";
 import type { Order, OrderExecution, OrderQuote, OrderSide, TradingAccount } from "../../models/Trading";
 import { ApiError } from "../../services/apiClient";
 import { tradingService } from "../../services/tradingService";
@@ -457,9 +458,10 @@ function OrderResult({ order, execution, onAnother }: { order: Order; execution:
         </p>
       )}
       {!filled && why && <p className="text-[12.5px] text-slate-600">{why}</p>}
-      {signature && (
+      {(filled || pending) && <OrderDetails orderUuid={order.uuid} />}
+      {signature && !filled && (
         <a
-          href={`https://solscan.io/tx/${signature}`}
+          href={transactionUrl(signature)}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1.5 text-[12px] font-bold text-[#8A6A28] hover:underline"

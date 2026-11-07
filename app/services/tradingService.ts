@@ -5,6 +5,7 @@ import type {
   EligibilityNotice,
   OnchainAddress,
   Order,
+  OrderDetails,
   OrderExecution,
   OrderQuote,
   OrderSide,
@@ -107,6 +108,11 @@ export const tradingService = {
   // GET /v1/orders/{o} — with the states it went through.
   async order(orderUuid: string): Promise<Order> {
     return apiFetch<Order>(`/v1/orders/${orderUuid}`);
+  },
+
+  // GET /v1/orders/{o}/details — the order, its execution, the chain's receipt and the trade against the market.
+  async orderDetails(orderUuid: string): Promise<OrderDetails> {
+    return apiFetch<OrderDetails>(`/v1/orders/${orderUuid}/details`);
   },
 
   // POST /v1/orders/{o}/cancel — an order not sent yet; 409 OrderNotCancellableError once sent.

@@ -158,4 +158,40 @@ export interface OrderExecution {
   filledQuantity: number | null;
   averagePrice: number | null;
   fees: number | null;
+  // Sent: the transaction on an explorer of the deployment's network, once its signature is known.
+  explorerUrl?: string | null;
+}
+
+// GET /v1/orders/{o}/details (ianus' OrderDetailsResponse): a part its service can't give now is null.
+export interface BalanceChange {
+  // Null for SOL.
+  mint: string | null;
+  symbol: string | null;
+  // Signed: what came in is positive.
+  amount: number;
+}
+
+export interface OrderReceipt {
+  network: string;
+  slot: number;
+  blockTime: string | null;
+  // In SOL; paid by the address or by the venue (a market maker paying it).
+  networkFee: number;
+  feePayer: string;
+  paidByAddress: boolean;
+  changes: BalanceChange[];
+}
+
+export interface OrderMarket {
+  // The listing's price at the minute of the fill, and what the trade paid over it (a sale: got under it).
+  referencePrice: number;
+  spreadCost: number | null;
+  currency: string;
+}
+
+export interface OrderDetails {
+  order: Order;
+  execution: OrderExecution | null;
+  receipt: OrderReceipt | null;
+  market: OrderMarket | null;
 }

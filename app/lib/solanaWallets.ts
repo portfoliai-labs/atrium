@@ -20,6 +20,12 @@ import {
 // shows) the transaction for it. Locally "solana:devnet", where catena's devnet desk is the venue.
 const SOLANA_CHAIN = process.env.NEXT_PUBLIC_SOLANA_CHAIN || "solana:mainnet";
 
+/** A transaction on Solscan, on the deployment's network (devnet by its cluster). */
+export function transactionUrl(signature: string): string {
+  const network = SOLANA_CHAIN.slice("solana:".length);
+  return `https://solscan.io/tx/${signature}${network === "mainnet" ? "" : `?cluster=${network}`}`;
+}
+
 // Where to get one when none is installed.
 export const WALLET_DOWNLOADS: { name: string; url: string }[] = [
   { name: "Phantom", url: "https://phantom.com/download" },
