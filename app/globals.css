@@ -43,6 +43,13 @@
   }
 }
 
+/* No rubber-band bounce past the page's top or bottom (macOS, iOS): pulled down at the top, the
+   sticky top bar slid down with the page and showed blank white and a piece of the sidebar above it. */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
