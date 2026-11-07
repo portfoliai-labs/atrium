@@ -12,6 +12,7 @@ import { reportService } from "../../../services/reportService";
 import { walletService } from "../../../services/walletService";
 import { realEstateService } from "../../../services/realEstateService";
 import { saveReportFile } from "../ReportsList";
+import { LIQUIDITY } from "../../../lib/dashboardNav";
 
 // What a report is about.
 export type ReportKind = "portfolio" | "wallet" | "property";
@@ -33,7 +34,7 @@ export interface CollectionItem {
 
 const KINDS: Record<ReportKind, { label: string; icon: typeof PieChart }> = {
   portfolio: { label: "Portfolio", icon: PieChart },
-  wallet: { label: "Wallets", icon: Wallet },
+  wallet: { label: LIQUIDITY, icon: Wallet },
   property: { label: "Property", icon: Building2 },
 };
 

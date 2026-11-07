@@ -15,7 +15,7 @@ import { formatCurrency } from "../../lib/format";
 import { NoDataEmptyState } from "./NoDataEmptyState";
 import { useInvestmentsQuery, useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
 import { AlertGaugeCard } from "./AlertGauge";
-import { openPortfolioPage, openRealEstatePage, openWalletPage } from "../../lib/dashboardNav";
+import { LIQUIDITY, openPortfolioPage, openRealEstatePage, openWalletPage } from "../../lib/dashboardNav";
 import { BudgetsSummaryModule, UpcomingPaymentsModule } from "./DashboardSummaries";
 import { DailyArticleModule } from "./NewsSection";
 import { useOwnAlertRules } from "../../hooks/useAlertRules";
@@ -43,7 +43,7 @@ type SnapshotState =
  * under it as totals, and beside it on a wide enough page the wallets' cash flow (WealthBreakdown);
  * then two by two: the wallets' cash flow and the payments coming up, every portfolio's alerts
  * and the month's budgets; then the article of the day. Headline figures
- * only: the rest lives in Investments, Wallets and Real estate, which the summaries open. The overview endpoint never mixes history
+ * only: the rest lives in Investments, Cash, accounts and cards and Real estate, which the summaries open. The overview endpoint never mixes history
  * with fresh data (no isStale).
  */
 export default function DashboardOverview({ onNavigate }: { onNavigate?: (section: string) => void } = {}) {
@@ -230,7 +230,7 @@ function NetWorthModule({
   // The bar, one piece per group counted in the total, in its colour (the same as its column's).
   const groups = [
     { key: "investments", label: "Investments", value: investments, color: GOLD },
-    ...(walletsCounted !== 0 ? [{ key: "wallets", label: "Wallets", value: walletsCounted, color: TEAL }] : []),
+    ...(walletsCounted !== 0 ? [{ key: "wallets", label: LIQUIDITY, value: walletsCounted, color: TEAL }] : []),
     ...(realEstateCounted !== 0 ? [{ key: "realEstate", label: "Real estate", value: realEstateCounted, color: ORANGE }] : []),
   ].filter((g) => g.value > 0);
   // Where each piece starts and ends along the bar, in percent: the hovered one's label sits over its middle.
@@ -314,7 +314,7 @@ function NetWorthModule({
         />
         {wallets && (
           <GroupColumn
-            title="Wallets"
+            title={LIQUIDITY}
             color={TEAL}
             badge={sample ? <PreviewBadge label="Sample data" /> : undefined}
             value={wallets.balance === null ? "—" : formatCurrency(wallets.balance, wallets.currency, 0)}

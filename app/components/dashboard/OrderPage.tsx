@@ -293,7 +293,7 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
         />
         <div className={`${MODULE_BODY} space-y-4`}>
           {accounts.length === 0 ? (
-            <p className="text-[12.5px] text-slate-500">Connect a Solana wallet under Liquidity › On-chain first: orders are placed on one of your addresses.</p>
+            <p className="text-[12.5px] text-slate-500">Connect a Solana wallet under Cash, accounts and cards › On-chain first: orders are placed on one of your addresses.</p>
           ) : step.kind === "notice" ? (
             <EligibilityNoticePanel onAccept={() => void accept()} onCancel={() => setStep({ kind: "form" })} />
           ) : step.kind === "working" ? (
@@ -448,7 +448,7 @@ function OrderResult({ order, execution, onAnother }: { order: Order; execution:
   return (
     <div className="space-y-3">
       <p className={`text-[13.5px] font-bold ${filled ? "text-emerald-700" : pending ? "text-slate-700" : "text-rose-600"}`}>
-        {filled ? "Filled" : pending ? "Sent: its outcome isn't known yet — it shows under Liquidity › On-chain once it is." : orderStateLabel(order.state)}
+        {filled ? "Filled" : pending ? "Sent: its outcome isn't known yet — it shows under Cash, accounts and cards › On-chain once it is." : orderStateLabel(order.state)}
       </p>
       {filled && quantity !== null && price !== null && (
         <p className="text-[12.5px] text-slate-600">
