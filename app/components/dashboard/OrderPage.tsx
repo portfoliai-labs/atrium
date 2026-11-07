@@ -30,6 +30,10 @@ const POLL_MS = 2_000;
 const POLL_FOR_MS = 60_000;
 // A venue's price this far from the reference price is said (a warning, never a block).
 const GAP_WARNING_PCT = 1;
+// Venue's fees above this share of the order are explained (a warning, never a block): mostly a
+// fixed part (the network's fee and the token account opened on a first buy, paid by the venue
+// when the address holds no SOL), they weigh on a small order.
+const FEE_WARNING_PCT = 1;
 // The eligibility notice's version this text is (mercatura's ELIGIBILITY_NOTICE_VERSION).
 const NOTICE_VERSION = "2026-11-04";
 const NOTICE_POINTS = [
@@ -396,6 +400,12 @@ function QuoteSummary({ quote, ticker, referencePrice, gapPct }: {
           </div>
         ))}
       </dl>
+      {quote.feeBps / 100 > FEE_WARNING_PCT && (
+        <p className="flex items-start gap-2 text-[12px] font-semibold text-amber-700">
+          <TriangleAlert className="h-4 w-4 shrink-0 mt-px" />
+          The venue&apos;s fees are {(quote.feeBps / 100).toFixed(2)}% of this order. They are mostly a fixed amount — the network&apos;s fee and, on a first buy of this token, opening its account on your address — so they weigh less on a larger order.
+        </p>
+      )}
       {gapPct !== null && Math.abs(gapPct) > GAP_WARNING_PCT && (
         <p className="flex items-start gap-2 text-[12px] font-semibold text-amber-700">
           <TriangleAlert className="h-4 w-4 shrink-0 mt-px" />
