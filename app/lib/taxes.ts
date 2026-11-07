@@ -8,7 +8,7 @@ import type { CostMethod, IncomeKind, TaxCategory, TaxationMode } from "../model
 
 // Every taxes page says it: the figures are estimates on what's recorded, and what they leave out.
 export const TAX_DISCLAIMER =
-  "Estimates based on the transactions you recorded: check them with your tax advisor before filing. Not included: the credit for taxes withheld abroad, refunds under tax treaties, staking and airdrops.";
+  "Estimates based on the transactions you recorded: check them with your tax advisor before filing. Not included: the credit for taxes withheld abroad, refunds under tax treaties, staking, airdrops and reinvested dividends.";
 
 // Italy's categories (the only regime so far); another regime's read as sent.
 const CATEGORY_LABELS: Record<string, { label: string; detail: string }> = {
