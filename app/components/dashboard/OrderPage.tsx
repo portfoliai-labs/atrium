@@ -311,7 +311,7 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
                     value={account?.uuid ?? ""}
                     onChange={(e) => { setAccountUuid(e.target.value); setQuote(null); }}
                     disabled={step.kind === "expired"}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-[13px] font-semibold text-slate-800"
+                    className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-800"
                   >
                     {accounts.map((a) => <option key={a.uuid} value={a.uuid}>{a.name}</option>)}
                   </select>
@@ -324,7 +324,7 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
                     onChange={(e) => { setAmount(e.target.value); setQuote(null); }}
                     disabled={step.kind === "expired"}
                     placeholder={buying ? "25" : "0.1"}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-[13px] font-semibold text-slate-800"
+                    className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-800"
                   />
                 </label>
               </div>
