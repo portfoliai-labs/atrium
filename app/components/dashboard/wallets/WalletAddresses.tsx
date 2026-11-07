@@ -53,7 +53,7 @@ export function useOnchainAddresses() {
  * currency (one of the user's, or a new one), whose movements come in from the chain's reads. They
  * stay with their history when the address is removed. A demo account's are read only.
  */
-export function WalletAddresses() {
+export function WalletAddresses({ onOpenOrder }: { onOpenOrder: (orderUuid: string) => void }) {
   const { wallets, sample, changed } = useWallets();
   const read = useOnchainAddresses();
   const [connecting, setConnecting] = useState(false);
@@ -245,7 +245,7 @@ export function WalletAddresses() {
         </div>
       </Module>
 
-      <OnchainOrders accounts={accounts.data ?? []} />
+      <OnchainOrders accounts={accounts.data ?? []} onOpen={onOpenOrder} />
 
       {connecting && (
         <ConnectWalletDialog
