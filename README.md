@@ -24,16 +24,12 @@ The backend must refuse a demo account's writes as well; the frontend alone can 
 
 ## Getting Started
 
-First, run the development server:
+The dependencies are pnpm's (`pnpm-lock.yaml`, the only lockfile): install them and run the
+development server:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
