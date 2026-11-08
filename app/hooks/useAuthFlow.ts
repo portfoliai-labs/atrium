@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabaseClient';
 import { completeAuth } from '../lib/completeAuth';
+import { safeDestination } from '../lib/safeDestination';
 
 export function useAuthFlow(mode: 'default' | 'addon' = 'default', next?: string | null) {
   const router = useRouter();
@@ -19,8 +20,8 @@ export function useAuthFlow(mode: 'default' | 'addon' = 'default', next?: string
 
   // Where to send the user once they're actually let into the app. Falls
   // back to the dashboard when there's no specific page they were trying
-  // to reach (e.g. a deep link to a report shared from an email).
-  const destination = next || '/dashboard';
+  // to reach (e.g. a deep link to a report shared from an email). A path on this site only.
+  const destination = safeDestination(next);
 
   const callbackUrl = () => {
     const url = new URL('/auth/callback', window.location.origin);
