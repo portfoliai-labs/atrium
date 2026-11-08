@@ -8,7 +8,7 @@ import { useWalletQuery, useWalletRead, useWallets, useWalletSummary } from "../
 import { walletService } from "../../../services/walletService";
 import { LIQUIDITY } from "../../../lib/dashboardNav";
 import { formatCurrency } from "../../../lib/format";
-import { ALL_WALLETS, currentAlertFindings, errorText, savingsRate, walletColor } from "../../../lib/wallets";
+import { ALL_WALLETS, accountView, currentAlertFindings, errorText, savingsRate, walletColor } from "../../../lib/wallets";
 import { useAccounts, useCards } from "../../../hooks/useAccounts";
 import { useWalletHolding } from "../../../hooks/useChainHoldings";
 import type { Wallet } from "../../../models/Wallet";
@@ -24,9 +24,8 @@ import { WalletsComposition } from "./WalletsComposition";
 import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { PreviewBadge } from "../../preview/PreviewKit";
 import { WalletAlerts } from "./WalletAlerts";
-import { WalletAddresses } from "./WalletAddresses";
-import { OrderDetails } from "./OrderDetails";
-import { WalletBankDialog, WalletBanks, useWalletLinked } from "./WalletBanks";
+import { ConnectWalletDialog, findAddressAccount } from "./WalletAddresses";
+import { ConnectBankDialog, WalletBankDialog, useWalletLinked } from "./WalletBanks";
 import { WalletBudgets } from "./WalletBudgets";
 import { WalletCards, cardKindsFor } from "./WalletCards";
 import { AddMovementDialog, WalletFormDialog } from "./WalletDialogs";
@@ -35,16 +34,16 @@ import { WalletImportDialog } from "./WalletImportDialog";
 import { WalletInsights } from "./WalletInsights";
 import { WalletTransactions } from "./WalletTransactions";
 
-export type WalletPage = "insights" | "transactions" | "budgets" | "alerts" | "cards" | "banks" | "addresses" | "manage";
+export type WalletPage = "insights" | "transactions" | "budgets" | "alerts" | "cards" | "manage";
 
 export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
-  insights: "Insights", transactions: "Transactions", budgets: "Budgets", alerts: "Alerts", cards: "Cards", banks: "Banks",
-  addresses: "On-chain", manage: "Manage wallets",
+  insights: "Insights", transactions: "Transactions", budgets: "Budgets", alerts: "Alerts", cards: "Cards", manage: "Manage wallets",
 };
 
 const ARCHIVED_TITLE = "An archived wallet is read only";
 
-type Dialog = "new" | "edit" | "movement" | "import" | "archive" | "delete" | "bank";
+// "connectBank" and "connectChain" make an account (a bank connected, an address proved), opened once there.
+type Dialog = "new" | "edit" | "movement" | "import" | "archive" | "delete" | "bank" | "connectBank" | "connectChain";
 
 // Back from the bank with more than one account to choose (see /dashboard/bank-link): the wallet's
 // bank dialog opens on it.
@@ -54,12 +53,14 @@ const CONNECT_PARAM = "connectBank";
  * WALLET NODE — every wallet together (ALL_WALLETS), or one, in Wealth, built like a portfolio's
  * page, All wallets standing to its wallets as All portfolios to its portfolios: a header with its
  * balance, its activity (each count opening its page), what can be done with it and its year in
- * figures; under it, on All wallets, its Composition, a row per wallet going down to that wallet
- * (the archived ones listed after it), then the Insights. Its Transactions, Budgets and Alerts are pages of
- * their own, and All wallets' Banks (the banks connected through open banking), On-chain (the user's
- * own wallets on a blockchain, each proved theirs by a signature) and Manage wallets (each
- * wallet's bank account linked there). A wallet that's gone (deleted, or from an old link) opens all
- * of them. Archived wallets are read only, and so is everything for a demo account.
+ * figures; under it, on All wallets, its Composition, the accounts (a bank's, an address': each
+ * its own page, AccountNode) and the wallets in none, each going down to its page (the archived
+ * ones listed after it), then the Insights. Its Transactions, Budgets and Alerts are pages of
+ * their own, and so is All wallets' Manage wallets (each wallet's bank account linked there). A
+ * bank is connected (open banking) or an address proved (a signature in the user's own wallet)
+ * from All wallets, which makes an account, opened once there to choose its wallets. A wallet
+ * that's gone (deleted, or from an old link) opens all of them. Archived wallets are read only,
+ * and so is everything for a demo account.
  */
 export function WalletNode({ id, page, rootTrail, onOpen }: {
   id: string;
@@ -84,22 +85,17 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     window.history.replaceState(window.history.state, "", url);
   }, []);
   const [busy, setBusy] = useState(false);
-  // The On-chain page's order opened as its own page (On-chain › Order), back to the list when it changes.
-  const [order, setOrder] = useState<string | null>(null);
-  useEffect(() => setOrder(null), [id, page]);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const count = useMovementCount(scope);
   const attention = useAttention(scope);
   const linked = useWalletLinked(wallet?.uuid);
   // A stablecoin of an address it takes its movements from, if any.
   const holding = useWalletHolding(wallet?.uuid);
-  const onchain = !!holding;
   // A wallet's cards, on its own page: one that takes cards, or still has some.
   const cards = useCards(!!wallet);
   const walletCards = wallet && cards.data ? cards.data.filter((c) => c.walletUuid === wallet.uuid) : undefined;
   const takesCards = !!wallet && (cardKindsFor(wallet).length > 0 || !!walletCards?.length);
-  // The account it is one of the balances of: between Liquidity and it in the trail, said only
-  // (an account has no page of its own).
+  // The account it is one of the balances of: between Liquidity and it in the trail, its page.
   const accounts = useAccounts(!!wallet?.accountUuid);
   const account = wallet?.accountUuid ? accounts.data?.find((a) => a.uuid === wallet.accountUuid) : undefined;
 
@@ -110,7 +106,8 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   const locked = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : wallet?.archived ? { disabled: true, title: ARCHIVED_TITLE } : {};
   const sampleLock = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
   const allCrumb: Crumb = { label: LIQUIDITY, onClick: () => onOpen(ALL_WALLETS, "insights") };
-  const accountCrumb: Crumb[] = account ? [{ label: account.name }] : [];
+  const openAccount = (uuid: string) => onOpen(accountView(uuid), "insights");
+  const accountCrumb: Crumb[] = account ? [{ label: account.name, onClick: () => openAccount(account.uuid) }] : [];
   const trail = all ? rootTrail : [...rootTrail, allCrumb, ...accountCrumb];
   const nodeCrumb: Crumb = { label: title, onClick: () => onOpen(id, "insights") };
   const close = () => { setDialog(null); setDialogError(null); };
@@ -136,19 +133,22 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     ? [
         // Its movements' page, where they're added (by hand or from a statement), as a portfolio's Transactions.
         { label: "Movements", primary: true, plus: false, onClick: () => onOpen(id, "transactions") },
+        // Where its movements come from: its account's page (a bank's, an address').
+        ...(account ? [{ label: "Account", onClick: () => openAccount(account.uuid) }] : []),
         // Its own bank account: one of the banks connected, or another bank connected for it.
-        // Not once it takes one's movements (nor while that's being read): its account is in its
-        // settings. Nor one a stablecoin comes into, read from the chain: that is on On-chain.
-        ...(onchain ? [{ label: "On-chain", onClick: () => onOpen(ALL_WALLETS, "addresses") }] : []),
+        // Not once it takes one's movements (nor while that's being read), nor one a stablecoin
+        // comes into, read from the chain: those are on its account's page.
         ...(linked === false && holding === null ? [{ label: "Connect a bank", onClick: () => setDialog("bank"), ...locked }] : []),
         { label: "Edit wallet", onClick: () => setDialog("edit"), ...locked },
         { label: wallet.archived ? "Unarchive" : "Archive", onClick: () => setDialog("archive"), ...sampleLock },
         { label: "Delete wallet", danger: true, onClick: () => setDialog("delete"), ...sampleLock },
       ]
     : [
-        // Manage wallets is where a wallet is added, and where each one's bank account is linked;
-        // its page leads to the banks connected (Banks), a demo account's sample one included.
+        // Manage wallets is where a wallet is added, and where each one's bank account is linked.
         { label: "Manage wallets", primary: true, onClick: () => onOpen(ALL_WALLETS, "manage") },
+        // Each makes an account, its page opened to choose its wallets.
+        { label: "Connect a bank", onClick: () => setDialog("connectBank"), ...sampleLock },
+        { label: "Connect a wallet", onClick: () => setDialog("connectChain"), ...sampleLock },
       ];
   const counters = [
     // All wallets' only counts them: their movements are each wallet's, on its own page.
@@ -188,6 +188,18 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
       )}
       {dialog === "edit" && wallet && <WalletFormDialog wallet={wallet} onClose={close} onSaved={done} />}
       {dialog === "bank" && wallet && <WalletBankDialog wallet={wallet} onClose={close} />}
+      {/* The bank sends the user back to /dashboard/bank-link, which opens the account. */}
+      {dialog === "connectBank" && <ConnectBankDialog onClose={close} />}
+      {dialog === "connectChain" && (
+        <ConnectWalletDialog
+          onClose={close}
+          onConnected={(address) => {
+            close();
+            changed();
+            void findAddressAccount(address.uuid).then((uuid) => { changed(); if (uuid) openAccount(uuid); });
+          }}
+        />
+      )}
       {/* A transfer is a tab of it, from this wallet to another. */}
       {/* From All wallets (its Transactions), the wallet is asked. */}
       {dialog === "movement" && (wallet ?? active[0]) && (
@@ -226,19 +238,11 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     const scopeKey = wallet?.uuid ?? ALL_WALLETS;
     const right = page === "manage" ? (
       <div className="flex gap-2">
-        <SmallButton icon={<Landmark className="h-3.5 w-3.5" />} onClick={() => onOpen(ALL_WALLETS, "banks")}>Connect a bank</SmallButton>
-        <SmallButton icon={<WalletIcon className="h-3.5 w-3.5" />} onClick={() => onOpen(ALL_WALLETS, "addresses")}>Connect a wallet</SmallButton>
+        <SmallButton icon={<Landmark className="h-3.5 w-3.5" />} onClick={() => setDialog("connectBank")} {...sampleLock}>Connect a bank</SmallButton>
+        <SmallButton icon={<WalletIcon className="h-3.5 w-3.5" />} onClick={() => setDialog("connectChain")} {...sampleLock}>Connect a wallet</SmallButton>
         <SmallButton icon={<Plus className="h-3.5 w-3.5" />} dark onClick={() => setDialog("new")} {...sampleLock}>New wallet</SmallButton>
       </div>
     ) : undefined;
-    if (page === "addresses" && order) {
-      return (
-        <div className="space-y-6 pb-12">
-          <Breadcrumb trail={[...trail, nodeCrumb, { label: WALLET_PAGE_LABELS[page], onClick: () => setOrder(null) }]} current="Order" />
-          <OrderDetails orderUuid={order} />
-        </div>
-      );
-    }
     return (
       <div className="space-y-6 pb-12">
         <Breadcrumb trail={[...trail, nodeCrumb]} current={WALLET_PAGE_LABELS[page]} right={right} />
@@ -258,13 +262,11 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         )}
         {page === "alerts" && <WalletAlerts scope={scope} />}
         {page === "cards" && wallet && <WalletCards wallet={wallet} />}
-        {page === "banks" && <WalletBanks />}
-        {page === "addresses" && <WalletAddresses onOpenOrder={setOrder} />}
         {page === "manage" && (
           <ManageWallets
             onOpenWallet={(uuid) => onOpen(uuid, "insights")}
-            onOpenBanks={() => onOpen(ALL_WALLETS, "banks")}
-            onOpenAddresses={() => onOpen(ALL_WALLETS, "addresses")}
+            onConnectBank={() => setDialog("connectBank")}
+            onOpenAccount={openAccount}
           />
         )}
         {dialogs}
@@ -303,6 +305,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
             <WalletsComposition
               currency={summary?.currency ?? active[0].currency}
               onOpen={(uuid) => onOpen(uuid, "insights")}
+              onOpenAccount={openAccount}
             />
           ))}
         {all && <ArchivedList archived={archivedWallets} onOpen={(uuid) => onOpen(uuid, "insights")} />}

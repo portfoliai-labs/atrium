@@ -23,16 +23,16 @@ type Linked = { link: BankLink; account: BankAccount };
  * MANAGE WALLETS — All wallets / Manage wallets, like Manage portfolios: every wallet in one list,
  * to open or edit (a new one is made from the breadcrumb, see WalletNode), the archived ones after,
  * read only. Each wallet's row is also its bank account through open banking: a wallet takes one
- * account of its currency, from a bank connected on the Banks page, linked here and read at once;
+ * account of its currency, from a bank connected (its account's page), linked here and read at once;
  * a linked one can be read now or unlinked (the movements it brought stay). A demo account sees
  * the list but can't change anything.
  */
-export function ManageWallets({ onOpenWallet, onOpenBanks, onOpenAddresses }: {
+export function ManageWallets({ onOpenWallet, onConnectBank, onOpenAccount }: {
   onOpenWallet: (uuid: string) => void;
-  // All wallets' Banks, where a bank is connected.
-  onOpenBanks: () => void;
-  // All wallets' On-chain, where an address' wallets are read.
-  onOpenAddresses: () => void;
+  // Connect a bank, which makes an account.
+  onConnectBank: () => void;
+  // An account's page: a bank's, an address' (where a stablecoin's wallet is read from).
+  onOpenAccount: (uuid: string) => void;
 }) {
   const { wallets, sample, changed } = useWallets();
   const links = useBankLinks();
@@ -94,8 +94,8 @@ export function ManageWallets({ onOpenWallet, onOpenBanks, onOpenAddresses }: {
         error={errors[wallet.uuid]}
         onOpen={() => onOpenWallet(wallet.uuid)}
         onEdit={() => setEditing(wallet)}
-        onOpenBanks={onOpenBanks}
-        onOpenAddresses={onOpenAddresses}
+        onConnectBank={onConnectBank}
+        onOpenAccount={onOpenAccount}
         holding={holdings.data?.find((h) => h.walletUuid === wallet.uuid) ?? null}
         onLink={(chosen) => void link(wallet, chosen)}
         onRead={() => linked && void act(wallet.uuid, () => readNow(linked), "Unable to read this bank now.")}
@@ -143,7 +143,7 @@ function ManageGroup({ title, note, children }: { title: string; note?: string; 
  * (Link), or why there's none. A wallet a stablecoin comes into takes none: it is read from the chain.
  */
 function WalletRow({
-  wallet, color, banks, linked, holding, choices, readOnly, busy, note, error, onOpen, onEdit, onOpenBanks, onOpenAddresses, onLink, onRead, onUnlink,
+  wallet, color, banks, linked, holding, choices, readOnly, busy, note, error, onOpen, onEdit, onConnectBank, onOpenAccount, onLink, onRead, onUnlink,
 }: {
   wallet: Wallet;
   color: string;
@@ -159,8 +159,8 @@ function WalletRow({
   error?: string;
   onOpen: () => void;
   onEdit: () => void;
-  onOpenBanks: () => void;
-  onOpenAddresses: () => void;
+  onConnectBank: () => void;
+  onOpenAccount: (uuid: string) => void;
   onLink: (chosen: Linked) => void;
   onRead: () => void;
   onUnlink: () => void;
@@ -176,16 +176,16 @@ function WalletRow({
       <span className="text-slate-400">
         {[holding.accountName, holding.symbol].filter(Boolean).join(" · ")}, read from the chain
         {holding.syncFrom ? ` from ${dayLabel(holding.syncFrom)}` : ""}.{" "}
-        <button type="button" onClick={onOpenAddresses} className="font-semibold text-[#C49A3C] hover:underline">On-chain</button>
+        {wallet.accountUuid && <button type="button" onClick={() => onOpenAccount(wallet.accountUuid!)} className="font-semibold text-[#C49A3C] hover:underline">Its account</button>}
       </span>
     );
   } else if (linked) {
     const active = linked.link.status === "active";
     const meta = [
-      active ? (linked.link.lastSyncedAt ? `read ${dayLabel(linked.link.lastSyncedAt.slice(0, 10))}` : "not read yet") : "Consent ended: renew it on the Banks page",
+      active ? (linked.link.lastSyncedAt ? `read ${dayLabel(linked.link.lastSyncedAt.slice(0, 10))}` : "not read yet") : "Consent ended: renew it on its account's page",
       linked.account.syncFrom && `from ${dayLabel(linked.account.syncFrom)}`,
     ].filter(Boolean).join(" · ");
-    const readLock = readOnly ? DEMO_DISABLED_TITLE : wallet.archived ? "An archived wallet isn't read" : !active ? "The consent ended: renew it on the Banks page" : null;
+    const readLock = readOnly ? DEMO_DISABLED_TITLE : wallet.archived ? "An archived wallet isn't read" : !active ? "The consent ended: renew it on its account's page" : null;
     bank = (
       <>
         <Landmark className={`h-3.5 w-3.5 shrink-0 ${active ? "text-[#C49A3C]" : "text-rose-600"}`} />
@@ -207,7 +207,7 @@ function WalletRow({
     bank = (
       <span className="text-slate-400">
         {banks === 0 ? "No bank connected yet. " : `No ${wallet.currency} account free at your banks. `}
-        <button type="button" onClick={onOpenBanks} className="font-semibold text-[#C49A3C] hover:underline">Connect a bank</button>
+        <button type="button" onClick={onConnectBank} disabled={readOnly} className="font-semibold text-[#C49A3C] hover:underline disabled:opacity-50">Connect a bank</button>
       </span>
     );
   } else {
