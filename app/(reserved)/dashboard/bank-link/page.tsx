@@ -7,16 +7,26 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Landmark, Loader2 } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
 import { bankingService } from "../../../services/bankingService";
+import { accountService } from "../../../services/accountService";
 import { errorText } from "../../../lib/wallets";
-import { syncTextFor, takeBankWallet, walletPageUrl } from "../../../components/dashboard/wallets/WalletBanks";
+import { accountPageUrl, syncTextFor, takeBankWallet, walletPageUrl } from "../../../components/dashboard/wallets/WalletBanks";
 
-// Where the user goes once the link is done: Settings' Banks, to choose each account's wallet.
-const BANKS_PAGE = "/dashboard?section=settings&settingsTab=banks";
+// Every account and wallet: where the user goes back to when nothing was linked, or when the
+// link's account can't be found.
+const WALLETS_PAGE = "/dashboard?section=wallets";
+
+/** The page of the account a bank link makes (arca's, as the link completes), or every account's. */
+async function linkPage(linkUuid: string) {
+  const accounts = await accountService.list().catch(() => []);
+  const account = accounts.find((a) => a.bankLinkUuid === linkUuid);
+  return account ? accountPageUrl(account.uuid) : WALLETS_PAGE;
+}
 
 /**
  * BANK LINK — the page the bank sends the user back to after the consent (registered with the open
  * banking aggregator: arca's `[banking] REDIRECT_URL`), with `state` and `code`, or an `error` when
- * the consent wasn't given. The link is completed once, then the user lands on the Banks page; or,
+ * the consent wasn't given. The link is completed once, then the user lands on the account it made
+ * (or renewed), where each of its accounts goes into a wallet of theirs or a new one; or,
  * connected from a wallet's page (takeBankWallet), on that wallet's, its account in it: the only
  * free one of its currency linked and read at once, or, with more, its bank dialog to choose.
  */
@@ -39,7 +49,7 @@ function BankLinkContent() {
     const pending = takeBankWallet();
     bankingService.complete(state, code)
       .then(async (link) => {
-        if (!pending || pending.linkUuid !== link.uuid) return router.replace(BANKS_PAGE);
+        if (!pending || pending.linkUuid !== link.uuid) return router.replace(await linkPage(link.uuid));
         const free = link.accounts.filter((a) => !a.walletUuid && a.currency === pending.currency);
         if (free.length !== 1) return router.replace(walletPageUrl(pending.walletUuid, true));
         try {
@@ -70,8 +80,8 @@ function BankLinkContent() {
           <>
             <p className="text-lg font-black text-slate-900">Bank not linked</p>
             <p className="text-[13px] text-slate-500">{problem}</p>
-            <Link href={BANKS_PAGE} className="inline-flex px-5 py-3 rounded-xl bg-[#1c1917] text-white text-sm font-bold hover:bg-[#C49A3C] transition-colors">
-              Back to your banks
+            <Link href={WALLETS_PAGE} className="inline-flex px-5 py-3 rounded-xl bg-[#1c1917] text-white text-sm font-bold hover:bg-[#C49A3C] transition-colors">
+              Back to your accounts
             </Link>
           </>
         ) : (

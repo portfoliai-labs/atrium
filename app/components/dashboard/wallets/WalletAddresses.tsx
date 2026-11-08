@@ -1,12 +1,12 @@
 // components/dashboard/wallets/WalletAddresses.tsx
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowDownToLine, Check, Copy, ExternalLink, Plus, RefreshCw, Trash2, TriangleAlert, Unlink, Wallet as WalletIcon } from "lucide-react";
-import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
+import { Check, Copy, ExternalLink, TriangleAlert, Unlink, Wallet as WalletIcon } from "lucide-react";
+import { useWalletQuery } from "../../../context/WalletsContext";
 import { tradingService } from "../../../services/tradingService";
-import { useChainHoldings, useTradingAccounts } from "../../../hooks/useChainHoldings";
+import { accountService } from "../../../services/accountService";
 import {
   WALLET_DOWNLOADS,
   connectWallet,
@@ -19,23 +19,12 @@ import { formatCurrency } from "../../../lib/format";
 import { dayLabel, errorText } from "../../../lib/wallets";
 import type { ChainHolding, OnchainAddress } from "../../../models/Trading";
 import type { Wallet } from "../../../models/Wallet";
-import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
-import { ConfirmDialog } from "../ConfirmDialog";
 import { DialogShell } from "./WalletDialogs";
-import { IconButton, useBankLinks } from "./WalletBanks";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
-import { OnchainOrders } from "./OnchainOrders";
+import { BalanceCheck, IconButton, LinkedSourceRow, NEW_WALLET } from "./WalletBanks";
 
 // The chains an address can be proved on: Solana's, for now (forum's service map, "Buying from the app").
 const SOLANA = "solana";
 const CHAINS = [{ id: SOLANA, label: "Solana" }];
-
-// A read's balances and movements reach the wallets by events (catena → mercatura → arca), a moment
-// after the read answers: the wallets are read again now and after each of these delays.
-const SETTLE_DELAYS_MS = [2_000, 6_000];
-
-/** "7xKX…gAsU": an address' ends, as the trading account names it. */
-const shortAddress = (address: string) => `${address.slice(0, 4)}…${address.slice(-4)}`;
 
 /**
  * The caller's addresses, oldest first: one read for the page and the dialog, read again with the
@@ -45,250 +34,49 @@ export function useOnchainAddresses() {
   return useWalletQuery(["onchainAddresses"], () => tradingService.addresses());
 }
 
+// A read's balances and movements reach the wallets by events (catena → mercatura → arca), a moment
+// after the read answers: the wallets are read again now and after each of these delays.
+export const SETTLE_DELAYS_MS = [2_000, 6_000];
+
+/** "7xKX…gAsU": an address' ends, as the trading account names it. */
+export const shortAddress = (address: string) => `${address.slice(0, 4)}…${address.slice(-4)}`;
+
 /**
- * ON-CHAIN ADDRESSES — the user's own wallets on a blockchain (Solana's: Phantom, Solflare), each
- * proved theirs by signing a message in it. Nothing is ever sent of the wallet but its address and
- * that signature; no key is kept, and nothing here can move money. Each address becomes a portfolio
- * (what it holds) and, as a bank link's accounts, its stablecoins: each one linked to a wallet of its
- * currency (one of the user's, or a new one), whose movements come in from the chain's reads. They
- * stay with their history when the address is removed. A demo account's are read only.
+ * The account an address just added makes (arca's, on mercatura's event: a moment after the
+ * address is registered): looked for now and after each of SETTLE_DELAYS_MS, null if it isn't
+ * there by then.
  */
-export function WalletAddresses({ onOpenOrder }: { onOpenOrder: (orderUuid: string) => void }) {
-  const { wallets, sample, changed } = useWallets();
-  const read = useOnchainAddresses();
-  const [connecting, setConnecting] = useState(false);
-  const [removing, setRemoving] = useState<OnchainAddress | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // The address whose Add funds is open, under its row.
-  const [funding, setFunding] = useState<string | null>(null);
-  // The address being read now, and what each read found.
-  const [reading, setReading] = useState<string | null>(null);
-  const [notes, setNotes] = useState<Record<string, string>>({});
-
-  const addresses = read.isError ? null : read.data;
-  const holdings = useChainHoldings();
-  const accounts = useTradingAccounts();
-  const banks = useBankLinks();
-  // An address' stablecoins, through its trading account (its reference is the address).
-  const holdingsOf = (address: OnchainAddress) => {
-    const account = accounts.data?.find((a) => a.reference === address.uuid);
-    return account ? (holdings.data ?? []).filter((h) => h.tradingAccountUuid === account.uuid) : [];
-  };
-  // The wallets taking a bank account's or a stablecoin's movements already: one source each.
-  const taken = useMemo(() => new Set([
-    ...(banks.data ?? []).flatMap((l) => l.accounts.map((a) => a.walletUuid)),
-    ...(holdings.data ?? []).map((h) => h.walletUuid),
-  ].filter((uuid): uuid is string => !!uuid)), [banks.data, holdings.data]);
-  // The holding being linked or unlinked, and why it couldn't be.
-  const [linking, setLinking] = useState<string | null>(null);
-  const [linkErrors, setLinkErrors] = useState<Record<string, string>>({});
-
-  const link = async (holding: ChainHolding, walletUuid: string | null) => {
-    setLinking(holding.uuid);
-    setLinkErrors((e) => ({ ...e, [holding.uuid]: "" }));
-    try {
-      await tradingService.linkHolding(holding.uuid, walletUuid);
-      changed();
-    } catch (err) {
-      setLinkErrors((e) => ({ ...e, [holding.uuid]: errorText(err, "Unable to link this stablecoin.") }));
-    } finally {
-      setLinking(null);
-    }
-  };
-  const unlink = async (holding: ChainHolding) => {
-    setLinking(holding.uuid);
-    try {
-      await tradingService.unlinkHolding(holding.uuid);
-      changed();
-    } catch (err) {
-      setLinkErrors((e) => ({ ...e, [holding.uuid]: errorText(err, "Unable to unlink this stablecoin.") }));
-    } finally {
-      setLinking(null);
-    }
-  };
-
-  const changedSoon = () => {
-    changed();
-    SETTLE_DELAYS_MS.forEach((ms) => setTimeout(changed, ms));
-  };
-
-  const readNow = async (address: OnchainAddress) => {
-    setReading(address.uuid);
-    setError(null);
-    try {
-      const { movements } = await tradingService.read(address.uuid);
-      setNotes((n) => ({
-        ...n,
-        [address.uuid]: movements === 0 ? "Read: nothing new." : `Read: ${movements} new movement${movements === 1 ? "" : "s"}, in its wallets in a moment.`,
-      }));
-      changedSoon();
-    } catch (err) {
-      setError(errorText(err, "Unable to read this address now."));
-    } finally {
-      setReading(null);
-      void read.refetch();
-    }
-  };
-
-  const remove = async () => {
-    if (!removing) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await tradingService.remove(removing.uuid);
-      setRemoving(null);
-      changed();
-    } catch (err) {
-      setError(errorText(err, "Unable to remove this address."));
-    } finally {
-      setBusy(false);
-      void read.refetch();
-    }
-  };
-
-  if (addresses === undefined) return <p className="text-[13px] text-[#857e78]">Loading…</p>;
-  if (addresses === null) return <p className="text-[13px] font-semibold text-rose-600">{errorText(read.error, "Unable to load your addresses.")}</p>;
-
-  return (
-    <>
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setConnecting(true)}
-          disabled={sample}
-          title={sample ? DEMO_DISABLED_TITLE : undefined}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:hover:bg-[#1c1917] disabled:cursor-not-allowed"
-        >
-          <Plus className="h-3.5 w-3.5" /> Connect a wallet
-        </button>
-      </div>
-
-      <Module>
-        <ModuleHead
-          title="On-chain"
-          desc="Your own wallets on Solana, proved yours by a signature. Each one gets a portfolio for what it holds; link each of its stablecoins to a wallet, as a bank's accounts, and its movements come in from the chain. Your keys stay in your wallet: nothing here can move money."
-        />
-        <div className={MODULE_BODY}>
-          {addresses.length === 0 ? (
-            <p className="text-[12.5px] text-[#857e78]">
-              No wallet connected yet. Connect Phantom, Solflare or another Solana wallet: you sign a short message in it, which
-              moves nothing and costs nothing, and its address is added here.
-            </p>
-          ) : (
-            <ul className="divide-y divide-[#EEE9DD]">
-              {addresses.map((address) => (
-                <li key={address.uuid} className="py-4 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-[#C49A3C]/10 text-[#C49A3C]">
-                      <WalletIcon className="h-4 w-4" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[13px] font-bold text-slate-800">Solana {shortAddress(address.address)}</span>
-                      <span className="block text-[11.5px] text-slate-500 truncate" title={address.address}>
-                        {address.address} · {address.readAt ? `read ${dayLabel(address.readAt.slice(0, 10))}` : "not read yet"}
-                      </span>
-                    </span>
-                    <IconButton
-                      label="Read now"
-                      onClick={() => void readNow(address)}
-                      spinning={reading === address.uuid}
-                      disabled={sample}
-                      title={sample ? DEMO_DISABLED_TITLE : undefined}
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                    </IconButton>
-                    <button
-                      type="button"
-                      onClick={() => setFunding((open) => (open === address.uuid ? null : address.uuid))}
-                      aria-expanded={funding === address.uuid}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11.5px] font-bold border border-slate-200 text-slate-700 hover:border-[#C49A3C]/60 transition-colors"
-                    >
-                      <ArrowDownToLine className="h-3.5 w-3.5" /> Add funds
-                    </button>
-                    <IconButton
-                      label="Remove"
-                      danger
-                      onClick={() => { setError(null); setRemoving(address); }}
-                      disabled={sample}
-                      title={sample ? DEMO_DISABLED_TITLE : undefined}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </IconButton>
-                  </div>
-                  {notes[address.uuid] && <p className="pl-12 text-[11.5px] font-semibold text-emerald-700">{notes[address.uuid]}</p>}
-                  {funding === address.uuid && <AddFunds address={address.address} />}
-                  <ul className="pl-12 space-y-2">
-                    {holdingsOf(address).length === 0 ? (
-                      <li className="text-[11.5px] text-slate-400">
-                        {address.readAt ? "No stablecoin read yet." : "Its stablecoins show here after its first read."}
-                      </li>
-                    ) : holdingsOf(address).map((holding) => (
-                      <HoldingRow
-                        key={holding.uuid}
-                        holding={holding}
-                        wallets={wallets}
-                        taken={taken}
-                        readOnly={sample}
-                        busy={linking === holding.uuid}
-                        error={linkErrors[holding.uuid]}
-                        onLink={(walletUuid) => void link(holding, walletUuid)}
-                        onUnlink={() => void unlink(holding)}
-                      />
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-          )}
-          {error && !removing && <p className="mt-3 text-xs font-medium text-rose-600">{error}</p>}
-        </div>
-      </Module>
-
-      <OnchainOrders accounts={accounts.data ?? []} onOpen={onOpenOrder} />
-
-      {connecting && (
-        <ConnectWalletDialog
-          onClose={() => setConnecting(false)}
-          onConnected={() => { setConnecting(false); changedSoon(); void read.refetch(); }}
-        />
-      )}
-      {removing && (
-        <ConfirmDialog
-          title={`Remove Solana ${shortAddress(removing.address)}?`}
-          description="Its movements stop coming in. Its portfolio and its account stay, with their history; the wallet itself is untouched."
-          confirmLabel="Remove"
-          confirming={busy}
-          error={error}
-          onConfirm={() => void remove()}
-          onClose={() => setRemoving(null)}
-        />
-      )}
-    </>
-  );
+export async function findAddressAccount(addressUuid: string): Promise<string | null> {
+  for (const wait of [0, ...SETTLE_DELAYS_MS]) {
+    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+    const [trading, accounts] = await Promise.all([tradingService.tradingAccounts(), accountService.list()]).catch(() => [[], []] as const);
+    const own = trading.find((t) => t.reference === addressUuid);
+    const account = own && accounts.find((a) => a.tradingAccountUuid === own.uuid);
+    if (account) return account.uuid;
+  }
+  return null;
 }
 
 // The stablecoins an address' account counts as cash (catena's stablecoins), as the user picks them
 // in their wallet or exchange.
 const STABLECOINS = "USDC or EURC";
 
-// HoldingRow's choice for a new wallet, beside the user's own.
-const NEW_WALLET = "new";
-
 /**
- * One stablecoin of an address, as a bank's account: its balance read from the chain; linked, the
- * wallet it comes into (Unlink); not yet, a choice among the user's wallets of its currency free of
- * another source, or a new one named after it.
+ * One stablecoin of an address, on its account's page, as a bank's account: its balance read from
+ * the chain; linked, the wallet it comes into (the whole row opening it, its balance checked
+ * against the chain's, Unlink); not yet, a choice among the user's wallets of its currency free of another
+ * source, or a new one named after it.
  */
-function HoldingRow({ holding, wallets, taken, readOnly, busy, error, onLink, onUnlink }: {
+export function HoldingRow({ holding, wallets, taken, readOnly, busy, error, onLink, onUnlink, onOpenWallet }: {
   holding: ChainHolding;
   wallets: Wallet[];
-  taken: Set<string>;
+  taken: Set<string | null>;
   readOnly: boolean;
   busy: boolean;
   error?: string;
   onLink: (walletUuid: string | null) => void;
   onUnlink: () => void;
+  onOpenWallet: (uuid: string) => void;
 }) {
   const linked = holding.walletUuid ? wallets.find((w) => w.uuid === holding.walletUuid) : undefined;
   const choices = wallets.filter((w) => !w.archived && w.currency === holding.currency && !taken.has(w.uuid));
@@ -298,6 +86,19 @@ function HoldingRow({ holding, wallets, taken, readOnly, busy, error, onLink, on
     `balance ${formatCurrency(holding.balance, holding.currency, 2)}`,
     holding.walletUuid && holding.syncFrom && `from ${dayLabel(holding.syncFrom)}`,
   ].filter(Boolean).join(" · ");
+  if (holding.walletUuid) {
+    return (
+      <LinkedSourceRow
+        title={holding.symbol}
+        meta={meta}
+        wallet={linked}
+        check={linked && <BalanceCheck wallet={linked} reported={holding.balance} on={null} source="the chain" />}
+        aside={!readOnly && <IconButton label="Unlink from the wallet" onClick={onUnlink} spinning={busy}><Unlink className="h-3.5 w-3.5" /></IconButton>}
+        error={error}
+        onOpen={onOpenWallet}
+      />
+    );
+  }
   return (
     <li className="rounded-xl border border-[#EEE9DD] px-3 py-2.5 space-y-1.5">
       <div className="flex flex-wrap items-center gap-3">
@@ -305,14 +106,7 @@ function HoldingRow({ holding, wallets, taken, readOnly, busy, error, onLink, on
           <span className="block text-[12.5px] font-bold text-slate-700">{holding.symbol}</span>
           <span className="block text-[11px] text-slate-500">{meta}</span>
         </span>
-        {holding.walletUuid ? (
-          <span className="flex items-center gap-2">
-            <span className="text-[12px] font-semibold text-slate-600">→ {linked?.name ?? "A wallet"}</span>
-            {!readOnly && (
-              <IconButton label="Unlink from the wallet" onClick={onUnlink} spinning={busy}><Unlink className="h-3.5 w-3.5" /></IconButton>
-            )}
-          </span>
-        ) : readOnly ? (
+        {readOnly ? (
           <span className="text-[11.5px] text-slate-400">Not linked to a wallet</span>
         ) : (
           <span className="flex items-center gap-2">
@@ -348,7 +142,7 @@ function HoldingRow({ holding, wallets, taken, readOnly, busy, error, onLink, on
  * sends it here on Solana. The QR code holds the plain address, which any wallet or exchange reads.
  * Its arrival comes into the address' account with the chain's reads.
  */
-function AddFunds({ address }: { address: string }) {
+export function AddFunds({ address }: { address: string }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -358,7 +152,7 @@ function AddFunds({ address }: { address: string }) {
     } catch { /* the address stays on screen to copy by hand */ }
   };
   return (
-    <div className="ml-12 rounded-2xl border border-[#EEE9DD] bg-[#FAF8F3] p-4 flex flex-col sm:flex-row gap-5">
+    <div className="rounded-2xl border border-[#EEE9DD] bg-[#FAF8F3] p-4 flex flex-col sm:flex-row gap-5">
       <div className="shrink-0 self-center rounded-xl bg-white p-3 border border-[#EEE9DD]">
         <QRCodeSVG value={address} size={132} level="M" />
       </div>
@@ -401,7 +195,7 @@ const STEP_LABELS: Record<Step, string> = {
  * (Sign-In With Solana, valid 5 minutes), the wallet signs it, the backend checks the signature and
  * adds the address, read at once so that its stablecoins show, each to link to a wallet.
  */
-function ConnectWalletDialog({ onClose, onConnected }: { onClose: () => void; onConnected: () => void }) {
+export function ConnectWalletDialog({ onClose, onConnected }: { onClose: () => void; onConnected: (address: OnchainAddress) => void }) {
   // The extensions announce themselves as the page loads, and later when one is installed.
   const wallets = useSyncExternalStore(subscribeSolanaWallets, getSolanaWallets, getServerSolanaWallets);
   const [chain, setChain] = useState(SOLANA);
@@ -425,7 +219,7 @@ function ConnectWalletDialog({ onClose, onConnected }: { onClose: () => void; on
       const added = await tradingService.register(proof.nonce, signature);
       // Its first read tells its stablecoins; the job would, within 5 minutes.
       await tradingService.read(added.uuid).catch(() => undefined);
-      onConnected();
+      onConnected(added);
     } catch (err) {
       setError(errorText(err, "Unable to connect this wallet."));
       setStep(null);

@@ -15,6 +15,13 @@ import { walletService } from "../services/walletService";
 /** The id of every wallet together (the Wallets hub, "All wallets"). */
 export const ALL_WALLETS = "all";
 
+// An account's page (components/dashboard/wallets/AccountNode), beside a wallet's uuid and
+// ALL_WALLETS as the id of a view of the section.
+const ACCOUNT_VIEW = "account:";
+export const accountView = (accountUuid: string) => `${ACCOUNT_VIEW}${accountUuid}`;
+/** The account a view's id opens, null for a wallet's or every wallet's. */
+export const accountOfView = (id: string) => (id.startsWith(ACCOUNT_VIEW) ? id.slice(ACCOUNT_VIEW.length) : null);
+
 export const KIND_LABELS: Record<WalletKind, string> = {
   current_account: "Current account",
   credit_card: "Credit card",
