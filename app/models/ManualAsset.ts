@@ -23,7 +23,7 @@ interface ManualAsset {
   currency: string;
   // The strategies' categories, or null.
   category: StrategyCategory | null;
-  // An advisor's, when they created it for the client.
+  // An advisor's, when they created it for the client (before advisors became read only).
   createdByUuid: string;
   createdAt: string;
   updatedAt: string;

@@ -34,6 +34,7 @@ import { TransactionFilterBar, TransactionFilterState, EMPTY_TRANSACTION_FILTERS
 import { useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
 import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
+import { useReadOnly } from "../../hooks/useReadOnly";
 
 const EXISTING_PAGE_SIZE = 10;
 const PENDING_PAGE_SIZE = 10;
@@ -162,14 +163,17 @@ function groupByPortfolio<T>(items: T[], portfolioOf: (item: T) => string): Map<
 //   aggregate "All portfolios" (which merges them all, each row carrying its own
 //   portfolio_uuid), or from one portfolio when the filter picks it; writes on a saved row go
 //   to the portfolio it belongs to, and new rows to the portfolio picked where they're added.
-// - the advisor (portfolioUuid: a client's portfolio): that one portfolio, nothing to pick.
+// - the advisor (portfolioUuid: a client's portfolio): that one portfolio, read only — the saved
+//   list, with nothing to add, import, edit or delete: the client changes their own (hooks/useReadOnly).
 // `readOnly`: a virtual portfolio's (a backtest's) generated transactions — the saved list only,
 // with nothing to add, import, edit or delete.
 export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = false }: { portfolioUuid?: string; readOnly?: boolean } = {}) {
-  const { portfolios: allPortfolios, current, changed } = usePortfolio();
+  const { portfolios: allPortfolios, current, changed, client } = usePortfolio();
   // A demo account (see lib/demo) sees the list and can open the form, but can't import, save,
-  // edit or delete anything.
+  // edit or delete anything; an advisor on a client's sees the list alone.
   const { isDemo } = useUser();
+  const { readOnly: locked } = useReadOnly();
+  const addsRows = !readOnly && !client;
   const isFixed = fixedPortfolioUuid !== undefined;
   // The portfolios that hold the user's transactions — the aggregate only lists them, and a
   // backtest's are generated (virtual portfolios take no writes).
@@ -834,7 +838,7 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
           portfolios={editingKey.startsWith("existing::") ? undefined : pickable}
           defaultPortfolioUuid={defaultTarget}
           lockKind={editingKey.startsWith("existing::")}
-          onTransfer={editingSaved && !isCashOperation(editingSaved.operation) && ownPortfolios.length > 1 && !isDemo
+          onTransfer={editingSaved && !isCashOperation(editingSaved.operation) && ownPortfolios.length > 1 && !locked
             ? () => { setTransferFrom(editingSaved); setEditingKey(null); }
             : undefined}
           onClose={() => setEditingKey(null)}
@@ -940,7 +944,7 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
       )}
 
       {/* TOOLBAR: upload actions, full width */}
-      {!readOnly && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {addsRows && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div
           onClick={() => !isDemo && fileInputRef.current?.click()}
           title={isDemo ? DEMO_DISABLED_TITLE : undefined}
@@ -1054,11 +1058,13 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
             ? "No transactions match the current filters."
             : readOnly
             ? "No transactions yet: the backtest is still generating them."
+            : client
+            ? `No transactions yet: ${client.name} adds them.`
             : "No transactions yet. Add one manually or upload a file to get started."
         }
         filterBar={<TransactionFilterBar filters={existingFilters} onChange={handleFiltersChange} portfolios={ownPortfolios} />}
-        onDeleteAll={isDemo || readOnly ? undefined : () => setConfirmDeleteAll(true)}
-        readOnly={isDemo || readOnly}
+        onDeleteAll={locked || readOnly ? undefined : () => setConfirmDeleteAll(true)}
+        readOnly={locked || readOnly}
         deletingAll={deletingAllExisting}
       />
     </div>

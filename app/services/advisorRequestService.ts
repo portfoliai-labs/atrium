@@ -1,5 +1,5 @@
 // services/advisorRequestService.ts
-import type { AdvisorMatch, AdvisorRequest, AdvisorRequestPayload } from "../models/AdvisorRequest";
+import type { AdvisorCard, AdvisorMatch, AdvisorRequest, AdvisorRequestPayload } from "../models/AdvisorRequest";
 import type { InvestorPolicy } from "../models/InvestorPolicy";
 import { mergeWithDefaults } from "../lib/ips";
 import { apiFetch } from "./apiClient";
@@ -28,6 +28,18 @@ export const advisorRequestService = {
 
   async withdrawRequest(requestUuid: string): Promise<AdvisorRequest> {
     return apiFetch<AdvisorRequest>(`/v1/users/advisor-requests/${requestUuid}/withdraw`, { method: "POST" });
+  },
+
+  // GET /users/advisors — the investor's advisors now (each through a request they accepted): they
+  // read the investor's data, and change none of it.
+  async getMyAdvisors(): Promise<AdvisorCard[]> {
+    return apiFetch<AdvisorCard[]>("/v1/users/advisors");
+  },
+
+  // DELETE /users/advisors/{advisor_uuid} — ends it: the advisor no longer sees the investor's
+  // data. 404 when they aren't the investor's advisor.
+  async endAdvisor(advisorUuid: string): Promise<void> {
+    await apiFetch<{ status: string }>(`/v1/users/advisors/${advisorUuid}`, { method: "DELETE" });
   },
 
   // --- The advisor ---

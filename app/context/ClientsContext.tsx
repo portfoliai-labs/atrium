@@ -10,7 +10,8 @@ import type { Client } from "../models/Advisor";
 /**
  * CLIENTS CONTEXT — an advisor's clients, loaded once for the dashboard: the Dashboard, the Clients
  * section, the Sidebar's rows under Clients and adopting a strategy on a client's portfolio all read
- * the same list, and a client added, changed or removed shows up in all of them. Empty, and never
+ * the same list, and a client removed shows up gone in all of them (a client comes through their
+ * own request, accepted: `reload()`). Empty, and never
  * loaded, for anyone else. The list is in the query cache (context/QueryContext) under
  * ["clients", "list"], next to the other reads between advisors and investors (useClientsQuery):
  * the requests on both sides, the suggested advisors, the investor's policy, the advisor's profile.
@@ -21,9 +22,7 @@ interface ClientsContextType {
   loading: boolean;
   error: string | null;
   reload: () => Promise<void>;
-  // After a create / profile change / delete made elsewhere, without a refetch.
-  added: (client: Client) => void;
-  updated: (client: Client) => void;
+  // After a removal made elsewhere, without a refetch.
   removed: (clientUuid: string) => void;
 }
 
@@ -50,13 +49,11 @@ export function ClientsProvider({ children }: { children: React.ReactNode }) {
     (change: (prev: Client[]) => Client[]) => queryClient.setQueryData<Client[]>(clientsKey("list"), (prev) => prev && change(prev)),
     [queryClient],
   );
-  const added = useCallback((client: Client) => setClients((prev) => [client, ...prev.filter((c) => c.uuid !== client.uuid)]), [setClients]);
-  const updated = useCallback((client: Client) => setClients((prev) => prev.map((c) => (c.uuid === client.uuid ? client : c))), [setClients]);
   const removed = useCallback((uuid: string) => setClients((prev) => prev.filter((c) => c.uuid !== uuid)), [setClients]);
 
   const value = useMemo(
-    () => ({ clients, loading, error, reload, added, updated, removed }),
-    [clients, loading, error, reload, added, updated, removed],
+    () => ({ clients, loading, error, reload, removed }),
+    [clients, loading, error, reload, removed],
   );
   return <ClientsContext.Provider value={value}>{children}</ClientsContext.Provider>;
 }

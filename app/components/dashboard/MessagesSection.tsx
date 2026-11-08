@@ -540,7 +540,7 @@ export function MessagesSection() {
       {rows.length === 0 && isDemo ? (
         <p className={`${CARD_CLASS} p-6 md:p-8 text-sm text-[#78716c]`}>
           {isAdvisor
-            ? "No conversations yet: accept a request, or add a client, to start one."
+            ? "No conversations yet: accept a request to start one."
             : "No conversations yet. Find an advisor and send them a request: once they accept, you can write to each other here."}
         </p>
       ) : (

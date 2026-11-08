@@ -18,8 +18,9 @@ const LAST_SELECTED_KEY = "last_selected_portfolio_uuid";
  *
  * An advisor's own are their strategies' backtests (Strategies) and the portfolio every account
  * starts with, which no page shows. A client's leave out the client's own backtests (they're
- * the client's Strategies, not something the advisor manages), are created through the advisor's route,
- * and can't be renamed or deleted by the advisor (`canManage`), nor take a backtest.
+ * the client's Strategies, not something the advisor manages), and are only read by the advisor:
+ * the client alone creates, renames and deletes them and changes what's in them (`canManage`, and
+ * hooks/useReadOnly for the pages' controls).
  *
  * Every investments' read is in the query cache (context/QueryContext) under an ["investments", ...]
  * key (useInvestmentsQuery), shared by the modules and pages that ask for it: the list itself, the
@@ -41,7 +42,7 @@ interface PortfolioContextType {
   // A strategy's backtest (see models/Strategy): joins the list, selected, like a new portfolio.
   createStrategyPortfolio: (payload: StrategyPortfolioPayload) => Promise<Portfolio>;
   renamePortfolio: (uuid: string, name: string) => Promise<Portfolio>;
-  // Who pays a real portfolio's taxes (see models/Tax): its advisor sets a client's too.
+  // Who pays a real portfolio's taxes (see models/Tax): the owner's to set, not their advisor's.
   setTaxationMode: (uuid: string, mode: TaxationMode) => Promise<Portfolio>;
   // Throws (with the backend's own message) on a 409 — callers show it.
   // Resolves with the portfolios left, refetched: the aggregate may have gone with it.
@@ -50,7 +51,7 @@ interface PortfolioContextType {
   client: ClientScope | null;
   // The user's own portfolios, whichever list this is: a client's adoption comes from one of them.
   ownPortfolios: Portfolio[];
-  // Whether its portfolios can be renamed and deleted (not a client's, for their advisor).
+  // Whether its portfolios can be renamed and deleted (not a client's: their advisor only reads them).
   canManage: boolean;
   // After a write that moves the figures (transactions saved, edited, deleted, imported).
   changed: () => void;
@@ -110,7 +111,8 @@ export function PortfolioProvider({ children, client = null }: { children: React
   }, [clientUuid]);
 
   const createPortfolio = useCallback(async (name: string) => {
-    const created = clientUuid ? await portfoliosService.createForClient(clientUuid, name) : await portfoliosService.create(name);
+    if (clientUuid) throw new Error("Only your client creates their portfolios.");
+    const created = await portfoliosService.create(name);
     await fetchPortfolios();
     selectPortfolio(created.uuid);
     return created;
