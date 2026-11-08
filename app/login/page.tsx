@@ -20,6 +20,14 @@ const loginFeatures: Array<{ icon: React.ElementType; title: string; description
   },
 ];
 
+// The demo accounts' buttons (forum's service map, "Security review before publishing", 13): only
+// in a build given their password (`NEXT_PUBLIC_DEMO_PASSWORD`: the development stack's seeded
+// accounts, or a deployment that shows the product). Without it, no button and no password in the
+// bundle. The accounts themselves are read-only (lib/demo.ts).
+const DEMO_PASSWORD = process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? "";
+const DEMO_INVESTOR_EMAIL = "demo@portfoliai.app";
+const DEMO_ADVISOR_EMAIL = "advisor-demo@portfoliai.app";
+
 function LoginContent() {
   const searchParams = useSearchParams();
   const isAddon = searchParams.get("source") === "addon";
@@ -85,13 +93,13 @@ function LoginContent() {
   // which account a click signs into is never implicit from shared state.
   const handleInvestorDemoLogin = async () => {
     setPendingAction("demo-investor");
-    await loginWithPassword("demo@portfoliai.app", "demoportfoliai");
+    await loginWithPassword(DEMO_INVESTOR_EMAIL, DEMO_PASSWORD);
     setPendingAction(null);
   };
 
   const handleAdvisorDemoLogin = async () => {
     setPendingAction("demo-advisor");
-    await loginWithPassword("advisor-demo@portfoliai.app", "demoportfoliai");
+    await loginWithPassword(DEMO_ADVISOR_EMAIL, DEMO_PASSWORD);
     setPendingAction(null);
   };
 
@@ -314,7 +322,7 @@ function LoginContent() {
                 </button>
               </p>
 
-              {authMode !== "reset" && (
+              {authMode !== "reset" && DEMO_PASSWORD && (
               <>
 
               <p className="text-center text-[10px] font-semibold uppercase tracking-[0.1em] mt-6 mb-2" style={{ color: "#857e78" }}>

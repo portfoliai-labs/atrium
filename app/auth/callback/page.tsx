@@ -2,6 +2,7 @@
 
 import React, { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { safeDestination } from "@/app/lib/safeDestination";
 import { Loader2, AlertCircle, ShieldCheck, Copy, Check } from "lucide-react";
 import { motion } from "framer-motion";
 import { supabase } from "@/app/lib/supabaseClient";
@@ -92,7 +93,8 @@ function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const destination = searchParams.get("next") || "/dashboard";
+  // A path on this site only: the query string is anyone's to write.
+  const destination = safeDestination(searchParams.get("next"));
   const isAddon = searchParams.get("source") === "addon";
   const oauthError = searchParams.get("error_description") || searchParams.get("error");
 

@@ -13,6 +13,7 @@ app is tabella.
 | `NEXT_PUBLIC_API_URL` | Backend base URL |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase auth |
 | `NEXT_PUBLIC_SITE_URL` | Public site URL (metadata); defaults to https://portfoliai.online |
+| `NEXT_PUBLIC_DEMO_PASSWORD` | Optional: the demo accounts' password (`demoportfoliai` in forum's development stack); set, the login shows their buttons. Leave it out of a build that has no demo accounts |
 
 ### Demo accounts
 
@@ -21,6 +22,7 @@ account. On the regular dashboard it also sees the roadmap's preview features (W
 estate, Explore, Strategy — sample data, not tied to real data), and it is read-only: the
 frontend refuses its writes (`app/lib/demo.ts`) and disables the controls that would send them.
 The backend must refuse a demo account's writes as well; the frontend alone can be bypassed.
+The login's demo buttons appear only in a build with `NEXT_PUBLIC_DEMO_PASSWORD`.
 
 ## Getting Started
 
