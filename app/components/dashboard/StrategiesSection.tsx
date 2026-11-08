@@ -417,10 +417,8 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
             if (clientUuid) openClientPage(onNavigate, clientUuid, { kind: "portfolio", uuid, page: "strategy" });
             else onOpenPortfolio(uuid, "strategy");
           }}
-          onOpenCategories={(clientUuid) => {
+          onOpenCategories={() => {
             setAdopting(null);
-            // A client's: on their investments, whichever portfolio stands for them.
-            if (clientUuid) return openClientPage(onNavigate, clientUuid, { kind: "portfolio", uuid: "", page: "categories" });
             openAssetSettings(onNavigate);
           }}
         />

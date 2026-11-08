@@ -1,9 +1,9 @@
 // components/dashboard/ClientsSection.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, BellRing, Check, ChevronRight, Info, Loader2, Settings2, Trash2, UserPlus, Users, X } from "lucide-react";
+import { BellRing, ChevronRight, Info, Loader2, Settings2, Trash2, Users, X } from "lucide-react";
 import { advisorService } from "../../services/advisorService";
 import { clientDisplayName, clientInitials, useClients } from "../../context/ClientsContext";
 import { PortfolioProvider, usePortfolio, type ClientScope } from "../../context/PortfolioContext";
@@ -13,9 +13,8 @@ import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHisto
 import { CLIENTS_SECTION } from "../../lib/dashboardNav";
 import { alertState } from "../../lib/alerts";
 import { formatCurrency } from "../../lib/format";
-import { TAX_REGIME_COUNTRIES, residenceOptions } from "../../lib/taxes";
-import { UserRole } from "../../models/Advisor";
-import type { Client, ClientCreatePayload, ClientProfileUpdatePayload } from "../../models/Advisor";
+import { TAX_REGIME_COUNTRIES, countryName } from "../../lib/taxes";
+import type { Client } from "../../models/Advisor";
 import type { ClientAlertRuleResponse } from "../../models/Alert";
 import { PageHeader, type PageAction } from "./PageHeader";
 import { Module, ModuleHead } from "./PerformanceSection";
@@ -26,15 +25,10 @@ import { ManualAssetsEditor } from "./ManualAssetsEditor";
 import { TONE_STYLES } from "./AlertGauge";
 
 const SECTION = CLIENTS_SECTION;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// The advisor's incoming requests (AdvisorRequestsSection): where a client comes from.
+const REQUESTS_SECTION = "requests";
 
-const CURRENCY_OPTIONS = ["EUR", "USD", "GBP", "CHF"];
-const LANGUAGE_OPTIONS = [
-  { value: "it", label: "Italian" },
-  { value: "en", label: "English" },
-  { value: "fr", label: "French" },
-  { value: "de", label: "German" },
-];
+const LANGUAGE_LABELS: Record<string, string> = { it: "Italian", en: "English", fr: "French", de: "German" };
 
 const signedPct = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)}%`;
 
@@ -56,11 +50,12 @@ export function ClientAvatar({ client, size = "md" }: { client: Client; size?: "
 
 /**
  * CLIENTS SECTION (advisor) — the advisor's clients, and each one's page. The list says what each
- * client's investments are worth, how they've done and how their alerts stand, and adds or removes
- * clients. A client's page is their investments, the investor's own pages on the client's portfolios (a
+ * client's investments are worth, how they've done and how their alerts stand, and removes
+ * clients; a client comes through their own advisor request, accepted in Requests. The advisor reads
+ * a client's data, and only the client changes it (hooks/useReadOnly). A client's page is their investments, the investor's own pages on the client's portfolios (a
  * PortfolioProvider of theirs, see InvestmentsSection): their investments, each portfolio's Insights,
  * Transactions, Alerts (the advisor's), Strategy (adopted from the advisor's backtests, shared or
- * not) and Asset categories, plus the client's settings. The client is in each page's history
+ * not) and Asset categories, plus the client's details. The client is in each page's history
  * entry (`{ client, ...wealthView }`), so back and forward, and the Sidebar's rows, follow it.
  */
 export function ClientsSection({ onNavigate }: { onNavigate: (section: string) => void }) {
@@ -89,7 +84,7 @@ export function ClientsSection({ onNavigate }: { onNavigate: (section: string) =
   if (client) {
     return <ClientPage key={client.uuid} client={client} onBack={() => openClient(null)} onNavigate={onNavigate} />;
   }
-  return <ClientsList onOpen={openClient} />;
+  return <ClientsList onOpen={openClient} onOpenRequests={() => onNavigate(REQUESTS_SECTION)} />;
 }
 
 // ── The list ──────────────────────────────────────────────────────────────────────────────
@@ -106,11 +101,10 @@ function alertsSummary(rules: ClientAlertRuleResponse[]) {
   return { text: count, tone: "ok" as const };
 }
 
-function ClientsList({ onOpen }: { onOpen: (uuid: string) => void }) {
-  const { clients, error, added, removed } = useClients();
+function ClientsList({ onOpen, onOpenRequests }: { onOpen: (uuid: string) => void; onOpenRequests: () => void }) {
+  const { clients, error, removed } = useClients();
   const { rules } = useClientAlertRules();
   const figures = useClientsFigures(clients);
-  const [adding, setAdding] = useState(false);
   const [toRemove, setToRemove] = useState<Client | null>(null);
 
   const triggered = (rules ?? []).filter((r) => alertState(r).tone === "danger").length;
@@ -130,7 +124,7 @@ function ClientsList({ onOpen }: { onOpen: (uuid: string) => void }) {
           { label: "Your alerts", value: rules === null ? "—" : String(rules.length), sub: "On their portfolios" },
           { label: "Triggered", value: rules === null ? "—" : String(triggered), tone: triggered > 0 ? "loss" : undefined },
         ] : []}
-        actions={[{ label: "Add client", primary: true, onClick: () => setAdding(true) }]}
+        actions={[{ label: "Requests", primary: true, onClick: onOpenRequests }]}
       />
 
       {error && <p className="text-sm font-semibold text-rose-600">{error}</p>}
@@ -138,13 +132,13 @@ function ClientsList({ onOpen }: { onOpen: (uuid: string) => void }) {
       {clients.length === 0 ? (
         <button
           type="button"
-          onClick={() => setAdding(true)}
+          onClick={onOpenRequests}
           className="min-h-52 w-full rounded-[1.75rem] border-2 border-dashed border-[#E0DACC] bg-white flex flex-col items-center justify-center gap-2 px-6 text-center hover:border-[#C49A3C]/60 transition-colors"
         >
           <span className="w-12 h-12 rounded-2xl bg-[#1c1917] flex items-center justify-center mb-1"><Users className="w-5 h-5 text-[#C49A3C]" /></span>
           <span className="text-sm font-black text-[#1c1917]">No clients yet</span>
           <span className="text-xs text-[#78716c] max-w-sm">
-            Add a client by their email: a new one gets an account, someone already on PortfoliAI is linked to you.
+            A client comes to you by their own request: accept it in Requests, and their portfolios are here to follow.
           </span>
         </button>
       ) : (
@@ -172,15 +166,6 @@ function ClientsList({ onOpen }: { onOpen: (uuid: string) => void }) {
         </Module>
       )}
 
-      {adding && (
-        <AddClientDialog
-          onClose={() => setAdding(false)}
-          onCreated={(client) => {
-            added(client);
-            setAdding(false);
-          }}
-        />
-      )}
       {toRemove && (
         <RemoveClientDialog
           client={toRemove}
@@ -258,7 +243,7 @@ function ClientRow({ client, figures, rules, onOpen, onRemove }: {
 
 /**
  * A client's investments, on their portfolios: the investor's pages (InvestmentsSection) in this section,
- * under Clients › the client, with the client's settings and removal among their investments'
+ * under Clients › the client, with the client's details and removal among their investments'
  * actions.
  */
 function ClientPage({ client, onBack, onNavigate }: { client: Client; onBack: () => void; onNavigate: (section: string) => void }) {
@@ -273,9 +258,9 @@ function ClientPage({ client, onBack, onNavigate }: { client: Client; onBack: ()
 
 function ClientWealth({ client, onBack, onNavigate }: { client: Client; onBack: () => void; onNavigate: (section: string) => void }) {
   const { loading, failed } = usePortfolio();
-  const { updated, removed } = useClients();
+  const { removed } = useClients();
   const [dialog, setDialog] = useState<"settings" | "remove" | null>(null);
-  // The Client settings tab it opens on.
+  // The Client details tab it opens on.
   const [settingsTab, setSettingsTab] = useState<ClientSettingsTab>("profile");
   const openSettings = (tab: ClientSettingsTab) => {
     setSettingsTab(tab);
@@ -292,7 +277,7 @@ function ClientWealth({ client, onBack, onNavigate }: { client: Client; onBack: 
   }
 
   const extraActions: PageAction[] = [
-    { label: "Client settings", onClick: () => openSettings("profile") },
+    { label: "Client details", onClick: () => openSettings("profile") },
     { label: "Remove client", danger: true, onClick: () => setDialog("remove") },
   ];
 
@@ -308,15 +293,7 @@ function ClientWealth({ client, onBack, onNavigate }: { client: Client; onBack: 
         onOpenAssetSettings={() => openSettings("assets")}
       />
       {dialog === "settings" && (
-        <ClientSettingsDialog
-          client={client}
-          initialTab={settingsTab}
-          onClose={() => setDialog(null)}
-          onSaved={(next) => {
-            updated(next);
-            setDialog(null);
-          }}
-        />
+        <ClientSettingsDialog client={client} initialTab={settingsTab} onClose={() => setDialog(null)} />
       )}
       {dialog === "remove" && (
         <RemoveClientDialog
@@ -335,24 +312,10 @@ function ClientWealth({ client, onBack, onNavigate }: { client: Client; onBack: 
 
 // ── Dialogs ───────────────────────────────────────────────────────────────────────────────
 
-const fieldClass = "w-full h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400 placeholder:font-normal focus:border-[#C49A3C]/60 focus:ring-4 focus:ring-[#C49A3C]/10";
-
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-        {label} {required && <span className="text-rose-500">*</span>}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function DialogShell({ icon, title, subtitle, busy, wide, onClose, children }: {
+function DialogShell({ icon, title, subtitle, wide, onClose, children }: {
   icon: React.ReactNode;
   title: string;
   subtitle?: string;
-  busy?: boolean;
   // Room for a list (a client's assets), not just a form.
   wide?: boolean;
   onClose: () => void;
@@ -360,7 +323,7 @@ function DialogShell({ icon, title, subtitle, busy, wide, onClose, children }: {
 }) {
   // Portaled to <body> above the dashboard's sticky header, like the app's other dialogs.
   return createPortal(
-    <div className="fixed inset-0 z-100 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={() => !busy && onClose()}>
+    <div className="fixed inset-0 z-100 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
@@ -375,7 +338,7 @@ function DialogShell({ icon, title, subtitle, busy, wide, onClose, children }: {
               {subtitle && <p className="text-xs text-slate-500 truncate">{subtitle}</p>}
             </div>
           </div>
-          <button onClick={onClose} disabled={busy} aria-label="Close" className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors shrink-0 disabled:opacity-50">
+          <button onClick={onClose} aria-label="Close" className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors shrink-0">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -386,150 +349,6 @@ function DialogShell({ icon, title, subtitle, busy, wide, onClose, children }: {
   );
 }
 
-function DialogButtons({ busy, disabled, label, onCancel, onConfirm }: { busy: boolean; disabled?: boolean; label: string; onCancel: () => void; onConfirm: () => void }) {
-  return (
-    <div className="flex items-center justify-end gap-3 pt-1">
-      <button onClick={onCancel} disabled={busy} className="px-5 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors disabled:opacity-50">
-        Cancel
-      </button>
-      <button
-        onClick={onConfirm}
-        disabled={busy || disabled}
-        className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-[#1c1917] hover:bg-[#C49A3C] transition-colors disabled:opacity-50 disabled:hover:bg-[#1c1917]"
-      >
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-        {label}
-      </button>
-    </div>
-  );
-}
-
-type LookupStatus = "idle" | "checking" | "new" | "existing_client" | "existing_other";
-
-/**
- * ADD CLIENT — by email: as it's typed, the backend says whether someone has it (GET
- * /v1/advisor/clients/lookup). Someone already on PortfoliAI as an investor is linked as they are;
- * anyone else needs a name, a language and a currency for the account made for them.
- */
-function AddClientDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (client: Client) => void }) {
-  const [form, setForm] = useState({ email: "", first_name: "", last_name: "", language: "it", currency: "EUR" });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [lookup, setLookup] = useState<{ status: LookupStatus; firstName?: string | null; lastName?: string | null }>({ status: "idle" });
-  const lookupRequestId = useRef(0);
-
-  const set = (field: keyof typeof form) => (v: string) => setForm((prev) => ({ ...prev, [field]: v }));
-
-  useEffect(() => {
-    const email = form.email.trim();
-    if (!EMAIL_RE.test(email)) {
-      setLookup({ status: "idle" });
-      return;
-    }
-    const requestId = ++lookupRequestId.current;
-    setLookup({ status: "checking" });
-    const timer = setTimeout(async () => {
-      try {
-        const result = await advisorService.lookupClient(email);
-        if (lookupRequestId.current !== requestId) return;
-        if (!result.exists) {
-          setLookup({ status: "new" });
-        } else if (result.role === UserRole.USER) {
-          setLookup({ status: "existing_client", firstName: result.first_name, lastName: result.last_name });
-          setForm((prev) => ({ ...prev, first_name: result.first_name ?? prev.first_name, last_name: result.last_name ?? prev.last_name }));
-        } else {
-          setLookup({ status: "existing_other" });
-        }
-      } catch {
-        if (lookupRequestId.current === requestId) setLookup({ status: "idle" });
-      }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [form.email]);
-
-  const linking = lookup.status === "existing_client";
-  const isValid = lookup.status === "existing_other"
-    ? false
-    : linking ? Boolean(form.email.trim()) : Boolean(form.email.trim() && form.first_name.trim() && form.last_name.trim());
-
-  const submit = async () => {
-    if (!isValid) return;
-    setBusy(true);
-    setError("");
-    try {
-      // Existing users may have no name on record; the backend ignores these fields for them
-      // anyway, but the payload still requires non-empty values.
-      const payload: ClientCreatePayload = {
-        email: form.email.trim(),
-        first_name: form.first_name.trim() || "Client",
-        last_name: form.last_name.trim() || "-",
-        language: form.language,
-        currency: form.currency || undefined,
-      };
-      onCreated(await advisorService.createClient(payload));
-    } catch {
-      setError("Unable to add this client. Please try again.");
-      setBusy(false);
-    }
-  };
-
-  const existingName = `${lookup.firstName ?? ""} ${lookup.lastName ?? ""}`.trim();
-
-  return (
-    <DialogShell icon={<UserPlus className="h-5 w-5" />} title="Add client" subtitle="By their email" busy={busy} onClose={onClose}>
-      <div className="space-y-4">
-        <div className="relative">
-          <Field label="Email" required>
-            <input autoFocus type="email" value={form.email} onChange={(e) => set("email")(e.target.value)} placeholder="name@example.com" className={fieldClass} />
-          </Field>
-          {lookup.status === "checking" && <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3.5 top-[34px]" />}
-        </div>
-
-        {linking && (
-          <p className="flex items-start gap-2.5 rounded-xl bg-[#C49A3C]/10 border border-[#C49A3C]/30 px-4 py-3 text-[13px] font-semibold text-[#8A6A28]">
-            <Info className="w-4 h-4 shrink-0 mt-0.5" />
-            {existingName || "This person"} is already on PortfoliAI: they&apos;re linked to you as they are, with nothing to fill in.
-          </p>
-        )}
-        {lookup.status === "existing_other" && (
-          <p className="flex items-start gap-2.5 rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-[13px] font-semibold text-rose-700">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            This email belongs to another kind of account and can&apos;t be added as a client.
-          </p>
-        )}
-
-        {!linking && lookup.status !== "existing_other" && (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="First name" required>
-                <input value={form.first_name} onChange={(e) => set("first_name")(e.target.value)} className={fieldClass} />
-              </Field>
-              <Field label="Last name" required>
-                <input value={form.last_name} onChange={(e) => set("last_name")(e.target.value)} className={fieldClass} />
-              </Field>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Language">
-                <select value={form.language} onChange={(e) => set("language")(e.target.value)} className={fieldClass}>
-                  {LANGUAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </Field>
-              <Field label="Portfolio currency">
-                <select value={form.currency} onChange={(e) => set("currency")(e.target.value)} className={fieldClass}>
-                  {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </Field>
-            </div>
-          </>
-        )}
-
-        {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
-        <DialogButtons busy={busy} disabled={!isValid} label={linking ? "Link client" : "Add client"} onCancel={onClose} onConfirm={submit} />
-      </div>
-    </DialogShell>
-  );
-}
-
 type ClientSettingsTab = "profile" | "assets";
 const CLIENT_SETTINGS_TABS: { id: ClientSettingsTab; label: string }[] = [
   { id: "profile", label: "Profile" },
@@ -537,61 +356,29 @@ const CLIENT_SETTINGS_TABS: { id: ClientSettingsTab; label: string }[] = [
 ];
 
 /**
- * CLIENT SETTINGS — a client's language, portfolio currency and tax residence (Profile), and their
- * asset categories and manual assets (Assets), each saved as it's changed. Changing the currency
- * makes the backend recompute the client's whole history in it; the residence picks the regime
- * their taxes are computed by (see their investments' Taxes page).
+ * CLIENT DETAILS — a client's language, portfolio currency and tax residence (Profile), and their
+ * asset categories and manual assets (Assets), to read: the client changes them, in their own
+ * Profile and Settings. The residence picks the regime their taxes are computed by (see their
+ * investments' Taxes page).
  */
-function ClientSettingsDialog({ client, initialTab = "profile", onClose, onSaved }: {
+function ClientSettingsDialog({ client, initialTab = "profile", onClose }: {
   client: Client;
   initialTab?: ClientSettingsTab;
   onClose: () => void;
-  onSaved: (client: Client) => void;
 }) {
-  const { changed } = usePortfolio();
   const [tab, setTab] = useState<ClientSettingsTab>(initialTab);
-  const [form, setForm] = useState({ currency: client.currency ?? "EUR", language: client.language ?? "it", taxResidence: client.tax_residence ?? "" });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const residenceChanged = form.taxResidence !== (client.tax_residence ?? "");
-  const dirty = form.currency !== (client.currency ?? "EUR") || form.language !== (client.language ?? "it") || residenceChanged;
-  const currencyChanged = form.currency !== (client.currency ?? "EUR");
-
-  const save = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      // The residence only when picked: once set it's changed, not cleared.
-      const payload: ClientProfileUpdatePayload = {
-        currency: form.currency || null,
-        language: form.language || null,
-        ...(residenceChanged && form.taxResidence ? { tax_residence: form.taxResidence } : {}),
-      };
-      await advisorService.updateClientProfile(client.uuid, payload);
-      // Their figures in the reference currency, their taxes by the residence's regime.
-      changed();
-      onSaved({
-        ...client,
-        currency: payload.currency ?? client.currency,
-        language: payload.language ?? client.language,
-        tax_residence: payload.tax_residence ?? client.tax_residence,
-      });
-    } catch {
-      setError("Unable to save the client's settings. Please try again.");
-      setBusy(false);
-    }
-  };
+  const name = clientDisplayName(client);
+  const residence = client.tax_residence ?? null;
 
   return (
-    <DialogShell icon={<Settings2 className="h-5 w-5" />} title="Client settings" subtitle={`${clientDisplayName(client)} · ${client.email}`} busy={busy} wide={tab === "assets"} onClose={onClose}>
+    <DialogShell icon={<Settings2 className="h-5 w-5" />} title="Client details" subtitle={`${name} · ${client.email}`} wide={tab === "assets"} onClose={onClose}>
       <div className="inline-flex gap-1 p-1 bg-white rounded-full border border-[rgba(196,154,60,0.2)]">
         {CLIENT_SETTINGS_TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            disabled={busy}
-            className={`px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-colors disabled:opacity-50 ${
+            className={`px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-colors ${
               t.id === tab ? "bg-[#1c1917] text-white" : "text-[#78716c] hover:text-[#1c1917]"
             }`}
           >
@@ -599,54 +386,45 @@ function ClientSettingsDialog({ client, initialTab = "profile", onClose, onSaved
           </button>
         ))}
       </div>
+      <p className="flex items-start gap-2.5 rounded-xl bg-[#C49A3C]/10 border border-[#C49A3C]/30 px-4 py-3 text-[13px] font-semibold text-[#8A6A28]">
+        <Info className="w-4 h-4 shrink-0 mt-0.5" />
+        {name} changes their own data: you see it as it is.
+      </p>
       {tab === "assets" ? (
         <div className="space-y-6">
           <div className="space-y-3">
             <p className="text-xs text-slate-500 leading-relaxed">
-              The category each of {clientDisplayName(client)}&apos;s securities counts in, across all their portfolios: alerts on a category, and adopting a strategy by category, weigh a portfolio by it. A category you pick is theirs too, everywhere, until it&apos;s restored.
+              The category each of {name}&apos;s securities counts in, across all their portfolios: alerts on a category, and adopting a strategy by category, weigh a portfolio by it.
             </p>
             <AssetCategoriesEditor clientUuid={client.uuid} />
           </div>
           <div className="space-y-3">
             <p className="text-xs text-slate-500 leading-relaxed">
-              {clientDisplayName(client)}&apos;s investments with no market price — unlisted shares, private equity, a loan, physical gold — valued by hand. Each one is picked in a transaction like a security, and counts in the portfolios that hold it by its valuations.
+              {name}&apos;s investments with no market price — unlisted shares, private equity, a loan, physical gold — valued by hand. Each counts in the portfolios that hold it by its valuations.
             </p>
             <ManualAssetsEditor clientUuid={client.uuid} />
           </div>
         </div>
       ) : (
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Language">
-            <select value={form.language} onChange={(e) => setForm((f) => ({ ...f, language: e.target.value }))} className={fieldClass}>
-              {LANGUAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-          <Field label="Portfolio currency">
-            <select value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))} className={fieldClass}>
-              {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </Field>
-        </div>
-        <Field label="Tax residence">
-          <select value={form.taxResidence} onChange={(e) => setForm((f) => ({ ...f, taxResidence: e.target.value }))} className={fieldClass}>
-            {!form.taxResidence && <option value="" disabled>Not set</option>}
-            {residenceOptions(client.tax_residence).map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
-          </select>
-        </Field>
-        {form.taxResidence && !TAX_REGIME_COUNTRIES.includes(form.taxResidence) && (
-          <p className="text-xs text-[#78716c]">Taxes are computed for residents of Italy only, for now.</p>
-        )}
-        {currencyChanged && (
-          <p className="rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-xs font-semibold text-amber-800">
-            Every figure of {clientDisplayName(client)}&apos;s is recomputed in {form.currency}: it can take a few minutes.
-          </p>
-        )}
-        {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
-        <DialogButtons busy={busy} disabled={!dirty} label="Save" onCancel={onClose} onConfirm={save} />
-      </div>
+        <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Detail label="Language" value={client.language ? LANGUAGE_LABELS[client.language] ?? client.language : "Not set"} />
+          <Detail label="Portfolio currency" value={client.currency ?? "Not set"} />
+          <Detail label="Tax residence" value={residence ? countryName(residence) : "Not set"} />
+          {residence && !TAX_REGIME_COUNTRIES.includes(residence) && (
+            <p className="sm:col-span-3 text-xs text-[#78716c]">Taxes are computed for residents of Italy only, for now.</p>
+          )}
+        </dl>
       )}
     </DialogShell>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 px-3.5 py-2.5">
+      <dt className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{label}</dt>
+      <dd className="mt-1 text-sm font-semibold text-slate-900">{value}</dd>
+    </div>
   );
 }
 

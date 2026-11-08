@@ -3,13 +3,12 @@
 
 import { useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
-import { useUser } from "../../context/UserContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { investmentsKey, useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContext";
 import { manualAssetService } from "../../services/manualAssetService";
 import { ApiError } from "../../services/apiClient";
 import { formatCurrency } from "../../lib/format";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
+import { useReadOnly } from "../../hooks/useReadOnly";
 import { STRATEGY_CATEGORIES, STRATEGY_CATEGORY_LABELS, type StrategyCategory } from "../../models/Strategy";
 import {
   MANUAL_ASSET_IN_USE, MANUAL_ASSET_NAME_MAX, MANUAL_VALUATIONS_MAX, type ManualAsset, type ManualValuation,
@@ -37,11 +36,11 @@ export function useManualAssets(clientUuid?: string, enabled = true) {
  * the whole holding's when it was bought as 1 unit), each holding until the next, the purchase
  * price before the first. A valuation is added or replaced by day (PUT) and removed (DELETE); the
  * portfolios holding it are computed again. Deleting the asset is refused while a transaction is
- * on it. With `clientUuid`, an advisor's view of a client's. A demo account sees them but can't
- * change them.
+ * on it. With `clientUuid`, an advisor's view of a client's, to read: the client alone changes
+ * them. A demo account sees them but can't change them either (hooks/useReadOnly).
  */
 export function ManualAssetsEditor({ clientUuid }: { clientUuid?: string }) {
-  const { isDemo } = useUser();
+  const { title: lockedBy, lock } = useReadOnly(clientUuid);
   const { changed } = usePortfolio();
   const queryClient = useQueryClient();
   const read = useManualAssets(clientUuid);
@@ -83,7 +82,6 @@ export function ManualAssetsEditor({ clientUuid }: { clientUuid?: string }) {
   if (assets === null) {
     return <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-[#C49A3C]" /></div>;
   }
-  const demo = isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
 
   return (
     <div className="space-y-4">
@@ -97,7 +95,7 @@ export function ManualAssetsEditor({ clientUuid }: { clientUuid?: string }) {
             <button
               type="button"
               onClick={() => setCreating(true)}
-              {...demo}
+              {...lock}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#1c1917]"
             >
               <Plus className="h-3.5 w-3.5" /> New manual asset
@@ -124,7 +122,7 @@ export function ManualAssetsEditor({ clientUuid }: { clientUuid?: string }) {
                 key={a.uuid}
                 asset={a}
                 expanded={open === a.uuid}
-                readOnly={isDemo}
+                readOnly={lockedBy}
                 onToggle={() => setOpen(open === a.uuid ? null : a.uuid)}
                 onChanged={replace}
                 onDelete={() => { setDeleteError(null); setDeleting(a); }}
@@ -227,7 +225,8 @@ function CreateForm({ clientUuid, onCancel, onCreated }: { clientUuid?: string; 
 function AssetRow({ asset, expanded, readOnly, onToggle, onChanged, onDelete }: {
   asset: ManualAsset;
   expanded: boolean;
-  readOnly: boolean;
+  // Why it can't be changed (see hooks/useReadOnly), undefined when it can.
+  readOnly: string | undefined;
   onToggle: () => void;
   onChanged: (a: ManualAsset) => void;
   onDelete: () => void;
@@ -250,7 +249,7 @@ function AssetRow({ asset, expanded, readOnly, onToggle, onChanged, onDelete }: 
   };
 
   const latest = asset.latestValuation;
-  const demo = readOnly ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
+  const demo = readOnly !== undefined ? { disabled: true, title: readOnly } : {};
 
   return (
     <li>
@@ -274,7 +273,7 @@ function AssetRow({ asset, expanded, readOnly, onToggle, onChanged, onDelete }: 
           </form>
         )}
         <span className="flex items-center gap-2">
-          <CategorySelect value={asset.category} onChange={(category) => void update({ category })} disabled={busy || readOnly} />
+          <CategorySelect value={asset.category} onChange={(category) => void update({ category })} disabled={busy || readOnly !== undefined} />
           {renaming === null && (
             <button type="button" onClick={() => setRenaming(asset.name)} {...demo} aria-label={`Rename ${asset.name}`} className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-40">
               <Pencil className="h-4 w-4" />
@@ -286,7 +285,7 @@ function AssetRow({ asset, expanded, readOnly, onToggle, onChanged, onDelete }: 
         </span>
       </div>
       {error && <p className="px-6 md:px-7 pb-3 flex items-center gap-1.5 text-xs font-semibold text-rose-600"><AlertTriangle className="h-3.5 w-3.5" /> {error}</p>}
-      {expanded && <Valuations asset={asset} readOnly={readOnly} onLatest={(latestValuation) => onChanged({ ...asset, latestValuation })} />}
+      {expanded && <Valuations asset={asset} readOnly={readOnly !== undefined} onLatest={(latestValuation) => onChanged({ ...asset, latestValuation })} />}
     </li>
   );
 }

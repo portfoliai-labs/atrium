@@ -174,7 +174,7 @@ function NoRegime({ client, onOpenSettings }: { client?: string; onOpenSettings?
           <span className="p-2.5 rounded-xl bg-[#C49A3C]/10 text-[#C49A3C] shrink-0"><Landmark className="h-5 w-5" /></span>
           <div>
             <p className="text-sm font-bold text-[#1c1917]">
-              {client ? `Set ${client}'s tax residence to estimate their taxes` : "Set your tax residence to estimate your taxes"}
+              {client ? `${client} hasn't set a tax residence their taxes can be estimated in` : "Set your tax residence to estimate your taxes"}
             </p>
             <p className="text-[12.5px] text-[#78716c] mt-0.5 max-w-xl">
               The taxes due, the losses carried forward and those about to expire follow the rules of the country
@@ -188,7 +188,7 @@ function NoRegime({ client, onOpenSettings }: { client?: string; onOpenSettings?
             onClick={onOpenSettings}
             className="shrink-0 px-4 py-2.5 rounded-xl bg-[#1c1917] text-white text-[12.5px] font-bold hover:bg-[#131210] transition-colors"
           >
-            {client ? "Client settings" : "Set tax residence"}
+            {client ? "Client details" : "Set tax residence"}
           </button>
         )}
       </div>

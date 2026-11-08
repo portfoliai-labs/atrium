@@ -85,18 +85,9 @@ export const portfoliosService = {
   },
 
   // GET /v1/advisor/clients/{client_uuid}/portfolios — a client's portfolios, the aggregate
-  // first. The advisor then reaches each through the same /v1/portfolios/{p}/... paths the
-  // client would.
+  // first. The advisor then reads each through the same /v1/portfolios/{p}/... paths the
+  // client would; their writes on it are refused (ADVISOR_READ_ONLY): the client changes their own.
   async listForClient(clientUuid: string): Promise<Portfolio[]> {
     return apiFetch<Portfolio[]>(`/v1/advisor/clients/${clientUuid}/portfolios`);
-  },
-
-  // POST /v1/advisor/clients/{client_uuid}/portfolios {name} — a new, empty portfolio for
-  // that client.
-  async createForClient(clientUuid: string, name: string): Promise<Portfolio> {
-    return apiFetch<Portfolio>(`/v1/advisor/clients/${clientUuid}/portfolios`, {
-      method: "POST",
-      body: JSON.stringify({ name }),
-    });
   },
 };
