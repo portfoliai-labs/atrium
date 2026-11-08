@@ -1,3 +1,8 @@
 allowBuilds:
   sharp: false
   unrs-resolver: false
+
+# The lint rules eslint-config-next 16.2 was written against: 7.1 adds the React Compiler's rules
+# (refs read in render, setState in effects), errors in code that predates them, to fix apart.
+overrides:
+  eslint-plugin-react-hooks: 7.0.1
