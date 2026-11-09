@@ -9,11 +9,10 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY . .
-# Empty: the page's own origin (lib/origins). The demo buttons only with a password.
+# Empty: the page's own origin (lib/origins).
 ARG NEXT_PUBLIC_API_URL=""
 ARG NEXT_PUBLIC_SUPABASE_URL=""
 ARG NEXT_PUBLIC_SOLANA_CHAIN="solana:mainnet"
-ARG NEXT_PUBLIC_DEMO_PASSWORD=""
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 

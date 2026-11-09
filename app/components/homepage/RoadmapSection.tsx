@@ -22,7 +22,6 @@ const STAGES: Stage[] = [
       "Bank accounts with open banking, budgets and recurring payments",
       "Real estate ledger with mortgages, taxes and OMI market data",
       "AI assistant with PDF reports; advisor matching and chat",
-      "Demo accounts for an investor and for an advisor",
     ],
   },
   {

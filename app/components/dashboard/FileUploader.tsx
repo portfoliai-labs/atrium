@@ -32,8 +32,6 @@ import { UploadedFileState } from "./uploaderTypes";
 import { TransactionsSection, TransactionRow, DisplayTransaction, BulkOperation } from "./TransactionsSection";
 import { TransactionFilterBar, TransactionFilterState, EMPTY_TRANSACTION_FILTERS } from "./TransactionFilterBar";
 import { useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContext";
-import { useUser } from "../../context/UserContext";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import { useReadOnly } from "../../hooks/useReadOnly";
 
 const EXISTING_PAGE_SIZE = 10;
@@ -169,9 +167,7 @@ function groupByPortfolio<T>(items: T[], portfolioOf: (item: T) => string): Map<
 // with nothing to add, import, edit or delete.
 export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = false }: { portfolioUuid?: string; readOnly?: boolean } = {}) {
   const { portfolios: allPortfolios, current, changed, client } = usePortfolio();
-  // A demo account (see lib/demo) sees the list and can open the form, but can't import, save,
-  // edit or delete anything; an advisor on a client's sees the list alone.
-  const { isDemo } = useUser();
+  // An advisor on a client's sees the list alone.
   const { readOnly: locked } = useReadOnly();
   const addsRows = !readOnly && !client;
   const isFixed = fixedPortfolioUuid !== undefined;
@@ -825,7 +821,6 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
           onSave={handleAddManualTransaction}
           portfolios={pickable}
           defaultPortfolioUuid={defaultTarget}
-          readOnly={isDemo}
         />
       )}
 
@@ -946,18 +941,15 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
       {/* TOOLBAR: upload actions, full width */}
       {addsRows && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div
-          onClick={() => !isDemo && fileInputRef.current?.click()}
-          title={isDemo ? DEMO_DISABLED_TITLE : undefined}
-          className={`p-5 border-2 border-dashed border-slate-200/80 rounded-3xl bg-white/50 transition-all flex items-center gap-4 group ${
-            isDemo ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50 cursor-pointer"
-          }`}
+          onClick={() => fileInputRef.current?.click()}
+          className="p-5 border-2 border-dashed border-slate-200/80 rounded-3xl bg-white/50 transition-all flex items-center gap-4 group hover:bg-slate-50 cursor-pointer"
         >
           <div className="bg-slate-100 w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-blue-100 transition-colors">
             <UploadCloud className="h-5 w-5 text-slate-500 group-hover:text-blue-600 transition-colors" />
           </div>
           <div className="text-left overflow-hidden">
             <span className="text-sm font-bold text-slate-700 block">Browse Files</span>
-            <p className="text-xs text-slate-400 truncate">{isDemo ? "Not available on a demo account" : "Any broker export — AI maps the columns for you"}</p>
+            <p className="text-xs text-slate-400 truncate">Any broker export — AI maps the columns for you</p>
           </div>
           <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" multiple />
         </div>

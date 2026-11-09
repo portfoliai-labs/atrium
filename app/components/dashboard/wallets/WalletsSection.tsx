@@ -30,10 +30,9 @@ function walletsViewOf(raw: unknown): WalletsView {
 }
 
 /**
- * WALLETS SECTION — Cash, accounts and cards (a demo account's are sample data): every account
- * and wallet together, each account's page (AccountNode: a bank's or an address', where its
- * wallets come from) and each wallet's pages (WalletNode), each a browser history entry (see
- * lib/dashboardHistory). It opens on all of them, where the first one is added. An id that is no
+ * WALLETS SECTION — Cash, accounts and cards: every account and wallet together, each account's
+ * page (AccountNode: a bank's or an address', where its wallets come from) and each wallet's pages
+ * (WalletNode), each a browser history entry (see lib/dashboardHistory). It opens on all of them, where the first one is added. An id that is no
  * wallet's (one gone) opens them all.
  */
 export function WalletsSection() {

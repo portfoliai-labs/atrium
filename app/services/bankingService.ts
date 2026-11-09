@@ -7,8 +7,7 @@ import { apiFetch } from "./apiClient";
 // BankAuthorizationFailedError (409, the bank refused the code), BankConsentExpiredError (409, link
 // the bank again), WalletAlreadyLinkedError (409), WalletArchivedError (409),
 // InvalidBankAccountLinkError (422, another currency, a day out of range), BankingUnavailableError
-// (503, the aggregator down or not configured). A demo account's writes are refused before they
-// leave (see lib/demo).
+// (503, the aggregator down or not configured).
 export const bankingService = {
   // GET /v1/banking/banks?country= — by name.
   async banks(country: string): Promise<Bank[]> {

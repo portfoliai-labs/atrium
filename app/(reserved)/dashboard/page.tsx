@@ -28,7 +28,6 @@ import { RealEstateSection } from "../../components/dashboard/realEstate/RealEst
 import { AssetSection } from "../../components/dashboard/AssetSection";
 import { SectionTrailProvider } from "../../components/dashboard/SectionTrail";
 import { Loader2 } from "lucide-react";
-import { DemoBanner } from "../../components/preview/DemoBanner";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
 import {
   ASSET_SECTION, CLIENTS_SECTION, EXPLORE_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, PLAN_SECTION,
@@ -125,10 +124,9 @@ function relocate(section: string, raw: unknown, isAdvisor: boolean): { section:
 /**
  * DashboardPage - Main protected dashboard view.
  * It consumes UserContext to manage profile data and global loading states.
- * A demo account (see lib/demo) gets it read-only, with the preview features.
  */
 function DashboardPageContent() {
-  const { user, loading, logout, isDemo } = useUser();
+  const { user, loading, logout } = useUser();
   // Only meaningful for role USER (see PortfolioContext) — advisor sections resolve a
   // client's portfolio locally instead, so `current` stays null for an advisor and that's fine.
   const { current: portfolio, portfolios, loading: portfolioLoading } = usePortfolio();
@@ -328,7 +326,6 @@ function DashboardPageContent() {
         <main className={`flex-1 min-w-0 ${sidebarCollapsed ? "lg:ml-20" : "lg:ml-80"} bg-[#F7F5EF] p-4 md:p-8 transition-all duration-300`}>
           {/* As wide again as the Sidebar gives up when it's narrow (15rem): the modules grow with it. */}
           <div className={`${sidebarCollapsed ? "lg:max-w-[79rem]" : ""} max-w-5xl mx-auto transition-[max-width] animate-in fade-in slide-in-from-bottom-4 duration-700`}>
-            {isDemo && <DemoBanner />}
             <DashboardPageContext.Provider value={openPage}>{renderContent}</DashboardPageContext.Provider>
           </div>
         </main>

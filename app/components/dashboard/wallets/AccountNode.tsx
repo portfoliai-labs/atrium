@@ -18,8 +18,6 @@ import { Breadcrumb, type Crumb } from "../Breadcrumb";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { PageHeader, type PageAction, type PageFigure } from "../PageHeader";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
-import { PreviewBadge } from "../../preview/PreviewKit";
 import {
   BankAccountRow, ConnectBankDialog, NEW_WALLET, daysLeft, linkNewWallet, renewable, syncText, useBankLinks, useSourcedWallets,
 } from "./WalletBanks";
@@ -39,14 +37,14 @@ type Dialog = "renew" | "remove";
  * the bank's accounts (or the address' stablecoins), each going into a wallet: one of the user's
  * of its currency, or a new one, then its balance checked against the bank's (or the chain's);
  * the cards of its wallets; for an address, its funding and its orders. Once its bank link or
- * address is removed, it keeps its wallets and says so. A demo account's is read only.
+ * address is removed, it keeps its wallets and says so.
  */
 export function AccountNode({ accountUuid, rootTrail, onOpen }: {
   accountUuid: string;
   rootTrail: Crumb[];
   onOpen: (id: string, page: WalletPage) => void;
 }) {
-  const { wallets, loading, sample, changed } = useWallets();
+  const { wallets, loading, changed } = useWallets();
   const accounts = useAccounts();
   const account = accounts.data?.find((a) => a.uuid === accountUuid);
   const bank = !!account?.bankLinkUuid;
@@ -99,7 +97,6 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
   const active = own.filter(({ wallet }) => !wallet.archived);
   const archived = own.filter(({ wallet }) => wallet.archived);
   const ownCards = (cards.data ?? []).filter((c) => own.some(({ wallet }) => wallet.uuid === c.walletUuid));
-  const lock = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
   const openWallet = (uuid: string) => onOpen(uuid, "insights");
 
   // One change; a row's (`row`) error goes under it, the page's under the header.
@@ -135,13 +132,13 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
   // ── What can be done with it ──
   const actions: PageAction[] = [];
   if (link) {
-    if (link.status === "active") actions.push({ label: "Read now", primary: true, plus: false, onClick: () => void act("read", () => readBank(link), "Unable to read this bank now."), disabled: sample || busy === "read", title: sample ? DEMO_DISABLED_TITLE : undefined });
-    if (renewable(link)) actions.push({ label: "Renew the consent", primary: link.status !== "active", plus: false, onClick: () => setDialog("renew"), ...lock });
-    actions.push({ label: "Remove the bank", danger: true, onClick: () => { setError(null); setDialog("remove"); }, ...lock });
+    if (link.status === "active") actions.push({ label: "Read now", primary: true, plus: false, onClick: () => void act("read", () => readBank(link), "Unable to read this bank now."), disabled: busy === "read" });
+    if (renewable(link)) actions.push({ label: "Renew the consent", primary: link.status !== "active", plus: false, onClick: () => setDialog("renew") });
+    actions.push({ label: "Remove the bank", danger: true, onClick: () => { setError(null); setDialog("remove"); } });
   } else if (address) {
-    actions.push({ label: "Read now", primary: true, plus: false, onClick: () => void act("read", () => readAddress(address), "Unable to read this address now."), disabled: sample || busy === "read", title: sample ? DEMO_DISABLED_TITLE : undefined });
+    actions.push({ label: "Read now", primary: true, plus: false, onClick: () => void act("read", () => readAddress(address), "Unable to read this address now."), disabled: busy === "read" });
     actions.push({ label: funding ? "Hide Add funds" : "Add funds", onClick: () => setFunding((f) => !f) });
-    actions.push({ label: "Remove the address", danger: true, onClick: () => { setError(null); setDialog("remove"); }, ...lock });
+    actions.push({ label: "Remove the address", danger: true, onClick: () => { setError(null); setDialog("remove"); } });
   }
 
   const figures: PageFigure[] = [
@@ -157,7 +154,6 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
       {link && link.status !== "active" && <Chip tone="loss">Consent ended</Chip>}
       {link && link.status === "active" && left !== null && renewable(link) && <Chip tone="warn">{left <= 1 ? "Ends today" : `${left} days left`}</Chip>}
       {!bank && !chain && <Chip>Not connected</Chip>}
-      {sample && <PreviewBadge label="Sample" />}
     </>
   );
   const currencies = new Set(active.map(({ wallet }) => wallet.currency));
@@ -198,7 +194,6 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
                     account={a}
                     wallets={wallets}
                     taken={taken}
-                    readOnly={sample}
                     busy={busy === a.uuid}
                     error={rowErrors[a.uuid]}
                     onOpenWallet={openWallet}
@@ -235,7 +230,6 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
                     holding={h}
                     wallets={wallets}
                     taken={taken}
-                    readOnly={sample}
                     busy={busy === h.uuid}
                     error={rowErrors[h.uuid]}
                     onOpenWallet={openWallet}

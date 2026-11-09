@@ -15,7 +15,6 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { Toggle } from "../Toggle";
 import { DialogShell, Field, INPUT, parseAmount } from "./WalletDialogs";
 import { CategoryOptions } from "./WalletCategories";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 
 export const WALLET_ALERT_ICONS: Record<WalletAlertType, React.ComponentType<{ className?: string }>> = {
   low_balance: WalletIcon,
@@ -33,10 +32,10 @@ const channelsText = (r: Pick<WalletAlertRule, "notifyEmail" | "notifyInApp">) =
  * morning each rule switched on is checked and tells, by email and/or in the app, only what it
  * hadn't found before: what a rule finds when it's made, changed or switched on shows here but
  * isn't told. On a wallet (`scope`), its rules (its own and those on every wallet) and only its
- * findings. A demo account's are sample rules, read only.
+ * findings.
  */
 export function WalletAlerts({ scope }: { scope: string | null }) {
-  const { wallets, categories, sample } = useWallets();
+  const { wallets, categories } = useWallets();
   const queryClient = useQueryClient();
   // The list as read (shared with the header's counters), then as the writes left it (no refetch
   // for a toggle).
@@ -94,8 +93,8 @@ export function WalletAlerts({ scope }: { scope: string | null }) {
         <button
           type="button"
           onClick={() => setEditing("new")}
-          disabled={sample || archived}
-          title={sample ? DEMO_DISABLED_TITLE : archived ? "An archived wallet is read only" : undefined}
+          disabled={archived}
+          title={archived ? "An archived wallet is read only" : undefined}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:hover:bg-[#1c1917] disabled:cursor-not-allowed"
         >
           <Plus className="h-3.5 w-3.5" /> New alert
@@ -169,17 +168,14 @@ export function WalletAlerts({ scope }: { scope: string | null }) {
                       </span>
                       <span className="block text-[11.5px] text-slate-500">{meta}</span>
                     </span>
-                    {!sample && (
-                      <span className="flex gap-1">
-                        <button type="button" onClick={() => setEditing(r)} aria-label="Edit rule" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><Pencil className="h-3.5 w-3.5" /></button>
-                        <button type="button" onClick={() => { setError(null); setDeleting(r); }} aria-label="Delete rule" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button>
-                      </span>
-                    )}
+                    <span className="flex gap-1">
+                      <button type="button" onClick={() => setEditing(r)} aria-label="Edit rule" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => { setError(null); setDeleting(r); }} aria-label="Delete rule" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </span>
                     <Toggle
                       checked={r.enabled}
                       label={ruleText(r)}
-                      disabled={sample || busy === r.uuid}
-                      title={sample ? DEMO_DISABLED_TITLE : undefined}
+                      disabled={busy === r.uuid}
                       onChange={(v) => void toggle(r, v)}
                     />
                   </li>

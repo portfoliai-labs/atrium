@@ -19,7 +19,7 @@ const SLEEVE = 132;
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 const formatPct = (pct: number) => `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
 
-/** One card in the holder: a portfolio, or anything shaped like one (the sample real estate). */
+/** One card in the holder: a portfolio, or anything shaped like one. */
 export interface HolderItem {
   key: string;
   name: string;

@@ -12,7 +12,6 @@ import type { Card, CardKind, CardNetwork } from "../../../models/Account";
 import type { Wallet } from "../../../models/Wallet";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { DialogShell, Field, INPUT, parseAmount } from "./WalletDialogs";
 
 export const CARD_KIND_LABELS: Record<CardKind, string> = { debit: "Debit", credit: "Credit", prepaid: "Prepaid" };
@@ -167,14 +166,14 @@ export function CardDialog({ wallet, card, onClose, onSaved }: { wallet: Wallet;
  * movements a deleted card made stay, no longer naming it.
  */
 export function WalletCards({ wallet }: { wallet: Wallet }) {
-  const { sample, changed } = useWallets();
+  const { changed } = useWallets();
   const read = useCards();
   const [editing, setEditing] = useState<Card | "new" | null>(null);
   const [deleting, setDeleting] = useState<Card | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const kinds = cardKindsFor(wallet);
-  const lock = sample ? DEMO_DISABLED_TITLE : wallet.archived ? "An archived wallet is read only" : kinds.length === 0 ? "This kind of wallet takes no card" : undefined;
+  const lock = wallet.archived ? "An archived wallet is read only" : kinds.length === 0 ? "This kind of wallet takes no card" : undefined;
 
   const remove = async () => {
     if (!deleting) return;
@@ -232,7 +231,7 @@ export function WalletCards({ wallet }: { wallet: Wallet }) {
                       {[CARD_KIND_LABELS[c.kind], c.creditLimit != null ? `limit ${formatCurrency(c.creditLimit, wallet.currency, 0)}` : null].filter(Boolean).join(" · ")}
                     </span>
                   </span>
-                  {!sample && !wallet.archived && (
+                  {!wallet.archived && (
                     <span className="flex gap-1">
                       <button type="button" onClick={() => setEditing(c)} aria-label="Edit card" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><Pencil className="h-3.5 w-3.5" /></button>
                       <button type="button" onClick={() => { setError(null); setDeleting(c); }} aria-label="Delete card" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button>

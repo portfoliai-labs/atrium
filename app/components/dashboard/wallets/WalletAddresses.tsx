@@ -67,11 +67,10 @@ const STABLECOINS = "USDC or EURC";
  * against the chain's, Unlink); not yet, a choice among the user's wallets of its currency free of another
  * source, or a new one named after it.
  */
-export function HoldingRow({ holding, wallets, taken, readOnly, busy, error, onLink, onUnlink, onOpenWallet }: {
+export function HoldingRow({ holding, wallets, taken, busy, error, onLink, onUnlink, onOpenWallet }: {
   holding: ChainHolding;
   wallets: Wallet[];
   taken: Set<string | null>;
-  readOnly: boolean;
   busy: boolean;
   error?: string;
   onLink: (walletUuid: string | null) => void;
@@ -93,7 +92,7 @@ export function HoldingRow({ holding, wallets, taken, readOnly, busy, error, onL
         meta={meta}
         wallet={linked}
         check={linked && <BalanceCheck wallet={linked} reported={holding.balance} on={null} source="the chain" />}
-        aside={!readOnly && <IconButton label="Unlink from the wallet" onClick={onUnlink} spinning={busy}><Unlink className="h-3.5 w-3.5" /></IconButton>}
+        aside={<IconButton label="Unlink from the wallet" onClick={onUnlink} spinning={busy}><Unlink className="h-3.5 w-3.5" /></IconButton>}
         error={error}
         onOpen={onOpenWallet}
       />
@@ -106,30 +105,26 @@ export function HoldingRow({ holding, wallets, taken, readOnly, busy, error, onL
           <span className="block text-[12.5px] font-bold text-slate-700">{holding.symbol}</span>
           <span className="block text-[11px] text-slate-500">{meta}</span>
         </span>
-        {readOnly ? (
-          <span className="text-[11.5px] text-slate-400">Not linked to a wallet</span>
-        ) : (
-          <span className="flex items-center gap-2">
-            <select
-              value={choice}
-              onChange={(e) => setChoice(e.target.value)}
-              aria-label="Wallet"
-              className="h-9 px-2.5 rounded-lg bg-white text-[12px] font-semibold text-slate-700 border border-slate-200 outline-none focus:border-[#C49A3C]/60"
-            >
-              <option value="">Choose a wallet…</option>
-              <option value={NEW_WALLET}>New wallet: {holding.symbol}</option>
-              {choices.map((w) => <option key={w.uuid} value={w.uuid}>{w.name}</option>)}
-            </select>
-            <button
-              type="button"
-              onClick={() => choice && onLink(choice === NEW_WALLET ? null : choice)}
-              disabled={!choice || busy}
-              className="px-3 py-2 rounded-lg text-[11.5px] font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40"
-            >
-              {busy ? "Linking…" : "Link"}
-            </button>
-          </span>
-        )}
+        <span className="flex items-center gap-2">
+          <select
+            value={choice}
+            onChange={(e) => setChoice(e.target.value)}
+            aria-label="Wallet"
+            className="h-9 px-2.5 rounded-lg bg-white text-[12px] font-semibold text-slate-700 border border-slate-200 outline-none focus:border-[#C49A3C]/60"
+          >
+            <option value="">Choose a wallet…</option>
+            <option value={NEW_WALLET}>New wallet: {holding.symbol}</option>
+            {choices.map((w) => <option key={w.uuid} value={w.uuid}>{w.name}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={() => choice && onLink(choice === NEW_WALLET ? null : choice)}
+            disabled={!choice || busy}
+            className="px-3 py-2 rounded-lg text-[11.5px] font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40"
+          >
+            {busy ? "Linking…" : "Link"}
+          </button>
+        </span>
       </div>
       {error && <p className="text-[11.5px] font-medium text-rose-600">{error}</p>}
     </li>

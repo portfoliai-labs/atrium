@@ -87,11 +87,11 @@ export function SubscriptionPage() {
         </div>
       )}
 
-      {/* Available plans — testers already have the best available access, nothing to upgrade to.
-          Waits on `loading` too: subscription is null until the fetch resolves, so checking
-          tier alone would flash the table on for a moment before hiding it for testers. A demo
-          account (see lib/demo) can't change plan either. */}
-      {!loading && subscription?.tier !== "TESTER" && subscription?.tier !== "DEMO" && <SubscriptionSection />}
+      {/* Available plans — testers already have the best available access, nothing to upgrade to,
+          and so does a self-hosted install (every feature). Waits on `loading` too: subscription
+          is null until the fetch resolves, so checking tier alone would flash the table on for a
+          moment before hiding it for testers. */}
+      {!loading && subscription?.tier !== "TESTER" && subscription?.tier !== "SELF_HOSTED" && <SubscriptionSection />}
     </div>
   );
 }

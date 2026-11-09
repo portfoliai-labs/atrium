@@ -45,9 +45,7 @@ export function ActionCard({ action, conversationUuid, onChange, writing = false
     } catch (err) {
       const settled = err instanceof ApiError ? settledState(err) : null;
       if (settled) onChange({ ...action, state: settled });
-      else setError(err instanceof ApiError && err.errorType === "ReadOnlyAccountError"
-        ? "This is a demo account: actions aren't available on it."
-        : "That didn't go through. Please try again.");
+      else setError("That didn't go through. Please try again.");
     } finally {
       setBusy(false);
     }

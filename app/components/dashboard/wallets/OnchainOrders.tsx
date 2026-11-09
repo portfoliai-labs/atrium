@@ -9,7 +9,6 @@ import { transactionUrl } from "../../../lib/solanaWallets";
 import { dayLabel, errorText } from "../../../lib/wallets";
 import type { Order, TradingAccount } from "../../../models/Trading";
 import { tradingService } from "../../../services/tradingService";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { orderStateLabel } from "../OrderPage";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 
@@ -42,7 +41,7 @@ function orderLine(order: Order) {
  * sent yet may be cancelled.
  */
 export function OnchainOrders({ accounts, onOpen }: { accounts: TradingAccount[]; onOpen: (orderUuid: string) => void }) {
-  const { sample, changed } = useWallets();
+  const { changed } = useWallets();
   const read = useWalletQuery(["orders"], () => tradingService.orders());
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -98,8 +97,7 @@ export function OnchainOrders({ accounts, onOpen }: { accounts: TradingAccount[]
                   <button
                     type="button"
                     onClick={() => void cancel(order)}
-                    disabled={sample || cancelling === order.uuid}
-                    title={sample ? DEMO_DISABLED_TITLE : undefined}
+                    disabled={cancelling === order.uuid}
                     className="px-3 py-1.5 rounded-lg text-[11.5px] font-bold border border-slate-200 text-slate-700 hover:border-rose-300 disabled:opacity-50 transition-colors"
                   >
                     {cancelling === order.uuid ? "Cancelling…" : "Cancel"}

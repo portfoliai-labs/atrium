@@ -11,7 +11,6 @@ import { useChainHoldings } from "../../../hooks/useChainHoldings";
 import type { ChainHolding } from "../../../models/Trading";
 import type { BankAccount, BankLink } from "../../../models/Banking";
 import type { Wallet } from "../../../models/Wallet";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { IconButton, accountLabel, syncText, useBankLinks } from "./WalletBanks";
 import { WalletFormDialog } from "./WalletDialogs";
 
@@ -24,8 +23,7 @@ type Linked = { link: BankLink; account: BankAccount };
  * to open or edit (a new one is made from the breadcrumb, see WalletNode), the archived ones after,
  * read only. Each wallet's row is also its bank account through open banking: a wallet takes one
  * account of its currency, from a bank connected (its account's page), linked here and read at once;
- * a linked one can be read now or unlinked (the movements it brought stay). A demo account sees
- * the list but can't change anything.
+ * a linked one can be read now or unlinked (the movements it brought stay).
  */
 export function ManageWallets({ onOpenWallet, onConnectBank, onOpenAccount }: {
   onOpenWallet: (uuid: string) => void;
@@ -34,7 +32,7 @@ export function ManageWallets({ onOpenWallet, onConnectBank, onOpenAccount }: {
   // An account's page: a bank's, an address' (where a stablecoin's wallet is read from).
   onOpenAccount: (uuid: string) => void;
 }) {
-  const { wallets, sample, changed } = useWallets();
+  const { wallets, changed } = useWallets();
   const links = useBankLinks();
   const holdings = useChainHoldings();
   const [busy, setBusy] = useState<string | null>(null);
@@ -88,7 +86,6 @@ export function ManageWallets({ onOpenWallet, onConnectBank, onOpenAccount }: {
         banks={links.isPending ? undefined : list.length}
         linked={linked}
         choices={free.filter((c) => c.account.currency === wallet.currency)}
-        readOnly={sample}
         busy={busy === wallet.uuid}
         note={notes[wallet.uuid]}
         error={errors[wallet.uuid]}
@@ -143,7 +140,7 @@ function ManageGroup({ title, note, children }: { title: string; note?: string; 
  * (Link), or why there's none. A wallet a stablecoin comes into takes none: it is read from the chain.
  */
 function WalletRow({
-  wallet, color, banks, linked, holding, choices, readOnly, busy, note, error, onOpen, onEdit, onConnectBank, onOpenAccount, onLink, onRead, onUnlink,
+  wallet, color, banks, linked, holding, choices, busy, note, error, onOpen, onEdit, onConnectBank, onOpenAccount, onLink, onRead, onUnlink,
 }: {
   wallet: Wallet;
   color: string;
@@ -153,7 +150,6 @@ function WalletRow({
   // The stablecoin it takes its movements from instead, if any.
   holding: ChainHolding | null;
   choices: Linked[];
-  readOnly: boolean;
   busy: boolean;
   note?: string;
   error?: string;
@@ -167,7 +163,6 @@ function WalletRow({
 }) {
   const [choice, setChoice] = useState("");
   const chosen = choices.find((c) => c.account.uuid === choice);
-  const lock = readOnly ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
   const iconButton = "w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 
   let bank: React.ReactNode;
@@ -185,7 +180,7 @@ function WalletRow({
       active ? (linked.link.lastSyncedAt ? `read ${dayLabel(linked.link.lastSyncedAt.slice(0, 10))}` : "not read yet") : "Consent ended: renew it on its account's page",
       linked.account.syncFrom && `from ${dayLabel(linked.account.syncFrom)}`,
     ].filter(Boolean).join(" · ");
-    const readLock = readOnly ? DEMO_DISABLED_TITLE : wallet.archived ? "An archived wallet isn't read" : !active ? "The consent ended: renew it on its account's page" : null;
+    const readLock = wallet.archived ? "An archived wallet isn't read" : !active ? "The consent ended: renew it on its account's page" : null;
     bank = (
       <>
         <Landmark className={`h-3.5 w-3.5 shrink-0 ${active ? "text-[#C49A3C]" : "text-rose-600"}`} />
@@ -196,7 +191,7 @@ function WalletRow({
         <IconButton label="Read now" onClick={onRead} spinning={busy} disabled={!!readLock} title={readLock ?? undefined}>
           <RefreshCw className="h-3.5 w-3.5" />
         </IconButton>
-        <IconButton label="Unlink from the bank account" onClick={onUnlink} {...lock}><Unlink className="h-3.5 w-3.5" /></IconButton>
+        <IconButton label="Unlink from the bank account" onClick={onUnlink}><Unlink className="h-3.5 w-3.5" /></IconButton>
       </>
     );
   } else if (banks === undefined) {
@@ -207,7 +202,7 @@ function WalletRow({
     bank = (
       <span className="text-slate-400">
         {banks === 0 ? "No bank connected yet. " : `No ${wallet.currency} account free at your banks. `}
-        <button type="button" onClick={onConnectBank} disabled={readOnly} className="font-semibold text-[#C49A3C] hover:underline disabled:opacity-50">Connect a bank</button>
+        <button type="button" onClick={onConnectBank} className="font-semibold text-[#C49A3C] hover:underline">Connect a bank</button>
       </span>
     );
   } else {
@@ -216,7 +211,7 @@ function WalletRow({
         <select
           value={choice}
           onChange={(e) => setChoice(e.target.value)}
-          disabled={readOnly || busy}
+          disabled={busy}
           aria-label="Bank account"
           className="h-8 min-w-0 px-2 rounded-lg bg-white text-[12px] font-semibold text-slate-700 border border-slate-200 outline-none focus:border-[#C49A3C]/60 disabled:opacity-60"
         >
@@ -226,8 +221,7 @@ function WalletRow({
         <button
           type="button"
           onClick={() => chosen && onLink(chosen)}
-          disabled={!chosen || busy || readOnly}
-          title={readOnly ? DEMO_DISABLED_TITLE : undefined}
+          disabled={!chosen || busy}
           className="px-3 py-1.5 rounded-lg text-[11.5px] font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40"
         >
           {busy ? "Linking…" : "Link"}
@@ -252,9 +246,9 @@ function WalletRow({
           <button
             type="button"
             onClick={onEdit}
-            disabled={readOnly || wallet.archived}
+            disabled={wallet.archived}
             aria-label={`Edit ${wallet.name}`}
-            title={readOnly ? DEMO_DISABLED_TITLE : wallet.archived ? "An archived wallet is read only" : "Edit"}
+            title={wallet.archived ? "An archived wallet is read only" : "Edit"}
             className={`${iconButton} text-slate-400 hover:text-slate-900 hover:bg-slate-100`}
           >
             <Pencil className="h-4 w-4" />

@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useUser } from "../../context/UserContext";
 import {
   FileText, Download, Search, Tag as TagIcon,
   Loader2, AlertCircle, X, Eye, Plus, Check, Calendar, LayoutGrid, Trash2,
@@ -373,8 +372,6 @@ function DocumentCard({
   newTagName,
   setNewTagName
 }: DocumentCardProps) {
-  // A demo account (see lib/demo) sees the tags but can't add or remove them.
-  const { isDemo } = useUser();
   const period = describeReportPeriod(report);
   const title = period?.title ?? report.name ?? "Untitled Document";
   const generatedAt = new Date(report.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -406,17 +403,15 @@ function DocumentCard({
             {report.tags?.map((tag: string, index: number) => (
               <span key={`${report.document_id}-${tag}-${index}`} className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100">
                 {tag}
-                {!isDemo && (
-                  <X
-                    className="h-3 w-3 cursor-pointer text-blue-400 hover:text-rose-500 transition-colors"
-                    onClick={() => onRemoveTag(report.document_id, tag)}
-                  />
-                )}
+                <X
+                  className="h-3 w-3 cursor-pointer text-blue-400 hover:text-rose-500 transition-colors"
+                  onClick={() => onRemoveTag(report.document_id, tag)}
+                />
               </span>
             ))}
             
             {/* Inline Add Tag Input */}
-            {isDemo ? null : taggingDocId === report.document_id ? (
+            {taggingDocId === report.document_id ? (
               <div className="flex items-center gap-1.5 animate-in fade-in zoom-in duration-200">
                 <input 
                   autoFocus 
@@ -461,16 +456,14 @@ function DocumentCard({
           <Download className="h-4 w-4" /> 
           <span className="md:hidden lg:inline">Download</span>
         </button>
-        {!isDemo && (
-          <button
-            onClick={() => onDelete(report)}
-            aria-label={`Delete ${report.name}`}
-            title="Delete"
-            className="flex-1 md:flex-none flex justify-center items-center px-4 py-3.5 text-sm font-bold bg-slate-50 text-slate-500 border border-slate-200 rounded-xl hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        )}
+        <button
+          onClick={() => onDelete(report)}
+          aria-label={`Delete ${report.name}`}
+          title="Delete"
+          className="flex-1 md:flex-none flex justify-center items-center px-4 py-3.5 text-sm font-bold bg-slate-50 text-slate-500 border border-slate-200 rounded-xl hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
       
     </div>

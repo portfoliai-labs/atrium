@@ -16,8 +16,7 @@ import { apiFetch } from "./apiClient";
 // InvalidCommentError (422, `field`), CommentNotFoundError (404), OwnCommentError,
 // CommentModeratedError (409: hidden by the editors, theirs to show again),
 // NotAnEditorError (403), AuthorUnavailableError (503, publishing: retry). A backend without the
-// Journal answers its routes with FastAPI's own 404, without an error_type. A demo account's
-// writes are refused before they leave (see lib/demo).
+// Journal answers its routes with FastAPI's own 404, without an error_type.
 
 const BASE = "/v1/journal";
 

@@ -15,8 +15,6 @@ import type { Crumb } from "../Breadcrumb";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { PageHeader, type PageAction } from "../PageHeader";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
-import { PreviewBadge } from "../../preview/PreviewKit";
 import { MortgageMarketRates } from "../MarketRates";
 import { CashFlowModule, ValueModule, headerFigures } from "./RealEstateNode";
 import { MortgageDialog, PropertyEditDialog, RateChangeDialog, ValuationDialog } from "./PropertyDialogs";
@@ -40,7 +38,7 @@ type Dialog = "transaction" | "valuation" | "mortgage" | "lease" | "use" | "edit
  * PropertyTaxModule), its leases, its zone's market (Italy's OMI, PropertyMarketModule), what a sale
  * would be taxed (SaleSimulatorModule), its mortgages (each with its schedule and rate changes, closed or
  * reopened, a prepayment or a refinancing simulated), its valuations, its use over time and its details. Its amounts are in its own
- * currency. An archived property, and a demo account's, are read only. A module with nothing in it
+ * currency. An archived property is read only. A module with nothing in it
  * isn't shown (no cash flow, lease, mortgage, valuation or use changed): the header's actions add
  * the first; so are the header's figures with nothing to say (no debt, no income or cash flow).
  */
@@ -52,7 +50,7 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
   // After it's deleted.
   onGone: () => void;
 }) {
-  const { sample, changed } = useRealEstate();
+  const { changed } = useRealEstate();
   const summary = useRealEstateSummary(property.uuid, (property.purchasedOn ?? property.createdAt).slice(0, 7));
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [rateFor, setRateFor] = useState<Mortgage | null>(null);
@@ -66,9 +64,8 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
 
   const f = property.figures;
   const money = (v: number) => formatCurrency(v, property.currency, 0);
-  const readOnly = sample || property.archived;
-  const locked = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : property.archived ? { disabled: true, title: ARCHIVED_TITLE } : {};
-  const sampleLock = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
+  const readOnly = property.archived;
+  const locked = property.archived ? { disabled: true, title: ARCHIVED_TITLE } : {};
   const close = () => { setDialog(null); setDialogError(null); };
   const done = () => { close(); changed(); };
 
@@ -94,8 +91,8 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
     { label: "Add lease", onClick: () => setDialog("lease"), ...locked },
     { label: "Use changed", onClick: () => setDialog("use"), ...locked },
     { label: "Edit property", onClick: () => setDialog("edit"), ...locked },
-    { label: property.archived ? "Unarchive" : "Archive", onClick: () => setDialog("archive"), ...sampleLock },
-    { label: "Delete property", danger: true, onClick: () => setDialog("delete"), ...sampleLock },
+    { label: property.archived ? "Unarchive" : "Archive", onClick: () => setDialog("archive") },
+    { label: "Delete property", danger: true, onClick: () => setDialog("delete") },
   ];
 
   // At its share, as the properties' together.
@@ -120,7 +117,6 @@ export function PropertyPage({ property, trail, onOpenTransactions, onOpenAlerts
           <>
             {property.archived && <span className="rounded-full bg-[#EEE9DD] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#78716c]">Archived</span>}
             {property.soldOn && <span className="rounded-full bg-[#EEE9DD] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#78716c]">Sold {dayLabel(property.soldOn)}</span>}
-            {sample && <PreviewBadge label="Sample" />}
           </>
         )}
         title={property.name}

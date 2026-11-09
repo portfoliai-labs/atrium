@@ -31,8 +31,8 @@ const createdLabel = (iso: string) =>
  * from GET /v1/portfolios/comparison, like the hub's. A real portfolio's row counts its alerts (an
  * adopted strategy's included) and leads to them (`onOpenAlerts`: its Alerts tab), and says who pays
  * its taxes, to change there: the user in their tax return, or its broker (see models/Tax).
- * Backtests are adopted from Strategies. A demo account, and an advisor on a client's, see the
- * list but can't change anything (hooks/useReadOnly).
+ * Backtests are adopted from Strategies. An advisor on a client's sees the list but can't change
+ * anything (hooks/useReadOnly).
  */
 export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
   trail: Crumb[];

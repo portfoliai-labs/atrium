@@ -10,7 +10,6 @@ import { CATEGORY_COLORS, CATEGORY_MAX_DEPTH, CATEGORY_PALETTE, CUSTOM_CATEGORY_
 import type { Category, CategoryKind, CategoryUpdateRequest } from "../../../models/Wallet";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { DialogShell, Field, INPUT } from "./WalletDialogs";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 
 const KIND_TITLES: Record<CategoryKind, { title: string; desc: string }> = {
   spending: { title: "Money out", desc: "What spending is sorted into, and what budgets are set on." },
@@ -44,7 +43,7 @@ export function CategoryPicker({ kind, value, onChange, disabled }: {
   onChange: (uuid: string) => void;
   disabled?: boolean;
 }) {
-  const { categories, categoryAdded, sample } = useWallets();
+  const { categories, categoryAdded } = useWallets();
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null);
   const [adding, setAdding] = useState(false);
@@ -153,41 +152,39 @@ export function CategoryPicker({ kind, value, onChange, disabled }: {
               </button>
             );
           })}
-          {!sample && (
-            <div className="mt-1 pt-1 border-t border-slate-100">
-              {adding ? (
-                <div className="px-1 py-1 space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      autoFocus
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void add(); } }}
-                      maxLength={40}
-                      placeholder={kind === "spending" ? "New spending category" : "New income category"}
-                      aria-label="New category's name"
-                      className="min-w-0 flex-1 h-9 px-3 rounded-lg border border-slate-200 text-[13px] font-semibold text-slate-900 outline-none placeholder:text-slate-400 placeholder:font-normal focus:border-[#C49A3C]/60 focus:ring-4 focus:ring-[#C49A3C]/10"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void add()}
-                      disabled={!trimmed || taken || busy}
-                      aria-label="Add the category"
-                      title="Add the category"
-                      className="h-9 w-9 shrink-0 rounded-lg bg-[#1c1917] text-white hover:bg-[#C49A3C] flex items-center justify-center transition-colors disabled:opacity-40"
-                    >
-                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" strokeWidth={3} />}
-                    </button>
-                  </div>
-                  {(taken || error) && <p className="px-1 text-[11px] font-semibold text-rose-600">{taken ? "There's a category with this name already." : error}</p>}
+          <div className="mt-1 pt-1 border-t border-slate-100">
+            {adding ? (
+              <div className="px-1 py-1 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    autoFocus
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void add(); } }}
+                    maxLength={40}
+                    placeholder={kind === "spending" ? "New spending category" : "New income category"}
+                    aria-label="New category's name"
+                    className="min-w-0 flex-1 h-9 px-3 rounded-lg border border-slate-200 text-[13px] font-semibold text-slate-900 outline-none placeholder:text-slate-400 placeholder:font-normal focus:border-[#C49A3C]/60 focus:ring-4 focus:ring-[#C49A3C]/10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void add()}
+                    disabled={!trimmed || taken || busy}
+                    aria-label="Add the category"
+                    title="Add the category"
+                    className="h-9 w-9 shrink-0 rounded-lg bg-[#1c1917] text-white hover:bg-[#C49A3C] flex items-center justify-center transition-colors disabled:opacity-40"
+                  >
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" strokeWidth={3} />}
+                  </button>
                 </div>
-              ) : (
-                <button type="button" onClick={() => setAdding(true)} className={`${row} font-bold text-[#8A6A28] hover:bg-[#C49A3C]/10`}>
-                  <Plus className="h-3.5 w-3.5" /> Add new category
-                </button>
-              )}
-            </div>
-          )}
+                {(taken || error) && <p className="px-1 text-[11px] font-semibold text-rose-600">{taken ? "There's a category with this name already." : error}</p>}
+              </div>
+            ) : (
+              <button type="button" onClick={() => setAdding(true)} className={`${row} font-bold text-[#8A6A28] hover:bg-[#C49A3C]/10`}>
+                <Plus className="h-3.5 w-3.5" /> Add new category
+              </button>
+            )}
+          </div>
         </div>,
         document.body,
       )}
@@ -205,11 +202,10 @@ type Dialog =
  * three levels deep, across every wallet as budgets are (one is also added from a movement's
  * dialog, see CategoryPicker). Every user starts with the presets, which are theirs like any other:
  * a category is added (at the top or under another), renamed, recoloured, moved (its subcategories
- * with it) and deleted, what it had going to its parent. A demo account's are its sample's, read
- * only: the buttons show, disabled, so it's clear where categories are changed.
+ * with it) and deleted, what it had going to its parent.
  */
 export function WalletCategories() {
-  const { categories, categoriesError, sample, changed } = useWallets();
+  const { categories, categoriesError, changed } = useWallets();
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -233,8 +229,6 @@ export function WalletCategories() {
       setBusy(false);
     }
   };
-  const lock = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
-
   return (
     <>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
@@ -250,7 +244,6 @@ export function WalletCategories() {
               <button
                 type="button"
                 onClick={() => setDialog({ kind: "new", type: kind, parent: null })}
-                {...lock}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shrink-0 bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#1c1917]"
               >
                 <Plus className="h-3.5 w-3.5" /> New category
@@ -267,14 +260,14 @@ export function WalletCategories() {
                       {categories.label({ categoryUuid: c.uuid })}
                     </span>
                     {depth < CATEGORY_MAX_DEPTH - 1 && (
-                      <IconButton label="Add a subcategory" onClick={() => setDialog({ kind: "new", type: kind, parent: c })} {...lock}>
+                      <IconButton label="Add a subcategory" onClick={() => setDialog({ kind: "new", type: kind, parent: c })}>
                         <Plus className="h-3.5 w-3.5" />
                       </IconButton>
                     )}
-                    <IconButton label="Edit the category" onClick={() => setDialog({ kind: "edit", category: c })} {...lock}>
+                    <IconButton label="Edit the category" onClick={() => setDialog({ kind: "edit", category: c })}>
                       <Pencil className="h-3.5 w-3.5" />
                     </IconButton>
-                    <IconButton label="Delete the category" danger onClick={() => { setDialogError(null); setDialog({ kind: "delete", category: c }); }} {...lock}>
+                    <IconButton label="Delete the category" danger onClick={() => { setDialogError(null); setDialog({ kind: "delete", category: c }); }}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </IconButton>
                   </li>

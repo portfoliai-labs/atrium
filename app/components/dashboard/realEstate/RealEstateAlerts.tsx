@@ -18,7 +18,6 @@ import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Toggle } from "../Toggle";
 import { DialogShell, Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 
 export const ALERT_ICONS: Record<RealEstateAlertType, React.ComponentType<{ className?: string }>> = {
   rent_unpaid: Banknote,
@@ -60,14 +59,14 @@ const channelsText = (r: Pick<RealEstateAlertRule, "notifyEmail" | "notifyInApp"
  * property or on every one, and what they find today. Every morning each rule enabled is checked
  * and tells, by email and/or in the app, only what it hadn't found before: what a rule finds when
  * it's made, changed or switched on is shown here but not notified. With `property`, its rules (its
- * own and those on every property) and only its findings. A demo account's are sample rules, read only.
+ * own and those on every property) and only its findings.
  */
 export function RealEstateAlerts({ trail, property, onOpenProperty }: {
   trail: Crumb[];
   property?: Property;
   onOpenProperty: (uuid: string) => void;
 }) {
-  const { properties, sample } = useRealEstate();
+  const { properties } = useRealEstate();
   const queryClient = useQueryClient();
   const scope = property?.uuid ?? null;
   // The list as read (shared with the headers' counters), then as the writes left it (no refetch
@@ -118,7 +117,7 @@ export function RealEstateAlerts({ trail, property, onOpenProperty }: {
     }
   };
 
-  const canAdd = !sample && rules !== null && !(property?.archived);
+  const canAdd = rules !== null && !(property?.archived);
   const pageTrail = property ? [...trail, { label: property.name, onClick: () => onOpenProperty(property.uuid) }] : trail;
 
   return (
@@ -131,7 +130,6 @@ export function RealEstateAlerts({ trail, property, onOpenProperty }: {
             type="button"
             onClick={() => setEditing("new")}
             disabled={!canAdd}
-            title={sample ? DEMO_DISABLED_TITLE : undefined}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:hover:bg-[#1c1917] disabled:cursor-not-allowed"
           >
             <Plus className="h-3.5 w-3.5" /> New alert
@@ -180,7 +178,7 @@ export function RealEstateAlerts({ trail, property, onOpenProperty }: {
                 )}
                 {findings.some((f) => ALERT_TYPES[f.kind]?.market) && (
                   <p className="mt-3 text-[10.5px] text-slate-400">
-                    {sample ? "Market figures: made up for the demo, not the OMI's." : `Market figures: ${OMI_ATTRIBUTION} (CC BY 4.0), the zone's indicative ranges.`}
+                    {`Market figures: ${OMI_ATTRIBUTION} (CC BY 4.0), the zone's indicative ranges.`}
                   </p>
                 )}
               </div>
@@ -225,17 +223,14 @@ export function RealEstateAlerts({ trail, property, onOpenProperty }: {
                           </span>
                           <span className="block text-[11.5px] text-slate-500">{meta}</span>
                         </span>
-                        {!sample && (
-                          <span className="flex gap-1">
-                            <button type="button" onClick={() => setEditing(r)} aria-label="Edit rule" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><Pencil className="h-3.5 w-3.5" /></button>
-                            <button type="button" onClick={() => { setError(null); setDeleting(r); }} aria-label="Delete rule" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button>
-                          </span>
-                        )}
+                        <span className="flex gap-1">
+                          <button type="button" onClick={() => setEditing(r)} aria-label="Edit rule" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><Pencil className="h-3.5 w-3.5" /></button>
+                          <button type="button" onClick={() => { setError(null); setDeleting(r); }} aria-label="Delete rule" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </span>
                         <Toggle
                           checked={r.enabled}
                           label={alertRuleText(r.params)}
-                          disabled={sample || busy === r.uuid}
-                          title={sample ? DEMO_DISABLED_TITLE : undefined}
+                          disabled={busy === r.uuid}
                           onChange={(v) => void toggle(r, v)}
                         />
                       </li>

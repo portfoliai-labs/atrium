@@ -55,10 +55,6 @@ const faqData: FaqData[] = [
     answer: "You are verified against your OCF registration, then matched with investors whose Investment Policy Statement fits your practice. You read their policy, work on their portfolios with the same analysis they see, adopt and share strategies you have backtested, publish to the strategy catalogue and the Journal, and talk to clients in a chat whose records are kept as MiFID II requires.",
   },
   {
-    question: "Can I try it before signing up?",
-    answer: "Yes. The login page has two read-only demo accounts, one as an investor and one as an advisor, filled with example portfolios, accounts, properties and clients.",
-  },
-  {
     question: "What does it cost, and can I cancel?",
     answer: "Everything is free during the beta. The Pro plan is on a waitlist at €49 a year; when it opens you can cancel from your account settings at any time and keep access to the end of the period you paid for.",
   },

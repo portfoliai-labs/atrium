@@ -12,7 +12,6 @@ import { useChainHoldings } from "../../../hooks/useChainHoldings";
 import type { AccountSync, BankAccount, BankLink } from "../../../models/Banking";
 import type { Wallet } from "../../../models/Wallet";
 import { DialogShell, Field, INPUT } from "./WalletDialogs";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 
 // The countries a bank can be picked in, Italy first (the aggregator reaches the EEA's).
 const COUNTRIES: { code: string; name: string }[] = [
@@ -200,12 +199,11 @@ export function LinkedSourceRow({ title, meta, wallet, check, aside, error, onOp
  * into (the whole row opening it, its balance checked against the bank's, Unlink); not yet, a choice among
  * the user's wallets of its currency free of another source, or a new one named after it.
  */
-export function BankAccountRow({ link, account, wallets, taken, readOnly, busy, error, onLink, onUnlink, onOpenWallet }: {
+export function BankAccountRow({ link, account, wallets, taken, busy, error, onLink, onUnlink, onOpenWallet }: {
   link: BankLink;
   account: BankAccount;
   wallets: Wallet[];
   taken: Set<string | null>;
-  readOnly: boolean;
   busy: boolean;
   error?: string;
   // A wallet's uuid, or NEW_WALLET.
@@ -225,7 +223,7 @@ export function BankAccountRow({ link, account, wallets, taken, readOnly, busy, 
         meta={[account.currency, balance && `bank balance ${balance}`, account.syncFrom && `read from ${dayLabel(account.syncFrom)}`].filter(Boolean).join(" · ")}
         wallet={linked}
         check={linked && <BalanceCheck wallet={linked} reported={account.reportedBalance} on={account.reportedBalanceOn} source="the bank" />}
-        aside={!readOnly && <IconButton label="Unlink from the wallet" onClick={onUnlink} spinning={busy}><Unlink className="h-3.5 w-3.5" /></IconButton>}
+        aside={<IconButton label="Unlink from the wallet" onClick={onUnlink} spinning={busy}><Unlink className="h-3.5 w-3.5" /></IconButton>}
         error={error}
         onOpen={onOpenWallet}
       />
@@ -240,9 +238,7 @@ export function BankAccountRow({ link, account, wallets, taken, readOnly, busy, 
             {[account.currency, balance && `bank balance ${balance}`].filter(Boolean).join(" · ")}
           </span>
         </span>
-        {readOnly ? (
-          <span className="text-[11.5px] text-slate-400">Not linked to a wallet</span>
-        ) : !active ? (
+        {!active ? (
           <span className="text-[11.5px] text-slate-400">Renew the consent to link it</span>
         ) : (
           <span className="flex items-center gap-2">
@@ -278,7 +274,7 @@ export function BankAccountRow({ link, account, wallets, taken, readOnly, busy, 
  * this account's.
  */
 export function WalletBankSync({ wallet }: { wallet: Wallet }) {
-  const { sample, changed } = useWallets();
+  const { changed } = useWallets();
   const read = useBankLinks();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -292,7 +288,7 @@ export function WalletBankSync({ wallet }: { wallet: Wallet }) {
   }
 
   const active = link.status === "active";
-  const lock = sample ? DEMO_DISABLED_TITLE : wallet.archived ? "An archived wallet isn't read" : !active ? "The consent ended: renew it on its account's page" : null;
+  const lock = wallet.archived ? "An archived wallet isn't read" : !active ? "The consent ended: renew it on its account's page" : null;
   const balance = account.reportedBalance === null ? null : formatCurrency(account.reportedBalance, account.currency, 2);
   const meta = [
     link.lastSyncedAt ? `read ${dayLabel(link.lastSyncedAt.slice(0, 10))}` : "not read yet",

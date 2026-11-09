@@ -21,8 +21,7 @@ import { apiFetch } from "./apiClient";
 // AddressNotFoundError (404), TradingAccountNotFoundError (404), ChainHoldingNotFoundError (404),
 // InvalidChainHoldingLinkError (422, a wallet of another currency or a day out of range),
 // WalletAlreadyLinkedError (409, the wallet takes a bank account's or another stablecoin's
-// movements), WalletArchivedError (409). A demo account's writes are
-// refused before they leave (see lib/demo).
+// movements), WalletArchivedError (409).
 export const tradingService = {
   // POST /v1/addresses/proofs — the message the address' wallet signs, valid for 5 minutes.
   async startProof(chain: string, address: string): Promise<AddressProof> {

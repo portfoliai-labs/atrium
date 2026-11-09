@@ -16,8 +16,7 @@ import { apiFetch, apiFetchForm } from "./apiClient";
 // InvalidCategoryError (422: a name taken, a parent of the other kind, too deep, past 200),
 // CategoryNotFoundError (404),
 // AlertRuleNotFoundError / CategoryRuleNotFoundError (404), AlertRuleLimitReachedError (409, past 50 rules), FxRatesUnavailableError
-// (503, the summary or the budgets across wallets), ImportFileParsingError / ImportMappingIncompleteError (422). A demo account's
-// writes are refused before they leave (see lib/demo).
+// (503, the summary or the budgets across wallets), ImportFileParsingError / ImportMappingIncompleteError (422).
 
 function movementQuery(filters: MovementFilters = {}) {
   const params = new URLSearchParams();

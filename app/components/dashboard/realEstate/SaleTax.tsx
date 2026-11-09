@@ -12,9 +12,9 @@ import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
 
 /**
- * A sale's tax were the property sold so (POST .../sale-simulation; the demo's sample otherwise),
- * asked again a moment after the request stops changing: undefined while it's worked out, null with
- * no rules for the property's country; `error` the API's refusal (a day before the acquisition).
+ * A sale's tax were the property sold so (POST .../sale-simulation), asked again a moment after
+ * the request stops changing: undefined while it's worked out, null with no rules for the
+ * property's country; `error` the API's refusal (a day before the acquisition).
  */
 export function useSaleSimulation(propertyUuid: string | undefined, request: SaleSimulationRequest | null) {
   const { source } = useRealEstate();

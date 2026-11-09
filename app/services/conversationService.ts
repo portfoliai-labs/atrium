@@ -19,7 +19,7 @@ export const conversationService = {
   },
 
   // POST /conversations — opens a chat with the AI under a uuid of ours: a retry with the same
-  // one is safe. 403 ReadOnlyAccountError for a demo account.
+  // one is safe.
   async openAssistant(conversationUuid: string): Promise<AssistantConversation> {
     return apiFetch<AssistantConversation>("/v1/conversations", {
       method: "POST",

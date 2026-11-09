@@ -75,9 +75,9 @@ function detailOf(t: PropertyTransaction) {
  * per currency. A transaction opens to be changed (not its kind or mortgage: delete it and add
  * another) and linked to its wallet movement; several picked together can be deleted. Above them,
  * the wallets' movements that may be transactions not linked yet, or instalments not recorded. An
- * archived property's, and a demo account's, are read only.
+ * archived property's are read only.
  */
-export function RealEstateTransactions({ initial, readOnly }: { initial: string; readOnly: boolean }) {
+export function RealEstateTransactions({ initial }: { initial: string }) {
   const { properties, changed } = useRealEstate();
   const [propertyUuid, setPropertyUuid] = useState(initial);
   const scope = propertyUuid === ALL_PROPERTIES ? null : propertyUuid;
@@ -128,7 +128,7 @@ export function RealEstateTransactions({ initial, readOnly }: { initial: string;
   const loadError = read.isError ? errorText(read.error, "Unable to load the transactions.") : null;
 
   const byUuid = useMemo(() => new Map(properties.map((p) => [p.uuid, p])), [properties]);
-  const editable = (t: PropertyTransaction) => !readOnly && !byUuid.get(t.propertyUuid)?.archived;
+  const editable = (t: PropertyTransaction) => !byUuid.get(t.propertyUuid)?.archived;
   const picked = rows.filter((t) => selected.has(t.uuid));
   const more = total !== null && rows.length < total;
 
@@ -190,7 +190,7 @@ export function RealEstateTransactions({ initial, readOnly }: { initial: string;
         </div>
       </div>
 
-      {!readOnly && !(scope && byUuid.get(scope)?.archived) && (
+      {!(scope && byUuid.get(scope)?.archived) && (
         <MovementProposals propertyUuid={scope} from={from} to={to} transactions={rows} />
       )}
 
@@ -235,8 +235,8 @@ export function RealEstateTransactions({ initial, readOnly }: { initial: string;
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="text-left text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100">
-                  {!readOnly && <th className="pl-6 pr-2 py-3 w-8" />}
-                  <th className={`${readOnly ? "pl-6" : "pl-2"} pr-3 py-3`}>Date</th>
+                  <th className="pl-6 pr-2 py-3 w-8" />
+                  <th className="pl-2 pr-3 py-3">Date</th>
                   <th className="px-3 py-3">Description</th>
                   <th className="px-3 py-3">Kind</th>
                   {!scope && <th className="px-3 py-3">Property</th>}
@@ -253,19 +253,17 @@ export function RealEstateTransactions({ initial, readOnly }: { initial: string;
                       onClick={() => canEdit && setEditing(t)}
                       className={`${canEdit ? "cursor-pointer hover:bg-slate-50" : ""} ${selected.has(t.uuid) ? "bg-[#C49A3C]/5" : ""}`}
                     >
-                      {!readOnly && (
-                        <td className="pl-6 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            disabled={!canEdit}
-                            checked={selected.has(t.uuid)}
-                            onChange={() => toggle(t.uuid)}
-                            aria-label={`Select ${t.description}`}
-                            className="accent-[#C49A3C]"
-                          />
-                        </td>
-                      )}
-                      <td className={`${readOnly ? "pl-6" : "pl-2"} pr-3 py-3 whitespace-nowrap text-slate-500`}>{dayLabel(t.bookedOn)}</td>
+                      <td className="pl-6 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          disabled={!canEdit}
+                          checked={selected.has(t.uuid)}
+                          onChange={() => toggle(t.uuid)}
+                          aria-label={`Select ${t.description}`}
+                          className="accent-[#C49A3C]"
+                        />
+                      </td>
+                      <td className="pl-2 pr-3 py-3 whitespace-nowrap text-slate-500">{dayLabel(t.bookedOn)}</td>
                       <td className="px-3 py-3 min-w-48">
                         <p className="flex items-center gap-1.5 font-semibold text-slate-800">{t.description}<MovementLinkMark transaction={t} /></p>
                         {detail && <p className="text-[11px] text-slate-400 truncate max-w-md">{detail}</p>}

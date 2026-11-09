@@ -119,12 +119,6 @@ function HeroSection({ onLogin }: { onLogin: () => void }) {
             >
               Start free <ArrowRight className="w-4 h-4" />
             </button>
-            <button onClick={onLogin}
-              className="text-[13px] font-semibold transition-colors duration-200 underline-offset-4 hover:underline"
-              style={{ color: "#8A6A28" }}
-            >
-              Try the demo account
-            </button>
           </div>
 
           <div className="flex gap-0 pt-7 border-t max-w-md" style={{ borderColor: "#E0DACC" }}>
@@ -191,8 +185,7 @@ function ForWhomSection() {
 export default function HomePage() {
   const router = useRouter();
   // Routes into /login instead of triggering Google directly — the login page is where the
-  // actual auth method (Google or email/password) gets chosen, and where the two read-only
-  // demo accounts live.
+  // actual auth method (Google or email/password) gets chosen.
   const goToLogin = () => router.push("/login");
 
   return (

@@ -88,7 +88,7 @@ function byCategory(months: CategoryMonths["months"], field: "spending" | "incom
  * out and the balance (the summary's); where the money went and came from by category (the
  * payees and the payments that repeat in the spending's detail), all arca's, transfers between
  * the user's wallets left out. Across wallets, in the reference currency, archived wallets left
- * out as the summary leaves them. A demo account reads its sample's, worked out the same way.
+ * out as the summary leaves them.
  */
 export function WalletInsights({ scope, summary }: { scope: string | null; summary: WalletSummary | null | undefined }) {
   const first = summary?.months[0]?.month;

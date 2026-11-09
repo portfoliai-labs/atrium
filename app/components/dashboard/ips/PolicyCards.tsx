@@ -131,7 +131,7 @@ export function ProfileCard({ title, description, onEdit, editDisabled, wide = f
   title: string;
   description?: string;
   onEdit: () => void;
-  // A reason Edit can't be used (a demo account), as its title.
+  // A reason Edit can't be used (e.g. still loading), as its title.
   editDisabled?: string;
   wide?: boolean;
   // Something's missing: a warmer border.

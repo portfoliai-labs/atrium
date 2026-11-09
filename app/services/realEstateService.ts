@@ -23,8 +23,7 @@ import { apiFetch } from "./apiClient";
 // InvalidRentalContractError (422), RentalContractNotFoundError (404), InvalidTaxpayerYearError
 // (422), TaxpayerYearNotFoundError (404), InvalidAlertRuleError (422, with `field`),
 // AlertRuleLimitReachedError (409, at 50 rules), AlertRuleNotFoundError (404). InvalidPropertyError, InvalidUseChangeError
-// and InvalidTaxRateError say which `field` (ApiError.metadata.field), as the bodies name it. A demo
-// account's writes are refused before they leave (see lib/demo).
+// and InvalidTaxRateError say which `field` (ApiError.metadata.field), as the bodies name it.
 
 const BASE = "/v1/real-estate";
 

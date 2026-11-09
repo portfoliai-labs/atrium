@@ -32,7 +32,7 @@ export interface RealEstateNetWorth {
  * REAL ESTATE NET WORTH — the properties as they count in the Dashboard's net worth: their equity
  * (the value at the user's share less the mortgages), added up and one by one, and how it moved this
  * month. null where the real estate can't be shown (an advisor, a backend without it); undefined
- * while loading. A demo account's are the sample data.
+ * while loading.
  */
 export function useRealEstateNetWorth(): RealEstateNetWorth | null | undefined {
   const { properties, loading, available } = useRealEstate();

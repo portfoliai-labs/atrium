@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
 import { useTradingAccounts } from "../../hooks/useChainHoldings";
-import { useWallets } from "../../context/WalletsContext";
 import { formatCurrency, formatQuantity } from "../../lib/format";
 import { errorText } from "../../lib/wallets";
 import { signTransaction, transactionUrl, walletFor } from "../../lib/solanaWallets";
@@ -12,7 +11,6 @@ import { OrderDetails } from "./wallets/OrderDetails";
 import type { Order, OrderExecution, OrderQuote, OrderSide, TradingAccount } from "../../models/Trading";
 import { ApiError } from "../../services/apiClient";
 import { tradingService } from "../../services/tradingService";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import { Breadcrumb } from "./Breadcrumb";
 import { MODULE_BODY, Module, ModuleHead } from "./PerformanceSection";
 
@@ -114,7 +112,6 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
   referenceCurrency: string | null;
   onBack: () => void;
 }) {
-  const { sample } = useWallets();
   const accounts = useOrderAccounts();
   const [accountUuid, setAccountUuid] = useState("");
   const account = accounts.find((a) => a.uuid === accountUuid) ?? accounts[0] ?? null;
@@ -352,8 +349,7 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
                     <button
                       type="button"
                       onClick={() => void confirm()}
-                      disabled={!quote || sample}
-                      title={sample ? DEMO_DISABLED_TITLE : undefined}
+                      disabled={!quote}
                       className="px-4 py-2 rounded-lg text-[12px] font-bold bg-[#1c1917] text-white hover:bg-black disabled:opacity-40 transition-colors"
                     >
                       {verb}
