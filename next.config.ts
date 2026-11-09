@@ -23,6 +23,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // A self-contained server for the Docker image (Dockerfile); Vercel ignores it.
+  output: "standalone",
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

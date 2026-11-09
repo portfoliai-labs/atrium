@@ -9,8 +9,8 @@ import {
 import { useUser } from "../context/UserContext";
 import { notificationsKey } from "../context/NotificationsContext";
 import { accountKey } from "./useAccountQuery";
+import { API_BASE_URL } from "@/app/lib/origins";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export type { NotificationResponse };
 
