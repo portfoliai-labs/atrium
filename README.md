@@ -10,8 +10,8 @@ app is tabella.
 
 | Variable | What it's for |
 | --- | --- |
-| `NEXT_PUBLIC_API_URL` | Backend base URL |
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase auth |
+| `NEXT_PUBLIC_API_URL` | The API (ianus) base URL; unset: the page's own origin (`/v1`), as a self-hosted install serves it |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | The authentication (Supabase Auth); unset: the page's own origin (`/auth/v1`), and no key (the local authentication reads none) |
 | `NEXT_PUBLIC_SITE_URL` | Public site URL (metadata); defaults to https://portfoliai.online |
 | `NEXT_PUBLIC_DEMO_PASSWORD` | Optional: the demo accounts' password (`demoportfoliai` in forum's development stack); set, the login shows their buttons. Leave it out of a build that has no demo accounts |
 
@@ -23,6 +23,12 @@ estate, Explore, Strategy — sample data, not tied to real data), and it is rea
 frontend refuses its writes (`app/lib/demo.ts`) and disables the controls that would send them.
 The backend must refuse a demo account's writes as well; the frontend alone can be bypassed.
 The login's demo buttons appear only in a build with `NEXT_PUBLIC_DEMO_PASSWORD`.
+
+## Docker image
+
+`Dockerfile` builds Next's standalone server with no `NEXT_PUBLIC_*`: the API and the
+authentication on the page's own origin (`app/lib/origins.ts`), so one image serves any install
+behind forum's `deploy/` nginx. A build argument sets one (`--build-arg NEXT_PUBLIC_API_URL=...`).
 
 ## Getting Started
 
