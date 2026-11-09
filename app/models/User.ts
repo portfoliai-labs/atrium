@@ -6,7 +6,7 @@ type UserRole = 'USER' | 'ADVISOR';
 
 // Matches SubscriptionTier enum from backend
 // SELF_HOSTED: every feature, the plan of every user on a self-hosted install.
-type SubscriptionTier = 'FREE' | 'TESTER' | 'SELF_HOSTED';
+type SubscriptionTier = 'FREE' | 'SELF_HOSTED';
 
 // Matches FinancialKnowledgeLevel enum from backend
 type FinancialKnowledgeLevel = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';

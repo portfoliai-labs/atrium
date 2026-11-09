@@ -22,7 +22,6 @@ const GREETING_MS = 4000;
 
 const TIER_LABEL: Record<SubscriptionTier, string> = {
   FREE: 'Free Plan',
-  TESTER: 'Tester',
   SELF_HOSTED: 'Self-hosted',
 };
 
