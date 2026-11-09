@@ -5,7 +5,6 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, FileText, X } from "lucide-react";
 import { PreviewBadge } from "../preview/PreviewKit";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import { ReportCover, type ReportKindId } from "./ReportKinds";
 
 /** A kind of report the dialog offers, on its cover; `available` false = coming soon. */
@@ -28,16 +27,13 @@ export interface GenerateTarget {
  * GENERATE REPORT DIALOG — Reports' "Generate report" (Investments' and Wallets'): first which kind
  * of report (`kinds`, each on its cover; the ones not ready yet shown as coming soon), then what
  * it's about (`targets`, called `targetLabel`: a must; none picked to start with unless there's
- * only one). `onGenerate` gets the choice; the page sends it and shows how it went. `readOnly`
- * (a demo account, or a preview): everything can be picked, but "Generate" stays off, saying why.
+ * only one). `onGenerate` gets the choice; the page sends it and shows how it went.
  */
-export function GenerateReportDialog({ kinds, targets, targetLabel, readOnly = false, readOnlyTitle = DEMO_DISABLED_TITLE, onGenerate, onClose }: {
+export function GenerateReportDialog({ kinds, targets, targetLabel, onGenerate, onClose }: {
   kinds: GenerateKindOption[];
   targets: GenerateTarget[];
   // "Portfolio", "Wallet".
   targetLabel: string;
-  readOnly?: boolean;
-  readOnlyTitle?: string;
   onGenerate: (kindId: string, target: GenerateTarget) => void;
   onClose: () => void;
 }) {
@@ -138,9 +134,8 @@ export function GenerateReportDialog({ kinds, targets, targetLabel, readOnly = f
               Cancel
             </button>
             <button
-              onClick={() => target && !readOnly && onGenerate(kind, target)}
-              disabled={!ready || readOnly}
-              title={readOnly ? readOnlyTitle : undefined}
+              onClick={() => target && onGenerate(kind, target)}
+              disabled={!ready}
               className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-[#1c1917] hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#1c1917]"
             >
               <FileText className="h-4 w-4" />

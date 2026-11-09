@@ -13,11 +13,10 @@ import type { ArticleLanguage } from "../models/Journal";
  * JOURNAL CONTEXT — where the Journal reads from, and what the signed-in user can do in it,
  * asked once: the Sidebar and the Journal's pages read it.
  * - `api`: the backend serves the Journal (ianus' /v1/journal): every investor and advisor reads
- *   and writes; a demo account reads only.
+ *   and writes.
  * - `static`: the backend has no Journal yet (it answers FastAPI's own 404): everyone reads the
  *   platform's own articles written in the code (lib/journalStatic), without writing, saving or
- *   reporting. Unlike other backend-less features it isn't a demo account's preview (Matteo,
- *   2026-10-12): the articles are real ones.
+ *   reporting. The articles are real ones (Matteo, 2026-10-12).
  * - `loading` until the first answer.
  * Every Journal read is in the query cache (context/QueryContext) under a ["journal", ...] key
  * (useJournalQuery, usePaged), shared by the pages and modules that ask for it. A write patches
@@ -29,7 +28,7 @@ type JournalMode = "loading" | "api" | "static";
 interface JournalContextType {
   mode: JournalMode;
   source: JournalSource;
-  // Writing, saving and reporting: the API's, never a demo account's (read-only).
+  // Writing, saving and reporting: the API's.
   canWrite: boolean;
   // An editor of the Journal: the moderation pages are theirs.
   editor: boolean;
@@ -44,7 +43,7 @@ const JournalContext = createContext<JournalContextType | undefined>(undefined);
 export const journalKey = (...parts: unknown[]) => ["journal", ...parts];
 
 export function JournalProvider({ children }: { children: React.ReactNode }) {
-  const { user, isDemo } = useUser();
+  const { user } = useUser();
   const signedIn = !!user;
   const queryClient = useQueryClient();
 
@@ -58,7 +57,6 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
         return { mode: isJournalMissing(err) ? "static" : "api", editor: false };
       }
       // Only an editor sees the moderation pages; anyone else's answer is false.
-      if (isDemo) return { mode: "api", editor: false };
       const status = await journalService.editorStatus().catch(() => ({ editor: false }));
       return { mode: "api", editor: status.editor };
     },
@@ -75,11 +73,11 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<JournalContextType>(() => ({
     mode,
     source: mode === "static" ? staticJournalSource : apiJournalSource,
-    canWrite: mode === "api" && !isDemo,
+    canWrite: mode === "api",
     editor: mode === "api" && editor,
     language: readerLanguage(user?.language),
     changed,
-  }), [mode, isDemo, editor, user?.language, changed]);
+  }), [mode, editor, user?.language, changed]);
   return <JournalContext.Provider value={value}>{children}</JournalContext.Provider>;
 }
 

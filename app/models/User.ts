@@ -5,8 +5,8 @@
 type UserRole = 'USER' | 'ADVISOR';
 
 // Matches SubscriptionTier enum from backend
-// DEMO: a read-only demo account (see lib/demo).
-type SubscriptionTier = 'FREE' | 'TESTER' | 'DEMO';
+// SELF_HOSTED: every feature, the plan of every user on a self-hosted install.
+type SubscriptionTier = 'FREE' | 'TESTER' | 'SELF_HOSTED';
 
 // Matches FinancialKnowledgeLevel enum from backend
 type FinancialKnowledgeLevel = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';

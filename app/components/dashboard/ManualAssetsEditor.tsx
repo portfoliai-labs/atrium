@@ -37,7 +37,7 @@ export function useManualAssets(clientUuid?: string, enabled = true) {
  * price before the first. A valuation is added or replaced by day (PUT) and removed (DELETE); the
  * portfolios holding it are computed again. Deleting the asset is refused while a transaction is
  * on it. With `clientUuid`, an advisor's view of a client's, to read: the client alone changes
- * them. A demo account sees them but can't change them either (hooks/useReadOnly).
+ * them (hooks/useReadOnly).
  */
 export function ManualAssetsEditor({ clientUuid }: { clientUuid?: string }) {
   const { title: lockedBy, lock } = useReadOnly(clientUuid);
@@ -249,7 +249,7 @@ function AssetRow({ asset, expanded, readOnly, onToggle, onChanged, onDelete }: 
   };
 
   const latest = asset.latestValuation;
-  const demo = readOnly !== undefined ? { disabled: true, title: readOnly } : {};
+  const locked = readOnly !== undefined ? { disabled: true, title: readOnly } : {};
 
   return (
     <li>
@@ -275,11 +275,11 @@ function AssetRow({ asset, expanded, readOnly, onToggle, onChanged, onDelete }: 
         <span className="flex items-center gap-2">
           <CategorySelect value={asset.category} onChange={(category) => void update({ category })} disabled={busy || readOnly !== undefined} />
           {renaming === null && (
-            <button type="button" onClick={() => setRenaming(asset.name)} {...demo} aria-label={`Rename ${asset.name}`} className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-40">
+            <button type="button" onClick={() => setRenaming(asset.name)} {...locked} aria-label={`Rename ${asset.name}`} className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-40">
               <Pencil className="h-4 w-4" />
             </button>
           )}
-          <button type="button" onClick={onDelete} {...demo} aria-label={`Delete ${asset.name}`} className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-40">
+          <button type="button" onClick={onDelete} {...locked} aria-label={`Delete ${asset.name}`} className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-40">
             <Trash2 className="h-4 w-4" />
           </button>
         </span>

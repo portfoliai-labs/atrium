@@ -28,7 +28,7 @@ const VISIBLE = 2;
  * JOURNAL MENU — the Journal's other pages at the top right of each page's header, the way other
  * pages show their actions (see PageHeader): the first two as buttons, the rest (Your reports, the
  * editors' Moderation, a new article) under the dots. The page open now isn't among them. The
- * API's only: a demo account and a backend without the Journal have just the articles.
+ * API's only: a backend without the Journal has just the articles.
  */
 export function JournalMenu() {
   const nav = useContext(JournalNavContext);

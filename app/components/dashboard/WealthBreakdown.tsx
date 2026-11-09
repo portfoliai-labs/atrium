@@ -2,7 +2,6 @@
 "use client";
 
 import { Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useUser } from "../../context/UserContext";
 import { useWallets } from "../../context/WalletsContext";
 import type { WalletsOverview } from "../../hooks/useWalletsOverview";
 import { formatCompact, formatCurrency } from "../../lib/format";
@@ -13,14 +12,12 @@ const rateText = (rate: number | null) => (rate === null ? "—" : `${Math.round
 
 /**
  * WEALTH BREAKDOWN — on the Dashboard, under the net worth: the wallets' cash flow over the last six
- * months, where the user has wallets to have (a demo account's are sample data). Nothing otherwise.
+ * months, where the user has wallets to have. Nothing otherwise.
  * `overview` is the Dashboard's (useWalletsOverview), read once there for the net worth and this.
  */
 export function WealthBreakdown({ overview }: { overview: WalletsOverview | null | undefined }) {
-  const { isDemo } = useUser();
-  const { available: walletsAvailable, sample } = useWallets();
-  // The wallets are a demo account's sample data, or the user's own where the backend has them.
-  const hasWallets = isDemo || walletsAvailable;
+  // The user's own wallets, where the backend has them.
+  const { available: hasWallets } = useWallets();
   const walletsCurrency = overview?.currency ?? "EUR";
   const walletCount = overview?.wallets.length ?? 0;
   const recent = (overview?.months ?? []).slice(-6);
@@ -32,7 +29,7 @@ export function WealthBreakdown({ overview }: { overview: WalletsOverview | null
     <Module className="flex flex-col">
       <ModuleHead
         title="Cash Flow"
-        desc={`What came into your wallets and what went out, month by month, transfers between them left out.${sample ? " Sample data." : ""}`}
+        desc="What came into your wallets and what went out, month by month, transfers between them left out."
       />
       <div className={`${MODULE_BODY} flex-1 flex flex-col gap-4`}>
         {recent.length === 0 ? (

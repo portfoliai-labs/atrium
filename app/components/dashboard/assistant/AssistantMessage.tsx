@@ -74,7 +74,6 @@ export function askErrorText(err: unknown): string {
     case "InvalidMessageError": return `Your question can't be sent: up to ${QUESTION_MAX_LENGTH.toLocaleString()} characters.`;
     case "ConversationNotFoundError": return "This chat no longer exists.";
     case "ConversationUuidTakenError": return "This chat couldn't be started. Please ask again.";
-    case "ReadOnlyAccountError": return "This is a demo account: the assistant isn't available on it.";
     default: return err.message || "Your question wasn't sent. Please try again.";
   }
 }

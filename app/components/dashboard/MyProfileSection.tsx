@@ -53,8 +53,7 @@ const CURRENCIES = [
  * set up step by step (InvestorPolicyEditor); once it's complete, its page shows it as cards, a
  * step each, each edited on its own (PolicyCards). Advisors are matched on it, so Find an advisor
  * asks for it first (see AdvisorMatchSection). The page is in the section's history entry
- * (`{ page }`), so back and forward follow it. A demo account sees the preferences but can't
- * change them.
+ * (`{ page }`), so back and forward follow it.
  */
 export function MyProfileSection() {
   const { user } = useUser();
@@ -130,11 +129,10 @@ export function MyProfileSection() {
 
 /**
  * PREFERENCES — Profile's first card: the language, the currency and, for an investor, the tax
- * residence their taxes are computed by (see the investments' Taxes), edited in a dialog. A demo
- * account sees them but can't change them.
+ * residence their taxes are computed by (see the investments' Taxes), edited in a dialog.
  */
 function PreferencesCard() {
-  const { user, refreshUser, isDemo } = useUser();
+  const { user, refreshUser } = useUser();
   const { changed } = usePortfolio();
   const isAdvisor = user?.role === "ADVISOR";
   const queryClient = useQueryClient();
@@ -197,7 +195,7 @@ function PreferencesCard() {
         title="Preferences"
         description={isAdvisor ? "Your language and currency." : "Your language, currency and where you pay taxes."}
         onEdit={edit}
-        editDisabled={isDemo ? "Preferences can't be changed on a demo account" : saved ? undefined : "Loading…"}
+        editDisabled={saved ? undefined : "Loading…"}
       >
         {saved ? (
           <ProfileRows rows={[

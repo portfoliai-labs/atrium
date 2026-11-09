@@ -21,8 +21,6 @@ import { ExploreHost } from "../ExploreView";
 // import { FeaturedCard, PortfolioHolder, type HolderItem } from "../PortfolioHolder";
 // import { VIRTUAL_COLOR } from "../BacktestMarks";
 import { WalletsComposition } from "./WalletsComposition";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
-import { PreviewBadge } from "../../preview/PreviewKit";
 import { WalletAlerts } from "./WalletAlerts";
 import { ConnectWalletDialog, findAddressAccount } from "./WalletAddresses";
 import { ConnectBankDialog, WalletBankDialog, useWalletLinked } from "./WalletBanks";
@@ -59,8 +57,7 @@ const CONNECT_PARAM = "connectBank";
  * their own, and so is All wallets' Manage wallets (each wallet's bank account linked there). A
  * bank is connected (open banking) or an address proved (a signature in the user's own wallet)
  * from All wallets, which makes an account, opened once there to choose its wallets. A wallet
- * that's gone (deleted, or from an old link) opens all of them. Archived wallets are read only,
- * and so is everything for a demo account.
+ * that's gone (deleted, or from an old link) opens all of them. Archived wallets are read only.
  */
 export function WalletNode({ id, page, rootTrail, onOpen }: {
   id: string;
@@ -68,7 +65,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   rootTrail: Crumb[];
   onOpen: (id: string, page: WalletPage) => void;
 }) {
-  const { wallets, loading, error, sample, changed } = useWallets();
+  const { wallets, loading, error, changed } = useWallets();
   const wallet = id === ALL_WALLETS ? undefined : wallets.find((w) => w.uuid === id);
   const all = !wallet;
   const scope = wallet?.uuid ?? null;
@@ -102,9 +99,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
 
   const title = wallet ? wallet.name : LIQUIDITY;
-  const readOnly = sample || !!wallet?.archived;
-  const locked = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : wallet?.archived ? { disabled: true, title: ARCHIVED_TITLE } : {};
-  const sampleLock = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
+  const locked = wallet?.archived ? { disabled: true, title: ARCHIVED_TITLE } : {};
   const allCrumb: Crumb = { label: LIQUIDITY, onClick: () => onOpen(ALL_WALLETS, "insights") };
   const openAccount = (uuid: string) => onOpen(accountView(uuid), "insights");
   const accountCrumb: Crumb[] = account ? [{ label: account.name, onClick: () => openAccount(account.uuid) }] : [];
@@ -140,15 +135,15 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         // comes into, read from the chain: those are on its account's page.
         ...(linked === false && holding === null ? [{ label: "Connect a bank", onClick: () => setDialog("bank"), ...locked }] : []),
         { label: "Edit wallet", onClick: () => setDialog("edit"), ...locked },
-        { label: wallet.archived ? "Unarchive" : "Archive", onClick: () => setDialog("archive"), ...sampleLock },
-        { label: "Delete wallet", danger: true, onClick: () => setDialog("delete"), ...sampleLock },
+        { label: wallet.archived ? "Unarchive" : "Archive", onClick: () => setDialog("archive") },
+        { label: "Delete wallet", danger: true, onClick: () => setDialog("delete") },
       ]
     : [
         // Manage wallets is where a wallet is added, and where each one's bank account is linked.
         { label: "Manage wallets", primary: true, onClick: () => onOpen(ALL_WALLETS, "manage") },
         // Each makes an account, its page opened to choose its wallets.
-        { label: "Connect a bank", onClick: () => setDialog("connectBank"), ...sampleLock },
-        { label: "Connect a wallet", onClick: () => setDialog("connectChain"), ...sampleLock },
+        { label: "Connect a bank", onClick: () => setDialog("connectBank") },
+        { label: "Connect a wallet", onClick: () => setDialog("connectChain") },
       ];
   const counters = [
     // All wallets' only counts them: their movements are each wallet's, on its own page.
@@ -238,9 +233,9 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     const scopeKey = wallet?.uuid ?? ALL_WALLETS;
     const right = page === "manage" ? (
       <div className="flex gap-2">
-        <SmallButton icon={<Landmark className="h-3.5 w-3.5" />} onClick={() => setDialog("connectBank")} {...sampleLock}>Connect a bank</SmallButton>
-        <SmallButton icon={<WalletIcon className="h-3.5 w-3.5" />} onClick={() => setDialog("connectChain")} {...sampleLock}>Connect a wallet</SmallButton>
-        <SmallButton icon={<Plus className="h-3.5 w-3.5" />} dark onClick={() => setDialog("new")} {...sampleLock}>New wallet</SmallButton>
+        <SmallButton icon={<Landmark className="h-3.5 w-3.5" />} onClick={() => setDialog("connectBank")}>Connect a bank</SmallButton>
+        <SmallButton icon={<WalletIcon className="h-3.5 w-3.5" />} onClick={() => setDialog("connectChain")}>Connect a wallet</SmallButton>
+        <SmallButton icon={<Plus className="h-3.5 w-3.5" />} dark onClick={() => setDialog("new")}>New wallet</SmallButton>
       </div>
     ) : undefined;
     return (
@@ -251,8 +246,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
           <WalletTransactions
             key={scopeKey}
             initial={scopeKey}
-            readOnly={sample}
-            lock={sample ? DEMO_DISABLED_TITLE : wallet?.archived ? ARCHIVED_TITLE : active.length === 0 ? "Add a wallet first" : undefined}
+            lock={wallet?.archived ? ARCHIVED_TITLE : active.length === 0 ? "Add a wallet first" : undefined}
             onAdd={() => setDialog("movement")}
             onImport={() => setDialog("import")}
           />
@@ -282,7 +276,6 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
       badge={(
         <>
           {wallet?.archived && <span className="rounded-full bg-[#EEE9DD] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#78716c]">Archived</span>}
-          {sample && <PreviewBadge label="Sample" />}
         </>
       )}
       title={title}
@@ -300,7 +293,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         {error && <p className="text-sm font-semibold text-rose-600">{error}</p>}
         {wallet?.archived && <ArchivedNote />}
         {all && (active.length === 0
-          ? <NoWallets readOnly={readOnly} onAdd={() => setDialog("new")} />
+          ? <NoWallets onAdd={() => setDialog("new")} />
           : (
             <WalletsComposition
               currency={summary?.currency ?? active[0].currency}
@@ -376,7 +369,7 @@ function SmallButton({ icon, children, onClick, dark, disabled, title }: {
 }
 
 /** All wallets with none yet (archived aside): the way to add the first. */
-function NoWallets({ readOnly, onAdd }: { readOnly: boolean; onAdd: () => void }) {
+function NoWallets({ onAdd }: { onAdd: () => void }) {
   return (
     <section className="bg-white rounded-3xl border border-dashed border-slate-300 p-8 md:p-10 text-center space-y-3">
       <p className="text-lg font-black text-slate-900">No wallets yet</p>
@@ -384,11 +377,9 @@ function NoWallets({ readOnly, onAdd }: { readOnly: boolean; onAdd: () => void }
         Add your current account, a card, savings or cash: what comes in and goes out, by hand or from your bank&apos;s statements,
         next to your investments.
       </p>
-      {!readOnly && (
-        <button type="button" onClick={onAdd} className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1c1917] text-white text-sm font-bold hover:bg-[#C49A3C] transition-colors">
-          <Plus className="h-4 w-4" /> Add a wallet
-        </button>
-      )}
+      <button type="button" onClick={onAdd} className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1c1917] text-white text-sm font-bold hover:bg-[#C49A3C] transition-colors">
+        <Plus className="h-4 w-4" /> Add a wallet
+      </button>
     </section>
   );
 }
@@ -413,7 +404,7 @@ function NoWallets({ readOnly, onAdd }: { readOnly: boolean; onAdd: () => void }
 //   onOpen: (uuid: string) => void;
 //   onAdd: () => void;
 // }) {
-//   const { wallets, sample } = useWallets();
+//   const { wallets } = useWallets();
 //   const colored = useMemo(() => wallets.map((w, i) => ({ wallet: w, color: walletColor(w, i) })), [wallets]);
 //   const active = colored.filter((c) => !c.wallet.archived);
 //   const archived = colored.filter((c) => c.wallet.archived);
@@ -500,7 +491,6 @@ function NoWallets({ readOnly, onAdd }: { readOnly: boolean; onAdd: () => void }
 //         <FeaturedCard
 //           eyebrow="Largest wallet"
 //           name={featured.wallet.name}
-//           badge={sample ? <PreviewBadge label="Sample" /> : undefined}
 //           color={featured.color}
 //           value={formatCurrency(featured.wallet.balance, featured.wallet.currency, 0)}
 //           line={

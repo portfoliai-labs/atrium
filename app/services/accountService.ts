@@ -5,7 +5,7 @@ import { apiFetch } from "./apiClient";
 // Errors come back as ApiError with the backend's `error_type`: CardNotFoundError /
 // WalletNotFoundError (404, someone else's included), InvalidCardError (422: a card on a wallet
 // its kind doesn't take, more than 4 digits), CardLimitReachedError (409, past 20 on a wallet),
-// WalletArchivedError (409). A demo account's writes are refused before they leave (see lib/demo).
+// WalletArchivedError (409).
 export const accountService = {
   // GET /v1/accounts — oldest first, each with its wallets and their balance.
   async list(): Promise<Account[]> {

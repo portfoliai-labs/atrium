@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowUpRight, Loader2, Target, X } from "lucide-react";
 import { investmentsKey, useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContext";
-import { useUser } from "../../context/UserContext";
 import { adoptionService } from "../../services/adoptionService";
 import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
 import { openBacktestPage, openStrategiesPage } from "../../lib/dashboardNav";
@@ -21,7 +20,6 @@ import { SharedStrategyPanel } from "./SharedStrategyPanel";
 import { ClientStrategySharing } from "./ClientStrategySharing";
 import { AdoptStrategyDialog } from "./AdoptStrategyDialog";
 import { RebalancingOrdersPanel } from "./RebalancingOrdersPanel";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 const dateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
@@ -48,7 +46,7 @@ const NO_RULES: AlertRuleResponse[] = [];
  * the adoption away with its alerts (DELETE). Without one, the way to adopt one is Strategies.
  * Above it, read-only, the strategies the user's advisor shared for the portfolio
  * (SharedStrategyPanel); with one of those and no adoption of their own, the way to adopt is left
- * out. A demo account sees it but can't change it.
+ * out.
  *
  * On a client's portfolio (an advisor's, PortfolioContext's `client`) it's the advisor's adoption,
  * from one of their own backtests: adopted here from those (AdoptStrategyDialog), and shared with
@@ -67,7 +65,6 @@ export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimul
   onChanged: () => void;
 }) {
   const { ownPortfolios, client } = usePortfolio();
-  const { isDemo } = useUser();
   const [adopting, setAdopting] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
@@ -234,7 +231,6 @@ export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimul
     band.relativeThresholdPct != null ? `±${formatAlertPct(band.relativeThresholdPct)} of the weight` : null,
   ].filter(Boolean).join(" or, if narrower, ") || "±5 points";
   const channels = [adoption.notifyInApp && "in-app", adoption.notifyEmail && "by email"].filter(Boolean).join(" and ") || "on the dashboard only";
-  const demo = isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
 
   return (
     <div className="space-y-6 pb-12">
@@ -243,10 +239,10 @@ export function AdoptedStrategyView({ portfolio, trail, shared = [], onOpenSimul
         current="Strategy"
         right={draft ? undefined : (
           <span className="flex items-center gap-2">
-            <button type="button" onClick={startRefine} {...demo} className="px-4 py-2.5 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-[#1c1917]">
+            <button type="button" onClick={startRefine} className="px-4 py-2.5 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-[#1c1917]">
               Refine ranges
             </button>
-            <button type="button" onClick={() => setConfirmRemove(true)} {...demo} className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            <button type="button" onClick={() => setConfirmRemove(true)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               Remove
             </button>
           </span>

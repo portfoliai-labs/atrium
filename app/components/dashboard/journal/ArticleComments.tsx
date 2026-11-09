@@ -305,7 +305,7 @@ function CommentThread({ article, parentUuid, canWrite, ownArticle, onReport, on
 
 /**
  * COMMENTS — under a published article: the top-level comments, the newest first, each with its
- * replies (one level); a box to comment for anyone who writes (a demo account reads only).
+ * replies (one level); a box to comment for anyone who writes (`canWrite`).
  */
 export function ArticleComments({ article, canWrite, ownArticle, onCount }: {
   article: Article;

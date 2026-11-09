@@ -87,10 +87,10 @@ export const openAssetSettings = (onNavigate: (section: string) => void) => {
 };
 
 export function SettingsSection() {
-  const { user, logout, refreshUser, isDemo } = useUser();
+  const { user, logout, refreshUser } = useUser();
   const { available: walletsAvailable } = useWallets();
-  // Categories only where the wallets are (a backend with them, a demo account's sample data).
-  const hasWallets = user?.role !== "ADVISOR" && (isDemo || walletsAvailable);
+  // Categories only where the wallets are (a backend with them).
+  const hasWallets = user?.role !== "ADVISOR" && walletsAvailable;
   const walletTab = (id: TabId) => id === "categories";
   const tabs = TABS.filter((t) => !walletTab(t.id) || hasWallets);
   const [chosenTab, setActiveTab] = useState<TabId>(() => {
@@ -185,8 +185,7 @@ export function SettingsSection() {
   };
 
   const handleUpdateEmail = async () => {
-    // Supabase, not apiFetch: its read-only guard doesn't cover this one.
-    if (isDemo || !newEmail.trim()) return;
+    if (!newEmail.trim()) return;
     setSavingEmail(true);
     try {
       const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
@@ -203,7 +202,6 @@ export function SettingsSection() {
   };
 
   const handleUpdatePassword = async () => {
-    if (isDemo) return;
     const invalid = newPasswordError(newPassword, confirmPassword);
     if (invalid) {
       setMessage({ type: "error", text: invalid });
@@ -227,7 +225,6 @@ export function SettingsSection() {
   };
 
   const handleDeleteAccount = async () => {
-    if (isDemo) return;
     await userService.deleteAccount();
     logout();
   };
@@ -255,14 +252,6 @@ export function SettingsSection() {
         })}
       </div>
 
-      {isDemo && (
-        <p className="text-xs font-semibold text-[#78716c]">
-          Settings can be looked at but not changed on a demo account: profile, email, password, notifications and the account itself are locked.
-        </p>
-      )}
-
-      {/* Every field and button below is disabled for a demo account (see lib/demo). */}
-      <fieldset disabled={isDemo} className="contents">
       {activeTab === "notifications" && (
         <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-[rgba(196,154,60,0.2)] shadow-sm space-y-2">
           <div className="flex items-center justify-between gap-4 border-b border-[rgba(196,154,60,0.15)] pb-4 mb-2">
@@ -476,9 +465,6 @@ export function SettingsSection() {
         </div>
       )}
 
-      </fieldset>
-
-      {/* Outside the fieldset: a demo account can still open each row (the editors lock their own changes). */}
       {activeTab === "assets" && (
         <div className="space-y-8">
           <div className="space-y-4">

@@ -21,10 +21,7 @@ import { DailyArticleModule } from "./NewsSection";
 import { useOwnAlertRules } from "../../hooks/useAlertRules";
 import { alertState, type AlertState, type AlertTone } from "../../lib/alerts";
 import { useWalletsOverview, type WalletsOverview } from "../../hooks/useWalletsOverview";
-import { useWallets } from "../../context/WalletsContext";
 import { useRealEstateNetWorth, type RealEstateNetWorth } from "../../hooks/useRealEstateNetWorth";
-import { useRealEstate } from "../../context/RealEstateContext";
-import { PreviewBadge } from "../preview/PreviewKit";
 import { WealthBreakdown } from "./WealthBreakdown";
 import { MODULE_BODY, ModuleHead, Module as SummaryModule } from "./PerformanceSection";
 
@@ -38,9 +35,8 @@ type SnapshotState =
 /**
  * DASHBOARD — the whole wealth at a glance, not tied to the selected portfolio: the net worth
  * on top (every portfolio's market value, from the aggregate "All portfolios" or the only
- * portfolio, plus the wallets' balance and the real estate's equity; a demo account's wallets and
- * properties are sample data, see lib/mock), with the portfolios, the wallets and the properties
- * under it as totals, and beside it on a wide enough page the wallets' cash flow (WealthBreakdown);
+ * portfolio, plus the wallets' balance and the real estate's equity), with the portfolios, the
+ * wallets and the properties under it as totals, and beside it on a wide enough page the wallets' cash flow (WealthBreakdown);
  * then two by two: the wallets' cash flow and the payments coming up, every portfolio's alerts
  * and the month's budgets; then the article of the day. Headline figures
  * only: the rest lives in Investments, Cash, accounts and cards and Real estate, which the summaries open. The overview endpoint never mixes history
@@ -217,8 +213,6 @@ function NetWorthModule({
   const moves = useRecentMoves(portfolio?.uuid);
   // The bar's piece under the pointer: its name, kind, value and share over it.
   const [hovered, setHovered] = useState<string | null>(null);
-  const { sample } = useWallets();
-  const { sample: realEstateSample } = useRealEstate();
   const currency = snapshot?.currency ?? wallets?.currency ?? realEstate?.overview?.currency ?? "EUR";
   const investments = snapshot?.totalMarketValue ?? 0;
   const walletsCounted = wallets && wallets.currency === currency ? wallets.balance ?? 0 : 0;
@@ -316,7 +310,6 @@ function NetWorthModule({
           <GroupColumn
             title={LIQUIDITY}
             color={TEAL}
-            badge={sample ? <PreviewBadge label="Sample data" /> : undefined}
             value={wallets.balance === null ? "—" : formatCurrency(wallets.balance, wallets.currency, 0)}
             onOpen={onOpenWallets}
           />
@@ -325,7 +318,6 @@ function NetWorthModule({
           <GroupColumn
             title="Real estate"
             color={ORANGE}
-            badge={realEstateSample ? <PreviewBadge label="Sample data" /> : undefined}
             value={reOverview ? formatCurrency(reOverview.equity, reOverview.currency, 0) : "—"}
             summary={reOverview ? (
               <>
@@ -381,11 +373,10 @@ function Delta({ amount, pct, currency }: { amount: number | null; pct: number |
  * opening its section. `value` null: nothing to show yet, `pending` says why.
  */
 function GroupColumn({
-  title, color, badge, value, pending, summary, onOpen,
+  title, color, value, pending, summary, onOpen,
 }: {
   title: string;
   color: string;
-  badge?: React.ReactNode;
   value: string | null;
   pending?: string;
   summary?: React.ReactNode;
@@ -403,7 +394,6 @@ function GroupColumn({
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
             <span className="h-2 w-2 rounded-full shrink-0" style={{ background: color }} />
             {title}
-            {badge}
           </p>
           {onOpen && <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-[#C49A3C] transition-colors" />}
         </div>

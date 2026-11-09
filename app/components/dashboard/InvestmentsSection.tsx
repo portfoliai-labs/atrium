@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { investmentsKey, useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
-import { useUser } from "../../context/UserContext";
 import { portfoliosService } from "../../services/portfoliosService";
 import { transactionService } from "../../services/transactionService";
 import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
@@ -36,7 +35,6 @@ import { adoptionService } from "../../services/adoptionService";
 import { BacktestBanner } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
 import type { SharedStrategy } from "../../models/AdoptedStrategy";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import { useReadOnly } from "../../hooks/useReadOnly";
 import { TaxesPage } from "./taxes/TaxesPage";
 import { ProjectionPage } from "./projection/ProjectionPage";
@@ -370,7 +368,7 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  *   its run), its transactions generated and read only, and its Insights leave out what a
  *   simulation doesn't have (see PerformanceSection's `backtest`).
  * Under the header, its Insights (PerformanceSection), whose Composition opens
- * each portfolio of All portfolios and whose Realized P&L the investments' Taxes. A demo account sees everything but can't change anything. An advisor on a
+ * each portfolio of All portfolios and whose Realized P&L the investments' Taxes. An advisor on a
  * client's (PortfolioContext's `client`) only reads it: the client changes their own (hooks/useReadOnly);
  * its alerts and adopted strategy are the advisor's, and its Strategy page says whether the client sees it.
  */
@@ -402,7 +400,6 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   onNavigate: (section: string) => void;
 }) {
   const { portfolios, deletePortfolio, client, canManage } = usePortfolio();
-  const { isDemo } = useUser();
   const { lock } = useReadOnly();
   const colorOf = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
   const real = useMemo(() => portfolios.filter((p) => !p.isVirtual), [portfolios]);
@@ -436,14 +433,13 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       }
     },
   };
-  const demo = isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
   // New portfolios are added on the investments' page (a client adds their own).
   const addsPortfolios = isInvestments && !client;
 
   // ── What can be done with it ──
   const actions: PageAction[] = backtest
     ? [
-        { label: canPublish ? "Adopt on a client" : "Adopt this strategy", primary: true, onClick: () => setDialog("adopt"), ...demo },
+        { label: canPublish ? "Adopt on a client" : "Adopt this strategy", primary: true, onClick: () => setDialog("adopt") },
         ...(canPublish ? publication
           ? [
               { label: "Edit the publication", onClick: () => setDialog("publish") },
@@ -452,7 +448,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           : [{ label: "Publish to the catalog", onClick: () => setDialog("publish"), ...(publications === undefined ? { disabled: true } : {}) }]
           : []),
         { label: "Projection", onClick: () => open("projection") },
-        { label: "Delete backtest", danger: true, onClick: () => setDialog("delete"), ...demo },
+        { label: "Delete backtest", danger: true, onClick: () => setDialog("delete") },
       ]
     : portfolio.isAggregate
       ? [

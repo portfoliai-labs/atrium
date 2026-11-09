@@ -9,7 +9,6 @@ import { Toggle } from "./Toggle";
 import { AssetPicker } from "./AssetPicker";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useUser } from "../../context/UserContext";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import { ApiError } from "../../services/apiClient";
 import { listingLine, type Listing } from "../../models/Listing";
 import {
@@ -127,11 +126,11 @@ function simpleRebalanceOf(r: StrategyForm["rebalancing"]): SimpleRebalance | nu
  * asset class through its ETF, a security as it is, see models/Strategy) into a virtual
  * portfolio: read only, kept apart from the real ones and out of the net worth (see
  * BacktestMarks). The page then opens that portfolio, whose figures come in once the backend's
- * job has generated its trades. A demo account can look but not run one.
+ * job has generated its trades.
  */
 export function StrategyBuilder({ trail, onCreated }: { trail: Crumb[]; onCreated: (portfolioUuid: string) => void }) {
   const { createStrategyPortfolio } = usePortfolio();
-  const { user, isDemo } = useUser();
+  const { user } = useUser();
   const currency = user?.currency ?? "EUR";
   const [form, setForm] = useState<StrategyForm>(DEFAULT_FORM);
   // How the mix is made: a ready-made one, or weights of one's own.
@@ -193,7 +192,7 @@ export function StrategyBuilder({ trail, onCreated }: { trail: Crumb[]; onCreate
   const valid = problems.length === 0;
 
   const run = async () => {
-    if (!valid || isDemo) return;
+    if (!valid) return;
     setSubmitting(true);
     setError(null);
     setInvalidKey(null);
@@ -556,19 +555,16 @@ export function StrategyBuilder({ trail, onCreated }: { trail: Crumb[]; onCreate
               />
             </label>
             <p className="text-[13px] text-stone-400">
-              {isDemo
-                ? "Backtests can't be run on a demo account."
-                : valid
-                  ? "Creates a virtual portfolio and opens it. Its figures take a few minutes to come in. With less than a year of prices in common, it can't run."
-                  : problems[0]}
+              {valid
+                ? "Creates a virtual portfolio and opens it. Its figures take a few minutes to come in. With less than a year of prices in common, it can't run."
+                : problems[0]}
             </p>
             {error && <p className="text-[13px] font-bold text-rose-400">{error}</p>}
           </div>
           <button
             type="button"
             onClick={run}
-            disabled={!valid || isDemo || submitting}
-            title={isDemo ? DEMO_DISABLED_TITLE : undefined}
+            disabled={!valid || submitting}
             className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-[#C49A3C] text-[#131210] text-sm font-black hover:bg-[#d4aa4c] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}

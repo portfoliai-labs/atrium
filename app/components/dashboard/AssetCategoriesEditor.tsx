@@ -18,7 +18,7 @@ import type { AssetCategoryEntry } from "../../models/AssetCategory";
  * suggestion" drops the correction (DELETE). Securities without a category come first,
  * highlighted: they count towards no category. Corrections on securities no longer held are kept,
  * listed apart at the foot. With `clientUuid`, an advisor's view of a client's, to read: the client
- * alone corrects them. A demo account sees them but can't change them either (hooks/useReadOnly).
+ * alone corrects them (hooks/useReadOnly).
  */
 export function AssetCategoriesEditor({ clientUuid }: { clientUuid?: string }) {
   const { title: lockedBy } = useReadOnly(clientUuid);

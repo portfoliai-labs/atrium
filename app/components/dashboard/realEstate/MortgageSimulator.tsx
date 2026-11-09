@@ -13,7 +13,6 @@ import type {
   RateIndex, RefinancingSimulation, RefinancingSimulationRequest, ScheduleOutlook,
 } from "../../../models/RealEstate";
 import { Pills } from "../../preview/PreviewKit";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { DialogShell, Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
 import { Percent } from "./NewPropertyFields";
 
@@ -56,7 +55,7 @@ function optionalAmount(text: string): string | null | undefined {
  * stored until it's recorded: a prepayment as a mortgage_prepayment transaction (on the day it's
  * paid); a refinancing by closing this mortgage on the day and adding the new one for what's owed.
  * A variable rate is taken as today's for the whole term; the savings are before the deduction on
- * mortgage interest. A demo account's works out on the sample and records nothing.
+ * mortgage interest.
  */
 export function MortgageSimulatorDialog({ property, mortgage, readOnly, onClose, onRecorded }: {
   property: Property;
@@ -65,7 +64,7 @@ export function MortgageSimulatorDialog({ property, mortgage, readOnly, onClose,
   onClose: () => void;
   onRecorded: () => void;
 }) {
-  const { source, sample } = useRealEstate();
+  const { source } = useRealEstate();
   const [mode, setMode] = useState<Mode>("prepay");
   const [day, setDay] = useState(today());
   const [costs, setCosts] = useState("");
@@ -244,7 +243,6 @@ export function MortgageSimulatorDialog({ property, mortgage, readOnly, onClose,
           {!readOnly && mode === "refinance" && (
             <p className="text-[11.5px] text-slate-500">Recording it closes this mortgage on {dayLabel(day)} and adds the new one for what&apos;s owed then.</p>
           )}
-          {sample && <p className="text-[11.5px] text-slate-500">{DEMO_DISABLED_TITLE}: worked out on the sample, nothing is recorded.</p>}
         </div>
       )}
     </DialogShell>

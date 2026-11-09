@@ -13,8 +13,7 @@ import type { Category, Wallet, WalletSummary } from "../models/Wallet";
  * WALLETS CONTEXT — an investor's wallets, loaded once for the dashboard: the Dashboard, Wealth, the
  * Sidebar's rows under Wealth and the wallet pages read the same list, archived wallets included,
  * and the same category tree (the user's categories, which name and colour every figure).
- * A demo account reads its own from the API like any other (arca's demo data), read only. Every
- * wallets' read is in the query cache (context/QueryContext) under a ["wallets", ...] key
+ * Every wallets' read is in the query cache (context/QueryContext) under a ["wallets", ...] key
  * (useWalletQuery), shared by the modules and pages that ask for it: after any write, `changed()`
  * invalidates them all, the list too (balances move with every movement), and what's on screen is
  * read again, staying up meanwhile. Empty, and never loaded, for an advisor.
@@ -33,8 +32,6 @@ interface WalletsContextType {
   // Whether the wallets can be shown at all: false while the API doesn't have them (a backend
   // without /v1/wallets answers 404), and for an advisor.
   available: boolean;
-  // A demo account's: its sample data, read only, and said so.
-  sample: boolean;
   source: WalletSource;
   changed: () => void;
 }
@@ -49,9 +46,8 @@ const NO_CATEGORIES: Category[] = [];
 const message = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback);
 
 export function WalletsProvider({ children }: { children: React.ReactNode }) {
-  const { user, isDemo } = useUser();
+  const { user } = useUser();
   const enabled = !!user && user.role !== "ADVISOR";
-  const sample = enabled && isDemo;
   const queryClient = useQueryClient();
   const list = useQuery({ queryKey: walletKey("list"), queryFn: () => walletService.list(true), enabled });
   // Apart from the wallets: a page shows without them, its categories as their presets.
@@ -84,10 +80,9 @@ export function WalletsProvider({ children }: { children: React.ReactNode }) {
     loading,
     error,
     available: enabled && !missing,
-    sample,
     source: apiWalletSource,
     changed,
-  }), [sample, wallets, categories, categoriesError, categoryAdded, loading, error, enabled, missing, changed]);
+  }), [wallets, categories, categoriesError, categoryAdded, loading, error, enabled, missing, changed]);
   return <WalletsContext.Provider value={value}>{children}</WalletsContext.Provider>;
 }
 

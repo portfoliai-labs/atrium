@@ -13,10 +13,10 @@ const formatDate = (iso: string) =>
  * (ReportKinds) with the kind's name, then its name, what it belongs to (a portfolio, a wallet, in
  * its colour), the day it was generated and its tags. With `href`, the cover and the name open
  * it; with `onDownload`, the button on the cover downloads it (without, the button says it's
- * coming soon). `readOnly`: tags shown only.
+ * coming soon).
  */
 export function ReportFileTile({
-  name, cover, kindLabel, ownerName, color, createdAt, tags, href, downloading = false, readOnly, onDownload, onAddTag, onRemoveTag,
+  name, cover, kindLabel, ownerName, color, createdAt, tags, href, downloading = false, onDownload, onAddTag, onRemoveTag,
 }: {
   name: string;
   cover: ReportKindId;
@@ -27,7 +27,6 @@ export function ReportFileTile({
   tags: string[];
   href?: string;
   downloading?: boolean;
-  readOnly: boolean;
   onDownload?: () => void;
   onAddTag: (tag: string) => void;
   onRemoveTag: (tag: string) => void;
@@ -89,14 +88,12 @@ export function ReportFileTile({
           {tags.map((tag) => (
             <span key={tag} className="flex items-center gap-1 pl-2 pr-1.5 py-0.5 rounded-md bg-[#C49A3C]/10 text-[#8a6a22] text-[11px] font-bold">
               {tag}
-              {!readOnly && (
-                <button type="button" onClick={() => onRemoveTag(tag)} aria-label={`Remove tag ${tag}`} className="text-[#C49A3C] hover:text-rose-600 transition-colors">
-                  <X className="h-3 w-3" />
-                </button>
-              )}
+              <button type="button" onClick={() => onRemoveTag(tag)} aria-label={`Remove tag ${tag}`} className="text-[#C49A3C] hover:text-rose-600 transition-colors">
+                <X className="h-3 w-3" />
+              </button>
             </span>
           ))}
-          {!readOnly && (tagging ? (
+          {tagging ? (
             <span className="flex items-center gap-1">
               <input
                 autoFocus
@@ -123,7 +120,7 @@ export function ReportFileTile({
             >
               <Plus className="h-3 w-3" /> Tag
             </button>
-          ))}
+          )}
         </div>
       </div>
     </div>

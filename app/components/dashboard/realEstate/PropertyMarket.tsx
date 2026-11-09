@@ -4,12 +4,12 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, MapPin } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useRealEstate, useRealEstateRead } from "../../../context/RealEstateContext";
+import { useRealEstateRead } from "../../../context/RealEstateContext";
 import { formatCurrency } from "../../../lib/format";
 import { SALES_SEGMENT_LABELS, VALUATION_SOURCE_LABELS } from "../../../lib/realEstate";
 import type { MarketQuotation, MarketSales, MarketSemester, MarketTrend, Property, PropertyMarket } from "../../../models/RealEstate";
 import { Fig, Figs, MODULE_BODY, Module, ModuleHead, NoteS } from "../PerformanceSection";
-import { AXIS_TICK, PreviewBadge, TOOLTIP_STYLE } from "../../preview/PreviewKit";
+import { AXIS_TICK, TOOLTIP_STYLE } from "../../preview/PreviewKit";
 
 const MISSING_TEXT: Record<string, string> = {
   "address.location": "the address's location",
@@ -38,7 +38,6 @@ const surfaceText = (s: MarketQuotation["saleSurface"]) => (s === "net" ? "net m
  * municipality.
  */
 export function PropertyMarketModule({ property, readOnly, onEdit }: { property: Property; readOnly: boolean; onEdit: () => void }) {
-  const { sample } = useRealEstate();
   const market = useRealEstateRead<PropertyMarket>(["market", property.uuid], (source) => source.market(property.uuid));
   // Nothing to say where there's no source (or the API has no market yet).
   if (market === null || market?.status === "no_source") return null;
@@ -63,7 +62,6 @@ export function PropertyMarketModule({ property, readOnly, onEdit }: { property:
       <ModuleHead
         title="The zone's market"
         desc={quotation ? `Its zone's indicative range, ${semesterText(quotation.semester)}: not an appraisal.` : "Its zone's indicative range: not an appraisal."}
-        right={sample ? <PreviewBadge label="Sample" /> : undefined}
       />
       <div className={`${MODULE_BODY} space-y-5`}>
         {market === undefined ? (
@@ -131,11 +129,9 @@ export function PropertyMarketModule({ property, readOnly, onEdit }: { property:
           </>
         )}
         {market?.sales && market.sales.years.length > 0 && <Sales sales={market.sales} />}
-        {market && (market.attribution || sample) && (
+        {market?.attribution && (
           <NoteS className="text-[10.5px]">
-            {market.attribution
-              ? <>Source: {market.attribution} (CC BY 4.0).{quotation && " Indicative ranges for the zone, not an appraisal of this property."}</>
-              : "Sample figures, made up for the demo: not the OMI's."}
+            Source: {market.attribution} (CC BY 4.0).{quotation && " Indicative ranges for the zone, not an appraisal of this property."}
           </NoteS>
         )}
       </div>

@@ -25,7 +25,7 @@ export const portfoliosService = {
   // POST /v1/portfolios/strategies {name, strategy} — 201 with a virtual portfolio, still empty:
   // its transactions are generated in the background (see models/Strategy). 422 when the
   // strategy doesn't add up or a security can't be resolved (InvalidFieldError, the target in the
-  // detail), 409 if the name is taken; refused for a demo account.
+  // detail), 409 if the name is taken.
   async createStrategy(payload: StrategyPortfolioPayload): Promise<Portfolio> {
     return apiFetch<Portfolio>("/v1/portfolios/strategies", {
       method: "POST",

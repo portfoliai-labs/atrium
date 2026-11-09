@@ -23,7 +23,7 @@ const GREETING_MS = 4000;
 const TIER_LABEL: Record<SubscriptionTier, string> = {
   FREE: 'Free Plan',
   TESTER: 'Tester',
-  DEMO: 'Demo',
+  SELF_HOSTED: 'Self-hosted',
 };
 
 interface DashboardHeaderProps {
@@ -51,7 +51,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
   // Read as the menu opens, shared with the Subscription page.
   const subscription = useAccountQuery(["subscription"], () => userService.getSubscription(), { enabled: isSubscriptionOpen });
 
-  const { user, isDemo } = useUser();
+  const { user } = useUser();
 
   // The greeting, only right after signing in (completeAuth marks it): shown once the user's name
   // is known, then gone. The mark is cleared on reading, so a reload doesn't greet again.
@@ -151,8 +151,8 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
           />
         )}
 
-        {/* The AI assistant: a new chat with it, in Messages. Not a demo account's. */}
-        {onOpenPage && !isDemo && (
+        {/* The AI assistant: a new chat with it, in Messages. */}
+        {onOpenPage && (
           <button
             onClick={() => onOpenPage("messages", aiChatView())}
             title="Ask the AI assistant"

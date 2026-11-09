@@ -7,17 +7,15 @@ import { useUser } from "./UserContext";
 import { ApiError } from "../services/apiClient";
 import { realEstateService } from "../services/realEstateService";
 import { apiRealEstateSource, type RealEstateSource } from "../lib/realEstate";
-import { DEMO_PROPERTIES, demoRealEstateSource } from "../lib/mock/realEstate";
 import type { Property, RealEstateOverview, RealEstateSummary } from "../models/RealEstate";
 
 /**
  * REAL ESTATE CONTEXT — an investor's properties, loaded once for the dashboard: Wealth, the
- * Sidebar and the real estate pages read the same list, archived properties included. A demo
- * account's are the sample data (lib/mock/realEstate), read only. Every real estate read is in the
- * query cache (context/QueryContext) under a ["realEstate", ...] key (useRealEstateQuery), shared
- * by the modules and pages that ask for it: after any write, `changed()` invalidates them all, the
- * list too (the figures move with every transaction), and what's on screen is read again, staying
- * up meanwhile. Empty, and never loaded, for an advisor.
+ * Sidebar and the real estate pages read the same list, archived properties included. Every real
+ * estate read is in the query cache (context/QueryContext) under a ["realEstate", ...] key
+ * (useRealEstateQuery), shared by the modules and pages that ask for it: after any write,
+ * `changed()` invalidates them all, the list too (the figures move with every transaction), and
+ * what's on screen is read again, staying up meanwhile. Empty, and never loaded, for an advisor.
  */
 interface RealEstateContextType {
   // As the API lists them, archived included.
@@ -27,8 +25,6 @@ interface RealEstateContextType {
   // Whether the real estate can be shown at all: false while the API doesn't have it (a backend
   // without /v1/real-estate answers 404), and for an advisor.
   available: boolean;
-  // A demo account's sample data: read only, and said so.
-  sample: boolean;
   source: RealEstateSource;
   changed: () => void;
 }
@@ -41,30 +37,28 @@ export const realEstateKey = (...parts: unknown[]) => ["realEstate", ...parts];
 const NO_PROPERTIES: Property[] = [];
 
 export function RealEstateProvider({ children }: { children: React.ReactNode }) {
-  const { user, isDemo } = useUser();
+  const { user } = useUser();
   const enabled = !!user && user.role !== "ADVISOR";
-  const sample = enabled && isDemo;
   const queryClient = useQueryClient();
-  const list = useQuery({ queryKey: realEstateKey("list"), queryFn: () => realEstateService.list(true), enabled: enabled && !sample });
+  const list = useQuery({ queryKey: realEstateKey("list"), queryFn: () => realEstateService.list(true), enabled });
 
   const missing = list.error instanceof ApiError && list.error.status === 404;
   const error = list.error && !missing
     ? (list.error instanceof Error ? list.error.message : "Unable to load your properties.")
     : null;
   // Loading until the first answer only: a reload after a write keeps the pages up.
-  const loading = enabled && !sample && list.isPending;
+  const loading = enabled && list.isPending;
   const changed = useCallback(() => { void queryClient.invalidateQueries({ queryKey: realEstateKey() }); }, [queryClient]);
-  const properties = sample ? DEMO_PROPERTIES : list.data ?? NO_PROPERTIES;
+  const properties = list.data ?? NO_PROPERTIES;
 
   const value = useMemo<RealEstateContextType>(() => ({
     properties,
     loading,
     error,
     available: enabled && !missing,
-    sample,
-    source: sample ? demoRealEstateSource : apiRealEstateSource,
+    source: apiRealEstateSource,
     changed,
-  }), [sample, properties, loading, error, enabled, missing, changed]);
+  }), [properties, loading, error, enabled, missing, changed]);
   return <RealEstateContext.Provider value={value}>{children}</RealEstateContext.Provider>;
 }
 
