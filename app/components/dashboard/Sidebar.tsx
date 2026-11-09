@@ -128,8 +128,8 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
         </nav>
 
 
-        {/* Nothing to upgrade for a tester, nor on a self-hosted install (every feature). */}
-        {subscriptionTier !== 'TESTER' && subscriptionTier !== 'SELF_HOSTED' && collapsed && (
+        {/* Nothing to upgrade on a self-hosted install (every feature). */}
+        {subscriptionTier !== 'SELF_HOSTED' && collapsed && (
           // Narrow: the upgrade as its icon.
           <div className="hidden lg:flex justify-center p-3 border-t border-white/10">
             <button
@@ -142,7 +142,7 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
             </button>
           </div>
         )}
-        {subscriptionTier !== 'TESTER' && subscriptionTier !== 'SELF_HOSTED' && (
+        {subscriptionTier !== 'SELF_HOSTED' && (
           <div className={`p-5 border-t border-white/10 ${wide}`}>
             <div className="bg-[#131210] p-5 rounded-[1.5rem] border border-[#C49A3C]/20 text-white relative overflow-hidden">
               <div className="absolute -top-10 -right-10 w-24 h-24 bg-[#C49A3C]/10 blur-2xl rounded-full" />

@@ -1,21 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
-import Script from "next/script";
-import { Crown, FlaskConical, Loader2 } from "lucide-react";
+import { Crown, Loader2 } from "lucide-react";
 import { userService } from "../../services/userService";
 import { useAccountRead } from "../../hooks/useAccountQuery";
 import { PageHeader } from "./PageHeader";
 import SubscriptionSection from "./SubscriptionSection";
 
-// Tally form used for tester applications: https://tally.so/r/QKWeYg
-const TESTER_APPLICATION_FORM_ID = "QKWeYg";
-
 /**
  * SUBSCRIPTION — the user's plan, a section of its own (once Settings' first tab), opened from the
- * plan's button in the top bar's account menu and from the Sidebar's upgrade: the current plan,
- * the way to become a tester while on the free one, and the plans to move to. A link with
- * `#pricing` scrolls down to the plans.
+ * plan's button in the top bar's account menu and from the Sidebar's upgrade: the current plan
+ * and the plans to move to. A link with `#pricing` scrolls down to the plans.
  */
 export function SubscriptionPage() {
   // Shared with the top bar's account menu.
@@ -34,7 +29,6 @@ export function SubscriptionPage() {
 
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-500">
-      <Script src="https://tally.so/widgets/embed.js" strategy="lazyOnload" />
       <PageHeader eyebrow="Account" title="Subscription" note="Your plan, and the plans you can move to." />
 
       {/* Current plan */}
@@ -62,36 +56,10 @@ export function SubscriptionPage() {
         )}
       </div>
 
-      {/* Tester program CTA — only relevant while still on the free tier */}
-      {!loading && subscription?.tier === "FREE" && (
-        <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-[rgba(196,154,60,0.2)] shadow-sm flex flex-col sm:flex-row sm:items-center gap-5 sm:gap-6">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-[#C49A3C]/10 shrink-0">
-            <FlaskConical className="w-6 h-6 text-[#C49A3C]" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-bold text-[#1c1917]">Want to become a tester?</p>
-            <p className="text-xs text-[#78716c] mt-0.5">
-              Fill out a short form and we&apos;ll review your request for early, unlimited access.
-            </p>
-          </div>
-          <button
-            data-tally-open={TESTER_APPLICATION_FORM_ID}
-            data-tally-layout="modal"
-            data-tally-width="600"
-            data-tally-emoji-text="🧪"
-            data-tally-emoji-animation="wave"
-            className="shrink-0 px-5 py-2.5 bg-[#1c1917] text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-[#C49A3C] transition-colors"
-          >
-            Apply Now
-          </button>
-        </div>
-      )}
-
-      {/* Available plans — testers already have the best available access, nothing to upgrade to,
-          and so does a self-hosted install (every feature). Waits on `loading` too: subscription
-          is null until the fetch resolves, so checking tier alone would flash the table on for a
-          moment before hiding it for testers. */}
-      {!loading && subscription?.tier !== "TESTER" && subscription?.tier !== "SELF_HOSTED" && <SubscriptionSection />}
+      {/* Available plans — nothing to upgrade to on a self-hosted install (every feature). Waits on
+          `loading` too: subscription is null until the fetch resolves, so checking tier alone would
+          flash the table on for a moment before hiding it. */}
+      {!loading && subscription?.tier !== "SELF_HOSTED" && <SubscriptionSection />}
     </div>
   );
 }
