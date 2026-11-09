@@ -47,7 +47,7 @@ type Row =
 /**
  * MESSAGES — every chat in one list, the last active first: the ones between an advisor and each
  * of their clients (colloquium, through ianus), and the user's with the AI assistant, on their own
- * data (kind assistant; not a demo account's), started from the list's first row
+ * data (kind assistant), started from the list's first row
  * (New chat with the assistant), the top bar's ✨ or a widget's (AiHelpButton): a new one open, see
  * readAiChatView. Both kinds look alike.
  * - With a person: opens when the advisor takes the client on (an accepted request's message is
@@ -58,19 +58,19 @@ type Row =
  * New messages, the other party's reads and changes to the chats arrive live (SSE).
  */
 export function MessagesSection() {
-  const { user, isDemo } = useUser();
+  const { user } = useUser();
   const me = user?.uuid ?? "";
   const isAdvisor = user?.role === "ADVISOR";
 
   const queryClient = useQueryClient();
   const peopleQuery = useQuery({ queryKey: messagesKey("people"), queryFn: () => conversationService.list(), staleTime: 0 });
   const chatsQuery = useQuery({
-    queryKey: messagesKey("assistant"), queryFn: () => conversationService.listAssistant(), enabled: !isDemo, staleTime: 0,
+    queryKey: messagesKey("assistant"), queryFn: () => conversationService.listAssistant(), staleTime: 0,
   });
   const people = peopleQuery.data ?? NO_PEOPLE;
   const chats = chatsQuery.data ?? NO_CHATS;
   const loadingPeople = peopleQuery.isPending;
-  const loadingChats = !isDemo && chatsQuery.isPending;
+  const loadingChats = chatsQuery.isPending;
   // Changes to either list, from the stream or this page's own writes, made in the cache.
   const setPeople = useCallback((change: (list: Conversation[]) => Conversation[]) => {
     queryClient.setQueryData<Conversation[]>(messagesKey("people"), (list) => list && change(list));
@@ -79,7 +79,7 @@ export function MessagesSection() {
     queryClient.setQueryData<AssistantConversation[]>(messagesKey("assistant"), (list) => list && change(list));
   }, [queryClient]);
   // Opened on a new AI chat (the top bar's AI button, or a widget's, with its question).
-  const [opening] = useState(() => (isDemo ? null : readAiChatView(readDashboardEntry()?.view)));
+  const [opening] = useState(() => readAiChatView(readDashboardEntry()?.view));
   const [selected, setSelected] = useState<Selected | null>(() => (opening ? { kind: "ai", uuid: crypto.randomUUID() } : null));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -94,7 +94,8 @@ export function MessagesSection() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // The collection open in place of a chat, read again once the assistant makes something.
   const [showCollection, setShowCollection] = useState(false);
-  const collection = useCollection(!isAdvisor && !isDemo);
+  // An advisor's too: the reports they asked for, on their clients' portfolios, are theirs.
+  const collection = useCollection();
   const selectedRef = useRef<Selected | null>(selected);
   // The chats listed, by kind, for the stream.
   const peopleRef = useRef<Set<string>>(new Set());
@@ -273,7 +274,7 @@ export function MessagesSection() {
           if (isPerson(message.conversationUuid)) receivedFromPerson(message);
           else if (isChat(message.conversationUuid)) receivedFromAi(message);
           // An answer in an AI chat opened elsewhere: it's listed now.
-          else if (message.senderUuid === null && !isDemo) loadChats();
+          else if (message.senderUuid === null) loadChats();
           return;
         }
         case "read":
@@ -291,7 +292,7 @@ export function MessagesSection() {
             if (event.answering !== undefined) change.answering = event.answering;
             patchChat(event.conversationUuid, change);
           } else if (event.kind === "assistant" || event.title !== undefined) {
-            if (!isDemo) loadChats();
+            loadChats();
           } else {
             // A conversation with a person opening.
             loadPeople();
@@ -336,7 +337,7 @@ export function MessagesSection() {
         source.onopen = () => {
           if (connectedBefore) {
             loadPeople();
-            if (!isDemo) loadChats();
+            loadChats();
             const open = selectedRef.current;
             if (open && (peopleRef.current.has(open.uuid) || chatsRef.current.has(open.uuid))) loadThread(open);
           }
@@ -365,7 +366,7 @@ export function MessagesSection() {
       if (retry) clearTimeout(retry);
       window.removeEventListener("auth-unauthorized", handleUnauthorized);
     };
-  }, [me, isDemo, receivedFromPerson, receivedFromAi, applyPiece, applyAction, dropDraft, patchChat, loadPeople, loadChats, loadThread, setPeople, setChats]);
+  }, [me, receivedFromPerson, receivedFromAi, applyPiece, applyAction, dropDraft, patchChat, loadPeople, loadChats, loadThread, setPeople, setChats]);
 
   const isAi = selected?.kind === "ai";
   // An answer's action, as a card the user confirms or cancels in this chat.
@@ -526,7 +527,7 @@ export function MessagesSection() {
         </h2>
         <p className="text-sm text-[#78716c]">
           {isAdvisor ? "Your conversations with your clients." : "Your advisor"}
-          {!isAdvisor && (isDemo ? ", once one accepts your request." : ", once one accepts your request, and the AI assistant on your own data.")}
+          {!isAdvisor && ", once one accepts your request, and the AI assistant on your own data."}
         </p>
       </div>
 
@@ -536,242 +537,230 @@ export function MessagesSection() {
         </p>
       )}
 
-      {rows.length === 0 && isDemo ? (
-        <p className={`${CARD_CLASS} p-6 md:p-8 text-sm text-[#78716c]`}>
-          {isAdvisor
-            ? "No conversations yet: accept a request, or add a client, to start one."
-            : "No conversations yet. Find an advisor and send them a request: once they accept, you can write to each other here."}
-        </p>
-      ) : (
-        <div className={`${CARD_CLASS} flex-1 min-h-0 overflow-hidden grid md:grid-cols-[17rem_1fr]`}>
-          <aside className={`${selected || showCollection ? "hidden md:flex" : "flex"} flex-col min-h-0 border-r border-[rgba(196,154,60,0.15)]`}>
-            {/* What's always there, apart from the conversations: a new chat with the AI, and its collection. */}
-            {!isDemo && (
-              <div className="p-3 space-y-1">
-                <button onClick={newAiChat} className={rowClass(isNewChat)}>
-                  <Plus className="w-4 h-4 shrink-0 text-[#C49A3C]" />
-                  <span className="flex-1 font-semibold text-[#1c1917]">New chat</span>
-                </button>
-                {!isAdvisor && (
-                  <button onClick={() => { select(null); setShowCollection(true); }} className={rowClass(showCollection)}>
-                    <Library className="w-4 h-4 shrink-0 text-[#C49A3C]" />
-                    <span className="flex-1 font-semibold text-[#1c1917]">Collection</span>
-                    {collection && collection.items.length > 0 && (
-                      <span className="text-xs font-semibold text-[#78716c] tabular-nums">{collection.items.length}</span>
-                    )}
-                  </button>
-                )}
-              </div>
-            )}
-            <div className={`flex-1 min-h-0 overflow-y-auto px-3 pb-3 ${isDemo ? "pt-3" : "border-t border-[rgba(196,154,60,0.15)] pt-3"}`}>
-              {!isDemo && rows.length > 0 && <p className="px-3 pb-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-[#857e78]">Recent</p>}
-              <ul className="space-y-0.5">
-                {rows.map((row) => {
-                  const active = row.conversation.conversationUuid === selected?.uuid;
-                  if (row.kind === "people") {
-                    const conversation = row.conversation;
-                    return (
-                      <li key={conversation.conversationUuid}>
-                        <button onClick={() => open({ kind: "people", uuid: conversation.conversationUuid })} className={`${rowClass(active)} items-start`}>
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-center justify-between gap-2">
-                              <span className="font-semibold text-[#1c1917] truncate">{fullName(conversation.counterpart)}</span>
-                              {conversation.unreadCount > 0 && (
-                                <span className="text-xs font-bold bg-[#C49A3C] text-white rounded-full px-2 py-0.5 leading-none">{conversation.unreadCount}</span>
-                              )}
-                            </span>
-                            <span className="block text-xs text-[#78716c] truncate mt-0.5">
-                              {conversation.status === "closed" && <Lock className="inline w-3 h-3 mr-1 -mt-0.5" />}
-                              {conversation.lastMessage
-                                ? `${conversation.lastMessage.senderUuid === me ? "You: " : ""}${conversation.lastMessage.text}`
-                                : "No messages yet"}
-                            </span>
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  }
+      <div className={`${CARD_CLASS} flex-1 min-h-0 overflow-hidden grid md:grid-cols-[17rem_1fr]`}>
+        <aside className={`${selected || showCollection ? "hidden md:flex" : "flex"} flex-col min-h-0 border-r border-[rgba(196,154,60,0.15)]`}>
+          {/* What's always there, apart from the conversations: a new chat with the AI, and its collection. */}
+          <div className="p-3 space-y-1">
+            <button onClick={newAiChat} className={rowClass(isNewChat)}>
+              <Plus className="w-4 h-4 shrink-0 text-[#C49A3C]" />
+              <span className="flex-1 font-semibold text-[#1c1917]">New chat</span>
+            </button>
+            <button onClick={() => { select(null); setShowCollection(true); }} className={rowClass(showCollection)}>
+              <Library className="w-4 h-4 shrink-0 text-[#C49A3C]" />
+              <span className="flex-1 font-semibold text-[#1c1917]">Collection</span>
+              {collection && collection.items.length > 0 && (
+                <span className="text-xs font-semibold text-[#78716c] tabular-nums">{collection.items.length}</span>
+              )}
+            </button>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3 border-t border-[rgba(196,154,60,0.15)] pt-3">
+            {rows.length > 0 && <p className="px-3 pb-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-[#857e78]">Recent</p>}
+            <ul className="space-y-0.5">
+              {rows.map((row) => {
+                const active = row.conversation.conversationUuid === selected?.uuid;
+                if (row.kind === "people") {
                   const conversation = row.conversation;
                   return (
-                    <li key={conversation.conversationUuid} className="group relative">
-                      <button onClick={() => open({ kind: "ai", uuid: conversation.conversationUuid })} className={`${rowClass(active)} pr-10`}>
-                        <Sparkles className="w-3.5 h-3.5 shrink-0 text-[#C49A3C]" />
-                        <span className="min-w-0 flex-1 font-semibold text-[#1c1917] truncate">
-                          {conversation.answering ? "The assistant is writing…" : conversation.title ?? "New chat"}
+                    <li key={conversation.conversationUuid}>
+                      <button onClick={() => open({ kind: "people", uuid: conversation.conversationUuid })} className={`${rowClass(active)} items-start`}>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-[#1c1917] truncate">{fullName(conversation.counterpart)}</span>
+                            {conversation.unreadCount > 0 && (
+                              <span className="text-xs font-bold bg-[#C49A3C] text-white rounded-full px-2 py-0.5 leading-none">{conversation.unreadCount}</span>
+                            )}
+                          </span>
+                          <span className="block text-xs text-[#78716c] truncate mt-0.5">
+                            {conversation.status === "closed" && <Lock className="inline w-3 h-3 mr-1 -mt-0.5" />}
+                            {conversation.lastMessage
+                              ? `${conversation.lastMessage.senderUuid === me ? "You: " : ""}${conversation.lastMessage.text}`
+                              : "No messages yet"}
+                          </span>
                         </span>
-                      </button>
-                      <button
-                        onClick={() => { setDeleteError(null); setDeleting(conversation); }}
-                        title="Delete this chat"
-                        aria-label="Delete this chat"
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-[#857e78] hover:text-rose-600 hover:bg-rose-50 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </li>
                   );
-                })}
-              </ul>
-            </div>
-          </aside>
+                }
+                const conversation = row.conversation;
+                return (
+                  <li key={conversation.conversationUuid} className="group relative">
+                    <button onClick={() => open({ kind: "ai", uuid: conversation.conversationUuid })} className={`${rowClass(active)} pr-10`}>
+                      <Sparkles className="w-3.5 h-3.5 shrink-0 text-[#C49A3C]" />
+                      <span className="min-w-0 flex-1 font-semibold text-[#1c1917] truncate">
+                        {conversation.answering ? "The assistant is writing…" : conversation.title ?? "New chat"}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => { setDeleteError(null); setDeleting(conversation); }}
+                      title="Delete this chat"
+                      aria-label="Delete this chat"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-[#857e78] hover:text-rose-600 hover:bg-rose-50 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </aside>
 
-          {showCollection ? (
-            <div className="flex flex-col min-h-0 min-w-0">
-              <div className="flex items-center gap-3 px-5 py-3 border-b border-[rgba(196,154,60,0.15)]">
-                <button onClick={() => setShowCollection(false)} className="md:hidden text-[#78716c]" aria-label="Back to your conversations">
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
+        {showCollection ? (
+          <div className="flex flex-col min-h-0 min-w-0">
+            <div className="flex items-center gap-3 px-5 py-3 border-b border-[rgba(196,154,60,0.15)]">
+              <button onClick={() => setShowCollection(false)} className="md:hidden text-[#78716c]" aria-label="Back to your conversations">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="min-w-0">
+                <p className="font-bold text-[#1c1917]">Collection</p>
+                <p className="text-xs text-[#78716c] truncate">What the assistant can make for you, kept in one place: for now, your reports.</p>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto bg-[#FBFAF6] py-6">
+              <div className={COLUMN}><AssistantCollection library={collection} /></div>
+            </div>
+          </div>
+        ) : selected && (person || isAi) ? (
+          <div className="flex flex-col min-h-0 min-w-0">
+            <div className="flex items-center gap-3 px-5 py-3 border-b border-[rgba(196,154,60,0.15)]">
+              <button onClick={() => select(null)} className="md:hidden text-[#78716c]" aria-label="Back to your conversations">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              {person ? (
                 <div className="min-w-0">
-                  <p className="font-bold text-[#1c1917]">Collection</p>
-                  <p className="text-xs text-[#78716c] truncate">What the assistant can make for you, kept in one place: for now, your reports.</p>
+                  <p className="font-bold text-[#1c1917] truncate">{fullName(person.counterpart)}</p>
+                  <p className="text-xs text-[#78716c]">{person.counterpart.role === "advisor" ? "Your advisor" : "Your client"}</p>
                 </div>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto bg-[#FBFAF6] py-6">
-                <div className={COLUMN}><AssistantCollection library={collection} /></div>
-              </div>
-            </div>
-          ) : selected && (person || isAi) ? (
-            <div className="flex flex-col min-h-0 min-w-0">
-              <div className="flex items-center gap-3 px-5 py-3 border-b border-[rgba(196,154,60,0.15)]">
-                <button onClick={() => select(null)} className="md:hidden text-[#78716c]" aria-label="Back to your conversations">
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
-                {person ? (
-                  <div className="min-w-0">
-                    <p className="font-bold text-[#1c1917] truncate">{fullName(person.counterpart)}</p>
-                    <p className="text-xs text-[#78716c]">{person.counterpart.role === "advisor" ? "Your advisor" : "Your client"}</p>
-                  </div>
-                ) : (
-                  <>
-                    <p className="flex-1 min-w-0 font-bold text-[#1c1917] truncate">{chat?.title ?? "New chat"}</p>
-                    {chat && (
-                      <button
-                        onClick={() => { setDeleteError(null); setDeleting(chat); }}
-                        title="Delete this chat"
-                        aria-label="Delete this chat"
-                        className="p-2 rounded-lg text-[#857e78] hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <div className="flex-1 min-h-0 overflow-y-auto bg-[#FBFAF6]">
-                {isNewChat && messages.length === 0 ? (
-                  // A new chat: what it's for, in the middle of the room it has.
-                  <div className={`${COLUMN} h-full flex flex-col items-center justify-center text-center py-10`}>
-                    <span className="w-12 h-12 rounded-2xl bg-[#C49A3C]/10 text-[#C49A3C] flex items-center justify-center mb-4">
-                      <Sparkles className="w-6 h-6" />
-                    </span>
-                    <p className="text-2xl font-bold text-[#1c1917]" style={SERIF}>What would you like to know?</p>
-                    <p className="text-sm text-[#78716c] mt-2 max-w-md">
-                      Ask about your portfolios, wallets, properties or spending: the assistant reads your own data to answer.
-                    </p>
-                  </div>
-                ) : (
-                  <div className={`${COLUMN} py-6 space-y-5`}>
-                    {loadingThread && <Loader2 className="w-5 h-5 animate-spin text-[#C49A3C] mx-auto" />}
-                    {hasMore && (
-                      <button onClick={loadEarlier} className="block mx-auto text-xs font-semibold text-[#C49A3C] hover:underline">
-                        Load earlier messages
-                      </button>
-                    )}
-                    {messages.map((message) => {
-                      if (isAi) {
-                        return message.senderUuid === null
-                          ? <Answer key={message.messageUuid} blocks={message.blocks} sentAt={message.sentAt} stop={message.answerStop} renderAction={renderAction} />
-                          : <Question key={message.messageUuid} message={message} />;
-                      }
-                      const mine = message.senderUuid === me;
-                      return (
-                        <div key={message.messageUuid} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
-                          {message.advisorRequestUuid && (
-                            <span className="text-[11px] uppercase tracking-wide text-[#857e78] mb-1">Sent with the request</span>
-                          )}
-                          <div className={`max-w-[85%] rounded-3xl px-4 py-2.5 text-sm whitespace-pre-line ${
-                            mine ? "bg-[#1c1917] text-white" : "bg-white border border-[rgba(196,154,60,0.2)] text-[#1c1917]"
-                          }`}>
-                            {message.text}
-                          </div>
-                          <span className="text-[11px] text-[#857e78] mt-1 flex items-center gap-1">
-                            {formatTime(message.sentAt)}
-                            {message.messageUuid === seenUpTo && <><CheckCheck className="w-3 h-3" /> Seen</>}
-                          </span>
-                        </div>
-                      );
-                    })}
-                    {draft ? (
-                      <Answer blocks={draft.blocks} progress={draft.progress} writing renderAction={(action) => renderAction(action, true)} />
-                    ) : chat?.answering ? (
-                      <Answer blocks={[]} writing />
-                    ) : null}
-                    <div ref={bottomRef} />
-                  </div>
-                )}
-              </div>
-
-              {person?.status === "closed" ? (
-                <p className="flex items-center gap-2 px-5 py-4 text-sm text-[#78716c] border-t border-[rgba(196,154,60,0.15)]">
-                  <Lock className="w-4 h-4" /> This conversation is closed: the advisory relationship ended. You can still read it.
-                </p>
               ) : (
-                <div className="bg-[#FBFAF6] pb-4 pt-2">
-                  <div className={`${COLUMN} space-y-2`}>
-                    {/* A new chat's first question, a click away: sent as it is. */}
-                    {isNewChat && messages.length === 0 && !answering && suggestions.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {suggestions.map((s) => (
-                          <button
-                            key={s}
-                            type="button"
-                            onClick={() => void ask(s)}
-                            disabled={sending}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[rgba(196,154,60,0.35)] bg-white text-xs font-semibold text-[#57534e] hover:border-[#C49A3C] hover:text-[#1c1917] transition-colors disabled:opacity-50"
-                          >
-                            <Sparkles className="w-3 h-3 text-[#C49A3C]" />
-                            {s}
-                          </button>
-                        ))}
+                <>
+                  <p className="flex-1 min-w-0 font-bold text-[#1c1917] truncate">{chat?.title ?? "New chat"}</p>
+                  {chat && (
+                    <button
+                      onClick={() => { setDeleteError(null); setDeleting(chat); }}
+                      title="Delete this chat"
+                      aria-label="Delete this chat"
+                      className="p-2 rounded-lg text-[#857e78] hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto bg-[#FBFAF6]">
+              {isNewChat && messages.length === 0 ? (
+                // A new chat: what it's for, in the middle of the room it has.
+                <div className={`${COLUMN} h-full flex flex-col items-center justify-center text-center py-10`}>
+                  <span className="w-12 h-12 rounded-2xl bg-[#C49A3C]/10 text-[#C49A3C] flex items-center justify-center mb-4">
+                    <Sparkles className="w-6 h-6" />
+                  </span>
+                  <p className="text-2xl font-bold text-[#1c1917]" style={SERIF}>What would you like to know?</p>
+                  <p className="text-sm text-[#78716c] mt-2 max-w-md">
+                    Ask about your portfolios, wallets, properties or spending: the assistant reads your own data to answer.
+                  </p>
+                </div>
+              ) : (
+                <div className={`${COLUMN} py-6 space-y-5`}>
+                  {loadingThread && <Loader2 className="w-5 h-5 animate-spin text-[#C49A3C] mx-auto" />}
+                  {hasMore && (
+                    <button onClick={loadEarlier} className="block mx-auto text-xs font-semibold text-[#C49A3C] hover:underline">
+                      Load earlier messages
+                    </button>
+                  )}
+                  {messages.map((message) => {
+                    if (isAi) {
+                      return message.senderUuid === null
+                        ? <Answer key={message.messageUuid} blocks={message.blocks} sentAt={message.sentAt} stop={message.answerStop} renderAction={renderAction} />
+                        : <Question key={message.messageUuid} message={message} />;
+                    }
+                    const mine = message.senderUuid === me;
+                    return (
+                      <div key={message.messageUuid} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+                        {message.advisorRequestUuid && (
+                          <span className="text-[11px] uppercase tracking-wide text-[#857e78] mb-1">Sent with the request</span>
+                        )}
+                        <div className={`max-w-[85%] rounded-3xl px-4 py-2.5 text-sm whitespace-pre-line ${
+                          mine ? "bg-[#1c1917] text-white" : "bg-white border border-[rgba(196,154,60,0.2)] text-[#1c1917]"
+                        }`}>
+                          {message.text}
+                        </div>
+                        <span className="text-[11px] text-[#857e78] mt-1 flex items-center gap-1">
+                          {formatTime(message.sentAt)}
+                          {message.messageUuid === seenUpTo && <><CheckCheck className="w-3 h-3" /> Seen</>}
+                        </span>
                       </div>
-                    )}
-                    <div className="flex items-end gap-2 rounded-3xl border border-[rgba(196,154,60,0.3)] bg-white pl-4 pr-1.5 py-1.5 focus-within:border-[#C49A3C] transition-colors">
-                      <textarea
-                        value={text}
-                        ref={composerRef}
-                        onChange={(e) => setText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-                        }}
-                        maxLength={isAi ? QUESTION_MAX_LENGTH : MESSAGE_MAX_LENGTH}
-                        rows={1}
-                        disabled={isAi && answering}
-                        placeholder={isAi ? (answering ? "The assistant is writing…" : "Ask the assistant…") : "Write a message…"}
-                        className="flex-1 resize-none bg-transparent py-2 text-sm text-[#1c1917] placeholder:text-[#857e78] focus:outline-none disabled:text-[#857e78]"
-                      />
-                      <button
-                        onClick={send}
-                        disabled={sending || (isAi && answering) || !text.trim()}
-                        aria-label={isAi ? "Ask" : "Send"}
-                        title={isAi ? "Ask" : "Send"}
-                        className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-white bg-[#C49A3C] hover:bg-[#b08930] disabled:opacity-40 transition-colors"
-                      >
-                        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                      </button>
-                    </div>
-                    {isAi && (
-                      <p className="text-[11px] text-center text-[#857e78]">Answers are written by AI: check what matters before acting on it.</p>
-                    )}
-                  </div>
+                    );
+                  })}
+                  {draft ? (
+                    <Answer blocks={draft.blocks} progress={draft.progress} writing renderAction={(action) => renderAction(action, true)} />
+                  ) : chat?.answering ? (
+                    <Answer blocks={[]} writing />
+                  ) : null}
+                  <div ref={bottomRef} />
                 </div>
               )}
             </div>
-          ) : (
-            <div className="hidden md:flex items-center justify-center text-sm text-[#78716c]">Choose a conversation.</div>
-          )}
-        </div>
-      )}
+
+            {person?.status === "closed" ? (
+              <p className="flex items-center gap-2 px-5 py-4 text-sm text-[#78716c] border-t border-[rgba(196,154,60,0.15)]">
+                <Lock className="w-4 h-4" /> This conversation is closed: the advisory relationship ended. You can still read it.
+              </p>
+            ) : (
+              <div className="bg-[#FBFAF6] pb-4 pt-2">
+                <div className={`${COLUMN} space-y-2`}>
+                  {/* A new chat's first question, a click away: sent as it is. */}
+                  {isNewChat && messages.length === 0 && !answering && suggestions.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {suggestions.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => void ask(s)}
+                          disabled={sending}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[rgba(196,154,60,0.35)] bg-white text-xs font-semibold text-[#57534e] hover:border-[#C49A3C] hover:text-[#1c1917] transition-colors disabled:opacity-50"
+                        >
+                          <Sparkles className="w-3 h-3 text-[#C49A3C]" />
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-end gap-2 rounded-3xl border border-[rgba(196,154,60,0.3)] bg-white pl-4 pr-1.5 py-1.5 focus-within:border-[#C49A3C] transition-colors">
+                    <textarea
+                      value={text}
+                      ref={composerRef}
+                      onChange={(e) => setText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+                      }}
+                      maxLength={isAi ? QUESTION_MAX_LENGTH : MESSAGE_MAX_LENGTH}
+                      rows={1}
+                      disabled={isAi && answering}
+                      placeholder={isAi ? (answering ? "The assistant is writing…" : "Ask the assistant…") : "Write a message…"}
+                      className="flex-1 resize-none bg-transparent py-2 text-sm text-[#1c1917] placeholder:text-[#857e78] focus:outline-none disabled:text-[#857e78]"
+                    />
+                    <button
+                      onClick={send}
+                      disabled={sending || (isAi && answering) || !text.trim()}
+                      aria-label={isAi ? "Ask" : "Send"}
+                      title={isAi ? "Ask" : "Send"}
+                      className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-white bg-[#C49A3C] hover:bg-[#b08930] disabled:opacity-40 transition-colors"
+                    >
+                      {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {isAi && (
+                    <p className="text-[11px] text-center text-[#857e78]">Answers are written by AI: check what matters before acting on it.</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="hidden md:flex items-center justify-center text-sm text-[#78716c]">Choose a conversation.</div>
+        )}
+      </div>
 
       {deleting && (
         <ConfirmDialog
@@ -797,13 +786,13 @@ function useSuggestions(): string[] {
   const { wallets, available } = useWallets();
   const real = portfolios.filter((p) => !p.isVirtual && !p.isAggregate);
   const hasWallets = available && wallets.some((w) => !w.archived);
-  const main = real.find((p) => p.isDefault) ?? real[0];
+  const main = real[0];
   return [
     ...(real.length > 0 ? ["How are my investments doing?"] : []),
     ...(real.length > 1 ? ["Compare my portfolios"] : []),
     ...(hasWallets ? ["How are my savings going?", "Where did my money go this month?"] : []),
     ...(real.length > 0 ? ["Is my portfolio too concentrated?"] : []),
-    // On their main portfolio, by its name: the assistant proposes it, the user confirms it (ActionCard).
+    // On their oldest portfolio, by its name: the assistant proposes it, the user confirms it (ActionCard).
     ...(main ? [`Generate a report on ${main.name}`] : []),
   ];
 }

@@ -31,8 +31,10 @@ export const AMOUNT_OPTIONAL: TransactionOperation[] = ["transfer_out", "reward"
 export const WITHHOLDING_OPERATIONS: TransactionOperation[] = ["dividend", "coupon"];
 export const ACCRUED_INTEREST_OPERATIONS: TransactionOperation[] = ["buy", "sell"];
 
-export const REWARD_KINDS: RewardKind[] = ["staking", "airdrop"];
-export const REWARD_KIND_LABELS: Record<RewardKind, string> = { staking: "Staking", airdrop: "Airdrop" };
+export const REWARD_KINDS: RewardKind[] = ["staking", "airdrop", "reinvested_dividend"];
+export const REWARD_KIND_LABELS: Record<RewardKind, string> = {
+  staking: "Staking", airdrop: "Airdrop", reinvested_dividend: "Reinvested dividend",
+};
 
 export const OPERATION_LABELS: Record<TransactionOperation, string> = {
   buy: "Buy",
@@ -60,7 +62,7 @@ export const OPERATION_HINTS: Record<TransactionOperation, string> = {
   redemption: "A bond repaid: the nominal repaid, its price in % (100 at par), and the cash received.",
   transfer_in: "Units brought in from elsewhere, at what they cost you in all.",
   transfer_out: "Units moved out to elsewhere, at most those held.",
-  reward: "Units received from staking or an airdrop.",
+  reward: "Units received from staking, an airdrop, or a dividend paid as more units.",
   deposit: "Cash put into the account.",
   withdrawal: "Cash taken out of the account.",
   interest: "Interest the cash earned.",

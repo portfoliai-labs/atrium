@@ -2,12 +2,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Archive, Landmark, Loader2, Plus } from "lucide-react";
+import { Archive, Landmark, Loader2, Plus, Wallet as WalletIcon } from "lucide-react";
 import { useWalletQuery, useWalletRead, useWallets, useWalletSummary } from "../../../context/WalletsContext";
 // The retired hub's (see below): import { useWalletSummaries } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
+import { LIQUIDITY } from "../../../lib/dashboardNav";
 import { formatCurrency } from "../../../lib/format";
-import { ALL_WALLETS, currentAlertFindings, errorText, savingsRate, walletColor } from "../../../lib/wallets";
+import { ALL_WALLETS, accountView, currentAlertFindings, errorText, savingsRate, walletColor } from "../../../lib/wallets";
+import { useAccounts, useCards } from "../../../hooks/useAccounts";
+import { useWalletHolding } from "../../../hooks/useChainHoldings";
 import type { Wallet } from "../../../models/Wallet";
 // The retired hub's (see below): import type { WalletSummary } from "../../../models/Wallet";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
@@ -18,27 +21,27 @@ import { ExploreHost } from "../ExploreView";
 // import { FeaturedCard, PortfolioHolder, type HolderItem } from "../PortfolioHolder";
 // import { VIRTUAL_COLOR } from "../BacktestMarks";
 import { WalletsComposition } from "./WalletsComposition";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
-import { PreviewBadge } from "../../preview/PreviewKit";
 import { WalletAlerts } from "./WalletAlerts";
-import { WalletBankDialog, WalletBanks, useWalletLinked } from "./WalletBanks";
+import { ConnectWalletDialog, findAddressAccount } from "./WalletAddresses";
+import { ConnectBankDialog, WalletBankDialog, useWalletLinked } from "./WalletBanks";
 import { WalletBudgets } from "./WalletBudgets";
+import { WalletCards, cardKindsFor } from "./WalletCards";
 import { AddMovementDialog, WalletFormDialog } from "./WalletDialogs";
 import { ManageWallets } from "./ManageWallets";
 import { WalletImportDialog } from "./WalletImportDialog";
 import { WalletInsights } from "./WalletInsights";
 import { WalletTransactions } from "./WalletTransactions";
 
-export type WalletPage = "insights" | "transactions" | "budgets" | "alerts" | "banks" | "manage";
+export type WalletPage = "insights" | "transactions" | "budgets" | "alerts" | "cards" | "manage";
 
 export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
-  insights: "Insights", transactions: "Transactions", budgets: "Budgets", alerts: "Alerts", banks: "Banks",
-  manage: "Manage wallets",
+  insights: "Insights", transactions: "Transactions", budgets: "Budgets", alerts: "Alerts", cards: "Cards", manage: "Manage wallets",
 };
 
 const ARCHIVED_TITLE = "An archived wallet is read only";
 
-type Dialog = "new" | "edit" | "movement" | "import" | "archive" | "delete" | "bank";
+// "connectBank" and "connectChain" make an account (a bank connected, an address proved), opened once there.
+type Dialog = "new" | "edit" | "movement" | "import" | "archive" | "delete" | "bank" | "connectBank" | "connectChain";
 
 // Back from the bank with more than one account to choose (see /dashboard/bank-link): the wallet's
 // bank dialog opens on it.
@@ -48,11 +51,13 @@ const CONNECT_PARAM = "connectBank";
  * WALLET NODE — every wallet together (ALL_WALLETS), or one, in Wealth, built like a portfolio's
  * page, All wallets standing to its wallets as All portfolios to its portfolios: a header with its
  * balance, its activity (each count opening its page), what can be done with it and its year in
- * figures; under it, on All wallets, its Composition, a row per wallet going down to that wallet
- * (the archived ones listed after it), then the Insights. Its Transactions, Budgets and Alerts are pages of
- * their own, and All wallets' Banks (the banks connected through open banking) and Manage wallets (each
- * wallet's bank account linked there). A wallet that's gone (deleted, or from an old link) opens all
- * of them. Archived wallets are read only, and so is everything for a demo account.
+ * figures; under it, on All wallets, its Composition, the accounts (a bank's, an address': each
+ * its own page, AccountNode) and the wallets in none, each going down to its page (the archived
+ * ones listed after it), then the Insights. Its Transactions, Budgets and Alerts are pages of
+ * their own, and so is All wallets' Manage wallets (each wallet's bank account linked there). A
+ * bank is connected (open banking) or an address proved (a signature in the user's own wallet)
+ * from All wallets, which makes an account, opened once there to choose its wallets. A wallet
+ * that's gone (deleted, or from an old link) opens all of them. Archived wallets are read only.
  */
 export function WalletNode({ id, page, rootTrail, onOpen }: {
   id: string;
@@ -60,7 +65,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   rootTrail: Crumb[];
   onOpen: (id: string, page: WalletPage) => void;
 }) {
-  const { wallets, loading, error, sample, changed } = useWallets();
+  const { wallets, loading, error, changed } = useWallets();
   const wallet = id === ALL_WALLETS ? undefined : wallets.find((w) => w.uuid === id);
   const all = !wallet;
   const scope = wallet?.uuid ?? null;
@@ -81,15 +86,24 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   const count = useMovementCount(scope);
   const attention = useAttention(scope);
   const linked = useWalletLinked(wallet?.uuid);
+  // A stablecoin of an address it takes its movements from, if any.
+  const holding = useWalletHolding(wallet?.uuid);
+  // A wallet's cards, on its own page: one that takes cards, or still has some.
+  const cards = useCards(!!wallet);
+  const walletCards = wallet && cards.data ? cards.data.filter((c) => c.walletUuid === wallet.uuid) : undefined;
+  const takesCards = !!wallet && (cardKindsFor(wallet).length > 0 || !!walletCards?.length);
+  // The account it is one of the balances of: between Liquidity and it in the trail, its page.
+  const accounts = useAccounts(!!wallet?.accountUuid);
+  const account = wallet?.accountUuid ? accounts.data?.find((a) => a.uuid === wallet.accountUuid) : undefined;
 
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-8 w-8 text-[#C49A3C] animate-spin" /></div>;
 
-  const title = wallet ? wallet.name : "All wallets";
-  const readOnly = sample || !!wallet?.archived;
-  const locked = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : wallet?.archived ? { disabled: true, title: ARCHIVED_TITLE } : {};
-  const sampleLock = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
-  const allCrumb: Crumb = { label: "Wallets", onClick: () => onOpen(ALL_WALLETS, "insights") };
-  const trail = all ? rootTrail : [...rootTrail, allCrumb];
+  const title = wallet ? wallet.name : LIQUIDITY;
+  const locked = wallet?.archived ? { disabled: true, title: ARCHIVED_TITLE } : {};
+  const allCrumb: Crumb = { label: LIQUIDITY, onClick: () => onOpen(ALL_WALLETS, "insights") };
+  const openAccount = (uuid: string) => onOpen(accountView(uuid), "insights");
+  const accountCrumb: Crumb[] = account ? [{ label: account.name, onClick: () => openAccount(account.uuid) }] : [];
+  const trail = all ? rootTrail : [...rootTrail, allCrumb, ...accountCrumb];
   const nodeCrumb: Crumb = { label: title, onClick: () => onOpen(id, "insights") };
   const close = () => { setDialog(null); setDialogError(null); };
   const done = () => { close(); changed(); };
@@ -114,17 +128,22 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     ? [
         // Its movements' page, where they're added (by hand or from a statement), as a portfolio's Transactions.
         { label: "Movements", primary: true, plus: false, onClick: () => onOpen(id, "transactions") },
+        // Where its movements come from: its account's page (a bank's, an address').
+        ...(account ? [{ label: "Account", onClick: () => openAccount(account.uuid) }] : []),
         // Its own bank account: one of the banks connected, or another bank connected for it.
-        // Not once it takes one's movements (nor while that's being read): its account is in its settings.
-        ...(linked === false ? [{ label: "Connect a bank", onClick: () => setDialog("bank"), ...locked }] : []),
+        // Not once it takes one's movements (nor while that's being read), nor one a stablecoin
+        // comes into, read from the chain: those are on its account's page.
+        ...(linked === false && holding === null ? [{ label: "Connect a bank", onClick: () => setDialog("bank"), ...locked }] : []),
         { label: "Edit wallet", onClick: () => setDialog("edit"), ...locked },
-        { label: wallet.archived ? "Unarchive" : "Archive", onClick: () => setDialog("archive"), ...sampleLock },
-        { label: "Delete wallet", danger: true, onClick: () => setDialog("delete"), ...sampleLock },
+        { label: wallet.archived ? "Unarchive" : "Archive", onClick: () => setDialog("archive") },
+        { label: "Delete wallet", danger: true, onClick: () => setDialog("delete") },
       ]
     : [
-        // Manage wallets is where a wallet is added, and where each one's bank account is linked;
-        // its page leads to the banks connected (Banks), a demo account's sample one included.
+        // Manage wallets is where a wallet is added, and where each one's bank account is linked.
         { label: "Manage wallets", primary: true, onClick: () => onOpen(ALL_WALLETS, "manage") },
+        // Each makes an account, its page opened to choose its wallets.
+        { label: "Connect a bank", onClick: () => setDialog("connectBank") },
+        { label: "Connect a wallet", onClick: () => setDialog("connectChain") },
       ];
   const counters = [
     // All wallets' only counts them: their movements are each wallet's, on its own page.
@@ -137,6 +156,10 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
       key: "alerts", label: "alerts", count: attention?.rules ?? null, onClick: () => onOpen(id, "alerts"),
       attention: attention?.found ? { count: attention.found, label: "found" } : undefined,
     },
+    ...(takesCards ? [{
+      key: "cards", label: "cards", count: walletCards?.length ?? null, onClick: () => onOpen(id, "cards"),
+      attention: walletCards?.some((c) => c.expired) ? { count: walletCards.filter((c) => c.expired).length, label: "expired" } : undefined,
+    }] : []),
   ];
 
   const currency = wallet?.currency ?? summary?.currency ?? "EUR";
@@ -160,6 +183,18 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
       )}
       {dialog === "edit" && wallet && <WalletFormDialog wallet={wallet} onClose={close} onSaved={done} />}
       {dialog === "bank" && wallet && <WalletBankDialog wallet={wallet} onClose={close} />}
+      {/* The bank sends the user back to /dashboard/bank-link, which opens the account. */}
+      {dialog === "connectBank" && <ConnectBankDialog onClose={close} />}
+      {dialog === "connectChain" && (
+        <ConnectWalletDialog
+          onClose={close}
+          onConnected={(address) => {
+            close();
+            changed();
+            void findAddressAccount(address.uuid).then((uuid) => { changed(); if (uuid) openAccount(uuid); });
+          }}
+        />
+      )}
       {/* A transfer is a tab of it, from this wallet to another. */}
       {/* From All wallets (its Transactions), the wallet is asked. */}
       {dialog === "movement" && (wallet ?? active[0]) && (
@@ -198,8 +233,9 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     const scopeKey = wallet?.uuid ?? ALL_WALLETS;
     const right = page === "manage" ? (
       <div className="flex gap-2">
-        <SmallButton icon={<Landmark className="h-3.5 w-3.5" />} onClick={() => onOpen(ALL_WALLETS, "banks")}>Connect a bank</SmallButton>
-        <SmallButton icon={<Plus className="h-3.5 w-3.5" />} dark onClick={() => setDialog("new")} {...sampleLock}>New wallet</SmallButton>
+        <SmallButton icon={<Landmark className="h-3.5 w-3.5" />} onClick={() => setDialog("connectBank")}>Connect a bank</SmallButton>
+        <SmallButton icon={<WalletIcon className="h-3.5 w-3.5" />} onClick={() => setDialog("connectChain")}>Connect a wallet</SmallButton>
+        <SmallButton icon={<Plus className="h-3.5 w-3.5" />} dark onClick={() => setDialog("new")}>New wallet</SmallButton>
       </div>
     ) : undefined;
     return (
@@ -210,8 +246,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
           <WalletTransactions
             key={scopeKey}
             initial={scopeKey}
-            readOnly={sample}
-            lock={sample ? DEMO_DISABLED_TITLE : wallet?.archived ? ARCHIVED_TITLE : active.length === 0 ? "Add a wallet first" : undefined}
+            lock={wallet?.archived ? ARCHIVED_TITLE : active.length === 0 ? "Add a wallet first" : undefined}
             onAdd={() => setDialog("movement")}
             onImport={() => setDialog("import")}
           />
@@ -220,8 +255,14 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
           <WalletBudgets scope={scope} onManage={() => onOpen(ALL_WALLETS, "budgets")} />
         )}
         {page === "alerts" && <WalletAlerts scope={scope} />}
-        {page === "banks" && <WalletBanks />}
-        {page === "manage" && <ManageWallets onOpenWallet={(uuid) => onOpen(uuid, "insights")} onOpenBanks={() => onOpen(ALL_WALLETS, "banks")} />}
+        {page === "cards" && wallet && <WalletCards wallet={wallet} />}
+        {page === "manage" && (
+          <ManageWallets
+            onOpenWallet={(uuid) => onOpen(uuid, "insights")}
+            onConnectBank={() => setDialog("connectBank")}
+            onOpenAccount={openAccount}
+          />
+        )}
         {dialogs}
       </div>
     );
@@ -229,13 +270,12 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
 
   const header = (
     <PageHeader
-      eyebrow={wallet ? (wallet.archived ? "Wallet · Archived" : "Wallet") : "Wallets"}
+      eyebrow={wallet ? (wallet.archived ? "Wallet · Archived" : "Wallet") : "Cash, accounts and cards"}
       // Wallets › the wallet, in place of the eyebrow; an archived one says so beside it.
       crumbs={trail}
       badge={(
         <>
           {wallet?.archived && <span className="rounded-full bg-[#EEE9DD] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#78716c]">Archived</span>}
-          {sample && <PreviewBadge label="Sample" />}
         </>
       )}
       title={title}
@@ -253,8 +293,14 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         {error && <p className="text-sm font-semibold text-rose-600">{error}</p>}
         {wallet?.archived && <ArchivedNote />}
         {all && (active.length === 0
-          ? <NoWallets readOnly={readOnly} onAdd={() => setDialog("new")} />
-          : <WalletsComposition currency={summary?.currency ?? active[0].currency} onOpen={(uuid) => onOpen(uuid, "insights")} />)}
+          ? <NoWallets onAdd={() => setDialog("new")} />
+          : (
+            <WalletsComposition
+              currency={summary?.currency ?? active[0].currency}
+              onOpen={(uuid) => onOpen(uuid, "insights")}
+              onOpenAccount={openAccount}
+            />
+          ))}
         {all && <ArchivedList archived={archivedWallets} onOpen={(uuid) => onOpen(uuid, "insights")} />}
         {(wallet || active.length > 0) && <WalletInsights scope={scope} summary={summary} />}
       </ExploreHost>
@@ -323,7 +369,7 @@ function SmallButton({ icon, children, onClick, dark, disabled, title }: {
 }
 
 /** All wallets with none yet (archived aside): the way to add the first. */
-function NoWallets({ readOnly, onAdd }: { readOnly: boolean; onAdd: () => void }) {
+function NoWallets({ onAdd }: { onAdd: () => void }) {
   return (
     <section className="bg-white rounded-3xl border border-dashed border-slate-300 p-8 md:p-10 text-center space-y-3">
       <p className="text-lg font-black text-slate-900">No wallets yet</p>
@@ -331,11 +377,9 @@ function NoWallets({ readOnly, onAdd }: { readOnly: boolean; onAdd: () => void }
         Add your current account, a card, savings or cash: what comes in and goes out, by hand or from your bank&apos;s statements,
         next to your investments.
       </p>
-      {!readOnly && (
-        <button type="button" onClick={onAdd} className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1c1917] text-white text-sm font-bold hover:bg-[#C49A3C] transition-colors">
-          <Plus className="h-4 w-4" /> Add a wallet
-        </button>
-      )}
+      <button type="button" onClick={onAdd} className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1c1917] text-white text-sm font-bold hover:bg-[#C49A3C] transition-colors">
+        <Plus className="h-4 w-4" /> Add a wallet
+      </button>
     </section>
   );
 }
@@ -360,7 +404,7 @@ function NoWallets({ readOnly, onAdd }: { readOnly: boolean; onAdd: () => void }
 //   onOpen: (uuid: string) => void;
 //   onAdd: () => void;
 // }) {
-//   const { wallets, sample } = useWallets();
+//   const { wallets } = useWallets();
 //   const colored = useMemo(() => wallets.map((w, i) => ({ wallet: w, color: walletColor(w, i) })), [wallets]);
 //   const active = colored.filter((c) => !c.wallet.archived);
 //   const archived = colored.filter((c) => c.wallet.archived);
@@ -447,7 +491,6 @@ function NoWallets({ readOnly, onAdd }: { readOnly: boolean; onAdd: () => void }
 //         <FeaturedCard
 //           eyebrow="Largest wallet"
 //           name={featured.wallet.name}
-//           badge={sample ? <PreviewBadge label="Sample" /> : undefined}
 //           color={featured.color}
 //           value={formatCurrency(featured.wallet.balance, featured.wallet.currency, 0)}
 //           line={
@@ -474,7 +517,7 @@ function NoWallets({ readOnly, onAdd }: { readOnly: boolean; onAdd: () => void }
 //   );
 // }
 
-function ArchivedList({ archived, onOpen }: { archived: { wallet: Wallet; color: string }[]; onOpen: (uuid: string) => void }) {
+export function ArchivedList({ archived, onOpen }: { archived: { wallet: Wallet; color: string }[]; onOpen: (uuid: string) => void }) {
   if (archived.length === 0) return null;
   return (
     <section className="bg-white rounded-3xl border border-slate-200 shadow-sm">

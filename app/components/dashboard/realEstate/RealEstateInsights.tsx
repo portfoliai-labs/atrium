@@ -9,7 +9,6 @@ import { PROPERTY_KIND_LABELS, PROPERTY_USE_LABELS } from "../../../lib/realEsta
 import type { Property } from "../../../models/RealEstate";
 import { DataTable, type DataColumn } from "../ExploreView";
 import { HBars, MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
-import { RealEstateMarketPreview } from "../../preview/RealEstatePortfolio";
 
 const USE_STYLE: Record<Property["use"], string> = {
   primary_residence: "bg-blue-50 text-blue-700",
@@ -28,10 +27,10 @@ const signedPct = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(
  * user's share, gain on what was put in, the last 12 months' income and yield, debt and equity),
  * each opening its page; then where the value sits, by town. A property's amounts are in its own
  * currency; the split by town is in the reference one, leaving out a property it can't convert
- * today. A demo account also sees, below, the market and short-stay analyses (a preview).
+ * today.
  */
 export function RealEstateInsights({ currency, onOpenProperty }: { currency: string; onOpenProperty: (uuid: string) => void }) {
-  const { properties, sample } = useRealEstate();
+  const { properties } = useRealEstate();
   const active = useMemo(() => properties.filter((p) => !p.archived), [properties]);
 
   const columns: DataColumn<Property>[] = [
@@ -117,7 +116,6 @@ export function RealEstateInsights({ currency, onOpenProperty }: { currency: str
           </div>
         </Module>
       )}
-      {sample && <RealEstateMarketPreview />}
     </>
   );
 }

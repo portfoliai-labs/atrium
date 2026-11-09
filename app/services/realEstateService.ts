@@ -23,8 +23,7 @@ import { apiFetch } from "./apiClient";
 // InvalidRentalContractError (422), RentalContractNotFoundError (404), InvalidTaxpayerYearError
 // (422), TaxpayerYearNotFoundError (404), InvalidAlertRuleError (422, with `field`),
 // AlertRuleLimitReachedError (409, at 50 rules), AlertRuleNotFoundError (404). InvalidPropertyError, InvalidUseChangeError
-// and InvalidTaxRateError say which `field` (ApiError.metadata.field), as the bodies name it. A demo
-// account's writes are refused before they leave (see lib/demo).
+// and InvalidTaxRateError say which `field` (ApiError.metadata.field), as the bodies name it.
 
 const BASE = "/v1/real-estate";
 
@@ -318,9 +317,14 @@ export const realEstateService = {
     return apiFetch<Municipality[]>(`${BASE}/municipalities?${params}`);
   },
 
-  // GET /v1/real-estate/reports — every property's reports (archived ones' too), newest first.
+  // GET /v1/real-estate/reports — the caller's properties' reports (archived and deleted ones' too), newest first.
   async reports(): Promise<PropertyReport[]> {
     return apiFetch<PropertyReport[]>(`${BASE}/reports`);
+  },
+
+  // DELETE /v1/real-estate/reports/{propertyUuid}/{d} — the report and its file.
+  async deleteReport(propertyUuid: string, documentId: string): Promise<void> {
+    await apiFetch(`${BASE}/reports/${propertyUuid}/${documentId}`, { method: "DELETE" });
   },
 
   /**

@@ -55,12 +55,11 @@ type Direction = "all" | "in" | "out";
  * the saved ones in one card, filtered, searched and paged by the API, newest first. A movement
  * opens to be changed; several picked on a page can be given a category, deleted, or (two of
  * them, in and out of two wallets) linked as one transfer, which a transfer's leg can be unlinked
- * from. An archived wallet's, and a demo account's, are read only (`lock` says why).
+ * from. An archived wallet's are read only (`lock` says why).
  */
-export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }: {
+export function WalletTransactions({ initial, lock, onAdd, onImport }: {
   initial: string;
-  readOnly: boolean;
-  // Why movements can't be added here (a demo account, an archived wallet); undefined when they can.
+  // Why movements can't be added here (an archived wallet, no wallet yet); undefined when they can.
   lock?: string;
   onAdd: () => void;
   onImport: () => void;
@@ -124,7 +123,7 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
 
   const byUuid = useMemo(() => new Map(wallets.map((w, i) => [w.uuid, { wallet: w, color: walletColor(w, i) }])), [wallets]);
   const walletOf = (m: Movement) => byUuid.get(m.walletUuid)?.wallet;
-  const editable = (m: Movement) => !readOnly && !walletOf(m)?.archived;
+  const editable = (m: Movement) => !walletOf(m)?.archived;
   const picked = rows.filter((m) => selected.has(m.uuid));
   const pickable = rows.filter(editable);
   const allPicked = pickable.length > 0 && pickable.every((m) => selected.has(m.uuid));
@@ -169,25 +168,23 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
 
   return (
     <>
-      {!readOnly || lock ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <AddCard
-            icon={<UploadCloud className="h-5 w-5" />}
-            title="Import statement"
-            desc={lock ?? "CSV, XLS or XLSX, as your bank exports it"}
-            lock={lock}
-            dashed
-            onClick={onImport}
-          />
-          <AddCard
-            icon={<PlusCircle className="h-5 w-5" />}
-            title="Add movement"
-            desc={lock ?? "Money in or out by hand, or a transfer between your wallets"}
-            lock={lock}
-            onClick={onAdd}
-          />
-        </div>
-      ) : null}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <AddCard
+          icon={<UploadCloud className="h-5 w-5" />}
+          title="Import statement"
+          desc={lock ?? "CSV, XLS or XLSX, as your bank exports it"}
+          lock={lock}
+          dashed
+          onClick={onImport}
+        />
+        <AddCard
+          icon={<PlusCircle className="h-5 w-5" />}
+          title="Add movement"
+          desc={lock ?? "Money in or out by hand, or a transfer between your wallets"}
+          lock={lock}
+          onClick={onAdd}
+        />
+      </div>
 
       <section className="bg-white border border-slate-200 rounded-4xl shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-5 md:px-6 py-4 border-b border-slate-200 gap-4 flex-wrap">
@@ -351,17 +348,15 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
                     selected.has(m.uuid) ? "bg-[#C49A3C]/5" : canEdit ? "hover:bg-slate-50" : ""
                   }`}
                 >
-                  {!readOnly && (
-                    <input
-                      type="checkbox"
-                      disabled={!canEdit}
-                      checked={selected.has(m.uuid)}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={() => toggle(m.uuid)}
-                      aria-label={`Select ${m.description}`}
-                      className="accent-[#C49A3C] w-4 h-4 cursor-pointer shrink-0 disabled:cursor-not-allowed"
-                    />
-                  )}
+                  <input
+                    type="checkbox"
+                    disabled={!canEdit}
+                    checked={selected.has(m.uuid)}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggle(m.uuid)}
+                    aria-label={`Select ${m.description}`}
+                    className="accent-[#C49A3C] w-4 h-4 cursor-pointer shrink-0 disabled:cursor-not-allowed"
+                  />
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${kind.classes}`}>
                     <Icon className="h-4 w-4" />
                   </div>
@@ -404,7 +399,7 @@ export function WalletTransactions({ initial, readOnly, lock, onAdd, onImport }:
           onSaved={() => { setEditing(null); changed(); }}
         />
       )}
-      {showRules && <CategoryRulesDialog readOnly={readOnly} onClose={() => setShowRules(false)} />}
+      {showRules && <CategoryRulesDialog onClose={() => setShowRules(false)} />}
       {confirmDelete && (
         <ConfirmDialog
           title={`Delete ${picked.length === 1 ? "this movement" : `${picked.length} movements`}?`}
@@ -483,9 +478,9 @@ function BarButton({ icon, children, onClick, disabled, danger }: { icon: React.
 /**
  * The user's category rules: one per payee, money in and money out apart, learnt from the last
  * category they gave one of its movements. Deleting one leaves the movements it categorised
- * uncategorised; a demo account's are read only.
+ * uncategorised.
  */
-export function CategoryRulesDialog({ readOnly, onClose }: { readOnly: boolean; onClose: () => void }) {
+export function CategoryRulesDialog({ onClose }: { onClose: () => void }) {
   const { changed } = useWallets();
   const queryClient = useQueryClient();
   const read = useWalletQuery(["categoryRules"], () => walletService.categoryRules());
@@ -537,17 +532,15 @@ export function CategoryRulesDialog({ readOnly, onClose }: { readOnly: boolean; 
                 <p className="text-[11px] text-slate-400">{rule.incoming ? "Money in" : "Money out"}</p>
               </div>
               <CategoryChip category={rule} />
-              {!readOnly && (
-                <button
-                  type="button"
-                  onClick={() => void remove(rule)}
-                  disabled={removing !== null}
-                  aria-label={`Delete the rule for ${rule.payee}`}
-                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {removing === rule.uuid ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => void remove(rule)}
+                disabled={removing !== null}
+                aria-label={`Delete the rule for ${rule.payee}`}
+                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {removing === rule.uuid ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </button>
             </li>
           ))}
         </ul>

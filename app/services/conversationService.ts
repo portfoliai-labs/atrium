@@ -3,8 +3,8 @@ import type {
   AssistantAction, AssistantConversation, ChatMessage, Conversation, MessagePage, ReadReceipt, UnreadCount,
 } from "../models/Conversation";
 import { apiFetch } from "./apiClient";
+import { API_BASE_URL } from "@/app/lib/origins";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export const conversationService = {
   // GET /conversations?kind=advisor_client — the caller's with their advisor or clients, the last
@@ -19,7 +19,7 @@ export const conversationService = {
   },
 
   // POST /conversations — opens a chat with the AI under a uuid of ours: a retry with the same
-  // one is safe. 403 ReadOnlyAccountError for a demo account.
+  // one is safe.
   async openAssistant(conversationUuid: string): Promise<AssistantConversation> {
     return apiFetch<AssistantConversation>("/v1/conversations", {
       method: "POST",

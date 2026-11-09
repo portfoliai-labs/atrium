@@ -18,7 +18,6 @@ import {
 import { PortfolioSelect } from "./PortfolioSelect";
 import { AssetPicker } from "./AssetPicker";
 import type { Listing, ListingRef } from "../../models/Listing";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 
 interface TransactionModalProps {
   mode: "add" | "edit";
@@ -36,8 +35,6 @@ interface TransactionModalProps {
   lockKind?: boolean;
   // A saved transaction on a security: moves some of its units to another portfolio.
   onTransfer?: () => void;
-  // The form can be filled in but not saved (a demo account, see lib/demo).
-  readOnly?: boolean;
 }
 
 // Colors mirror the operation badges in TransactionsSection.tsx (OPERATION_STYLES).
@@ -195,7 +192,7 @@ const num = (s: string) => (s.trim() === "" ? null : Number(s.replace(",", "."))
 const NO_MANUAL_ASSETS: ManualAsset[] = [];
 
 export function TransactionModal({
-  mode, initial, onClose, onSave, onDelete, portfolios, defaultPortfolioUuid, lockKind = false, onTransfer, readOnly = false,
+  mode, initial, onClose, onSave, onDelete, portfolios, defaultPortfolioUuid, lockKind = false, onTransfer,
 }: TransactionModalProps) {
   const { client } = usePortfolio();
   const [form, setForm] = useState<FormState>(() => toFormState(initial));
@@ -361,12 +358,6 @@ export function TransactionModal({
           </button>
         </div>
 
-        {readOnly && (
-          <p className="rounded-2xl bg-[#1c1917] px-4 py-3 text-xs font-semibold text-stone-300">
-            <span className="font-black text-white">Demo account — read only.</span> Try the form out; it can&apos;t be saved.
-          </p>
-        )}
-
         {portfolios && portfolios.length > 1 && portfolioUuid && (
           <PortfolioSelect portfolios={portfolios} value={portfolioUuid} onChange={setPortfolioUuid} label={isEdit ? "Portfolio" : "Add to portfolio"} />
         )}
@@ -511,7 +502,7 @@ export function TransactionModal({
 
         <div className="flex items-center justify-between gap-3 pt-2 flex-wrap">
           <span className="flex items-center gap-1">
-            {isEdit && onDelete && !readOnly && (
+            {isEdit && onDelete && (
               <button
                 onClick={onDelete}
                 className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-rose-600 hover:bg-rose-50 transition-colors"
@@ -520,7 +511,7 @@ export function TransactionModal({
                 Delete
               </button>
             )}
-            {isEdit && onTransfer && !readOnly && (
+            {isEdit && onTransfer && (
               <button
                 onClick={onTransfer}
                 className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100 transition-colors"
@@ -539,8 +530,6 @@ export function TransactionModal({
             </button>
             <button
               onClick={handleSubmit}
-              disabled={readOnly}
-              title={readOnly ? DEMO_DISABLED_TITLE : undefined}
               className="px-6 py-3 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-blue-600 transition-colors shadow-md shadow-slate-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-900"
             >
               {isEdit ? "Save changes" : "Add transaction"}

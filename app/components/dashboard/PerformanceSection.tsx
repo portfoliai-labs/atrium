@@ -17,7 +17,7 @@ import { portfolioService } from "../../services/portfolioService";
 import { portfoliosService } from "../../services/portfoliosService";
 import { transactionService } from "../../services/transactionService";
 import { STRATEGY_PROXIES, simulatedPeriod, targetLabel, type StrategyFrequency, type StrategyParams, type StrategyResponse } from "../../models/Strategy";
-import { exchangeLabel, listingLine } from "../../models/Listing";
+import { exchangeLabel, listingLine, type Listing } from "../../models/Listing";
 import { ApiError } from "../../services/apiClient";
 import { formatCompact, formatCurrency, formatQuantity } from "../../lib/format";
 import { toChartPoints, type SeriesPoint } from "../../lib/series";
@@ -41,6 +41,7 @@ import { isBondClass } from "../../lib/rates";
 import { assetClassCodeOf, assetClassLabel, assetClassSingularLabel, type AssetClassCode } from "../../lib/assetClasses";
 import { CompanyDescriptionModule } from "./CompanyDescriptionModule";
 import { MarketDataModule } from "./MarketDataModule";
+import { FinancialStatementsModule, FinancialStatementsPage } from "./FinancialStatementsModule";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { PageHeader } from "./PageHeader";
 import { ExploreView, ExploreHostContext, ExplorePanel, DataTable, useExploreHost, type DataColumn } from "./ExploreView";
@@ -58,6 +59,7 @@ import type {
 import type { TransactionResponse } from "../../models/Transaction";
 import { DIMENSION_PANELS, LOOK_THROUGH_INFO, allocationRows, dimensionOf, isInformative } from "../../lib/classifications";
 import { AiHelpButton } from "./assistant/AiHelpButton";
+import { TrackerOrderButtons } from "./TrackerOrderButtons";
 
 const chartDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const fullDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
@@ -628,11 +630,9 @@ function StatContent({ title, value, icon, color, info }: StatProps) {
  * and breakdowns, so this stays a plain, uncluttered trend line.
  */
 function SnapshotChart({ chart, currency, className = "h-64" }: { chart: ValuePoint[]; currency: string; className?: string }) {
-  // A single point has nothing to draw a line/area between — recharts still plots its dot,
-  // which reads as a broken/empty chart rather than "not enough history yet".
-  if (chart.length < 2) {
-    return <p className="text-[12.5px] text-[#857e78]">Not enough history yet to chart.</p>;
-  }
+  // A single point has nothing to draw a line/area between (recharts would plot a lone dot):
+  // no chart until there are two.
+  if (chart.length < 2) return null;
 
   const sorted = [...chart].sort((a, b) => new Date(a.snapshotAt).getTime() - new Date(b.snapshotAt).getTime());
   const data = sorted.map(s => ({ date: s.snapshotAt, value: s.totalMarketValue }));
@@ -2147,6 +2147,8 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
   );
   const [range, setRange] = useState<AssetChartRange>("1Y");
   const [inQuoteCurrency, setInQuoteCurrency] = useState(false);
+  // The company's full statements open as a page of the asset's, over it.
+  const [statementsOpen, setStatementsOpen] = useState(false);
   // The last range's answer stays up while another range's loads (keepPrevious).
   const detail = useInvestmentsQuery<AssetDetailResponse>(
     ["asset", listingId, range], () => portfolioService.getAssetDetail(listingId, range), { keepPrevious: true },
@@ -2181,6 +2183,10 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
     );
   }
 
+  if (statementsOpen) {
+    return <FinancialStatementsPage listingId={listingId} name={data.name} onClose={() => setStatementsOpen(false)} />;
+  }
+
   const first = series?.values[0];
   const last = series?.values[series.values.length - 1];
   const changePct = first && last !== undefined ? (last / first - 1) * 100 : null;
@@ -2190,6 +2196,8 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
   const assetClassCode = assetClassCodeOf(data);
   const facts: { label: string; value: string }[] = [
     { label: "Ticker", value: data.ticker },
+    // A tracker is another issuer's security, priced as the listing it tracks.
+    ...(data.listing?.tracking ? [{ label: "Issued by", value: data.listing.tracking.issuer }] : []),
     ...(data.listing?.exchangeMic ? [{ label: "Market", value: exchangeLabel(data.listing.exchangeMic, data.listing.exchangeName)! }] : []),
     ...(data.isin ? [{ label: "ISIN", value: data.isin }] : []),
     { label: "Asset class", value: assetClassSingularLabel(assetClassCode) },
@@ -2332,6 +2340,8 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
 
       <MarketDataModule listingId={listingId} />
 
+      <FinancialStatementsModule listingId={listingId} onExplore={() => setStatementsOpen(true)} />
+
       {isBondClass(assetClassCode) && <BondRatesModule isin={data.isin} name={data.name} currency={data.quoteCurrency} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-[22px]">
@@ -2353,6 +2363,14 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
             </dl>
           </Module>
           <InstrumentProfileModule profile={data.profile ?? null} listing={data.listing ?? null} />
+          {(data.trackers?.length ?? 0) > 0 && (
+            <TrackersModule
+              trackers={data.trackers!}
+              asset={{ listingId, instrumentId: data.listing?.instrumentId ?? assetId, ticker: data.ticker, name: data.name }}
+              referencePrice={data.quotePrices?.values.at(-1) ?? null}
+              referenceCurrency={data.quoteCurrency}
+            />
+          )}
         </div>
         <AssetNewsModule listingId={listingId} name={data.name} />
         <AssetArticlesModule instrumentId={data.listing?.instrumentId ?? null} ticker={data.ticker} isin={data.isin} />
@@ -2627,9 +2645,8 @@ function MonthlyReturnsHeatmap({
 
   const years = useMemo(() => [...byYear.keys()].sort((a, b) => b - a), [byYear]);
 
-  if (years.length === 0) {
-    return <p className="text-sm text-slate-400 p-6 md:p-7">Not enough history yet to chart.</p>;
-  }
+  // No month yet: nothing (its module is left out, see PerformanceDetail).
+  if (years.length === 0) return null;
 
   return (
     <div className="p-6 md:p-7 overflow-x-auto">
@@ -2842,6 +2859,40 @@ function joinAssetPnl(realized: RealizedPnlResponse | null, dividends: Dividends
  * locked in, what it has paid, the total, then its dividends over the last two years and its
  * yields. Every column sorts; it scrolls sideways when it doesn't fit.
  */
+/** The instrument's tokens (census' trackers): another issuer's security each, which tracks the
+ * instrument and is priced as it, held in a wallet of the user's own. On a token's own page its
+ * row is there too, marked: where the user buys or sells the token they are on. */
+function TrackersModule({ trackers, asset, referencePrice, referenceCurrency }: {
+  trackers: Listing[];
+  // The asset's page, which an order page opens under; its last price in its quote currency.
+  asset: { listingId: string; instrumentId: string; ticker: string; name: string };
+  referencePrice: number | null;
+  referenceCurrency: string;
+}) {
+  return (
+    <Module>
+      <ModuleHead
+        title="Tokenized versions"
+        desc="Tokens tracking this asset, each another issuer's security: not a share, with the issuer's risk."
+      />
+      <dl className={MODULE_BODY}>
+        {trackers.map((t) => (
+          <div key={t.listingId} className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-4 py-2.5 border-b border-[#EEE9DD] last:border-b-0">
+            <dt className="text-[13.5px] font-bold text-[#1c1917]">
+              {t.ticker}
+              {t.listingId === asset.listingId && <span className="block text-[11px] font-semibold text-[#a8a29e]">This page</span>}
+            </dt>
+            <dd className="flex items-center justify-end gap-3 text-right text-[12.5px] text-[#78716c] break-words">
+              {t.tracking?.issuer ?? "—"}
+              <TrackerOrderButtons tracker={t} asset={asset} referencePrice={referencePrice} referenceCurrency={referenceCurrency} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </Module>
+  );
+}
+
 function AssetPnlTable({ realized, dividends, withDividends }: {
   realized: RealizedPnlResponse | null;
   dividends: DividendsResponse | null;
@@ -2988,9 +3039,7 @@ function DetailBody<T extends { isStale: boolean }>({
 function RollingVolatilityChart({ series, className = "h-64" }: { series: TimeSeries; className?: string }) {
   const points = useMemo(() => toChartPoints(series), [series]);
 
-  if (points.length < 2) {
-    return <p className="text-[12.5px] text-[#857e78]">Not enough data yet to chart.</p>;
-  }
+  if (points.length < 2) return null;
 
   return (
     <div className={className}>
@@ -3128,7 +3177,7 @@ function VolatilityPanels({ data }: { data: VolatilityDetailResponse }) {
 
   return (
     <>
-      <ExplorePanel
+      {(data.rollingVolatilityPct?.dates.length ?? 0) >= 2 && <ExplorePanel
         eyebrow="Risk"
         title="Rolling Volatility"
         desc={`Annualized volatility${data.rollingWindowDays ? ` over a rolling ${data.rollingWindowDays}-day window` : ""}, day by day.`}
@@ -3138,8 +3187,8 @@ function VolatilityPanels({ data }: { data: VolatilityDetailResponse }) {
           </span>
         }
       >
-        {data.rollingVolatilityPct ? <RollingVolatilityChart series={data.rollingVolatilityPct} className={`${MODULE_BODY} h-64`} /> : <ModuleMessage>Not enough data yet to chart.</ModuleMessage>}
-      </ExplorePanel>
+        <RollingVolatilityChart series={data.rollingVolatilityPct!} className={`${MODULE_BODY} h-64`} />
+      </ExplorePanel>}
       <DrawdownSection data={data} part="chart" />
       <ExplorePanel
         eyebrow="Risk"
@@ -3187,9 +3236,7 @@ function CumulativeReturnChart({ portfolio, benchmark }: { portfolio: TimeSeries
     return toChartPoints(portfolio).map((p) => ({ date: p.date, portfolio: p.value, benchmark: benchmarkByDate.get(p.date) }));
   }, [portfolio, benchmark]);
 
-  if (data.length < 2) {
-    return <ModuleMessage>Not enough history yet to chart.</ModuleMessage>;
-  }
+  if (data.length < 2) return null;
 
   return (
     <div className="p-6 md:p-7 h-64">
@@ -3293,9 +3340,8 @@ function BenchmarkExplore({ portfolioUuid }: { portfolioUuid: string }) {
 }
 
 function BenchmarkDetail({ data }: { data: BenchmarkResponse }) {
-  if (data.status !== "ok") {
-    return <Module><ModuleMessage>Not enough overlapping history with the benchmark yet to compare.</ModuleMessage></Module>;
-  }
+  // Not enough overlapping history with the benchmark yet: left out rather than said.
+  if (data.status !== "ok") return null;
   return <BenchmarkPanels data={data} />;
 }
 
@@ -3481,9 +3527,8 @@ function ReturnsExplore({ portfolioUuid }: { portfolioUuid: string }) {
 }
 
 function ReturnsDetail({ data }: { data: ReturnsResponse }) {
-  if (data.status === "insufficient_history") {
-    return <Module><ModuleMessage>Not enough history yet to measure returns — they&apos;ll show up here soon.</ModuleMessage></Module>;
-  }
+  // Not enough history yet to measure them: left out rather than said.
+  if (data.status === "insufficient_history") return null;
   return <ReturnsPanels data={data} />;
 }
 
@@ -3634,15 +3679,8 @@ function ReturnsPanels({ data }: { data: ReturnsResponse }) {
 function DrawdownSection({ data, part }: { data: VolatilityDetailResponse; part: "chart" | "falls" }) {
   const points = useMemo(() => (data.drawdownPct ? toChartPoints(data.drawdownPct) : []), [data]);
 
-  if (!data.drawdownPct || points.length < 2) {
-    // Said once, where the chart would be.
-    if (part === "falls") return null;
-    return (
-      <ExplorePanel eyebrow="Risk" title="Drawdown" desc="How far below its previous high the portfolio stood, day by day.">
-        <ModuleMessage>Not enough history yet to chart the drawdown.</ModuleMessage>
-      </ExplorePanel>
-    );
-  }
+  // Not enough history yet to chart it: left out.
+  if (!data.drawdownPct || points.length < 2) return null;
   return <DrawdownExplore series={data.drawdownPct} points={points} maxDrawdownPct={data.maxDrawdownPct} part={part} />;
 }
 
@@ -4217,6 +4255,8 @@ function MonthToDateModule({ slot, currency, returnPct }: {
   // The month's time-weighted return so far (the month's own document); null when there's none yet.
   returnPct: number | null;
 }) {
+  // Loaded with nothing in it (no history yet for this month): left out.
+  if (!slot.loading && !slot.failed && slot.module === null) return null;
   return (
     <Module>
       <ModuleHead
@@ -4384,6 +4424,8 @@ function ThisMonthCard({ slot, currency, onOpen }: {
   onOpen: (year: number, month: number) => void;
 }) {
   const data = slot.module;
+  // Loaded with nothing in it (no history yet for this month): left out.
+  if (!slot.loading && !slot.failed && data === null) return null;
   // The month of the latest daily value (the months run on UTC dates); today's before there's one.
   const latest = data?.chart.reduce<string | null>((max, s) => (max === null || s.snapshotAt > max ? s.snapshotAt : max), null);
   const at = latest ? new Date(latest) : new Date();
@@ -4471,9 +4513,7 @@ function MonthToDateBody({ data, currency, lagging, returnPct }: { data: Insight
           color={isMtdGain ? "emerald" : "red"}
         />
       </div>
-      {points.length === 0 ? (
-        <p className="text-sm text-slate-400 p-6 md:p-7 border-t border-slate-100">Not enough history yet to chart.</p>
-      ) : (
+      {points.length === 0 ? null : (
         <div className="p-6 md:p-7 h-64 border-t border-slate-100">
           <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 500, height: 256 }}>
             <BarChart data={points} margin={{ top: 16, right: 10, left: 0, bottom: 0 }}>
@@ -4670,15 +4710,29 @@ function HistoryPage({
     />
   );
   const updatingNote = !historyUpdating && performance.historyIsStale && <Tile><UpdatingNote /></Tile>;
-  const riskModel = <Tile id={moduleAnchor("risk")}><RiskModelModule slot={own(risk, (d) => d.frontier)} portfolioUuid={portfolioUuid} /></Tile>;
+  // A module that could only say there isn't enough history yet (a portfolio under a year old,
+  // holdings too young to share a price history, equity under three years) is left off the page
+  // rather than shown empty: it appears once there's something to show.
+  const volatilityTooYoung = risk.data?.volatility?.status === "insufficient_history";
+  const frontier = risk.data?.frontier;
+  const riskModelTooYoung = frontier?.status === "insufficient_history"
+    || (frontier?.status === "unavailable" && frontier.unavailableReason === "too_few_assets");
+  const behavesTooYoung = !!risk.data?.factorExposures && risk.data.factorExposures.status !== "ok";
+  const riskModel = !riskModelTooYoung && <Tile id={moduleAnchor("risk")}><RiskModelModule slot={own(risk, (d) => d.frontier)} portfolioUuid={portfolioUuid} /></Tile>;
   const factorExposuresModule = <FactorExposuresModule slot={own(risk, (d) => d.factorExposures ?? null)} />;
-  const factorExposures = <Tile>{factorExposuresModule}</Tile>;
+  const factorExposures = !behavesTooYoung && <Tile>{factorExposuresModule}</Tile>;
   // Behaves like goes up under the Composition while it has a mix to show, or may (the risk
-  // section still loading); once it says it can't measure (no equity, under three years, not
-  // measured yet), it waits at the bottom by the risk model.
+  // section still loading); not measured yet or failed, it waits at the bottom by the risk model.
+  // With nothing it could measure (no equity, under three years), it's left out (see above).
   const behavesUp = !risk.failed && (risk.data === null || risk.data.factorExposures?.status === "ok");
 
   const tradingCosts = <TradingCostsModule slot={own(incomeCosts, (d) => d.tradingCosts)} currency={currency} portfolioUuid={portfolioUuid} />;
+  // Realized P&L with nothing sold and no dividend, Trading Costs with no cost paid: once loaded,
+  // they'd only say so, so they're left off the page.
+  const realizedData = incomeCosts.data?.realizedPnl;
+  const noRealized = !!realizedData && realizedData.topAssets.length === 0 && realizedData.totalRealizedPnl === 0;
+  const costsData = incomeCosts.data?.tradingCosts;
+  const noCosts = !!costsData && (costsData.totalTransactions === 0 || costsData.totalCosts === 0);
 
   // A backtest leads with the strategy itself (what it was set to do, which nothing else on the
   // page says), then how it did, then its mix beside what trading cost it (the costs the
@@ -4690,8 +4744,8 @@ function HistoryPage({
         {!strategyShown && <StrategyModules portfolioUuid={portfolioUuid} currency={currency} />}
         <Tile id={moduleAnchor("value")}>{valueModule}</Tile>
         <Tile span="wide" id={moduleAnchor("composition")}>{compositionModule}</Tile>
-        <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>
-        <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>
+        {!noCosts && <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>}
+        {!volatilityTooYoung && <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>}
         {factorExposures}
         {riskModel}
       </div>
@@ -4734,19 +4788,21 @@ function HistoryPage({
       {!behavesUp && strategies && <Tile span={aggregate && onCompare ? "narrow" : "full"}>{strategies}</Tile>}
       {/* What was made, sold (realized, dividends) and still held (gains & losses), beside what
           trading cost; then the risk. */}
-      <Tile span="narrow" id={moduleAnchor("realized")}>
-        <RealizedPnlModule
-          slot={own(incomeCosts, (d) => d.realizedPnl)}
-          currency={currency}
-          portfolioUuid={portfolioUuid}
-          onOpenTaxes={onOpenTaxes}
-        />
-      </Tile>
+      {!noRealized && (
+        <Tile span="narrow" id={moduleAnchor("realized")}>
+          <RealizedPnlModule
+            slot={own(incomeCosts, (d) => d.realizedPnl)}
+            currency={currency}
+            portfolioUuid={portfolioUuid}
+            onOpenTaxes={onOpenTaxes}
+          />
+        </Tile>
+      )}
       <Tile span="narrow">
         <GainsLossesCard slot={own(composition, (d) => d.holdings)} currency={currency} />
       </Tile>
-      <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>
-      <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>
+      {!noCosts && <Tile span="narrow" id={moduleAnchor("costs")}>{tradingCosts}</Tile>}
+      {!volatilityTooYoung && <Tile id={moduleAnchor("volatility")}>{volatilityModule}</Tile>}
       {!behavesUp && factorExposures}
       {riskModel}
     </div>
@@ -4768,6 +4824,9 @@ function ValueModule({ value, currency, comparison, children }: {
   const inception = comparison?.performance?.totalReturnPct ?? null;
   const year = comparison?.performance?.horizons.find((h) => h.period === "1 Year")?.totalReturnPct ?? null;
   const annualized = comparison?.performance?.annualizedReturnPct ?? null;
+  // A chart needs two values; with none of the figures either, there's nothing to show yet.
+  const charted = value.chart.length >= 2;
+  if (!charted && inception === null && year === null && annualized === null) return null;
   return (
     <Module>
       <ModuleHead
@@ -4775,9 +4834,9 @@ function ValueModule({ value, currency, comparison, children }: {
         desc="Market value at each month end since inception, and today. Open it for the returns, the months and the benchmark."
         onExplore={() => setExploring(true)}
       />
-      <div className={`${MODULE_BODY} grid grid-cols-1 @2xl:grid-cols-[auto_minmax(0,1fr)] gap-[22px] @2xl:gap-8 items-center`}>
+      <div className={`${MODULE_BODY} grid grid-cols-1 ${charted ? "@2xl:grid-cols-[auto_minmax(0,1fr)]" : ""} gap-[22px] @2xl:gap-8 items-center`}>
         {/* One column beside the chart on a wide card, side by side above it on a narrow one. */}
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] @2xl:grid-cols-1 gap-x-5 gap-y-5 @2xl:min-w-[150px]">
+        <div className={`grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] ${charted ? "@2xl:grid-cols-1" : ""} gap-x-5 gap-y-5 @2xl:min-w-[150px]`}>
           {inception !== null && (
             <Fig
               label="TWR since inception"
@@ -4831,14 +4890,16 @@ function PerformanceDetail({
   return (
     <>
       <ReturnsExplore portfolioUuid={portfolioUuid} />
-      <Module>
-        <ModuleHead
-          eyebrow={currency}
-          title="Monthly Returns"
-          desc="Time-weighted return by month, since inception. Click a month for its full detail."
-        />
-        {historyUpdating ? <StaleUpdatingState /> : <MonthlyReturnsHeatmap entries={heatmap} onSelectMonth={onSelectMonth} />}
-      </Module>
+      {(historyUpdating || heatmap.length > 0) && (
+        <Module>
+          <ModuleHead
+            eyebrow={currency}
+            title="Monthly Returns"
+            desc="Time-weighted return by month, since inception. Click a month for its full detail."
+          />
+          {historyUpdating ? <StaleUpdatingState /> : <MonthlyReturnsHeatmap entries={heatmap} onSelectMonth={onSelectMonth} />}
+        </Module>
+      )}
       <BenchmarkExplore portfolioUuid={portfolioUuid} />
       <ProjectionModule portfolioUuid={portfolioUuid} withGoals={withGoals} onOpen={onOpenProjection} />
     </>

@@ -6,7 +6,8 @@ import { useSectionTrail } from "./SectionTrail";
 
 export interface Crumb {
   label: string;
-  onClick: () => void;
+  // Left out for a step with no page of its own (a wallet's account): said, not a way back.
+  onClick?: () => void;
 }
 
 /**
@@ -28,7 +29,7 @@ export function Breadcrumb({ trail, current, right, hidden = false }: { trail: C
   });
   const labelsKey = trail.map((c) => c.label).join("\u0000");
   useEffect(() => {
-    setTrail({ labels: labelsKey ? labelsKey.split("\u0000") : [], current, go: (i) => trailRef.current[i]?.onClick() });
+    setTrail({ labels: labelsKey ? labelsKey.split("\u0000") : [], current, go: (i) => trailRef.current[i]?.onClick?.() });
     return () => setTrail(null);
   }, [labelsKey, current, setTrail]);
 
@@ -41,9 +42,13 @@ export function Breadcrumb({ trail, current, right, hidden = false }: { trail: C
       <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 min-w-0 text-[11px] font-bold uppercase tracking-[0.1em] text-[#C49A3C]">
         {trail.map((c, i) => (
           <Fragment key={`${i}:${c.label}`}>
-            <button type="button" onClick={c.onClick} className="rounded uppercase hover:text-[#8A6A28] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40">
-              {c.label}
-            </button>
+            {c.onClick ? (
+              <button type="button" onClick={c.onClick} className="rounded uppercase hover:text-[#8A6A28] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40">
+                {c.label}
+              </button>
+            ) : (
+              <span className="text-[#C49A3C]/75">{c.label}</span>
+            )}
             <ChevronRight className="h-3 w-3 text-[#C49A3C]/60 shrink-0" aria-hidden />
           </Fragment>
         ))}

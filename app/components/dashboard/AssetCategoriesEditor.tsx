@@ -3,11 +3,10 @@
 
 import { useState } from "react";
 import { AlertTriangle, ChevronDown, Loader2, RotateCcw } from "lucide-react";
-import { useUser } from "../../context/UserContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { investmentsKey, useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContext";
 import { assetCategoryService } from "../../services/assetCategoryService";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
+import { useReadOnly } from "../../hooks/useReadOnly";
 import { STRATEGY_CATEGORIES, STRATEGY_CATEGORY_LABELS, type StrategyCategory } from "../../models/Strategy";
 import type { AssetCategoryEntry } from "../../models/AssetCategory";
 
@@ -18,11 +17,11 @@ import type { AssetCategoryEntry } from "../../models/AssetCategory";
  * it; picking another corrects it right away (PUT), in all the user's portfolios, and "Restore
  * suggestion" drops the correction (DELETE). Securities without a category come first,
  * highlighted: they count towards no category. Corrections on securities no longer held are kept,
- * listed apart at the foot. With `clientUuid`, an advisor's view of a client's (the corrections
- * stay the client's). A demo account sees them but can't change them.
+ * listed apart at the foot. With `clientUuid`, an advisor's view of a client's, to read: the client
+ * alone corrects them (hooks/useReadOnly).
  */
 export function AssetCategoriesEditor({ clientUuid }: { clientUuid?: string }) {
-  const { isDemo } = useUser();
+  const { title: lockedBy } = useReadOnly(clientUuid);
   const { changed } = usePortfolio();
   const queryClient = useQueryClient();
   const key = ["assetCategories", clientUuid ?? "own"];
@@ -94,7 +93,7 @@ export function AssetCategoriesEditor({ clientUuid }: { clientUuid?: string }) {
                 entry={e}
                 busy={busy.has(e.assetId)}
                 error={rowErrors[e.assetId]}
-                readOnly={isDemo}
+                readOnly={lockedBy}
                 onCorrect={(c) => correct(e.assetId, c)}
                 onRestore={() => restore(e.assetId)}
               />
@@ -130,7 +129,7 @@ export function AssetCategoriesEditor({ clientUuid }: { clientUuid?: string }) {
                     </span>
                     {rowErrors[e.assetId] && <span className="block text-[11px] font-semibold text-rose-600 mt-0.5">{rowErrors[e.assetId]}</span>}
                   </span>
-                  <RestoreButton busy={busy.has(e.assetId)} readOnly={isDemo} onClick={() => restore(e.assetId)} label="Remove correction" />
+                  <RestoreButton busy={busy.has(e.assetId)} readOnly={lockedBy} onClick={() => restore(e.assetId)} label="Remove correction" />
                 </li>
               ))}
             </ul>
@@ -149,7 +148,8 @@ function CategoryRow({ entry, busy, error, readOnly, onCorrect, onRestore }: {
   entry: AssetCategoryEntry;
   busy: boolean;
   error?: string;
-  readOnly: boolean;
+  // Why it can't be changed (see hooks/useReadOnly), undefined when it can.
+  readOnly: string | undefined;
   onCorrect: (category: StrategyCategory) => void;
   onRestore: () => void;
 }) {
@@ -183,8 +183,8 @@ function CategoryRow({ entry, busy, error, readOnly, onCorrect, onRestore }: {
             <select
               value={entry.category ?? ""}
               onChange={(e) => onCorrect(e.target.value as StrategyCategory)}
-              disabled={busy || readOnly}
-              title={readOnly ? DEMO_DISABLED_TITLE : undefined}
+              disabled={busy || readOnly !== undefined}
+              title={readOnly}
               aria-label={`Category of ${entry.name ?? entry.assetId}`}
               className={`w-full h-10 pl-3 pr-9 rounded-xl border text-sm font-semibold outline-none appearance-none transition-all focus:ring-4 disabled:opacity-60 disabled:cursor-not-allowed ${
                 uncategorized
@@ -212,13 +212,13 @@ function CategoryRow({ entry, busy, error, readOnly, onCorrect, onRestore }: {
   );
 }
 
-function RestoreButton({ busy, readOnly, onClick, label }: { busy: boolean; readOnly: boolean; onClick: () => void; label: string }) {
+function RestoreButton({ busy, readOnly, onClick, label }: { busy: boolean; readOnly: string | undefined; onClick: () => void; label: string }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={busy || readOnly}
-      title={readOnly ? DEMO_DISABLED_TITLE : undefined}
+      disabled={busy || readOnly !== undefined}
+      title={readOnly}
       className="shrink-0 flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-[#C49A3C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
     >
       <RotateCcw className="h-3 w-3" />

@@ -4,7 +4,6 @@
 import { useMemo, useState } from "react";
 import { ArrowUpRight, Bell, Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
-import { useUser } from "../../context/UserContext";
 import { portfoliosService } from "../../services/portfoliosService";
 import { formatCurrency } from "../../lib/format";
 import { portfolioColorMap } from "../../lib/chartColors";
@@ -13,7 +12,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { NewPortfolioDialog } from "./NewPortfolioDialog";
 import { VIRTUAL_COLOR, VirtualBadge } from "./BacktestMarks";
 import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
+import { useReadOnly } from "../../hooks/useReadOnly";
 import type { Portfolio } from "../../models/Portfolio";
 import type { TaxationMode } from "../../models/Tax";
 import { TAXATION_MODE_LABELS } from "../../lib/taxes";
@@ -31,9 +30,9 @@ const createdLabel = (iso: string) =>
  * others and can be neither renamed nor deleted, which a line under the list says. Values come
  * from GET /v1/portfolios/comparison, like the hub's. A real portfolio's row counts its alerts (an
  * adopted strategy's included) and leads to them (`onOpenAlerts`: its Alerts tab), and says who pays
- * its taxes, to change there: the user in their tax return, or its broker (see models/Tax; an
- * advisor sets a client's too). Backtests are adopted from Strategies. A demo account sees the
- * list but can't change anything.
+ * its taxes, to change there: the user in their tax return, or its broker (see models/Tax).
+ * Backtests are adopted from Strategies. An advisor on a client's sees the list but can't change
+ * anything (hooks/useReadOnly).
  */
 export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
   trail: Crumb[];
@@ -42,7 +41,7 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
   onOpenAlerts: (uuid: string) => void;
 }) {
   const { portfolios, deletePortfolio, client, canManage } = usePortfolio();
-  const { isDemo } = useUser();
+  const { title: lockedBy, lock } = useReadOnly();
   const [creating, setCreating] = useState(false);
   const [toDelete, setToDelete] = useState<Portfolio | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -57,7 +56,7 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
   const loaded = list !== undefined;
   const byUuid = useMemo(() => new Map((list ?? []).map((e) => [e.portfolio.uuid, e])), [list]);
 
-  const real = portfolios.filter((p) => !p.isVirtual).sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+  const real = portfolios.filter((p) => !p.isVirtual);
   const backtests = portfolios.filter((p) => p.isVirtual && !p.isAggregate);
   const hasAggregate = portfolios.some((p) => p.isAggregate);
   const { rules } = usePortfoliosAlertRules(real.map((p) => p.uuid));
@@ -82,7 +81,7 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
       portfolio={p}
       color={color}
       entry={loaded ? byUuid.get(p.uuid) ?? null : undefined}
-      readOnly={isDemo}
+      readOnly={lockedBy}
       manageable={canManage}
       // Backtests take no alerts; undefined while they load.
       alertCount={p.isVirtual || rules === null ? undefined : rules.filter((r) => r.portfolioUuid === p.uuid).length}
@@ -102,8 +101,7 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
           <button
             type="button"
             onClick={() => setCreating(true)}
-            disabled={isDemo}
-            title={isDemo ? DEMO_DISABLED_TITLE : undefined}
+            {...lock}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-[#1c1917]"
           >
             <Plus className="h-3.5 w-3.5" /> New portfolio
@@ -115,7 +113,7 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
       <ManageGroup
         title="Portfolios"
         note={canManage
-          ? `${real.length} ${real.length === 1 ? "portfolio" : "portfolios"} · the default one can be renamed, not deleted`
+          ? `${real.length} ${real.length === 1 ? "portfolio" : "portfolios"} · each can be renamed or deleted`
           : `${real.length} ${real.length === 1 ? "portfolio" : "portfolios"} · ${client?.name} renames and deletes them`}
       >
         {real.map((p) => row(p, colorOf(p.uuid)))}
@@ -139,7 +137,7 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
           title={`Delete "${toDelete.name}"?`}
           description={toDelete.isVirtual
             ? "This permanently deletes this backtest and everything computed from it. The strategy isn't kept: you'd have to set it up again."
-            : "This permanently deletes this portfolio and every transaction, alert and report in it. This can't be undone."}
+            : "This permanently deletes this portfolio and every transaction and alert in it. Its reports stay among your reports, until you delete them. This can't be undone."}
           confirming={deleting}
           onConfirm={handleDelete}
           onClose={() => setToDelete(null)}
@@ -171,8 +169,7 @@ function ManageGroup({ title, note, tone, children }: { title: string; note?: st
 /**
  * One portfolio in the list: its colour and name (which Rename turns into a field, saved on Enter
  * or the tick), its alerts (a pill leading to them), its value and when it was created,
- * then Open, Rename and Delete. The default portfolio's Delete is disabled,
- * with why. Without `manageable` (a client's, for their advisor), Open only.
+ * then Open, Rename and Delete. Without `manageable` (a client's, for their advisor), Open only.
  */
 function ManageRow({
   portfolio, color, entry, readOnly, manageable, alertCount, onOpenAlerts, taxable, onOpen, onDelete,
@@ -181,7 +178,8 @@ function ManageRow({
   color: string;
   // undefined while loading, null when there are no figures yet.
   entry: PortfolioComparisonEntry | null | undefined;
-  readOnly: boolean;
+  // Why it can't be changed (see hooks/useReadOnly), undefined when it can.
+  readOnly: string | undefined;
   manageable: boolean;
   alertCount?: number;
   onOpenAlerts: () => void;
@@ -256,9 +254,6 @@ function ManageRow({
           ) : (
             <>
               <span className="text-[15px] font-black text-slate-900 truncate" style={serif}>{portfolio.name}</span>
-              {portfolio.isDefault && (
-                <span className="shrink-0 px-2 py-0.5 rounded-full bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500">Default</span>
-              )}
               {portfolio.isVirtual && <VirtualBadge portfolio={portfolio} />}
               {alertCount !== undefined && (
                 <button
@@ -299,9 +294,9 @@ function ManageRow({
               <button
                 type="button"
                 onClick={startRename}
-                disabled={readOnly}
+                disabled={readOnly !== undefined}
                 aria-label={`Rename ${portfolio.name}`}
-                title={readOnly ? DEMO_DISABLED_TITLE : "Rename"}
+                title={readOnly ?? "Rename"}
                 className={`${iconButton} text-slate-400 hover:text-slate-900 hover:bg-slate-100`}
               >
                 <Pencil className="h-4 w-4" />
@@ -309,9 +304,9 @@ function ManageRow({
               <button
                 type="button"
                 onClick={onDelete}
-                disabled={readOnly || portfolio.isDefault}
+                disabled={readOnly !== undefined}
                 aria-label={`Delete ${portfolio.name}`}
-                title={readOnly ? DEMO_DISABLED_TITLE : portfolio.isDefault ? "The default portfolio can't be deleted" : "Delete"}
+                title={readOnly ?? "Delete"}
                 className={`${iconButton} text-rose-500 hover:bg-rose-50`}
               >
                 <Trash2 className="h-4 w-4" />
@@ -332,8 +327,8 @@ function ManageRow({
           <select
             value={portfolio.taxationMode ?? "declared"}
             onChange={(e) => changeTaxationMode(e.target.value as TaxationMode)}
-            disabled={readOnly || savingMode}
-            title={readOnly ? DEMO_DISABLED_TITLE : TAXATION_MODE_LABELS[portfolio.taxationMode ?? "declared"].detail}
+            disabled={readOnly !== undefined || savingMode}
+            title={readOnly ?? TAXATION_MODE_LABELS[portfolio.taxationMode ?? "declared"].detail}
             className="h-7 pl-2 pr-6 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 outline-none hover:border-[#C49A3C]/60 focus:ring-2 focus:ring-[#C49A3C]/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {(Object.keys(TAXATION_MODE_LABELS) as TaxationMode[]).map((m) => (

@@ -14,7 +14,6 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { DialogShell, Field, INPUT, parseAmount } from "./WalletDialogs";
 import { CategoryChip } from "./WalletTransactions";
 import { CategoryOptions } from "./WalletCategories";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 
 // How far back the months go: the year the rest of the wallets' pages show.
 const MONTHS_BACK = 11;
@@ -43,11 +42,10 @@ type Dialog = { kind: "new"; within?: string } | { kind: "edit"; budget: BudgetP
  * subcategories' spending too, so one inside another (Gym inside Leisure) shows within that one's
  * card, and the month's total counts the outermost only. They are set, changed and removed from
  * any page (from this month on: the months before keep theirs); on a wallet, the same budgets show
- * what that wallet spent of each. A demo account reads its sample's, read only: its buttons show,
- * disabled, so it's clear where budgets are set.
+ * what that wallet spent of each.
  */
 export function WalletBudgets({ scope, onManage }: { scope: string | null; onManage: () => void }) {
-  const { wallets, categories, sample, changed } = useWallets();
+  const { wallets, categories, changed } = useWallets();
   // undefined: this month, as the API counts it.
   const [month, setMonth] = useState<string | undefined>(undefined);
   const read = useWalletQuery(["budgetMonth", month ?? "now"], (source) => source.budgetMonth(month));
@@ -77,9 +75,7 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
 
   const isCurrent = latest === null || data.month === latest;
   const all = scope === null;
-  const editable = !sample && isCurrent;
-  // Disabled rather than hidden on a demo account, so it's clear where a budget is set.
-  const demoLock = sample ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
+  const editable = isCurrent;
   const money = (v: number) => formatCurrency(v, data.currency, 0);
   const pace = data.daysElapsed / data.daysInMonth;
   const share = (b: BudgetProgress) => (all ? b.spent : b.wallets.find((w) => w.walletUuid === scope)?.spent ?? 0);
@@ -174,7 +170,6 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
               <button
                 type="button"
                 onClick={() => setDialog({ kind: "new" })}
-                {...demoLock}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#1c1917]"
               >
                 <Plus className="h-3.5 w-3.5" /> New budget
@@ -203,7 +198,6 @@ export function WalletBudgets({ scope, onManage }: { scope: string | null; onMan
             <button
               type="button"
               onClick={() => setDialog({ kind: "new" })}
-              {...demoLock}
               className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1c1917] text-white text-sm font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#1c1917]"
             >
               <Plus className="h-4 w-4" /> Set a budget

@@ -6,14 +6,14 @@ import type { TaxationMode } from "./Tax";
 // Matches PortfolioResponse (GET/POST/PATCH /v1/portfolios, GET /v1/portfolios/{p},
 // GET/POST /v1/advisor/clients/{client_uuid}/portfolios) — a user can own several of these
 // (e.g. "Main portfolio", "Pensione", "Trading"); every dashboard/transactions/alerts/reports
-// endpoint is scoped to one via its uuid in the path. Every user (including advisor-created
-// clients, advisors themselves, and demo accounts) has exactly one `isDefault` portfolio,
-// created at registration and never deletable (DELETE on it is a 409). While a user owns 2+
+// endpoint is scoped to one via its uuid in the path. Every account starts with one ("Main
+// portfolio", created at registration), but none is special: any can be renamed or deleted, the
+// last one too, and then the user has none until they create one. While a user owns 2+
 // portfolios they also get an automatic `isAggregate` one ("All portfolios"): its figures are
 // recomputed from every portfolio's transactions combined, it's readable everywhere (incl.
 // alert rules) but otherwise read-only — transaction writes, import commit, reports, rename
-// and delete all 409. GET /v1/portfolios returns the aggregate first (if any), then the
-// default, then oldest first; an advisor lists a client's the same way via
+// and delete all 409. GET /v1/portfolios returns the aggregate first (if any), then oldest
+// first; an advisor lists a client's the same way via
 // GET /v1/advisor/clients/{client_uuid}/portfolios, then reaches each through the same
 // /v1/portfolios/{p}/... paths the client would.
 //
@@ -25,7 +25,6 @@ import type { TaxationMode } from "./Tax";
 interface Portfolio {
   uuid: string;
   name: string;
-  isDefault: boolean;
   isVirtual: boolean;
   isAggregate: boolean;
   createdAt: string;
@@ -37,11 +36,17 @@ interface Portfolio {
 const isBacktest = (p: Pick<Portfolio, "isVirtual" | "isAggregate">) => p.isVirtual && !p.isAggregate;
 
 /**
+ * The oldest real portfolio (the list is the aggregate, then oldest first): where something that
+ * names no portfolio goes, while All portfolios or a backtest is selected. None once they're all deleted.
+ */
+const firstRealOf = (portfolios: Portfolio[]): Portfolio | undefined => portfolios.find((p) => !p.isVirtual);
+
+/**
  * The portfolio that stands for all the investments: "All portfolios" while there are two or
- * more, otherwise the only real one (the default).
+ * more, otherwise the only real one; none when the user has no portfolio.
  */
 const investmentsOf = (portfolios: Portfolio[]): Portfolio | undefined =>
-  portfolios.find((p) => p.isAggregate) ?? portfolios.find((p) => p.isDefault) ?? portfolios.find((p) => !p.isVirtual);
+  portfolios.find((p) => p.isAggregate) ?? firstRealOf(portfolios);
 
 // A single day's snapshot of the portfolio's live state in one currency — unlike the rest of
 // this file, these figures DO come from current market prices (totalMarketValue, totalUnrealizedPnl),
@@ -110,4 +115,4 @@ interface TodayDashboard {
 }
 
 export type { Portfolio, PortfolioSnapshot, DailyValueChange, TodayDashboard };
-export { isBacktest, investmentsOf };
+export { isBacktest, firstRealOf, investmentsOf };

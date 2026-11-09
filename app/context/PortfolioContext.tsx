@@ -5,7 +5,7 @@ import React, { createContext, useContext, useState, useCallback, useMemo } from
 import { keepPreviousData, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { portfoliosService } from "../services/portfoliosService";
 import { useUser } from "./UserContext";
-import { isBacktest, type Portfolio } from "../models/Portfolio";
+import { firstRealOf, isBacktest, type Portfolio } from "../models/Portfolio";
 import type { StrategyPortfolioPayload } from "../models/Strategy";
 import type { TaxationMode } from "../models/Tax";
 
@@ -16,10 +16,11 @@ const LAST_SELECTED_KEY = "last_selected_portfolio_uuid";
  * dashboard's provider), or, with `client`, one of an advisor's clients' (a provider around that
  * client's pages, see ClientsSection), so the investor's pages work on it unchanged.
  *
- * An advisor's own are their strategies' backtests (Strategies) and the default portfolio
- * every account has, which no page shows. A client's leave out the client's own backtests (they're
- * the client's Strategies, not something the advisor manages), are created through the advisor's route,
- * and can't be renamed or deleted by the advisor (`canManage`), nor take a backtest.
+ * An advisor's own are their strategies' backtests (Strategies) and the portfolio every account
+ * starts with, which no page shows. A client's leave out the client's own backtests (they're
+ * the client's Strategies, not something the advisor manages), and are only read by the advisor:
+ * the client alone creates, renames and deletes them and changes what's in them (`canManage`, and
+ * hooks/useReadOnly for the pages' controls).
  *
  * Every investments' read is in the query cache (context/QueryContext) under an ["investments", ...]
  * key (useInvestmentsQuery), shared by the modules and pages that ask for it: the list itself, the
@@ -29,26 +30,28 @@ const LAST_SELECTED_KEY = "last_selected_portfolio_uuid";
  */
 interface PortfolioContextType {
   portfolios: Portfolio[];
-  // The selected portfolio's full record — never null once `loading` is false and the user has
-  // at least the one default portfolio every account is created with.
+  // The selected portfolio's full record — null once `loading` is false only when the user has
+  // no portfolio (they deleted them all).
   current: Portfolio | null;
   loading: boolean;
+  // The list couldn't be read: an empty `portfolios` then says nothing about having none.
+  failed: boolean;
   selectPortfolio: (uuid: string) => void;
   refreshPortfolios: () => Promise<Portfolio[]>;
   createPortfolio: (name: string) => Promise<Portfolio>;
   // A strategy's backtest (see models/Strategy): joins the list, selected, like a new portfolio.
   createStrategyPortfolio: (payload: StrategyPortfolioPayload) => Promise<Portfolio>;
   renamePortfolio: (uuid: string, name: string) => Promise<Portfolio>;
-  // Who pays a real portfolio's taxes (see models/Tax): its advisor sets a client's too.
+  // Who pays a real portfolio's taxes (see models/Tax): the owner's to set, not their advisor's.
   setTaxationMode: (uuid: string, mode: TaxationMode) => Promise<Portfolio>;
-  // Throws (with the backend's own message) on the default portfolio's 409 — callers show it.
+  // Throws (with the backend's own message) on a 409 — callers show it.
   // Resolves with the portfolios left, refetched: the aggregate may have gone with it.
   deletePortfolio: (uuid: string) => Promise<Portfolio[]>;
   // The advisor's client these portfolios are, or null for the user's own.
   client: ClientScope | null;
   // The user's own portfolios, whichever list this is: a client's adoption comes from one of them.
   ownPortfolios: Portfolio[];
-  // Whether its portfolios can be renamed and deleted (not a client's, for their advisor).
+  // Whether its portfolios can be renamed and deleted (not a client's: their advisor only reads them).
   canManage: boolean;
   // After a write that moves the figures (transactions saved, edited, deleted, imported).
   changed: () => void;
@@ -86,9 +89,10 @@ export function PortfolioProvider({ children, client = null }: { children: React
   // Loading until the first answer only: later reads (after create/delete) stay silent instead of
   // swapping the dashboard for its loader.
   const loading = enabled && list.isPending;
+  const failed = list.isError && list.data === undefined;
 
   // The one picked, else the last one selected in a previous session if it still exists, else the
-  // default portfolio — not list[0], which is the aggregate when there is one.
+  // oldest real portfolio — not list[0], which is the aggregate when there is one.
   const [picked, setPicked] = useState<string | null>(
     () => (typeof window !== "undefined" && !clientUuid ? localStorage.getItem(LAST_SELECTED_KEY) : null),
   );
@@ -107,7 +111,8 @@ export function PortfolioProvider({ children, client = null }: { children: React
   }, [clientUuid]);
 
   const createPortfolio = useCallback(async (name: string) => {
-    const created = clientUuid ? await portfoliosService.createForClient(clientUuid, name) : await portfoliosService.create(name);
+    if (clientUuid) throw new Error("Only your client creates their portfolios.");
+    const created = await portfoliosService.create(name);
     await fetchPortfolios();
     selectPortfolio(created.uuid);
     return created;
@@ -138,7 +143,7 @@ export function PortfolioProvider({ children, client = null }: { children: React
   );
 
   // If the deleted one (or the aggregate, gone once only one portfolio is left) was selected,
-  // `current` falls back to the default on its own.
+  // `current` falls back to the oldest real one on its own (null with none left).
   const deletePortfolio = useCallback(async (uuid: string) => {
     await portfoliosService.remove(uuid);
     return fetchPortfolios();
@@ -147,16 +152,16 @@ export function PortfolioProvider({ children, client = null }: { children: React
   const changed = useCallback(() => { void queryClient.invalidateQueries({ queryKey: investmentsKey() }); }, [queryClient]);
 
   const current = useMemo(
-    () => portfolios.find((p) => p.uuid === picked) ?? portfolios.find((p) => p.isDefault) ?? portfolios[0] ?? null,
+    () => portfolios.find((p) => p.uuid === picked) ?? firstRealOf(portfolios) ?? portfolios[0] ?? null,
     [portfolios, picked],
   );
 
   const ownPortfolios = client ? outer?.ownPortfolios ?? [] : portfolios;
   const contextValue: PortfolioContextType = useMemo(() => ({
-    portfolios, current, loading, selectPortfolio,
+    portfolios, current, loading, failed, selectPortfolio,
     refreshPortfolios: fetchPortfolios, createPortfolio, createStrategyPortfolio, renamePortfolio, setTaxationMode, deletePortfolio,
     client, ownPortfolios, canManage: client === null, changed,
-  }), [portfolios, current, loading, selectPortfolio, fetchPortfolios, createPortfolio, createStrategyPortfolio, renamePortfolio, setTaxationMode, deletePortfolio, client, ownPortfolios, changed]);
+  }), [portfolios, current, loading, failed, selectPortfolio, fetchPortfolios, createPortfolio, createStrategyPortfolio, renamePortfolio, setTaxationMode, deletePortfolio, client, ownPortfolios, changed]);
 
   return <PortfolioContext.Provider value={contextValue}>{children}</PortfolioContext.Provider>;
 }

@@ -178,8 +178,8 @@ export default function AdvisorDashboardOverview({ onNavigate }: { onNavigate: (
             <EmptyRow
               icon={<Users className="w-5 h-5" />}
               title="No clients yet"
-              text="Add a client by their email: a new one gets an account, someone already on PortfoliAI is linked to you."
-              action={<LinkButton onClick={() => onNavigate(CLIENTS_SECTION)}>Add a client</LinkButton>}
+              text="A client comes to you by their own request: accept it in Requests, and their portfolios are here to follow."
+              action={<LinkButton onClick={() => onNavigate("requests")}>Requests</LinkButton>}
             />
           ) : (
             <ul className="divide-y divide-[#EEE9DD] border-t border-[#EEE9DD]">

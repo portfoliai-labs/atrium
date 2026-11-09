@@ -1,8 +1,8 @@
 // lib/wallets.ts
 //
 // WALLETS — what every wallet page shares: the names and colours of kinds and categories (the
-// user's category tree), where a page reads its figures from (a WalletSource: the API, a demo
-// account's too), and how a rule, a finding or an observation is worded.
+// user's category tree), where a page reads its figures from (a WalletSource: the API), and how a
+// rule, a finding or an observation is worded.
 
 import type {
   BudgetMonth, Cadence, Category, CategoryKind, CategoryMonths, Merchants, MovementCategory, MovementFilters, MovementList, Observation, Observations,
@@ -15,13 +15,22 @@ import { walletService } from "../services/walletService";
 /** The id of every wallet together (the Wallets hub, "All wallets"). */
 export const ALL_WALLETS = "all";
 
+// An account's page (components/dashboard/wallets/AccountNode), beside a wallet's uuid and
+// ALL_WALLETS as the id of a view of the section.
+const ACCOUNT_VIEW = "account:";
+export const accountView = (accountUuid: string) => `${ACCOUNT_VIEW}${accountUuid}`;
+/** The account a view's id opens, null for a wallet's or every wallet's. */
+export const accountOfView = (id: string) => (id.startsWith(ACCOUNT_VIEW) ? id.slice(ACCOUNT_VIEW.length) : null);
+
 export const KIND_LABELS: Record<WalletKind, string> = {
   current_account: "Current account",
   credit_card: "Credit card",
   savings: "Savings",
   cash: "Cash",
+  crypto: "Crypto",
 };
-export const WALLET_KINDS = Object.keys(KIND_LABELS) as WalletKind[];
+// The kinds a wallet is made with: a crypto one also when a stablecoin is linked to a new wallet.
+export const WALLET_KINDS: WalletKind[] = ["current_account", "credit_card", "savings", "cash", "crypto"];
 
 // The presets, as every user's categories start: worded and coloured here until renamed or recoloured.
 export const INCOME_CATEGORIES: MovementCategory[] = ["salary", "freelance", "refunds", "interest", "other_income"];
@@ -179,9 +188,7 @@ export function savingsRate(months: { income: number; spending: number }[]) {
 // ── Where the figures come from ──
 
 /**
- * Where a wallet page reads from: the API (apiWalletSource), for a demo account too (arca's demo
- * data). Writes always go to walletService: a demo account's are refused (see lib/demo, and ianus'
- * read-only gate).
+ * Where a wallet page reads from: the API (apiWalletSource). Writes always go to walletService.
  */
 export interface WalletSource {
   summary(walletUuid: string | null, from?: string, to?: string): Promise<WalletSummary>;

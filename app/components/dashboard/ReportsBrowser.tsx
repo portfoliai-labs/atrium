@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, FileText, Loader2, Search } from "lucide-react";
 import { usePortfolio } from "../../context/PortfolioContext";
-import { useUser } from "../../context/UserContext";
 import { portfolioColorMap } from "../../lib/chartColors";
 import { reportService } from "../../services/reportService";
 import { accountKey } from "../../hooks/useAccountQuery";
@@ -27,7 +26,6 @@ import type { Document } from "../../models/Report";
  */
 export function ReportsBrowser({ portfolioUuid }: { portfolioUuid?: string } = {}) {
   const { portfolios } = usePortfolio();
-  const { isDemo } = useUser();
   const { generate, sending, toast } = useGenerateReport();
   const real = useMemo(
     () => portfolios.filter((p) => !p.isVirtual && (!portfolioUuid || p.uuid === portfolioUuid)),
@@ -112,7 +110,6 @@ export function ReportsBrowser({ portfolioUuid }: { portfolioUuid?: string } = {
         </div>
         <button
           type="button"
-          // A demo account can open the dialog to see it; the dialog won't send anything.
           onClick={() => setGenerating(true)}
           disabled={sending || real.length === 0}
           className="h-12 flex items-center justify-center gap-2 px-5 rounded-xl bg-[#1c1917] text-white text-sm font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#1c1917] shrink-0"
@@ -156,7 +153,6 @@ export function ReportsBrowser({ portfolioUuid }: { portfolioUuid?: string } = {
                   tags={file.tags ?? []}
                   href={`/reports/${file.portfolio_uuid}/${file.document_id}`}
                   downloading={downloading === file.document_id}
-                  readOnly={isDemo}
                   onDownload={() => download(file)}
                   onAddTag={(tag) => addTag(file, tag)}
                   onRemoveTag={(tag) => removeTag(file, tag)}
@@ -174,7 +170,6 @@ export function ReportsBrowser({ portfolioUuid }: { portfolioUuid?: string } = {
           }))}
           targets={real.map((p) => ({ id: p.uuid, name: p.name, color: colorOf(p.uuid) }))}
           targetLabel="Portfolio"
-          readOnly={isDemo}
           onClose={() => setGenerating(false)}
           // Only full-history reports exist for now (see ReportKinds).
           onGenerate={(_kind, target) => {

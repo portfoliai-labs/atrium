@@ -5,9 +5,6 @@ import type {
   AdvisorStatementPayload,
   AdvisorProfileUpdatePayload,
   Client,
-  ClientCreatePayload,
-  ClientLookupResponse,
-  ClientProfileUpdatePayload,
 } from "../models/Advisor";
 import { apiFetch, apiFetchForm } from "./apiClient";
 
@@ -50,33 +47,17 @@ export const advisorService = {
     });
   },
 
-  // --- Client management ---
+  // --- Clients ---
+  // A client comes through their own advisor request, accepted (advisorRequestService); the
+  // advisor reads their data, and only the client changes it.
 
   async getClients(): Promise<Client[]> {
     return apiFetch<Client[]>('/v1/advisor/clients');
   },
 
-  async lookupClient(email: string): Promise<ClientLookupResponse> {
-    return apiFetch<ClientLookupResponse>(`/v1/advisor/clients/lookup?email=${encodeURIComponent(email)}`);
-  },
-
-  async createClient(payload: ClientCreatePayload): Promise<Client> {
-    return apiFetch<Client>('/v1/advisor/clients', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  },
-
   async deleteClient(clientUuid: string): Promise<void> {
     return apiFetch<void>(`/v1/advisor/clients/${clientUuid}`, {
       method: 'DELETE',
-    });
-  },
-
-  async updateClientProfile(clientUuid: string, payload: ClientProfileUpdatePayload): Promise<void> {
-    return apiFetch<void>(`/v1/advisor/clients/${clientUuid}/profile`, {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
     });
   },
 };

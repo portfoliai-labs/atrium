@@ -10,30 +10,31 @@ app is tabella.
 
 | Variable | What it's for |
 | --- | --- |
-| `NEXT_PUBLIC_API_URL` | Backend base URL |
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase auth |
+| `NEXT_PUBLIC_API_URL` | The API (ianus) base URL; unset: the page's own origin (`/v1`), as a self-hosted install serves it |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | The authentication (Supabase Auth); unset: the page's own origin (`/auth/v1`), and no key (the local authentication reads none) |
 | `NEXT_PUBLIC_SITE_URL` | Public site URL (metadata); defaults to https://portfoliai.online |
 
-### Demo accounts
+### Development accounts
 
-An account on the `DEMO` subscription tier (`subscription_tier` on its profile) is a demo
-account. On the regular dashboard it also sees the roadmap's preview features (Wallets, Real
-estate, Explore, Strategy — sample data, not tied to real data), and it is read-only: the
-frontend refuses its writes (`app/lib/demo.ts`) and disables the controls that would send them.
-The backend must refuse a demo account's writes as well; the frontend alone can be bypassed.
+forum's development stack seeds two accounts with sample data: an investor
+(`demo@portfoliai.app`) and an advisor (`advisor-demo@portfoliai.app`), their password in forum's
+`docker-compose.development.yml`. They are ordinary accounts, signed in from the login form like
+any other.
+
+## Docker image
+
+`Dockerfile` builds Next's standalone server with no `NEXT_PUBLIC_*`: the API and the
+authentication on the page's own origin (`app/lib/origins.ts`), so one image serves any install
+behind forum's `deploy/` nginx. A build argument sets one (`--build-arg NEXT_PUBLIC_API_URL=...`).
 
 ## Getting Started
 
-First, run the development server:
+The dependencies are pnpm's (`pnpm-lock.yaml`, the only lockfile): install them and run the
+development server:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
@@ -56,3 +57,7 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## License
+
+Apache License 2.0: see [LICENSE](LICENSE) and [NOTICE](NOTICE). Copyright 2026 Matteo Piacentini.

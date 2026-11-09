@@ -30,7 +30,7 @@ export interface DisplayTransaction {
   accruedInterest?: number | null;
   counterAmount?: number | null;
   counterCurrency?: string | null;
-  rewardKind?: "staking" | "airdrop" | null;
+  rewardKind?: "staking" | "airdrop" | "reinvested_dividend" | null;
 }
 
 export interface TransactionRow {

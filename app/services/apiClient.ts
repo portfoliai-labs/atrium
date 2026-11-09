@@ -1,7 +1,5 @@
 // services/apiClient.ts
-import { DEMO_READ_ONLY_MESSAGE, isBlockedForDemo } from "../lib/demo";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+import { API_BASE_URL } from "../lib/origins";
 
 export class ApiError extends Error {
   status: number;
@@ -47,8 +45,6 @@ function formatErrorDetail(detail: unknown, status: number): string {
 }
 
 export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  // A demo account is read-only: refuse the write here, before it leaves the browser.
-  if (isBlockedForDemo(endpoint, options.method)) throw new ApiError(403, DEMO_READ_ONLY_MESSAGE);
   const token = typeof window !== 'undefined' ? localStorage.getItem("auth_token") : null;
 
   const defaultHeaders = {
@@ -86,8 +82,6 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
 // Like apiFetch, but for multipart/form-data bodies (e.g. file uploads).
 // Content-Type is intentionally omitted so the browser can set the multipart boundary itself.
 export async function apiFetchForm<T>(endpoint: string, formData: FormData, options: RequestInit = {}): Promise<T> {
-  // Always a write (an upload): refused for a demo account, like apiFetch's.
-  if (isBlockedForDemo(endpoint, options.method ?? "POST")) throw new ApiError(403, DEMO_READ_ONLY_MESSAGE);
   const token = typeof window !== 'undefined' ? localStorage.getItem("auth_token") : null;
 
   const defaultHeaders = {

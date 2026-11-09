@@ -3,7 +3,8 @@
 // come back as numbers and are accepted as numbers or decimal strings. Dates are YYYY-MM-DD,
 // months YYYY-MM.
 
-export type WalletKind = "current_account" | "credit_card" | "savings" | "cash";
+// "crypto": a stablecoin's balance on an on-chain address, made by the chain's reads (never by hand).
+export type WalletKind = "current_account" | "credit_card" | "savings" | "cash" | "crypto";
 
 // Whether a movement is income or spending is its sign (money in positive), never its category.
 // The 16 presets every user's categories start from (see Category). As a field next to a
@@ -13,7 +14,8 @@ export type MovementCategory =
   | "housing" | "groceries" | "restaurants" | "transport" | "utilities" | "subscriptions"
   | "shopping" | "health" | "travel" | "leisure" | "other_spending";
 
-export type MovementSource = "manual" | "import" | "bank";
+// "chain": read from an on-chain address (a crypto wallet's).
+export type MovementSource = "manual" | "import" | "bank" | "chain";
 
 // Who gave a movement its category: the user (it stays until they change it) or their rule for
 // the payee (it follows the rule).
@@ -78,6 +80,15 @@ export interface Wallet {
   balance: number;
   lastMovementDate: string | null;
   createdAt: string;
+  // The account it is one of the balances of (models/Account), if any: a bank's or an address'.
+  accountUuid: string | null;
+  // Whole only on a single wallet's read (walletService.get and the writes); null in the list.
+  iban: string | null;
+  // Wherever it has an IBAN.
+  ibanLast4: string | null;
+  // A credit card's only: the wallet it is settled from, and the day of the month.
+  settlesFromWalletUuid: string | null;
+  settlementDay: number | null;
 }
 
 export interface WalletCreateRequest {
@@ -88,10 +99,16 @@ export interface WalletCreateRequest {
   openingBalance?: Amount;
   openingDate?: string;
   color?: string | null;
+  // Spaces allowed; its check digits are checked (InvalidWalletError).
+  iban?: string | null;
+  settlesFromWalletUuid?: string | null;
+  // 1-31.
+  settlementDay?: number | null;
 }
 
-// The fields to change: null or left out keeps the value. The currency changes only while the
-// wallet has no movements.
+// The fields to change: null or left out keeps the value; "" clears the institution, the colour,
+// the IBAN and the wallet settled from, 0 the settlement day. The currency changes only while the
+// wallet has no movements, the kind only while its cards still fit it.
 export type WalletUpdateRequest = Partial<WalletCreateRequest>;
 
 export interface Movement {
@@ -114,6 +131,8 @@ export interface Movement {
   transferUuid: string | null;
   counterpartWalletUuid: string | null;
   createdAt: string;
+  // The card that made it, one of its wallet's.
+  cardUuid: string | null;
 }
 
 /**
@@ -138,6 +157,8 @@ export interface MovementInput {
   categoryUuid?: string | null;
   counterparty?: string | null;
   note?: string | null;
+  // One of its wallet's cards; "" clears it in a change.
+  cardUuid?: string | null;
 }
 
 // The fields to change. A transfer's leg takes no date, amount or category change; a category is
@@ -461,22 +482,17 @@ export interface StatementImportResult {
   lastBookedOn: string | null;
 }
 
-// A wallet's report (scriba's, on arca's figures): one wallet's month or year, or all of them.
+// The wallets' report (scriba's, on arca's figures): the owner's money, all their wallets together.
+// The routes on one name it by its document id alone.
 export interface WalletReport {
   documentId: string;
-  // The wallet it's about: what the download and tag routes name it by.
-  walletUuid: string;
   name: string;
   size: number;
   tags: string[];
   generatedByUuid: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-// A wallet's full report: its whole history, from its opening to today.
-export interface WalletReportRequest {
-  name: string;
-  walletUuid: string;
-  force?: boolean;
+  // What it's about, as scriba named it ("All wallets").
+  subjectName: string | null;
+  subjectDeleted: boolean;
 }

@@ -16,9 +16,8 @@ function realEstateViewOf(raw: unknown): RealEstateView {
 }
 
 /**
- * REAL ESTATE SECTION — the investor's properties (a demo account's are sample data): the real
- * estate's own page and each property's (RealEstateNode), each a browser history entry (see
- * lib/dashboardHistory). A page it doesn't know, or a property that's gone, opens its own page.
+ * REAL ESTATE SECTION — the investor's properties: the real estate's own page and each property's
+ * (RealEstateNode), each a browser history entry (see lib/dashboardHistory). A page it doesn't know, or a property that's gone, opens its own page.
  */
 export function RealEstateSection() {
   const [view, open] = useSectionView(REAL_ESTATE_SECTION, realEstateViewOf);

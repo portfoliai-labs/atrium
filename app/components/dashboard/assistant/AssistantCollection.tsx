@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQueries, useQuery, type QueryClient } from "@tanstack/react-query";
-import { Building2, Download, FileText, Loader2, PieChart, Wallet } from "lucide-react";
+import { useState } from "react";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { Building2, Download, FileText, Loader2, PieChart, Trash2, Wallet } from "lucide-react";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { usePortfolio } from "../../../context/PortfolioContext";
 import { useWallets, walletKey } from "../../../context/WalletsContext";
 import { realEstateKey, useRealEstate } from "../../../context/RealEstateContext";
@@ -11,6 +12,7 @@ import { reportService } from "../../../services/reportService";
 import { walletService } from "../../../services/walletService";
 import { realEstateService } from "../../../services/realEstateService";
 import { saveReportFile } from "../ReportsList";
+import { LIQUIDITY } from "../../../lib/dashboardNav";
 
 // What a report is about.
 export type ReportKind = "portfolio" | "wallet" | "property";
@@ -21,15 +23,18 @@ export interface CollectionItem {
   key: string;
   kind: ReportKind;
   name: string;
-  // The portfolio, wallet or property it's about.
+  // The portfolio, wallet or property it's about: its name now, or as it was when the report was
+  // made once it's deleted (`deleted`).
   subject: string;
+  deleted: boolean;
   createdAt: string;
   download: () => Promise<{ url: string }>;
+  remove: () => Promise<void>;
 }
 
 const KINDS: Record<ReportKind, { label: string; icon: typeof PieChart }> = {
   portfolio: { label: "Portfolio", icon: PieChart },
-  wallet: { label: "Wallet", icon: Wallet },
+  wallet: { label: LIQUIDITY, icon: Wallet },
   property: { label: "Property", icon: Building2 },
 };
 
@@ -41,43 +46,51 @@ export function collectionChanged(queryClient: QueryClient) {
 }
 
 /**
- * The collection's media: every report the user has, newest first: their portfolios' (ready ones only), their wallets' and
- * their properties', each read from its own route, in the query cache under its own key (a
- * portfolio's shared with Reports). A route that fails leaves its reports out rather than the
- * whole list; all are read again with `collectionChanged` (a report the assistant just made).
- * undefined while loading; `failed` when none could be read.
+ * The collection's media: every report the user has (theirs alone, who asked for them: an
+ * advisor's on their clients too), newest first: their portfolios' (ready ones only), their
+ * wallets' and their properties', the deleted ones' included (a report outlives what it's about),
+ * each read from its own route, in the query cache under its own key. A route that fails leaves
+ * its reports out rather than the whole list; all are read again with `collectionChanged` (a
+ * report the assistant just made, or one deleted). undefined while loading; `failed` when none
+ * could be read.
  */
 export function useCollection(enabled = true) {
   const { portfolios } = usePortfolio();
-  const { wallets, available: hasWallets } = useWallets();
+  const { available: hasWallets } = useWallets();
   const { properties, available: hasProperties } = useRealEstate();
-  const real = useMemo(() => portfolios.filter((p) => !p.isVirtual && !p.isAggregate), [portfolios]);
-  const documents = useQueries({
-    queries: real.map((p) => ({ queryKey: accountKey("reports", p.uuid), queryFn: () => reportService.getAllDocuments(p.uuid), enabled })),
-  });
+  const portfolioReports = useQuery({ queryKey: accountKey("reports", "own"), queryFn: () => reportService.ownReports(), enabled });
   const walletReports = useQuery({ queryKey: walletKey("reports"), queryFn: () => walletService.reports(), enabled: enabled && hasWallets });
   const propertyReports = useQuery({ queryKey: realEstateKey("reports"), queryFn: () => realEstateService.reports(), enabled: enabled && hasProperties });
 
-  const reads = [...documents, ...(hasWallets ? [walletReports] : []), ...(hasProperties ? [propertyReports] : [])];
+  const reads = [portfolioReports, ...(hasWallets ? [walletReports] : []), ...(hasProperties ? [propertyReports] : [])];
   if (!enabled || reads.some((r) => r.isPending)) return undefined;
 
-  const portfolioName = (uuid: string) => real.find((p) => p.uuid === uuid)?.name ?? "A portfolio";
-  const walletName = (uuid: string) => wallets.find((w) => w.uuid === uuid)?.name ?? "A wallet";
-  const propertyName = (uuid: string) => properties.find((p) => p.uuid === uuid)?.name ?? "A property";
+  // Its name now; once it's deleted, as it was when the report was made.
+  const named = (current: string | undefined, kept: string | null, fallback: string) => current ?? kept ?? fallback;
   const items: CollectionItem[] = [
-    ...documents.flatMap((r) => (r.data ?? [])
+    ...(portfolioReports.data ?? [])
       .filter((d) => d.status === "UPLOADED")
       .map((d): CollectionItem => ({
-        key: `portfolio:${d.document_id}`, kind: "portfolio", name: d.name, subject: portfolioName(d.portfolio_uuid), createdAt: d.created_at,
+        key: `portfolio:${d.document_id}`, kind: "portfolio", name: d.name, createdAt: d.created_at,
+        subject: named(portfolios.find((p) => p.uuid === d.portfolio_uuid)?.name, d.subject_name, "A portfolio"),
+        deleted: d.subject_deleted,
         download: () => reportService.downloadReport(d.portfolio_uuid, d.document_id),
-      }))),
+        remove: () => reportService.deleteReport(d.portfolio_uuid, d.document_id),
+      })),
     ...(hasWallets ? walletReports.data ?? [] : []).map((r): CollectionItem => ({
-      key: `wallet:${r.documentId}`, kind: "wallet", name: r.name, subject: walletName(r.walletUuid), createdAt: r.createdAt,
-      download: () => walletService.reportDownloadUrl(r.walletUuid, r.documentId),
+      key: `wallet:${r.documentId}`, kind: "wallet", name: r.name, createdAt: r.createdAt,
+      // On all the wallets together: no one wallet's name.
+      subject: "All wallets",
+      deleted: false,
+      download: () => walletService.reportDownloadUrl(r.documentId),
+      remove: () => walletService.deleteReport(r.documentId),
     })),
     ...(hasProperties ? propertyReports.data ?? [] : []).map((r): CollectionItem => ({
-      key: `property:${r.documentId}`, kind: "property", name: r.name, subject: propertyName(r.propertyUuid), createdAt: r.createdAt,
+      key: `property:${r.documentId}`, kind: "property", name: r.name, createdAt: r.createdAt,
+      subject: named(properties.find((p) => p.uuid === r.propertyUuid)?.name, r.subjectName, "A property"),
+      deleted: r.subjectDeleted,
       download: () => realEstateService.reportDownloadUrl(r.propertyUuid, r.documentId),
+      remove: () => realEstateService.deleteReport(r.propertyUuid, r.documentId),
     })),
   ];
   return {
@@ -89,12 +102,16 @@ export function useCollection(enabled = true) {
 /**
  * COLLECTION — the assistant's media, beside the chats (as Gemini keeps what it made): for now the
  * reports the user has (the ones the assistant made among them), newest first, filtered by what
- * they're about, each downloaded from here.
+ * they're about, each downloaded or deleted from here.
  */
 export function AssistantCollection({ library }: { library: ReturnType<typeof useCollection> }) {
+  const queryClient = useQueryClient();
   const [kind, setKind] = useState<ReportKind | "all">("all");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toDelete, setToDelete] = useState<CollectionItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   if (library === undefined) return <Loader2 className="w-5 h-5 animate-spin text-[#C49A3C] mx-auto my-10" />;
   if (library.failed) return <p className="text-sm text-[#b91c1c] text-center py-10">Your collection couldn&apos;t be loaded. Please try again.</p>;
@@ -112,6 +129,21 @@ export function AssistantCollection({ library }: { library: ReturnType<typeof us
       setError("The report couldn't be downloaded. Please try again.");
     } finally {
       setBusy(null);
+    }
+  };
+
+  const remove = async () => {
+    if (!toDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await toDelete.remove();
+      collectionChanged(queryClient);
+      setToDelete(null);
+    } catch {
+      setDeleteError("The report couldn't be deleted. Please try again.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -155,7 +187,7 @@ export function AssistantCollection({ library }: { library: ReturnType<typeof us
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-bold text-[#1c1917] truncate">{report.name}</span>
                 <span className="block text-xs text-[#78716c] truncate">
-                  Report · {KINDS[report.kind].label} · {report.subject} · {new Date(report.createdAt).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
+                  Report · {KINDS[report.kind].label} · {report.subject}{report.deleted ? " (deleted)" : ""} · {new Date(report.createdAt).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
                 </span>
               </span>
               <button
@@ -168,10 +200,30 @@ export function AssistantCollection({ library }: { library: ReturnType<typeof us
               >
                 {busy === report.key ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
               </button>
+              <button
+                type="button"
+                onClick={() => { setDeleteError(null); setToDelete(report); }}
+                disabled={busy !== null}
+                aria-label={`Delete ${report.name}`}
+                title="Delete"
+                className="p-2 rounded-lg text-[#857e78] hover:text-[#b91c1c] hover:bg-[#b91c1c]/10 transition-colors disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </li>
           );
         })}
       </ul>
+      {toDelete && (
+        <ConfirmDialog
+          title={`Delete "${toDelete.name}"?`}
+          description="The report and its file are deleted. This can't be undone."
+          confirming={deleting}
+          error={deleteError}
+          onConfirm={() => void remove()}
+          onClose={() => setToDelete(null)}
+        />
+      )}
     </div>
   );
 }

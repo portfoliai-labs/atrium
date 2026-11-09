@@ -4,7 +4,6 @@
 import { useState } from "react";
 import { ArrowUpRight, Columns3, History, Info, Target, Telescope, Trash2, X } from "lucide-react";
 import { usePortfolio } from "../../context/PortfolioContext";
-import { useUser } from "../../context/UserContext";
 import { useSectionView } from "../../lib/dashboardHistory";
 import { STRATEGIES_SECTION, openClientPage, openPortfolioPage } from "../../lib/dashboardNav";
 import { useMyPublications } from "../../hooks/useMyPublications";
@@ -21,7 +20,6 @@ import type { CompareStrategy } from "./ComparisonView";
 import { StrategiesCatalog, PublishedStrategyPage } from "./StrategiesExplore";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AdoptStrategyDialog } from "./AdoptStrategyDialog";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
 import { openAssetSettings } from "./SettingsSection";
 
 // Strategies' pages: "home", the user's strategies (their backtests) and the catalog of the
@@ -158,8 +156,7 @@ export function StrategiesNode({ view, trail, onOpen, onOpenPortfolio, onNavigat
  * ("Your strategies", a page of its own) the user's alone. Its actions are on the right of the
  * line under the title, as the Journal's pages have theirs: the other of the two pages
  * (`onToggleMine`), Compare and New strategy (StrategyBuilder). Adopting puts the strategy on a portfolio the user picks (or a new one) and opens that
- * portfolio's Strategy page, where its ranges are. A demo account sees the backtests but can't
- * create, adopt or delete.
+ * portfolio's Strategy page, where its ranges are.
  *
  * An advisor adopts theirs on a client's portfolio (opening it in the client's investments, where it's
  * shared with the client or not), and publishes them to the catalog or withdraws them.
@@ -176,7 +173,6 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
   onNavigate: (section: string) => void;
 }) {
   const { portfolios, deletePortfolio } = usePortfolio();
-  const { isDemo } = useUser();
   const { publications, reload: reloadPublications, canPublish } = useMyPublications();
   const [publishing, setPublishing] = useState<Portfolio | null>(null);
   const [withdrawing, setWithdrawing] = useState<PublishedStrategy | null>(null);
@@ -187,7 +183,6 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const backtests = portfolios.filter(isBacktest);
-  const demo = isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
   // Compare: null until it's asked for, then the strategies picked on the list, across its pages.
   const [picked, setPicked] = useState<CompareStrategy[] | null>(null);
   const togglePicked = (strategy: CompareStrategy) => setPicked((prev) => (
@@ -253,7 +248,7 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
             >
               <Columns3 className="h-3.5 w-3.5" /> Compare
             </button>
-            <ActionButton action={{ label: "New strategy", onClick: onBuild, primary: true, ...demo }} />
+            <ActionButton action={{ label: "New strategy", onClick: onBuild, primary: true }} />
           </div>
         </div>
       </header>
@@ -298,9 +293,8 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
               <button
                 type="button"
                 onClick={() => { setDeleteError(null); setDeleting(p); }}
-                disabled={isDemo}
                 aria-label={`Delete ${p.name}`}
-                title={isDemo ? DEMO_DISABLED_TITLE : "Delete this backtest"}
+                title="Delete this backtest"
                 className="absolute top-4 right-4 p-2 rounded-lg text-[#857e78] hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Trash2 className="h-4 w-4" />
@@ -328,8 +322,7 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
                 <button
                   type="button"
                   onClick={() => setAdopting(p)}
-                  disabled={isDemo}
-                  title={isDemo ? DEMO_DISABLED_TITLE : "Keep one of your portfolios in this strategy's ranges"}
+                  title="Keep one of your portfolios in this strategy's ranges"
                   className="flex items-center gap-1.5 min-h-10 px-4 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Target className="h-3.5 w-3.5" /> {canPublish ? "Adopt on a client" : "Adopt"}
@@ -363,7 +356,6 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
           <button
             type="button"
             onClick={onBuild}
-            {...demo}
             className="min-h-36 w-full rounded-3xl border-2 border-dashed border-[#C49A3C]/40 bg-white flex flex-col items-center justify-center gap-2 px-6 text-center text-[#78716c] hover:border-[#C49A3C] transition-colors disabled:cursor-not-allowed"
           >
             <History className="h-6 w-6" />
@@ -417,10 +409,8 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
             if (clientUuid) openClientPage(onNavigate, clientUuid, { kind: "portfolio", uuid, page: "strategy" });
             else onOpenPortfolio(uuid, "strategy");
           }}
-          onOpenCategories={(clientUuid) => {
+          onOpenCategories={() => {
             setAdopting(null);
-            // A client's: on their investments, whichever portfolio stands for them.
-            if (clientUuid) return openClientPage(onNavigate, clientUuid, { kind: "portfolio", uuid: "", page: "categories" });
             openAssetSettings(onNavigate);
           }}
         />

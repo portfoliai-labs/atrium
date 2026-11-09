@@ -14,7 +14,6 @@ import { Breadcrumb, type Crumb } from "../Breadcrumb";
 import { PageHeader, type PageAction, type PageCounter, type PageFigure } from "../PageHeader";
 import { Fig, Figs, HBars, MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import { DonutList, type DonutItem } from "../DonutList";
-import { PreviewBadge } from "../../preview/PreviewKit";
 import { RealEstateTransactionDialog, type RealEstateEntryKind } from "./RealEstateTransactionForm";
 import { ALL_PROPERTIES, RealEstateTransactions } from "./RealEstateTransactions";
 import { RealEstateInsights } from "./RealEstateInsights";
@@ -44,7 +43,7 @@ const toneOf = (v: number | null | undefined): "gain" | "loss" | undefined => (v
  * listed in its own but takes no share. New properties and their transactions are added from one
  * form (RealEstateTransactionForm): a property comes with its Purchase. Transactions can be every
  * property's or one's (`property`), and so can the Alerts (RealEstateAlerts). The Reports (RealEstateReports) are
- * every property's or one's too. A demo account's are sample data, read only. A property that's gone (deleted, an old link) opens the real
+ * every property's or one's too. A property that's gone (deleted, an old link) opens the real
  * estate's own page.
  */
 export function RealEstateNode({ page: requested, property: propertyUuid, rootTrail, onOpen }: {
@@ -53,7 +52,7 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
   rootTrail: Crumb[];
   onOpen: (page: RealEstatePage, property?: string) => void;
 }) {
-  const { properties, loading, error, sample } = useRealEstate();
+  const { properties, loading, error } = useRealEstate();
   const property = propertyUuid ? properties.find((p) => p.uuid === propertyUuid) : undefined;
   const page: RealEstatePage = requested === "property" && !property ? "home" : requested;
   const active = useMemo(() => properties.filter((p) => !p.archived), [properties]);
@@ -107,7 +106,7 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
             </button>
           )}
         />
-        <RealEstateTransactions key={property?.uuid ?? ALL_PROPERTIES} initial={property?.uuid ?? ALL_PROPERTIES} readOnly={sample} />
+        <RealEstateTransactions key={property?.uuid ?? ALL_PROPERTIES} initial={property?.uuid ?? ALL_PROPERTIES} />
         {dialog}
       </div>
     );
@@ -144,7 +143,6 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
       <Breadcrumb trail={rootTrail} current="Real estate" />
       <PageHeader
         eyebrow="Real estate"
-        badge={sample ? <PreviewBadge label="Sample" /> : undefined}
         title="Real estate"
         // Nothing between the title and the counters, as the wallets' and the portfolios' pages.
         counters={counters}

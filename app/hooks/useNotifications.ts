@@ -9,8 +9,8 @@ import {
 import { useUser } from "../context/UserContext";
 import { notificationsKey } from "../context/NotificationsContext";
 import { accountKey } from "./useAccountQuery";
+import { API_BASE_URL } from "@/app/lib/origins";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export type { NotificationResponse };
 
@@ -28,10 +28,9 @@ export function useNotifications() {
   // Only the unread ones, once on mount: the badge, before the list is ever read.
   const unread = useQuery({ queryKey: unreadKey(), queryFn: () => notificationService.listNotifications(true) });
   const esRef = useRef<EventSource | null>(null);
-  // The live stream waits until we know who's signed in, and a demo account (see lib/demo) never
-  // opens it: nothing it can do raises a notification, and the backend refuses its ticket.
-  const { user, isDemo } = useUser();
-  const canStream = user !== null && !isDemo;
+  // The live stream waits until we know who's signed in.
+  const { user } = useUser();
+  const canStream = user !== null;
 
   const notifications = list.data ?? NO_NOTIFICATIONS;
   // The list's say once it's been read, else the unread ones'.

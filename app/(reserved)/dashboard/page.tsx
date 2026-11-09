@@ -5,6 +5,7 @@ import { useEffect, useState, useSyncExternalStore, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useUser } from "../../context/UserContext";
 import { usePortfolio } from "../../context/PortfolioContext";
+import { firstRealOf } from "../../models/Portfolio";
 import { DashboardHeader } from "../../components/dashboard/DashboardHeader";
 import { Sidebar } from "../../components/dashboard/Sidebar";
 import { FileUploader } from "../../components/dashboard/FileUploader";
@@ -27,7 +28,6 @@ import { RealEstateSection } from "../../components/dashboard/realEstate/RealEst
 import { AssetSection } from "../../components/dashboard/AssetSection";
 import { SectionTrailProvider } from "../../components/dashboard/SectionTrail";
 import { Loader2 } from "lucide-react";
-import { DemoBanner } from "../../components/preview/DemoBanner";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
 import {
   ASSET_SECTION, CLIENTS_SECTION, EXPLORE_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, PLAN_SECTION,
@@ -124,10 +124,9 @@ function relocate(section: string, raw: unknown, isAdvisor: boolean): { section:
 /**
  * DashboardPage - Main protected dashboard view.
  * It consumes UserContext to manage profile data and global loading states.
- * A demo account (see lib/demo) gets it read-only, with the preview features.
  */
 function DashboardPageContent() {
-  const { user, loading, logout, isDemo } = useUser();
+  const { user, loading, logout } = useUser();
   // Only meaningful for role USER (see PortfolioContext) — advisor sections resolve a
   // client's portfolio locally instead, so `current` stays null for an advisor and that's fine.
   const { current: portfolio, portfolios, loading: portfolioLoading } = usePortfolio();
@@ -203,22 +202,21 @@ function DashboardPageContent() {
 
   // An investor's transactions live in each portfolio's page now, so a link to the old
   // Transactions section (an "add transactions" empty state) opens the selected portfolio's (the
-  // default's while a backtest or All portfolios is selected, where nothing can be added).
+  // oldest one's while a backtest or All portfolios is selected, where nothing can be added; the
+  // investments' page, where one is created, with none).
   const navigate = (section: string) => {
     if (section === 'upload' && !isAdvisor) {
-      const target = portfolio && !portfolio.isVirtual ? portfolio : portfolios.find((p) => p.isDefault);
-      if (target) openPortfolioPage(openSection, target.uuid, 'transactions');
+      const target = portfolio && !portfolio.isVirtual ? portfolio : firstRealOf(portfolios);
+      openPortfolioPage(openSection, target?.uuid ?? '', target ? 'transactions' : 'overview');
       return;
     }
     showSection(resolveSection(section) ?? section);
   };
 
   const renderContent = (() => {
-    // Every investor-facing case below needs a resolved portfolio; advisor cases never read
-    // `portfolio` (a client's pages have a PortfolioProvider of that client's, see ClientsSection),
-    // so this guard only ever blocks the investor branches while PortfolioContext is still loading.
-    if (!isAdvisor && !portfolio) return null;
-
+    // An investor may have no portfolio (they deleted them all): `portfolio` is then null, and
+    // Investments offers to create one. Advisor cases never read it (a client's pages have a
+    // PortfolioProvider of that client's, see ClientsSection).
     switch (activeSection) {
       case 'overview':
         return isAdvisor
@@ -238,9 +236,11 @@ function DashboardPageContent() {
       case 'upload':
         // Every portfolio at once: the list filters by portfolio, and new rows say where they go.
         // An advisor's is each client's portfolio's, see above.
-        return isAdvisor ? null : <FileUploader />;
+        // With no portfolio to put them in, the investments' page, where one is created.
+        if (isAdvisor) return null;
+        return firstRealOf(portfolios) ? <FileUploader /> : <InvestmentsSection key={sectionVisit} onNavigate={navigate} />;
       case 'reports':
-        return isAdvisor ? <AdvisorDashboardOverview onNavigate={navigate} /> : <ReportsList portfolioUuid={portfolio!.uuid} />;
+        return isAdvisor ? <AdvisorDashboardOverview onNavigate={navigate} /> : portfolio ? <ReportsList portfolioUuid={portfolio.uuid} /> : null;
       case INVESTMENTS_SECTION:
         // An advisor's Insights are each client's portfolio's (see relocate).
         return isAdvisor ? null : <InvestmentsSection key={sectionVisit} onNavigate={navigate} />;
@@ -326,7 +326,6 @@ function DashboardPageContent() {
         <main className={`flex-1 min-w-0 ${sidebarCollapsed ? "lg:ml-20" : "lg:ml-80"} bg-[#F7F5EF] p-4 md:p-8 transition-all duration-300`}>
           {/* As wide again as the Sidebar gives up when it's narrow (15rem): the modules grow with it. */}
           <div className={`${sidebarCollapsed ? "lg:max-w-[79rem]" : ""} max-w-5xl mx-auto transition-[max-width] animate-in fade-in slide-in-from-bottom-4 duration-700`}>
-            {isDemo && <DemoBanner />}
             <DashboardPageContext.Provider value={openPage}>{renderContent}</DashboardPageContext.Provider>
           </div>
         </main>

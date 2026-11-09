@@ -2,14 +2,14 @@
 // Aligned with backend DTOs in app/api/dto/routes_transactions.py (ianus 0.27.0: nucleo's ledger).
 
 // Matches TransactionOperation enum from backend. On an instrument: buy, sell, dividend, coupon,
-// redemption (a bond repaid), transfer_in, transfer_out, reward (staking, an airdrop). Cash
+// redemption (a bond repaid), transfer_in, transfer_out, reward (staking, an airdrop, a dividend paid as more units). Cash
 // movements, with no instrument: deposit, withdrawal, interest, fee, tax, fx_conversion. Which
 // fields each takes is in lib/operations.
 type TransactionOperation =
   | 'buy' | 'sell' | 'dividend' | 'coupon' | 'redemption' | 'transfer_in' | 'transfer_out' | 'reward'
   | 'deposit' | 'withdrawal' | 'interest' | 'fee' | 'tax' | 'fx_conversion';
 
-type RewardKind = 'staking' | 'airdrop';
+type RewardKind = 'staking' | 'airdrop' | 'reinvested_dividend';
 
 // Matches TransactionInput DTO (POST /v1/portfolios/{p}/transactions, .../validate). With
 // listing_id (census' listing, as /v1/listings gives it) the backend takes the identifiers from
@@ -59,11 +59,9 @@ interface TransactionResponse {
   isin: string | null;
   ticker: string | null;
   name: string | null;
-  /** @deprecated Read asset_class_code (via transactionAssetClassCode). */
-  asset_class?: string | null;
   // One of lib/assetClasses' codes; null for a cash movement or an instrument with unknown
-  // metadata. Optional only while an older ianus may answer without it (step 3).
-  asset_class_code?: string | null;
+  // metadata.
+  asset_class_code: string | null;
   date: string;
   operation: TransactionOperation;
   amount: number;

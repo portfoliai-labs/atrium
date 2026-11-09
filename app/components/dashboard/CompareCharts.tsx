@@ -277,7 +277,7 @@ export function ReturnsByWindowModule({ entries, colorOf }: { entries: Portfolio
 export function AllocationModule({ entries, colorOf }: { entries: PortfolioComparisonEntry[]; colorOf: (uuid: string) => string }) {
   const withAllocation = useMemo(() => entries.filter((e) => e.allocation && e.allocation.length > 0), [entries]);
   const rows = useMemo(() => {
-    // Summed per code: an older ianus' legacy strings may fold two into one (step 3 drops it).
+    // Summed per code: codes out of the vocabulary all read as unclassified.
     const weightOf = (e: PortfolioComparisonEntry, code: AssetClassCode) =>
       e.allocation!.reduce((sum, a) => (assetClassCodeOf(a) === code ? sum + a.weightPct : sum), 0);
     const codes = new Set(withAllocation.flatMap((e) => e.allocation!.map(assetClassCodeOf)));

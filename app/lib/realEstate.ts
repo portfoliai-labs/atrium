@@ -1,8 +1,7 @@
 // lib/realEstate.ts
 //
 // REAL ESTATE — what every real estate page shares: the names of kinds, uses and transactions, and
-// where a page reads its figures from (a RealEstateSource: the API, or a demo account's sample
-// data, see lib/mock/realEstate).
+// where a page reads its figures from (a RealEstateSource: the API).
 
 import type {
   CostKind, ExpenseKind, HolderKind, InstalmentFrequency, Mortgage, MortgageSchedule, Municipality, NotComputedReason,
@@ -454,10 +453,8 @@ export function currentFindings(rules: RealEstateAlertRule[], propertyUuid?: str
 // ── Where the figures come from ──
 
 /**
- * Where a real estate page reads from: the API (apiRealEstateSource) or, for a demo account, the
- * sample data (lib/mock/realEstate's demoRealEstateSource), in the same shapes. The properties
- * themselves come from RealEstateContext. Writes always go to realEstateService: a demo account's
- * are refused (see lib/demo).
+ * Where a real estate page reads from: the API (apiRealEstateSource). The properties themselves
+ * come from RealEstateContext. Writes always go to realEstateService.
  */
 export interface RealEstateSource {
   overview(): Promise<RealEstateOverview>;

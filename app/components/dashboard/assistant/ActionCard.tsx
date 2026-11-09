@@ -12,6 +12,7 @@ const FAILURES: Record<string, string> = {
   PLAN_LIMIT_EXCEEDED: "Your plan doesn't include reports.",
   REPORT_ALREADY_EXISTS: "A report on it is already being generated.",
   VIRTUAL_PORTFOLIO_OPERATION: "Reports aren't available for a virtual portfolio.",
+  NO_WALLETS: "There are no wallets to report on.",
 };
 
 const STATES: ActionState[] = ["proposed", "running", "done", "failed", "cancelled", "expired"];
@@ -44,9 +45,7 @@ export function ActionCard({ action, conversationUuid, onChange, writing = false
     } catch (err) {
       const settled = err instanceof ApiError ? settledState(err) : null;
       if (settled) onChange({ ...action, state: settled });
-      else setError(err instanceof ApiError && err.errorType === "ReadOnlyAccountError"
-        ? "This is a demo account: actions aren't available on it."
-        : "That didn't go through. Please try again.");
+      else setError("That didn't go through. Please try again.");
     } finally {
       setBusy(false);
     }

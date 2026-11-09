@@ -11,10 +11,6 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { Toggle } from "./Toggle";
 import { TONE_STYLES } from "./AlertGauge";
 import { PortfolioGroupCard } from "./PortfolioGroupCard";
-import { useUser } from "../../context/UserContext";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
-import { PreviewBadge } from "../preview/PreviewKit";
-import { isSampleRule, sampleAlertRules } from "../../lib/mock/alerts";
 import {
   alertFigures, alertState, describeAlert, describeParams, isKept, sameParams, ALERT_RULE_LIMIT, WINDOW_LABEL, type AlertTone,
 } from "../../lib/alerts";
@@ -69,9 +65,7 @@ const formatDate = (iso: string) =>
  * of its own, with its rules and its own
  * "New alert", whose form opens in that card. With `clientName` they're an advisor's rules on
  * that client's portfolios (a client's portfolio page, in the Clients section), laid out the same:
- * the asset picker lists the client's holdings, and the advisor is the one notified. A demo account
- * (read only) also sees sample rules on two of its portfolios that have none (lib/mock/alerts),
- * to show what the page looks like with some.
+ * the asset picker lists the client's holdings, and the advisor is the one notified.
  */
 // `grouped`: the per-portfolio card even for a single portfolio, so it's named (one portfolio's
 // alerts, opened from Manage portfolios). `onOpenCategories`: the user's asset categories, which
@@ -87,8 +81,6 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
   const uuids = portfolios.map((p) => p.uuid);
   const { rules, setRules, loading, error, reload } = usePortfoliosAlertRules(uuids);
   const grouped = forceGrouped ?? portfolios.length > 1;
-  // A demo account (see lib/demo) sees its rules but can't create, change or delete them.
-  const { isDemo } = useUser();
   // null = form closed; { rule: null } = creating on `portfolioUuid`; { rule } = editing that rule.
   const [form, setForm] = useState<{ rule: PortfolioAlertRule | null; portfolioUuid: string } | null>(null);
   const [toDelete, setToDelete] = useState<PortfolioAlertRule | null>(null);
@@ -155,23 +147,17 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
     setMessage({ type: "success", text: created ? "Alert created." : "Alert updated." });
   };
 
-  // The rules shown: a demo account's own, plus the samples.
-  const shown = useMemo(() => {
-    if (!isDemo || clientName || rules === null) return rules;
-    const bare = portfolios.filter((p) => !rules.some((r) => r.portfolioUuid === p.uuid)).map((p) => p.uuid);
-    return [...rules, ...sampleAlertRules(bare)];
-  }, [isDemo, clientName, rules, portfolios]);
-  const rulesOf = (uuid: string) => (shown ?? []).filter((r) => r.portfolioUuid === uuid);
+  const rulesOf = (uuid: string) => (rules ?? []).filter((r) => r.portfolioUuid === uuid);
   // Only the rules made by hand count towards the limit.
   const manualOf = (uuid: string) => rulesOf(uuid).filter((r) => !isKept(r));
   const keptOf = (uuid: string) => rulesOf(uuid).filter(isKept);
   const atLimit = (uuid: string) => manualOf(uuid).length >= ALERT_RULE_LIMIT;
-  const count = shown?.length ?? 0;
+  const count = rules?.length ?? 0;
   const openNew = (portfolioUuid: string) => {
     setMessage(null);
     setForm({ rule: null, portfolioUuid });
   };
-  const newDisabled = isDemo || form !== null || loading || rules === null;
+  const newDisabled = form !== null || loading || rules === null;
 
   // One rule per row, across the card: what it watches and how it notifies; where it stands (now
   // against the limit, and how far along the way it is); then its switch, edit and delete.
@@ -184,7 +170,7 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
       <li key={rule.ruleId} className="grid grid-cols-1 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] items-center gap-x-8 gap-y-4 py-5">
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 text-[15px] font-black text-[#1c1917]">
-            {title}{isSampleRule(rule) && <PreviewBadge label="Sample" />}
+            {title}
           </p>
           <p className="text-[13px] text-[#78716c] mt-1">
             {subtitle}
@@ -217,33 +203,31 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
         </div>
 
         {/* A kept rule's range changes with its adoption: it has no delete, and its edit is its channels. */}
-        {!isDemo ? (
-          <div className="flex items-center gap-1.5 md:justify-end">
-            <div className={busy ? "pointer-events-none opacity-60" : ""}>
-              <Toggle
-                checked={rule.enabled}
-                onChange={() => handleToggleEnabled(rule)}
-                label={rule.enabled ? `Turn off ${title}` : `Turn on ${title}`}
-              />
-            </div>
-            <button
-              onClick={() => { setMessage(null); setForm({ rule, portfolioUuid: rule.portfolioUuid }); }}
-              aria-label={`Edit ${title}`}
-              className="p-2 rounded-lg text-[#78716c] hover:text-[#1c1917] hover:bg-[#F7F5EF] transition-colors"
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
-            {!isKept(rule) && (
-              <button
-                onClick={() => setToDelete(rule)}
-                aria-label={`Delete ${title}`}
-                className="p-2 rounded-lg text-[#78716c] hover:text-rose-600 hover:bg-rose-50 transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
+        <div className="flex items-center gap-1.5 md:justify-end">
+          <div className={busy ? "pointer-events-none opacity-60" : ""}>
+            <Toggle
+              checked={rule.enabled}
+              onChange={() => handleToggleEnabled(rule)}
+              label={rule.enabled ? `Turn off ${title}` : `Turn on ${title}`}
+            />
           </div>
-        ) : <div className="hidden md:block" />}
+          <button
+            onClick={() => { setMessage(null); setForm({ rule, portfolioUuid: rule.portfolioUuid }); }}
+            aria-label={`Edit ${title}`}
+            className="p-2 rounded-lg text-[#78716c] hover:text-[#1c1917] hover:bg-[#F7F5EF] transition-colors"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+          {!isKept(rule) && (
+            <button
+              onClick={() => setToDelete(rule)}
+              aria-label={`Delete ${title}`}
+              className="p-2 rounded-lg text-[#78716c] hover:text-rose-600 hover:bg-rose-50 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </li>
     );
   };
@@ -265,7 +249,7 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
     <button
       onClick={() => openNew(p.uuid)}
       disabled={newDisabled || atLimit(p.uuid)}
-      title={isDemo ? DEMO_DISABLED_TITLE : atLimit(p.uuid) ? `The limit is ${ALERT_RULE_LIMIT} alerts per portfolio. Delete one to add another.` : undefined}
+      title={atLimit(p.uuid) ? `The limit is ${ALERT_RULE_LIMIT} alerts per portfolio. Delete one to add another.` : undefined}
       className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-[#1c1917] hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
     >
       <Plus className="w-4 h-4" /> New alert
@@ -315,7 +299,7 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
       <div className="space-y-5">
         {messageBanner}
         {status && <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-[rgba(196,154,60,0.2)] shadow-sm">{status}</div>}
-        {!status && shown !== null && portfolios.map((p) => {
+        {!status && rules !== null && portfolios.map((p) => {
           const own = rulesOf(p.uuid);
           const manual = manualOf(p.uuid);
           const kept = keptOf(p.uuid);
@@ -395,7 +379,7 @@ export function AlertsSettings({ portfolios, clientName, grouped: forceGrouped, 
 
         {only && formFor(only)}
 
-        {status ?? (shown !== null && shown.length === 0 ? (
+        {status ?? (rules !== null && rules.length === 0 ? (
           <p className="text-sm text-[#78716c] py-2">
             {clientName
               ? `No alerts on ${clientName}'s portfolio yet. Create one to be told when it moves by a set amount, or when a holding or an asset class leaves a range you choose.`

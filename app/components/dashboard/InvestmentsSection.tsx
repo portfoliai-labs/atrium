@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { investmentsKey, useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
-import { useUser } from "../../context/UserContext";
 import { portfoliosService } from "../../services/portfoliosService";
 import { transactionService } from "../../services/transactionService";
 import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
@@ -27,6 +26,7 @@ import type { CompareStrategy } from "./ComparisonView";
 import { ManagePortfolios } from "./ManagePortfolios";
 import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { NewPortfolioDialog } from "./NewPortfolioDialog";
+import { NoDataEmptyState } from "./NoDataEmptyState";
 import { RenamePortfolioDialog } from "./RenamePortfolioDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AdoptStrategyDialog } from "./AdoptStrategyDialog";
@@ -35,7 +35,7 @@ import { adoptionService } from "../../services/adoptionService";
 import { BacktestBanner } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
 import type { SharedStrategy } from "../../models/AdoptedStrategy";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
+import { useReadOnly } from "../../hooks/useReadOnly";
 import { TaxesPage } from "./taxes/TaxesPage";
 import { ProjectionPage } from "./projection/ProjectionPage";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
@@ -47,7 +47,7 @@ import { StrategiesNode, strategiesViewOf, type BacktestPage, type StrategiesVie
 // "projection": a Monte Carlo of where it could go as it is: a goal, withdrawals, the safe withdrawal.
 // "manualAssets": the investments with no market price, valued by hand (the investments'). Both it and
 // "categories" are reached from links (an old history entry, adopting on a client): their buttons are
-// in Settings (the user's) and Client settings (a client's).
+// in Settings (the user's) and Client details (a client's).
 export type PortfolioPage = "overview" | "transactions" | "alerts" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "projection" | "manualAssets";
 
 export type InvestmentsView =
@@ -165,21 +165,22 @@ function viewFromHistory(hasStrategies: boolean, portfolios: Portfolio[], sectio
  *
  * An advisor's client's investments are the same pages (see ClientsSection): in the Clients
  * section, each view carrying the client (`scope`), under the client's crumbs (`rootTrail`), on
- * that client's portfolios (a PortfolioProvider of theirs), with no Strategies (the advisor's own).
+ * that client's portfolios (a PortfolioProvider of theirs), with no Strategies (the advisor's own),
+ * read only: the client changes their own data (hooks/useReadOnly).
  */
 export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, scope = NO_SCOPE, rootTrail = NO_TRAIL, extraActions, onOpenTaxSettings, onOpenAssetSettings }: {
   onNavigate: (section: string) => void;
   section?: string;
   scope?: InvestmentsScope;
   rootTrail?: Crumb[];
-  // Added to the investments' actions: a client's own (their settings).
+  // Added to the investments' actions: a client's own (their details).
   extraActions?: PageAction[];
-  // Where the Taxes page sets the tax residence: the user's Profile unless said (a client's settings).
+  // Where the Taxes page sets the tax residence: the user's Profile unless said (a client's details).
   onOpenTaxSettings?: () => void;
-  // Where the asset categories and manual assets are: the user's Settings unless said (a client's settings).
+  // Where the asset categories and manual assets are: the user's Settings unless said (a client's details).
   onOpenAssetSettings?: () => void;
 }) {
-  const { portfolios, selectPortfolio, client } = usePortfolio();
+  const { portfolios, failed, selectPortfolio, client } = usePortfolio();
   const hasStrategies = !client;
   const [view, setView] = useState<InvestmentsView>(() => viewFromHistory(hasStrategies, portfolios, section, scope));
 
@@ -218,7 +219,16 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
   }
 
   const portfolio = (view.kind === "portfolio" && portfolios.find((p) => p.uuid === view.uuid)) || investments;
-  if (!portfolio) return null;
+  if (!portfolio) {
+    if (failed) return <p className="text-sm font-semibold text-rose-600 py-6">Unable to load the portfolios.</p>;
+    return (
+      <NoPortfoliosNode
+        trail={rootTrail}
+        extraActions={extraActions}
+        onOpenStrategies={hasStrategies ? () => openStrategies(strategiesViewOf({})) : undefined}
+      />
+    );
+  }
   const page = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.page : "overview";
   const simulation = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.simulation : undefined;
   const compareWith = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.compareWith : undefined;
@@ -255,6 +265,39 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
       onOpenAssetSettings={onOpenAssetSettings}
       onNavigate={onNavigate}
     />
+  );
+}
+
+/**
+ * NO PORTFOLIOS — the investments' page while the user (or the client) has none: they deleted them
+ * all, and none comes back on its own. Its header holds the way to a new one, then the page's own
+ * actions (a client's details) and, for an investor, their Strategies. A client creates their own.
+ */
+function NoPortfoliosNode({ trail, extraActions = [], onOpenStrategies }: {
+  trail: Crumb[];
+  extraActions?: PageAction[];
+  onOpenStrategies?: () => void;
+}) {
+  const { client } = usePortfolio();
+  const { lock } = useReadOnly();
+  const [creating, setCreating] = useState(false);
+  const actions: PageAction[] = [
+    ...(client ? [] : [{ label: "New portfolio", primary: true, onClick: () => setCreating(true), ...lock }]),
+    ...(onOpenStrategies ? [{ label: "Strategies", onClick: onOpenStrategies }] : []),
+    ...extraActions,
+  ];
+
+  return (
+    <div className="space-y-6 pb-12">
+      <PageHeader eyebrow={`${client ? `${client.name} · ` : ""}Investments`} crumbs={trail} title="No portfolios" actions={actions} />
+      <NoDataEmptyState
+        title="No portfolios yet"
+        message={client
+          ? `${client.name} has no portfolio yet: once they create one, you follow their investments here.`
+          : "Create a portfolio to record your transactions: its value, returns and alerts will be here."}
+      />
+      {creating && <NewPortfolioDialog onClose={() => setCreating(false)} />}
+    </div>
   );
 }
 
@@ -320,14 +363,14 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  * activity (each count opens its page) and holds what can be done with it:
  * - All portfolios: Manage portfolios (a new one is made there), Alerts, Compare. It's read only: its transactions
  *   list every portfolio's, and a new one says which it goes in.
- * - a portfolio: its Transactions, Alerts and Reports, rename, delete (not the default one).
+ * - a portfolio: its Transactions, Alerts and Reports, rename, delete.
  * - a backtest: adopt its strategy, delete. Its figures are a simulation's (returns and risk over
  *   its run), its transactions generated and read only, and its Insights leave out what a
  *   simulation doesn't have (see PerformanceSection's `backtest`).
  * Under the header, its Insights (PerformanceSection), whose Composition opens
- * each portfolio of All portfolios and whose Realized P&L the investments' Taxes. A demo account sees everything but can't change anything. An advisor on a
- * client's (PortfolioContext's `client`) can't rename or delete it; its alerts are the advisor's,
- * its asset categories the client's, and its Strategy page says whether the client sees it.
+ * each portfolio of All portfolios and whose Realized P&L the investments' Taxes. An advisor on a
+ * client's (PortfolioContext's `client`) only reads it: the client changes their own (hooks/useReadOnly);
+ * its alerts and adopted strategy are the advisor's, and its Strategy page says whether the client sees it.
  */
 export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, compareWith, onCompareWith, taxYear, onOpenTaxes, onOpenSimulation, onOpenTaxSettings, onOpenAssetSettings, onBacktestGone, onNavigate }: {
   portfolio: Portfolio;
@@ -357,9 +400,9 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   onNavigate: (section: string) => void;
 }) {
   const { portfolios, deletePortfolio, client, canManage } = usePortfolio();
-  const { isDemo } = useUser();
+  const { lock } = useReadOnly();
   const colorOf = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
-  const real = useMemo(() => portfolios.filter((p) => !p.isVirtual).sort((a, b) => Number(b.isDefault) - Number(a.isDefault)), [portfolios]);
+  const real = useMemo(() => portfolios.filter((p) => !p.isVirtual), [portfolios]);
   const backtest = isBacktest(portfolio);
   const entry = useComparisonEntry(portfolio.uuid);
   const counts = useActivityCounts(portfolio, real);
@@ -390,14 +433,13 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       }
     },
   };
-  const demo = isDemo ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
-  // New portfolios are added on the investments' page.
-  const addsPortfolios = isInvestments;
+  // New portfolios are added on the investments' page (a client adds their own).
+  const addsPortfolios = isInvestments && !client;
 
   // ── What can be done with it ──
   const actions: PageAction[] = backtest
     ? [
-        { label: canPublish ? "Adopt on a client" : "Adopt this strategy", primary: true, onClick: () => setDialog("adopt"), ...demo },
+        { label: canPublish ? "Adopt on a client" : "Adopt this strategy", primary: true, onClick: () => setDialog("adopt") },
         ...(canPublish ? publication
           ? [
               { label: "Edit the publication", onClick: () => setDialog("publish") },
@@ -406,7 +448,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           : [{ label: "Publish to the catalog", onClick: () => setDialog("publish"), ...(publications === undefined ? { disabled: true } : {}) }]
           : []),
         { label: "Projection", onClick: () => open("projection") },
-        { label: "Delete backtest", danger: true, onClick: () => setDialog("delete"), ...demo },
+        { label: "Delete backtest", danger: true, onClick: () => setDialog("delete") },
       ]
     : portfolio.isAggregate
       ? [
@@ -420,15 +462,15 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           { label: "Transactions", primary: true, plus: false, onClick: () => open("transactions") },
           ...strategyAction,
           // The only portfolio stands for the investments: the way to a second one is here.
-          ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new") }] : []),
+          ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new"), ...lock }] : []),
           ...extraActions,
           ...(canManage ? [
-            { label: "Rename", onClick: () => setDialog("rename"), ...demo },
+            { label: "Rename", onClick: () => setDialog("rename"), ...lock },
             {
               label: "Delete portfolio",
               danger: true,
               onClick: () => setDialog("delete"),
-              ...(portfolio.isDefault ? { disabled: true, title: "The default portfolio can't be deleted" } : demo),
+              ...lock,
             },
           ] : []),
         ];
@@ -523,10 +565,9 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
             if (clientUuid) openClientPage(onNavigate, clientUuid, { kind: "portfolio", uuid, page: "strategy" });
             else onOpen(uuid, "strategy");
           }}
-          onOpenCategories={(clientUuid) => {
+          onOpenCategories={() => {
             setDialog(null);
-            if (clientUuid) openClientPage(onNavigate, clientUuid, { kind: "portfolio", uuid: "", page: "categories" });
-            else openCategories();
+            openCategories();
           }}
         />
       )}
@@ -680,7 +721,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
         <Breadcrumb trail={pageTrail} current={PAGE_LABELS.categories} />
         <p className="text-[13px] text-slate-500 leading-relaxed max-w-3xl">
           {client
-            ? `The category each of ${client.name}'s securities counts in, across all their portfolios: alerts on a category, and adopting a strategy by category, weigh a portfolio by it. A category you pick is ${client.name}'s too, everywhere, until it's restored.`
+            ? `The category each of ${client.name}'s securities counts in, across all their portfolios: alerts on a category, and adopting a strategy by category, weigh a portfolio by it. ${client.name} picks them.`
             : "The category each of your securities counts in, across all your portfolios: alerts on a category, and adopting a strategy by category, weigh a portfolio by it. Each one comes with a suggestion; a category you pick replaces it everywhere, until you restore it."}
         </p>
         <AssetCategoriesEditor clientUuid={client?.uuid} />
@@ -695,7 +736,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
         <Breadcrumb trail={pageTrail} current={PAGE_LABELS.manualAssets} />
         <p className="text-[13px] text-slate-500 leading-relaxed max-w-3xl">
           {client
-            ? `${client.name}'s investments with no market price — unlisted shares, private equity, a loan, physical gold — valued by hand. Each one is picked in a transaction like a security, and counts in the portfolios that hold it by its valuations.`
+            ? `${client.name}'s investments with no market price — unlisted shares, private equity, a loan, physical gold — valued by hand by ${client.name}. Each counts in the portfolios that hold it by its valuations.`
             : "Your investments with no market price — unlisted shares, private equity, a loan, physical gold — valued by hand. Each one is picked in a transaction like a security, and counts in the portfolios that hold it by its valuations."}
         </p>
         <ManualAssetsEditor clientUuid={client?.uuid} />

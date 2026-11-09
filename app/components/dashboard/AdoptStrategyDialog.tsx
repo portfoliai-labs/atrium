@@ -8,10 +8,9 @@ import { useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContex
 import { useUser } from "../../context/UserContext";
 import { clientDisplayName, useClients } from "../../context/ClientsContext";
 import { useClientPortfolios } from "../../hooks/useClientPortfolios";
-import { portfoliosService } from "../../services/portfoliosService";
 import { adoptionService } from "../../services/adoptionService";
 import { ApiError } from "../../services/apiClient";
-import { isBacktest, type Portfolio } from "../../models/Portfolio";
+import { firstRealOf, isBacktest, type Portfolio } from "../../models/Portfolio";
 import { Toggle } from "./Toggle";
 
 // The destination select's last option: a portfolio made for it.
@@ -28,8 +27,9 @@ const NEW_PORTFOLIO = "__new__";
  * (`onOpenCategories`) or to adopt without converting.
  *
  * An advisor adopts their backtests on their clients' portfolios: from their Strategy, the client
- * is picked first, then one of the client's portfolios (or a new one, created for the client);
- * from a client's portfolio (`destination`), which of their backtests.
+ * is picked first, then one of the client's portfolios (never a new one: the client alone creates
+ * them); from a client's portfolio (`destination`), which of their backtests. The asset categories
+ * are the client's to assign, so the dialog only offers to adopt without converting there.
  */
 export function AdoptStrategyDialog({ strategyUuid, strategyName, destination, onClose, onAdopted, onOpenCategories }: {
   // The backtest adopted; without one, picked from the user's own (with a fixed `destination`).
@@ -40,8 +40,8 @@ export function AdoptStrategyDialog({ strategyUuid, strategyName, destination, o
   onClose: () => void;
   // The portfolio that adopted it, and whose it is: an advisor's client's, or null for the user's own.
   onAdopted: (portfolioUuid: string, clientUuid: string | null) => void;
-  // The asset categories the destination's securities count in: the user's own, or the client's.
-  onOpenCategories: (clientUuid: string | null) => void;
+  // The user's own asset categories (a client's are the client's to assign).
+  onOpenCategories: () => void;
 }) {
   const { portfolios, ownPortfolios, createPortfolio, client, changed } = usePortfolio();
   const { user } = useUser();
@@ -58,11 +58,13 @@ export function AdoptStrategyDialog({ strategyUuid, strategyName, destination, o
   const [pickedClient, setClientUuid] = useState<string | null>(null);
   const clientUuid = pickedClient ?? clients[0]?.uuid ?? "";
   const clientPortfolios = useClientPortfolios(picksClient ? clientUuid : null);
-  // All portfolios first, then the default, then the others: the order of the list elsewhere.
+  // All portfolios first, then oldest first: the order of the list elsewhere.
   const destinations = destination ? [destination] : picksClient ? clientPortfolios.portfolios : portfolios.filter((p) => !isBacktest(p));
   const [chosen, setChosen] = useState<string | null>(null);
-  const defaultTarget = (destinations.find((p) => p.isDefault) ?? destinations[0])?.uuid ?? NEW_PORTFOLIO;
-  const target = chosen !== null && (chosen === NEW_PORTFOLIO || destinations.some((p) => p.uuid === chosen)) ? chosen : defaultTarget;
+  // A new portfolio is the user's own: a client creates theirs.
+  const createsPortfolio = !picksClient && !client;
+  const defaultTarget = (firstRealOf(destinations) ?? destinations[0])?.uuid ?? (createsPortfolio ? NEW_PORTFOLIO : "");
+  const target = chosen !== null && ((createsPortfolio && chosen === NEW_PORTFOLIO) || destinations.some((p) => p.uuid === chosen)) ? chosen : defaultTarget;
   const setTarget = (uuid: string) => setChosen(uuid);
   const [newName, setNewName] = useState("");
   const [inCategories, setInCategories] = useState(false);
@@ -75,7 +77,7 @@ export function AdoptStrategyDialog({ strategyUuid, strategyName, destination, o
 
   const creating = target === NEW_PORTFOLIO;
   // The destination's current adoption, when it has one: adopting replaces it.
-  const current = useInvestmentsQuery(["adoption", target, "current"], () => adoptionService.get(target), { enabled: !creating });
+  const current = useInvestmentsQuery(["adoption", target, "current"], () => adoptionService.get(target), { enabled: !creating && target !== "" });
   const replaced = !creating && !current.isError && current.data ? { origin: current.data.originPortfolioUuid } : null;
   const replacedOrigin = replaced?.origin ? ownPortfolios.find((p) => p.uuid === replaced.origin)?.name : undefined;
   // Whose portfolio it lands on: the client picked, or the one whose pages these are.
@@ -83,17 +85,14 @@ export function AdoptStrategyDialog({ strategyUuid, strategyName, destination, o
 
   const adopt = async (convert: boolean) => {
     if (creating && !newName.trim()) return;
-    if (!strategy) return;
+    if (!strategy || !target) return;
     setBusy(true);
     setError(null);
     setUncategorized(null);
     let made: Portfolio | undefined;
     try {
-      made = creating
-        ? picksClient ? await portfoliosService.createForClient(clientUuid, newName.trim()) : await createPortfolio(newName.trim())
-        : destinations.find((p) => p.uuid === target);
+      made = creating ? await createPortfolio(newName.trim()) : destinations.find((p) => p.uuid === target);
       if (!made) return;
-      if (creating && picksClient) clientPortfolios.reload();
       await adoptionService.adopt(made.uuid, {
         originPortfolioUuid: strategy,
         inCategories: convert,
@@ -167,8 +166,9 @@ export function AdoptStrategyDialog({ strategyUuid, strategyName, destination, o
               className={selectClass}
             >
               {picksClient && clientPortfolios.loading && <option value={target}>Loading…</option>}
+              {picksClient && !clientPortfolios.loading && destinations.length === 0 && <option value="">No portfolios yet</option>}
               {destinations.map((p) => <option key={p.uuid} value={p.uuid}>{p.name}</option>)}
-              <option value={NEW_PORTFOLIO}>+ New portfolio…</option>
+              {createsPortfolio && <option value={NEW_PORTFOLIO}>+ New portfolio…</option>}
             </select>
           </label>
         )}
@@ -218,9 +218,13 @@ export function AdoptStrategyDialog({ strategyUuid, strategyName, destination, o
               <span>A security in this strategy has no asset class, so it can&apos;t be watched as one. {uncategorized}</span>
             </p>
             <div className="flex flex-wrap gap-x-4 gap-y-1 pl-5">
-              <button type="button" onClick={() => onOpenCategories(destinationClient)} className="inline-flex items-center gap-0.5 text-xs font-bold text-amber-900 underline underline-offset-2">
-                Assign its category <ArrowUpRight className="h-3 w-3" />
-              </button>
+              {destinationClient ? (
+                <span className="text-xs text-amber-900">Your client assigns their categories.</span>
+              ) : (
+                <button type="button" onClick={onOpenCategories} className="inline-flex items-center gap-0.5 text-xs font-bold text-amber-900 underline underline-offset-2">
+                  Assign its category <ArrowUpRight className="h-3 w-3" />
+                </button>
+              )}
               <button type="button" onClick={() => adopt(false)} disabled={busy} className="text-xs font-bold text-amber-900 underline underline-offset-2 disabled:opacity-50">
                 Adopt without converting
               </button>
@@ -235,7 +239,7 @@ export function AdoptStrategyDialog({ strategyUuid, strategyName, destination, o
           </button>
           <button
             onClick={() => adopt(inCategories)}
-            disabled={busy || !strategy || (creating && !newName.trim()) || (picksClient && !clientUuid)}
+            disabled={busy || !strategy || !target || (creating && !newName.trim()) || (picksClient && !clientUuid)}
             className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-[#1c1917] hover:bg-sky-700 transition-colors disabled:opacity-60"
           >
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}

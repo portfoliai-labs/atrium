@@ -19,7 +19,7 @@ const SLEEVE = 132;
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 const formatPct = (pct: number) => `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
 
-/** One card in the holder: a portfolio, or anything shaped like one (the sample real estate). */
+/** One card in the holder: a portfolio, or anything shaped like one. */
 export interface HolderItem {
   key: string;
   name: string;
@@ -199,11 +199,7 @@ export function portfolioHolderItem(
     key: portfolio.uuid,
     name: portfolio.name,
     color,
-    badge: portfolio.isVirtual
-      ? <VirtualBadge portfolio={portfolio} dark />
-      : portfolio.isDefault
-        ? <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-white/15 text-[9px] font-black uppercase tracking-wider">Default</span>
-        : undefined,
+    badge: portfolio.isVirtual ? <VirtualBadge portfolio={portfolio} dark /> : undefined,
     value: entry === undefined ? undefined : value ? formatCurrency(value.marketValue, value.currency, 0) : null,
     // Simulated or already a sum: only a real portfolio's value counts in the sleeve's total.
     amount: value && !portfolio.isVirtual ? { value: value.marketValue, currency: value.currency } : undefined,

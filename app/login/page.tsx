@@ -2,7 +2,7 @@
 
 import React, { Suspense, useState } from "react";
 import { motion } from "framer-motion";
-import { BarChart3, ShieldCheck, Zap, Loader2, AlertCircle, Mail, Lock, MailCheck, User, Users } from "lucide-react";
+import { BarChart3, ShieldCheck, Zap, Loader2, AlertCircle, Mail, Lock, MailCheck } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useAuthFlow } from "@/app/hooks/useAuthFlow";
 import { MIN_PASSWORD_LENGTH } from "@/app/lib/password";
@@ -51,7 +51,7 @@ function LoginContent() {
   // off pendingAction being ITS action specifically, or triggering one action makes every
   // other button visually look like it's the one running too.
   const [pendingAction, setPendingAction] = useState<
-    "google" | "password" | "resend" | "demo-investor" | "demo-advisor" | null
+    "google" | "password" | "resend" | null
   >(null);
 
   const handleGoogle = async () => {
@@ -77,21 +77,6 @@ function LoginContent() {
     if (!needsEmailConfirmation) return;
     setPendingAction("resend");
     await resendConfirmation(needsEmailConfirmation);
-    setPendingAction(null);
-  };
-
-  // Two separate demo accounts, kept as separate handlers (rather than one that takes an
-  // email/password pair) so each button below is an unambiguous, one-purpose click target —
-  // which account a click signs into is never implicit from shared state.
-  const handleInvestorDemoLogin = async () => {
-    setPendingAction("demo-investor");
-    await loginWithPassword("demo@portfoliai.app", "demoportfoliai");
-    setPendingAction(null);
-  };
-
-  const handleAdvisorDemoLogin = async () => {
-    setPendingAction("demo-advisor");
-    await loginWithPassword("advisor-demo@portfoliai.app", "demoportfoliai");
     setPendingAction(null);
   };
 
@@ -314,36 +299,6 @@ function LoginContent() {
                 </button>
               </p>
 
-              {authMode !== "reset" && (
-              <>
-
-              <p className="text-center text-[10px] font-semibold uppercase tracking-[0.1em] mt-6 mb-2" style={{ color: "#857e78" }}>
-                Or try a demo account
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={handleInvestorDemoLogin}
-                  disabled={isLoading}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-[3px] text-[11px] font-semibold uppercase tracking-[0.06em] transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
-                  style={{ background: "transparent", color: "#8A6A28", border: "1px dashed rgba(196,154,60,0.4)" }}
-                >
-                  <User className="w-3.5 h-3.5 flex-shrink-0" />
-                  Investor
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAdvisorDemoLogin}
-                  disabled={isLoading}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-[3px] text-[11px] font-semibold uppercase tracking-[0.06em] transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
-                  style={{ background: "transparent", color: "#8A6A28", border: "1px dashed rgba(196,154,60,0.4)" }}
-                >
-                  <Users className="w-3.5 h-3.5 flex-shrink-0" />
-                  Advisor
-                </button>
-              </div>
-              </>
-              )}
             </>
           )}
 

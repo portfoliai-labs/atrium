@@ -4,7 +4,7 @@ import type {
   Merchants, Observations, RecurringPayments, Movement, MovementFilters, MovementInput, MovementList,
   MovementUpdateRequest, StatementColumnMapping, StatementColumnMappingResponse, StatementImportResult,
   Transfer, TransferCreateRequest, Wallet, WalletAlertRule, WalletAlertRuleCreateRequest, WalletAlertRuleUpdateRequest,
-  WalletCreateRequest, WalletReport, WalletReportRequest, WalletSummary, WalletUpdateRequest,
+  WalletCreateRequest, WalletReport, WalletSummary, WalletUpdateRequest,
 } from "../models/Wallet";
 import { apiFetch, apiFetchForm } from "./apiClient";
 
@@ -16,8 +16,7 @@ import { apiFetch, apiFetchForm } from "./apiClient";
 // InvalidCategoryError (422: a name taken, a parent of the other kind, too deep, past 200),
 // CategoryNotFoundError (404),
 // AlertRuleNotFoundError / CategoryRuleNotFoundError (404), AlertRuleLimitReachedError (409, past 50 rules), FxRatesUnavailableError
-// (503, the summary or the budgets across wallets), ImportFileParsingError / ImportMappingIncompleteError (422). A demo account's
-// writes are refused before they leave (see lib/demo).
+// (503, the summary or the budgets across wallets), ImportFileParsingError / ImportMappingIncompleteError (422).
 
 function movementQuery(filters: MovementFilters = {}) {
   const params = new URLSearchParams();
@@ -244,31 +243,27 @@ export const walletService = {
     return apiFetchForm<StatementImportResult>(`/v1/wallets/${walletUuid}/import/commit`, form);
   },
 
-  // GET /v1/wallets/reports — every wallet's reports (archived ones' too), newest first.
+  // GET /v1/wallets/reports — the caller's wallets' reports (on all their wallets together), newest
+  // first. Asked for in the assistant's chat only.
   async reports(): Promise<WalletReport[]> {
     return apiFetch<WalletReport[]>(`/v1/wallets/reports`);
   },
 
-  /**
-   * POST /v1/wallets/reports — queues a wallet's full report, its whole history (needs the plan's
-   * reports); its outcome arrives as a notification. 409 while another of the same wallet's is in
-   * progress, unless `force`.
-   * @deprecated Deprecated (2026-10-22): a report is asked for in the assistant's chat only (its action card); served until removed.
-   */
-  async requestReport(payload: WalletReportRequest): Promise<{ jobId: string }> {
-    return apiFetch<{ jobId: string }>(`/v1/wallets/reports`, { method: "POST", body: JSON.stringify(payload) });
+  // GET /v1/wallets/reports/{d}/download — an hour's link to the file.
+  async reportDownloadUrl(documentId: string): Promise<{ url: string }> {
+    return apiFetch<{ url: string }>(`/v1/wallets/reports/${documentId}/download`);
   },
 
-  // GET /v1/wallets/reports/{walletUuid}/{d}/download — an hour's link to the file.
-  async reportDownloadUrl(walletUuid: string, documentId: string): Promise<{ url: string }> {
-    return apiFetch<{ url: string }>(`/v1/wallets/reports/${walletUuid}/${documentId}/download`);
+  // DELETE /v1/wallets/reports/{d} — the report and its file.
+  async deleteReport(documentId: string): Promise<void> {
+    await apiFetch(`/v1/wallets/reports/${documentId}`, { method: "DELETE" });
   },
 
-  async addReportTag(walletUuid: string, documentId: string, name: string): Promise<void> {
-    await apiFetch(`/v1/wallets/reports/${walletUuid}/${documentId}/tags`, { method: "POST", body: JSON.stringify({ name }) });
+  async addReportTag(documentId: string, name: string): Promise<void> {
+    await apiFetch(`/v1/wallets/reports/${documentId}/tags`, { method: "POST", body: JSON.stringify({ name }) });
   },
 
-  async removeReportTag(walletUuid: string, documentId: string, name: string): Promise<void> {
-    await apiFetch(`/v1/wallets/reports/${walletUuid}/${documentId}/tags/${encodeURIComponent(name)}`, { method: "DELETE" });
+  async removeReportTag(documentId: string, name: string): Promise<void> {
+    await apiFetch(`/v1/wallets/reports/${documentId}/tags/${encodeURIComponent(name)}`, { method: "DELETE" });
   },
 };

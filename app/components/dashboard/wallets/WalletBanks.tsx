@@ -2,17 +2,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Landmark, Link2, Plus, RefreshCw, Search, Trash2, Unlink } from "lucide-react";
+import { Check, ChevronRight, Landmark, Plus, RefreshCw, Search, Unlink } from "lucide-react";
 import { useWalletQuery, useWallets } from "../../../context/WalletsContext";
 import { bankingService } from "../../../services/bankingService";
+import { walletService } from "../../../services/walletService";
 import { formatCurrency } from "../../../lib/format";
 import { dayLabel, errorText } from "../../../lib/wallets";
+import { useChainHoldings } from "../../../hooks/useChainHoldings";
 import type { AccountSync, BankAccount, BankLink } from "../../../models/Banking";
 import type { Wallet } from "../../../models/Wallet";
-import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
-import { ConfirmDialog } from "../ConfirmDialog";
 import { DialogShell, Field, INPUT } from "./WalletDialogs";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 
 // The countries a bank can be picked in, Italy first (the aggregator reaches the EEA's).
 const COUNTRIES: { code: string; name: string }[] = [
@@ -35,7 +34,7 @@ export interface PendingBankWallet {
 }
 
 function rememberBankWallet(pending: PendingBankWallet) {
-  try { sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch { /* the account is then chosen on the Banks page */ }
+  try { sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch { /* the account is then chosen on its account's page */ }
 }
 
 /** The wallet a bank was being connected for, once: it's forgotten as it's read. */
@@ -71,12 +70,12 @@ export function useBankLinks(enabled = true) {
   return useWalletQuery(["bankLinks"], () => bankingService.links(), { enabled });
 }
 
+/** An account's page, from outside the dashboard (read by WalletsSection). */
+export const accountPageUrl = (accountUuid: string) => `/dashboard?section=wallets&account=${encodeURIComponent(accountUuid)}`;
+
 /** A wallet's page, from outside the dashboard; `connect` opens its bank dialog (WalletBankDialog). */
 export const walletPageUrl = (walletUuid: string, connect = false) =>
   `/dashboard?section=wallets&wallet=${encodeURIComponent(walletUuid)}${connect ? "&connectBank=1" : ""}`;
-
-const daysLeft = (link: BankLink) =>
-  link.validUntil ? Math.ceil((new Date(link.validUntil).getTime() - Date.now()) / 86_400_000) : 0;
 
 export const accountLabel = (a: BankAccount) => [a.name ?? "Account", a.ibanLast4 ? `•••• ${a.ibanLast4}` : null].filter(Boolean).join(" ");
 
@@ -94,254 +93,188 @@ export const syncText = (accounts: AccountSync[]) => {
 };
 
 /**
- * WALLET BANKS — the banks linked through open banking, read only: a link is the consent given at
- * the bank (for up to 180 days, then given again), each of its accounts coming into one wallet of
- * its currency. Linked accounts are read twice a day, and on request; their movements come in
- * uncategorised, the older months by a statement's import. Nothing here can move money. A demo
- * account's link is to a sample bank, read only.
+ * The wallets that take a bank account's or a stablecoin's movements already: one source each, so
+ * they aren't offered to another.
  */
-export function WalletBanks() {
-  const { wallets, sample, changed } = useWallets();
-  const read = useBankLinks();
-  const [connecting, setConnecting] = useState<{ renew?: BankLink } | null>(null);
-  const [removing, setRemoving] = useState<BankLink | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [notes, setNotes] = useState<Record<string, string>>({});
+export function useSourcedWallets(): Set<string | null> {
+  const links = useBankLinks();
+  const holdings = useChainHoldings();
+  return useMemo(() => new Set([
+    ...(links.data ?? []).flatMap((l) => l.accounts.map((a) => a.walletUuid)),
+    ...(holdings.data ?? []).map((h) => h.walletUuid),
+  ].filter(Boolean)), [links.data, holdings.data]);
+}
 
-  const links = read.isError ? null : read.data;
-  // A wallet takes one account: those linked already aren't offered again.
-  const taken = useMemo(() => new Set((links ?? []).flatMap((l) => l.accounts.map((a) => a.walletUuid)).filter(Boolean)), [links]);
+/** Days left of a link's consent (0 once it ended). */
+export const daysLeft = (link: BankLink) =>
+  link.validUntil ? Math.ceil((new Date(link.validUntil).getTime() - Date.now()) / 86_400_000) : 0;
 
-  const act = async (key: string, action: () => Promise<unknown>, fallback: string) => {
-    setBusy(key);
-    setError(null);
-    try {
-      await action();
-      void read.refetch();
-      changed();
-    } catch (err) {
-      setError(errorText(err, fallback));
-      void read.refetch();
-    } finally {
-      setBusy(null);
-    }
-  };
-  const readNow = async (link: BankLink) => {
-    const result = await bankingService.sync(link.uuid);
-    setNotes((n) => ({ ...n, [link.uuid]: syncText(result.accounts) }));
-  };
-  const sync = (link: BankLink) => act(link.uuid, () => readNow(link), "Unable to read this bank now.");
-  // A linked account is read at once, not at the next of the twice-a-day reads.
-  const linkAccount = (link: BankLink, account: BankAccount, walletUuid: string) => act(account.uuid, async () => {
-    await bankingService.linkAccount(account.uuid, walletUuid);
-    await readNow(link);
-  }, "Unable to link this account.");
-  const remove = async () => {
-    if (!removing) return;
-    await act(removing.uuid, () => bankingService.remove(removing.uuid), "Unable to remove this bank.");
-    setRemoving(null);
-  };
+/** A consent ending within these many days (or ended) is offered to be renewed. */
+export const renewable = (link: BankLink) => link.status !== "active" || daysLeft(link) <= RENEW_WITHIN_DAYS;
 
-  if (links === undefined) return <p className="text-[13px] text-[#857e78]">Loading…</p>;
-  if (links === null) return <p className="text-[13px] font-semibold text-rose-600">{errorText(read.error, "Unable to load your banks.")}</p>;
+// The choice of a new wallet, beside the user's own, for an account (or a stablecoin) not linked yet.
+export const NEW_WALLET = "new";
 
+/**
+ * A new wallet for a bank's account, linked to it: a current account in its currency, named after
+ * it, empty, so that the bank's history and balance come into it at its first read (arca takes a
+ * linked empty wallet's opening from the bank). If the link fails, the wallet made for it goes.
+ */
+export async function linkNewWallet(link: BankLink, account: BankAccount): Promise<string> {
+  const created = await walletService.create({
+    name: account.name ?? `${link.bankName} ${account.currency}`,
+    kind: "current_account",
+    currency: account.currency,
+    institution: link.bankName,
+  });
+  try {
+    await bankingService.linkAccount(account.uuid, created.uuid);
+  } catch (err) {
+    await walletService.remove(created.uuid).catch(() => undefined);
+    throw err;
+  }
+  return created.uuid;
+}
+
+/**
+ * The wallet's balance beside the one its source tells (the bank's at its last read, or the
+ * chain's): equal, or how far off, a missing or doubled movement being the usual why.
+ */
+export function BalanceCheck({ wallet, reported, on, source }: { wallet: Wallet; reported: number | null; on: string | null; source: string }) {
+  if (reported === null) return <span className="text-[11px] text-slate-400">{source} hasn&apos;t told its balance yet</span>;
+  const off = wallet.balance - reported;
+  const when = on ? ` on ${dayLabel(on.slice(0, 10))}` : "";
+  if (Math.abs(off) < 0.005) {
+    return <span className="text-[11px] font-semibold text-emerald-700">Balance matches {source}&apos;s{when}</span>;
+  }
   return (
-    <>
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setConnecting({})}
-          disabled={sample}
-          title={sample ? DEMO_DISABLED_TITLE : undefined}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:hover:bg-[#1c1917] disabled:cursor-not-allowed"
-        >
-          <Plus className="h-3.5 w-3.5" /> Connect a bank
-        </button>
-      </div>
-
-      <Module>
-        <ModuleHead
-          title="Banks"
-          desc="Read only, through open banking: your accounts' movements come into their wallets twice a day. Nothing here can move money."
-        />
-        <div className={MODULE_BODY}>
-          {links.length === 0 ? (
-            <p className="text-[12.5px] text-[#857e78]">
-              No bank connected yet. Connect one to have your current account&apos;s movements come in on their own: you give the
-              consent at your bank, for up to 180 days, and can end it here at any time. Older months come by importing a statement.
-            </p>
-          ) : (
-            <ul className="divide-y divide-[#EEE9DD]">
-              {links.map((link) => (
-                <BankLinkRow
-                  key={link.uuid}
-                  link={link}
-                  wallets={wallets}
-                  taken={taken}
-                  readOnly={sample}
-                  busy={busy}
-                  note={notes[link.uuid]}
-                  onSync={() => void sync(link)}
-                  onRenew={() => setConnecting({ renew: link })}
-                  onRemove={() => { setError(null); setRemoving(link); }}
-                  onLink={(account, walletUuid) => void linkAccount(link, account, walletUuid)}
-                  onUnlink={(account) => void act(account.uuid, () => bankingService.unlinkAccount(account.uuid), "Unable to unlink this account.")}
-                />
-              ))}
-            </ul>
-          )}
-          {error && !removing && <p className="mt-3 text-xs font-medium text-rose-600">{error}</p>}
-        </div>
-      </Module>
-
-      {connecting && <ConnectBankDialog renew={connecting.renew} onClose={() => setConnecting(null)} />}
-      {removing && (
-        <ConfirmDialog
-          title={`Remove ${removing.bankName}?`}
-          description="The consent at the bank ends, and its accounts stop coming into their wallets. The movements already there stay."
-          confirmLabel="Remove"
-          confirming={busy === removing.uuid}
-          error={error}
-          onConfirm={() => void remove()}
-          onClose={() => setRemoving(null)}
-        />
-      )}
-    </>
+    <span className="text-[11px] font-semibold text-amber-700" title="A movement missing, or there twice: check the wallet's movements">
+      {formatCurrency(Math.abs(off), wallet.currency, 2)} {off > 0 ? "more" : "less"} than {source}&apos;s {formatCurrency(reported, wallet.currency, 2)}{when}
+    </span>
   );
 }
 
-function BankLinkRow({ link, wallets, taken, readOnly, busy, note, onSync, onRenew, onRemove, onLink, onUnlink }: {
-  link: BankLink;
-  wallets: Wallet[];
-  taken: Set<string | null>;
-  readOnly: boolean;
-  busy: string | null;
-  note?: string;
-  onSync: () => void;
-  onRenew: () => void;
-  onRemove: () => void;
-  onLink: (account: BankAccount, walletUuid: string) => void;
-  onUnlink: (account: BankAccount) => void;
+/**
+ * A bank's account (or a stablecoin) linked to a wallet: the whole row opens the wallet, a chevron
+ * saying so; beside it, apart, what undoes the link.
+ */
+export function LinkedSourceRow({ title, meta, wallet, check, aside, error, onOpen }: {
+  title: string;
+  meta: string;
+  wallet: Wallet | undefined;
+  check: React.ReactNode;
+  aside: React.ReactNode;
+  error?: string;
+  onOpen: (uuid: string) => void;
 }) {
-  const active = link.status === "active";
-  const left = daysLeft(link);
-  const meta = [
-    active && link.validUntil ? `Consent until ${dayLabel(link.validUntil.slice(0, 10))}` : "Consent ended: connect it again",
-    link.lastSyncedAt ? `read ${dayLabel(link.lastSyncedAt.slice(0, 10))}` : "not read yet",
-  ].join(" · ");
-  const lock = readOnly ? { disabled: true, title: DEMO_DISABLED_TITLE } : {};
+  const body = (
+    <>
+      <span className="min-w-0 flex-1 space-y-1">
+        <span className="block text-[12.5px] font-bold text-slate-700">{title}</span>
+        <span className="block text-[11px] text-slate-500">{meta}</span>
+        {check && <span className="block">{check}</span>}
+      </span>
+      <span className="shrink-0 text-[12px] font-semibold text-slate-600">→ {wallet?.name ?? "A wallet"}</span>
+      {wallet && <ChevronRight className="h-4 w-4 shrink-0 text-[#857e78]" />}
+    </>
+  );
+  const row = "min-w-0 flex-1 flex items-center gap-3 px-3 py-2.5 text-left rounded-xl";
   return (
-    <li className="py-4 space-y-3">
-      <div className="flex items-center gap-3">
-        <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${active ? "bg-[#C49A3C]/10 text-[#C49A3C]" : "bg-rose-50 text-rose-600"}`}>
-          <Landmark className="h-4 w-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-bold text-slate-800">
-            {link.bankName}
-            {!active && <span className="ml-2 px-1.5 py-0.5 rounded-full bg-rose-50 text-[9px] font-black uppercase tracking-wider text-rose-600 align-middle">Expired</span>}
-            {active && left <= RENEW_WITHIN_DAYS && (
-              <span className="ml-2 px-1.5 py-0.5 rounded-full bg-amber-50 text-[9px] font-black uppercase tracking-wider text-amber-700 align-middle">
-                {left <= 1 ? "Ends today" : `${left} days left`}
-              </span>
-            )}
-          </span>
-          <span className="block text-[11.5px] text-slate-500">{meta}</span>
-        </span>
-        <span className="flex gap-1">
-          {active && (
-            <IconButton label="Read now" onClick={onSync} spinning={busy === link.uuid} {...lock}><RefreshCw className="h-3.5 w-3.5" /></IconButton>
-          )}
-          {(!active || left <= RENEW_WITHIN_DAYS) && (
-            <IconButton label="Renew the consent" onClick={onRenew} {...lock}><Link2 className="h-3.5 w-3.5" /></IconButton>
-          )}
-          <IconButton label="Remove" danger onClick={onRemove} {...lock}><Trash2 className="h-3.5 w-3.5" /></IconButton>
-        </span>
+    <li className="rounded-xl border border-[#EEE9DD] transition-colors hover:border-[#C49A3C]/50">
+      <div className="flex items-center gap-1 pr-2">
+        {wallet ? (
+          <button type="button" onClick={() => onOpen(wallet.uuid)} aria-label={`Open ${wallet.name}`} className={`${row} hover:bg-[#F7F5EF] outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40`}>
+            {body}
+          </button>
+        ) : <div className={row}>{body}</div>}
+        {aside}
       </div>
-      {note && <p className="pl-12 text-[11.5px] font-semibold text-emerald-700">{note}</p>}
-      <ul className="pl-12 space-y-2">
-        {link.accounts.map((account) => (
-          <BankAccountRow
-            key={account.uuid}
-            account={account}
-            wallets={wallets}
-            taken={taken}
-            readOnly={readOnly}
-            busy={busy === account.uuid}
-            onLink={(walletUuid) => onLink(account, walletUuid)}
-            onUnlink={() => onUnlink(account)}
-          />
-        ))}
-      </ul>
+      {error && <p className="px-3 pb-2 text-[11.5px] font-medium text-rose-600">{error}</p>}
     </li>
   );
 }
 
-function BankAccountRow({ account, wallets, taken, readOnly, busy, onLink, onUnlink }: {
+/**
+ * One account at a bank, on its account's page: the bank's balance; linked, the wallet it comes
+ * into (the whole row opening it, its balance checked against the bank's, Unlink); not yet, a choice among
+ * the user's wallets of its currency free of another source, or a new one named after it.
+ */
+export function BankAccountRow({ link, account, wallets, taken, busy, error, onLink, onUnlink, onOpenWallet }: {
+  link: BankLink;
   account: BankAccount;
   wallets: Wallet[];
   taken: Set<string | null>;
-  readOnly: boolean;
   busy: boolean;
-  onLink: (walletUuid: string) => void;
+  error?: string;
+  // A wallet's uuid, or NEW_WALLET.
+  onLink: (choice: string) => void;
   onUnlink: () => void;
+  onOpenWallet: (uuid: string) => void;
 }) {
   const linked = account.walletUuid ? wallets.find((w) => w.uuid === account.walletUuid) : undefined;
   const choices = wallets.filter((w) => !w.archived && w.currency === account.currency && !taken.has(w.uuid));
   const [choice, setChoice] = useState("");
+  const active = link.status === "active";
   const balance = account.reportedBalance === null ? null : formatCurrency(account.reportedBalance, account.currency, 2);
+  if (account.walletUuid) {
+    return (
+      <LinkedSourceRow
+        title={accountLabel(account)}
+        meta={[account.currency, balance && `bank balance ${balance}`, account.syncFrom && `read from ${dayLabel(account.syncFrom)}`].filter(Boolean).join(" · ")}
+        wallet={linked}
+        check={linked && <BalanceCheck wallet={linked} reported={account.reportedBalance} on={account.reportedBalanceOn} source="the bank" />}
+        aside={<IconButton label="Unlink from the wallet" onClick={onUnlink} spinning={busy}><Unlink className="h-3.5 w-3.5" /></IconButton>}
+        error={error}
+        onOpen={onOpenWallet}
+      />
+    );
+  }
   return (
-    <li className="flex flex-wrap items-center gap-3 rounded-xl border border-[#EEE9DD] px-3 py-2.5">
-      <span className="min-w-0 flex-1">
-        <span className="block text-[12.5px] font-bold text-slate-700">{accountLabel(account)}</span>
-        <span className="block text-[11px] text-slate-500">
-          {[account.currency, balance && `bank balance ${balance}`, account.syncFrom && linked && `from ${dayLabel(account.syncFrom)}`].filter(Boolean).join(" · ")}
+    <li className="rounded-xl border border-[#EEE9DD] px-3 py-2.5 space-y-1.5">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[12.5px] font-bold text-slate-700">{accountLabel(account)}</span>
+          <span className="block text-[11px] text-slate-500">
+            {[account.currency, balance && `bank balance ${balance}`].filter(Boolean).join(" · ")}
+          </span>
         </span>
-      </span>
-      {account.walletUuid ? (
-        <span className="flex items-center gap-2">
-          <span className="text-[12px] font-semibold text-slate-600">→ {linked?.name ?? "A wallet"}</span>
-          {!readOnly && (
-            <IconButton label="Unlink from the wallet" onClick={onUnlink} spinning={busy}><Unlink className="h-3.5 w-3.5" /></IconButton>
-          )}
-        </span>
-      ) : readOnly ? (
-        <span className="text-[11.5px] text-slate-400">Not linked to a wallet</span>
-      ) : choices.length === 0 ? (
-        <span className="text-[11.5px] text-slate-400">No {account.currency} wallet free: add one to link it</span>
-      ) : (
-        <span className="flex items-center gap-2">
-          <select
-            value={choice}
-            onChange={(e) => setChoice(e.target.value)}
-            aria-label="Wallet"
-            className="h-9 px-2.5 rounded-lg bg-white text-[12px] font-semibold text-slate-700 border border-slate-200 outline-none focus:border-[#C49A3C]/60"
-          >
-            <option value="">Choose a wallet…</option>
-            {choices.map((w) => <option key={w.uuid} value={w.uuid}>{w.name}</option>)}
-          </select>
-          <button
-            type="button"
-            onClick={() => choice && onLink(choice)}
-            disabled={!choice || busy}
-            className="px-3 py-2 rounded-lg text-[11.5px] font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40"
-          >
-            Link
-          </button>
-        </span>
-      )}
+        {!active ? (
+          <span className="text-[11.5px] text-slate-400">Renew the consent to link it</span>
+        ) : (
+          <span className="flex items-center gap-2">
+            <select
+              value={choice}
+              onChange={(e) => setChoice(e.target.value)}
+              aria-label="Wallet"
+              className="h-9 px-2.5 rounded-lg bg-white text-[12px] font-semibold text-slate-700 border border-slate-200 outline-none focus:border-[#C49A3C]/60"
+            >
+              <option value="">Choose a wallet…</option>
+              <option value={NEW_WALLET}>New wallet: {account.name ?? `${link.bankName} ${account.currency}`}</option>
+              {choices.map((w) => <option key={w.uuid} value={w.uuid}>{w.name}</option>)}
+            </select>
+            <button
+              type="button"
+              onClick={() => choice && onLink(choice)}
+              disabled={!choice || busy}
+              className="px-3 py-2 rounded-lg text-[11.5px] font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40"
+            >
+              {busy ? "Linking…" : "Link"}
+            </button>
+          </span>
+        )}
+      </div>
+      {error && <p className="text-[11.5px] font-medium text-rose-600">{error}</p>}
     </li>
   );
 }
 
 /**
  * WALLET BANK SYNC — in a wallet's settings: the bank account it's linked to, if any, and reading
- * it now. Linking and unlinking stay on the Banks page; a read here is the whole link's, its note
+ * it now. Linking and unlinking stay on its account's page; a read here is the whole link's, its note
  * this account's.
  */
 export function WalletBankSync({ wallet }: { wallet: Wallet }) {
-  const { sample, changed } = useWallets();
+  const { changed } = useWallets();
   const read = useBankLinks();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -355,7 +288,7 @@ export function WalletBankSync({ wallet }: { wallet: Wallet }) {
   }
 
   const active = link.status === "active";
-  const lock = sample ? DEMO_DISABLED_TITLE : wallet.archived ? "An archived wallet isn't read" : !active ? "The consent ended: renew it on the Banks page" : null;
+  const lock = wallet.archived ? "An archived wallet isn't read" : !active ? "The consent ended: renew it on its account's page" : null;
   const balance = account.reportedBalance === null ? null : formatCurrency(account.reportedBalance, account.currency, 2);
   const meta = [
     link.lastSyncedAt ? `read ${dayLabel(link.lastSyncedAt.slice(0, 10))}` : "not read yet",
@@ -421,7 +354,7 @@ export function IconButton({ label, onClick, danger, spinning, disabled, title, 
  * the bank sends the caller back to /dashboard/bank-link. Renewing a link goes straight to its bank.
  * For a wallet (`wallet`, from its page), its account goes into that wallet once back.
  */
-function ConnectBankDialog({ renew, wallet, onClose }: { renew?: BankLink; wallet?: Wallet; onClose: () => void }) {
+export function ConnectBankDialog({ renew, wallet, onClose }: { renew?: BankLink; wallet?: Wallet; onClose: () => void }) {
   const [country, setCountry] = useState(renew?.country ?? "IT");
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<string | null>(renew?.bankName ?? null);
@@ -530,7 +463,7 @@ export function WalletBankDialog({ wallet, onClose }: { wallet: Wallet; onClose:
   const blocked = (account: BankAccount) => {
     if (account.walletUuid) return `In ${wallets.find((w) => w.uuid === account.walletUuid)?.name ?? "another wallet"}`;
     if (account.currency !== wallet.currency) return `In ${account.currency}, the wallet's in ${wallet.currency}`;
-    if (linkOf(account)?.status !== "active") return "Consent ended: renew it on the Banks page";
+    if (linkOf(account)?.status !== "active") return "Consent ended: renew it on its account's page";
     return null;
   };
 

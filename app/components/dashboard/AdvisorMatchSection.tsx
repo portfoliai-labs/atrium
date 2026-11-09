@@ -11,12 +11,14 @@ import { clientsKey, useClientsQuery } from "../../context/ClientsContext";
 import { FEE_OPTIONS, LANGUAGE_OPTIONS, TOPIC_OPTIONS } from "../../lib/ips";
 import type { AdvisorCard, AdvisorMatch, AdvisorRequest, AdvisorRequestStatus, MatchReasons } from "../../models/AdvisorRequest";
 import { TextArea } from "./ips/fields";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 const SERIF = { fontFamily: "'Playfair Display', Georgia, serif" };
 const CARD_CLASS = "bg-white p-6 md:p-8 rounded-4xl border border-[rgba(196,154,60,0.2)] shadow-sm";
 
 const NO_REQUESTS: AdvisorRequest[] = [];
 const NO_MATCHES: AdvisorMatch[] = [];
+const NO_ADVISORS: AdvisorCard[] = [];
 
 const STATUS_LABELS: Record<AdvisorRequestStatus, string> = {
   pending: "Waiting for an answer",
@@ -31,37 +33,42 @@ const STATUS_LABELS: Record<AdvisorRequestStatus, string> = {
  * verified advisors from what the investor said they look for (the last step of their Investment
  * Policy), with the reasons; the investor asks one of them, with a first message and their
  * consent to share the policy. One request is pending at a time; the advisor accepts or declines,
- * and an unanswered request expires after a week.
+ * and an unanswered request expires after a week. An advisor who accepted reads the investor's
+ * data (never changes it) until the investor ends it, from "Your advisor" at the top.
  */
 // `onOpenPolicy`: where the Investment Policy is filled in (Profile's).
 export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void }) {
   const [asking, setAsking] = useState<AdvisorCard | null>(null);
+  const [ending, setEnding] = useState<AdvisorCard | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // The investor's requests and their suggested advisors (null: no policy to match on yet), read
-  // together; again after a request, and after a save of the policy (useInvestorPolicy).
+  // The investor's advisors, their requests and their suggested advisors (null: no policy to match
+  // on yet), read together; again after a request, and after a save of the policy (useInvestorPolicy).
   const query = useClientsQuery(["matches"], async () => {
-    const [mine, found] = await Promise.all([
+    const [advisors, mine, found] = await Promise.all([
+      advisorRequestService.getMyAdvisors(),
       advisorRequestService.getMyRequests(),
       advisorRequestService.getMatches().catch((err: unknown) => {
         if (err instanceof ApiError && err.errorType === "InvestorPolicyRequiredError") return null;
         throw err;
       }),
     ]);
-    return { requests: mine, matches: found };
+    return { advisors, requests: mine, matches: found };
   });
   const queryClient = useQueryClient();
   const reload = () => { void queryClient.invalidateQueries({ queryKey: clientsKey("matches") }); };
 
   const loading = query.isPending;
+  const advisors = query.data?.advisors ?? NO_ADVISORS;
   const requests = query.data?.requests ?? NO_REQUESTS;
   const matches = query.data?.matches ?? NO_MATCHES;
   const needsPolicy = query.data?.matches === null;
   const error = actionError ?? (query.isError ? "We couldn't load your advisors. Please try again." : null);
 
   const pending = requests.find((r) => r.status === "pending") ?? null;
-  const accepted = requests.filter((r) => r.status === "accepted");
-  const past = requests.filter((r) => r !== pending && r.status !== "accepted");
+  // An accepted request is past once its advisor no longer is the investor's (it was ended).
+  const current = new Set(advisors.map((a) => a.advisorUuid));
+  const past = requests.filter((r) => r !== pending && !(r.status === "accepted" && current.has(r.advisor.advisorUuid)));
 
   const withdraw = async (request: AdvisorRequest) => {
     setActionError(null);
@@ -100,14 +107,29 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
         </p>
       )}
 
-      {accepted.map((request) => (
-        <div key={request.requestUuid} className={`${CARD_CLASS} space-y-3`}>
+      {advisors.length > 0 && (
+        <div className={`${CARD_CLASS} space-y-4`}>
           <p className="text-xs font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1.5">
-            <Check className="w-4 h-4" /> Your advisor
+            <Check className="w-4 h-4" /> {advisors.length === 1 ? "Your advisor" : "Your advisors"}
           </p>
-          <AdvisorHeader advisor={request.advisor} />
+          <ul className="space-y-4">
+            {advisors.map((advisor) => (
+              <li key={advisor.advisorUuid} className="flex flex-wrap items-center justify-between gap-3">
+                <AdvisorHeader advisor={advisor} />
+                <button
+                  onClick={() => { setActionError(null); setEnding(advisor); }}
+                  className="text-sm font-semibold text-[#78716c] hover:text-red-700 px-4 py-2 rounded-xl hover:bg-red-50 transition-colors"
+                >
+                  End
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-[#78716c]">
+            {advisors.length === 1 ? "Your advisor sees" : "Your advisors see"} your data to advise you; only you change it.
+          </p>
         </div>
-      ))}
+      )}
 
       {pending && (
         <div className={`${CARD_CLASS} space-y-4`}>
@@ -191,6 +213,8 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
         </div>
       )}
 
+      {ending && <EndAdvisorDialog advisor={ending} onClose={() => setEnding(null)} onEnded={() => { setEnding(null); reload(); }} />}
+
       {asking && (
         <RequestDialog
           advisor={asking}
@@ -199,6 +223,34 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
         />
       )}
     </div>
+  );
+}
+
+/** Ends the relation with one of the investor's advisors, asking first. */
+function EndAdvisorDialog({ advisor, onClose, onEnded }: { advisor: AdvisorCard; onClose: () => void; onEnded: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const end = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await advisorRequestService.endAdvisor(advisor.advisorUuid);
+      onEnded();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "We couldn't end it. Please try again.");
+      setBusy(false);
+    }
+  };
+  return (
+    <ConfirmDialog
+      title={`End with ${fullName(advisor)}?`}
+      description={`${fullName(advisor)} will no longer be your advisor, and will no longer see your data.`}
+      confirmLabel="End"
+      confirming={busy}
+      error={error}
+      onConfirm={end}
+      onClose={onClose}
+    />
   );
 }
 

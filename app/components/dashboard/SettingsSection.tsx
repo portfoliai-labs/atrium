@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, Landmark, FolderTree } from "lucide-react";
+import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, FolderTree } from "lucide-react";
 import { userService } from "../../services/userService";
 import { supabase } from "../../lib/supabaseClient";
 import { MIN_PASSWORD_LENGTH, newPasswordError } from "../../lib/password";
@@ -13,7 +13,6 @@ import { Toggle } from "./Toggle";
 import { useUser } from "../../context/UserContext";
 import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
-import { WalletBanks } from "./wallets/WalletBanks";
 import { WalletCategories } from "./wallets/WalletCategories";
 import { useWallets } from "../../context/WalletsContext";
 
@@ -59,17 +58,15 @@ function ReadOnlyField({ label, value, className = "" }: { label: string; value:
 const TABS = [
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "assets", label: "Assets", icon: Shapes },
-  // The wallets' categories (money in and out), and the banks connected through open banking: an
-  // investor's, where they have wallets.
+  // The wallets' categories (money in and out): an investor's, where they have wallets. The banks
+  // connected are accounts, under Cash, accounts and cards (each its own page).
   { id: "categories", label: "Categories", icon: FolderTree },
-  { id: "banks", label: "Banks", icon: Landmark },
   { id: "account", label: "Account", icon: UserIcon },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
 
-// A link into a tab from outside the dashboard (`/dashboard?section=settings&settingsTab=banks`,
-// where the bank sends the user back to).
+// A link into a tab from outside the dashboard (`/dashboard?section=settings&settingsTab=assets`).
 const SETTINGS_TAB_PARAM = "settingsTab";
 const linkedTab = (): TabId | null => {
   if (typeof window === "undefined") return null;
@@ -90,18 +87,18 @@ export const openAssetSettings = (onNavigate: (section: string) => void) => {
 };
 
 export function SettingsSection() {
-  const { user, logout, refreshUser, isDemo } = useUser();
+  const { user, logout, refreshUser } = useUser();
   const { available: walletsAvailable } = useWallets();
-  // Categories and Banks only where the wallets are (a backend with them, a demo account's sample data).
-  const hasBanks = user?.role !== "ADVISOR" && (isDemo || walletsAvailable);
-  const walletTab = (id: TabId) => id === "banks" || id === "categories";
-  const tabs = TABS.filter((t) => !walletTab(t.id) || hasBanks);
+  // Categories only where the wallets are (a backend with them).
+  const hasWallets = user?.role !== "ADVISOR" && walletsAvailable;
+  const walletTab = (id: TabId) => id === "categories";
+  const tabs = TABS.filter((t) => !walletTab(t.id) || hasWallets);
   const [chosenTab, setActiveTab] = useState<TabId>(() => {
     const tab = requestedTab ?? linkedTab() ?? "notifications";
     requestedTab = null;
     return tab;
   });
-  const activeTab: TabId = walletTab(chosenTab) && !hasBanks ? "notifications" : chosenTab;
+  const activeTab: TabId = walletTab(chosenTab) && !hasWallets ? "notifications" : chosenTab;
 
   // The link's tab is read once: Settings opened again later starts on its first tab.
   useEffect(() => {
@@ -188,8 +185,7 @@ export function SettingsSection() {
   };
 
   const handleUpdateEmail = async () => {
-    // Supabase, not apiFetch: its read-only guard doesn't cover this one.
-    if (isDemo || !newEmail.trim()) return;
+    if (!newEmail.trim()) return;
     setSavingEmail(true);
     try {
       const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
@@ -206,7 +202,6 @@ export function SettingsSection() {
   };
 
   const handleUpdatePassword = async () => {
-    if (isDemo) return;
     const invalid = newPasswordError(newPassword, confirmPassword);
     if (invalid) {
       setMessage({ type: "error", text: invalid });
@@ -230,7 +225,6 @@ export function SettingsSection() {
   };
 
   const handleDeleteAccount = async () => {
-    if (isDemo) return;
     await userService.deleteAccount();
     logout();
   };
@@ -258,14 +252,6 @@ export function SettingsSection() {
         })}
       </div>
 
-      {isDemo && (
-        <p className="text-xs font-semibold text-[#78716c]">
-          Settings can be looked at but not changed on a demo account: profile, email, password, notifications and the account itself are locked.
-        </p>
-      )}
-
-      {/* Every field and button below is disabled for a demo account (see lib/demo). */}
-      <fieldset disabled={isDemo} className="contents">
       {activeTab === "notifications" && (
         <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-[rgba(196,154,60,0.2)] shadow-sm space-y-2">
           <div className="flex items-center justify-between gap-4 border-b border-[rgba(196,154,60,0.15)] pb-4 mb-2">
@@ -479,9 +465,6 @@ export function SettingsSection() {
         </div>
       )}
 
-      </fieldset>
-
-      {/* Outside the fieldset: a demo account can still open each row (the editors lock their own changes). */}
       {activeTab === "assets" && (
         <div className="space-y-8">
           <div className="space-y-4">
@@ -499,7 +482,6 @@ export function SettingsSection() {
         </div>
       )}
 
-      {/* A demo account's is a sample bank, read only (WalletBanks locks its own changes). */}
       {activeTab === "categories" && (
         <div className="space-y-4">
           <p className="text-[13px] text-[#78716c] leading-relaxed max-w-3xl">
@@ -510,7 +492,6 @@ export function SettingsSection() {
           <WalletCategories />
         </div>
       )}
-      {activeTab === "banks" && <WalletBanks />}
 
       {message && (
         <div className={`fixed bottom-6 md:bottom-8 left-1/2 -translate-x-1/2 px-6 md:px-8 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-4 z-50 ${message.type === 'success' ? 'bg-[#1c1917] text-white' : 'bg-rose-500 text-white'}`}>

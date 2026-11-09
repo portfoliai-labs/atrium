@@ -22,8 +22,7 @@ const GREETING_MS = 4000;
 
 const TIER_LABEL: Record<SubscriptionTier, string> = {
   FREE: 'Free Plan',
-  TESTER: 'Tester',
-  DEMO: 'Demo',
+  SELF_HOSTED: 'Self-hosted',
 };
 
 interface DashboardHeaderProps {
@@ -51,7 +50,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
   // Read as the menu opens, shared with the Subscription page.
   const subscription = useAccountQuery(["subscription"], () => userService.getSubscription(), { enabled: isSubscriptionOpen });
 
-  const { user, isDemo } = useUser();
+  const { user } = useUser();
 
   // The greeting, only right after signing in (completeAuth marks it): shown once the user's name
   // is known, then gone. The mark is cleared on reading, so a reload doesn't greet again.
@@ -94,7 +93,10 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
   }
 
   return (
-    <header className="sticky top-0 z-[60] w-full bg-[#F7F5EF] border-b border-[rgba(196,154,60,0.2)] px-4 md:px-8 py-4 flex justify-between items-center transition-all">
+    // Its colour runs a screen up above it (before:): pulled past the page's top (the rubber-band
+    // bounce of macOS / iOS), the bar slides down with the page while the fixed Sidebar stays, and
+    // the gap above it would show blank white and the Sidebar's top.
+    <header className="sticky top-0 z-[60] w-full bg-[#F7F5EF] border-b border-[rgba(196,154,60,0.2)] px-4 md:px-8 py-4 flex justify-between items-center transition-all before:content-[''] before:absolute before:inset-x-0 before:bottom-full before:h-screen before:bg-[#F7F5EF] before:pointer-events-none">
       {/* LEFT: Hamburger + Logo */}
       <div className="flex items-center gap-3 md:gap-4">
         <button
@@ -148,8 +150,8 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
           />
         )}
 
-        {/* The AI assistant: a new chat with it, in Messages. Not a demo account's. */}
-        {onOpenPage && !isDemo && (
+        {/* The AI assistant: a new chat with it, in Messages. */}
+        {onOpenPage && (
           <button
             onClick={() => onOpenPage("messages", aiChatView())}
             title="Ask the AI assistant"

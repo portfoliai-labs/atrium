@@ -10,21 +10,18 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { portfolioService } from "../../services/portfolioService";
-import type { Portfolio, PortfolioSnapshot, TodayDashboard } from "../../models/Portfolio";
+import { investmentsOf, isBacktest, type Portfolio, type PortfolioSnapshot, type TodayDashboard } from "../../models/Portfolio";
 import { formatCurrency } from "../../lib/format";
 import { NoDataEmptyState } from "./NoDataEmptyState";
 import { useInvestmentsQuery, useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
 import { AlertGaugeCard } from "./AlertGauge";
-import { openPortfolioPage, openRealEstatePage, openWalletPage } from "../../lib/dashboardNav";
+import { LIQUIDITY, openPortfolioPage, openRealEstatePage, openWalletPage } from "../../lib/dashboardNav";
 import { BudgetsSummaryModule, UpcomingPaymentsModule } from "./DashboardSummaries";
 import { DailyArticleModule } from "./NewsSection";
 import { useOwnAlertRules } from "../../hooks/useAlertRules";
 import { alertState, type AlertState, type AlertTone } from "../../lib/alerts";
 import { useWalletsOverview, type WalletsOverview } from "../../hooks/useWalletsOverview";
-import { useWallets } from "../../context/WalletsContext";
 import { useRealEstateNetWorth, type RealEstateNetWorth } from "../../hooks/useRealEstateNetWorth";
-import { useRealEstate } from "../../context/RealEstateContext";
-import { PreviewBadge } from "../preview/PreviewKit";
 import { WealthBreakdown } from "./WealthBreakdown";
 import { MODULE_BODY, ModuleHead, Module as SummaryModule } from "./PerformanceSection";
 
@@ -38,12 +35,11 @@ type SnapshotState =
 /**
  * DASHBOARD — the whole wealth at a glance, not tied to the selected portfolio: the net worth
  * on top (every portfolio's market value, from the aggregate "All portfolios" or the only
- * portfolio, plus the wallets' balance and the real estate's equity; a demo account's wallets and
- * properties are sample data, see lib/mock), with the portfolios, the wallets and the properties
- * under it as totals, and beside it on a wide enough page the wallets' cash flow (WealthBreakdown);
+ * portfolio, plus the wallets' balance and the real estate's equity), with the portfolios, the
+ * wallets and the properties under it as totals, and beside it on a wide enough page the wallets' cash flow (WealthBreakdown);
  * then two by two: the wallets' cash flow and the payments coming up, every portfolio's alerts
  * and the month's budgets; then the article of the day. Headline figures
- * only: the rest lives in Investments, Wallets and Real estate, which the summaries open. The overview endpoint never mixes history
+ * only: the rest lives in Investments, Cash, accounts and cards and Real estate, which the summaries open. The overview endpoint never mixes history
  * with fresh data (no isStale).
  */
 export default function DashboardOverview({ onNavigate }: { onNavigate?: (section: string) => void } = {}) {
@@ -64,15 +60,17 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
   const overviewRead = useInvestmentsQuery(
     ["overview", headlineUuid], () => portfolioService.getPortfolioOverview(headlineUuid), { enabled: headlineUuid !== "" },
   );
-  // On a read again, the previous figures stay up until the new ones land.
-  const headlineState: SnapshotState = overviewRead.data !== undefined ? { status: "ready", snapshot: overviewRead.data }
+  // On a read again, the previous figures stay up until the new ones land. No portfolio at all
+  // reads as one with no data yet.
+  const headlineState: SnapshotState = !headline ? { status: "ready", snapshot: null }
+    : overviewRead.data !== undefined ? { status: "ready", snapshot: overviewRead.data }
     : overviewRead.isError ? { status: "failed" }
     : { status: "loading" };
 
   // "Manage alerts" (and the empty state's button) open the Alerts page of the selected portfolio
-  // (a real one or All portfolios: the default while a backtest is selected).
+  // (a real one or All portfolios: the oldest real one while a backtest is selected).
   const openAlertSettings = () => {
-    const target = current && !(current.isVirtual && !current.isAggregate) ? current : portfolios.find((p) => p.isDefault);
+    const target = current && !isBacktest(current) ? current : investmentsOf(portfolios);
     if (onNavigate && target) openPortfolioPage(onNavigate, target.uuid, "alerts");
   };
 
@@ -90,9 +88,7 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
     else onNavigate(section);
   };
   // The investments: All portfolios, or the only portfolio.
-  const investments = portfolios.find((p) => p.isAggregate) ?? portfolios.find((p) => p.isDefault);
-
-  if (!headline) return null;
+  const investments = investmentsOf(portfolios);
   // A lone portfolio with no data gets the full-page "no data" window and nothing else: an
   // alert with no portfolio to watch has nothing to measure.
   const noDataAtAll = headlineState.status === "ready" && headlineState.snapshot === null && !aggregate;
@@ -120,11 +116,21 @@ export default function DashboardOverview({ onNavigate }: { onNavigate?: (sectio
       {headlineState.status === "failed" ? (
         <ErrorBanner message="Failed to load portfolio data" />
       ) : noDataAtAll && !wallets && !realEstate ? (
-        <NoDataEmptyState
-          title="No portfolio data yet"
-          message="Add or upload your transactions and this is where you'll see what your portfolio is worth today."
-          onNavigate={onNavigate ? (section) => openPortfolio(headline.uuid, section) : undefined}
-        />
+        headline ? (
+          <NoDataEmptyState
+            title="No portfolio data yet"
+            message="Add or upload your transactions and this is where you'll see what your portfolio is worth today."
+            onNavigate={onNavigate ? (section) => openPortfolio(headline.uuid, section) : undefined}
+          />
+        ) : (
+          // Every portfolio deleted: Investments, where a new one is created.
+          <NoDataEmptyState
+            title="No portfolios yet"
+            message="Create a portfolio to record your transactions and this is where you'll see what it's worth today."
+            action="Create a portfolio"
+            onNavigate={onNavigate ? () => openPortfolioPage(onNavigate, "") : undefined}
+          />
+        )
       ) : (
         <NetWorthModule
           portfolio={headline}
@@ -194,7 +200,8 @@ function NetWorthModule({
   portfolio, snapshot, wallets, realEstate,
   onOpenPortfolios, onOpenWallets, onOpenRealEstate,
 }: {
-  portfolio: Portfolio;
+  // None: the user has no portfolio (wallets or properties only).
+  portfolio: Portfolio | undefined;
   // null: nothing computed yet (the aggregate's first build, or a portfolio with no data).
   snapshot: PortfolioSnapshot | null;
   wallets: WalletsOverview | null;
@@ -203,11 +210,9 @@ function NetWorthModule({
   onOpenWallets?: () => void;
   onOpenRealEstate?: () => void;
 }) {
-  const moves = useRecentMoves(portfolio.uuid);
+  const moves = useRecentMoves(portfolio?.uuid);
   // The bar's piece under the pointer: its name, kind, value and share over it.
   const [hovered, setHovered] = useState<string | null>(null);
-  const { sample } = useWallets();
-  const { sample: realEstateSample } = useRealEstate();
   const currency = snapshot?.currency ?? wallets?.currency ?? realEstate?.overview?.currency ?? "EUR";
   const investments = snapshot?.totalMarketValue ?? 0;
   const walletsCounted = wallets && wallets.currency === currency ? wallets.balance ?? 0 : 0;
@@ -219,7 +224,7 @@ function NetWorthModule({
   // The bar, one piece per group counted in the total, in its colour (the same as its column's).
   const groups = [
     { key: "investments", label: "Investments", value: investments, color: GOLD },
-    ...(walletsCounted !== 0 ? [{ key: "wallets", label: "Wallets", value: walletsCounted, color: TEAL }] : []),
+    ...(walletsCounted !== 0 ? [{ key: "wallets", label: LIQUIDITY, value: walletsCounted, color: TEAL }] : []),
     ...(realEstateCounted !== 0 ? [{ key: "realEstate", label: "Real estate", value: realEstateCounted, color: ORANGE }] : []),
   ].filter((g) => g.value > 0);
   // Where each piece starts and ends along the bar, in percent: the hovered one's label sits over its middle.
@@ -294,16 +299,17 @@ function NetWorthModule({
           title="Investments"
           color={GOLD}
           value={snapshot ? formatCurrency(snapshot.totalMarketValue, snapshot.currency, 0) : null}
-          pending={portfolio.isAggregate
-            ? "The combined figures across your portfolios are being prepared. Check back in a few minutes."
-            : "No transactions yet: add some to see what your portfolio is worth."}
+          pending={!portfolio
+            ? "No portfolios yet: create one to see what your investments are worth."
+            : portfolio.isAggregate
+              ? "The combined figures across your portfolios are being prepared. Check back in a few minutes."
+              : "No transactions yet: add some to see what your portfolio is worth."}
           onOpen={onOpenPortfolios}
         />
         {wallets && (
           <GroupColumn
-            title="Wallets"
+            title={LIQUIDITY}
             color={TEAL}
-            badge={sample ? <PreviewBadge label="Sample data" /> : undefined}
             value={wallets.balance === null ? "—" : formatCurrency(wallets.balance, wallets.currency, 0)}
             onOpen={onOpenWallets}
           />
@@ -312,7 +318,6 @@ function NetWorthModule({
           <GroupColumn
             title="Real estate"
             color={ORANGE}
-            badge={realEstateSample ? <PreviewBadge label="Sample data" /> : undefined}
             value={reOverview ? formatCurrency(reOverview.equity, reOverview.currency, 0) : "—"}
             summary={reOverview ? (
               <>
@@ -368,11 +373,10 @@ function Delta({ amount, pct, currency }: { amount: number | null; pct: number |
  * opening its section. `value` null: nothing to show yet, `pending` says why.
  */
 function GroupColumn({
-  title, color, badge, value, pending, summary, onOpen,
+  title, color, value, pending, summary, onOpen,
 }: {
   title: string;
   color: string;
-  badge?: React.ReactNode;
   value: string | null;
   pending?: string;
   summary?: React.ReactNode;
@@ -390,7 +394,6 @@ function GroupColumn({
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
             <span className="h-2 w-2 rounded-full shrink-0" style={{ background: color }} />
             {title}
-            {badge}
           </p>
           {onOpen && <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-[#C49A3C] transition-colors" />}
         </div>
@@ -413,8 +416,10 @@ function GroupColumn({
  * Insights ("This month"). Null while there's nothing yet, or while the document is stale (it
  * can mix two versions of the portfolio then).
  */
-function useRecentMoves(portfolioUuid: string) {
-  const today = useInvestmentsRead<TodayDashboard | null>(["today", portfolioUuid], () => portfolioService.getTodayDashboard(portfolioUuid));
+function useRecentMoves(portfolioUuid: string | undefined) {
+  const today = useInvestmentsRead<TodayDashboard | null>(
+    ["today", portfolioUuid], () => portfolioService.getTodayDashboard(portfolioUuid!), portfolioUuid !== undefined,
+  );
   return today && !today.isStale ? today : null;
 }
 

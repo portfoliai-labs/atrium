@@ -3,13 +3,13 @@
 import { Sparkles } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
 import { readDashboardEntry } from "../../../lib/dashboardHistory";
-import { ASSET_SECTION, INVESTMENTS_SECTION, REAL_ESTATE_SECTION, WALLETS_SECTION, aiChatView, useOpenDashboardPage } from "../../../lib/dashboardNav";
+import { ASSET_SECTION, INVESTMENTS_SECTION, LIQUIDITY, REAL_ESTATE_SECTION, WALLETS_SECTION, aiChatView, useOpenDashboardPage } from "../../../lib/dashboardNav";
 
 // The page a widget is on, for the question: the sections whose widgets show the user's own data.
 const PAGE_NAMES: Record<string, string> = {
   overview: "Dashboard",
   [INVESTMENTS_SECTION]: "Investments",
-  [WALLETS_SECTION]: "Wallets",
+  [WALLETS_SECTION]: LIQUIDITY,
   [REAL_ESTATE_SECTION]: "Real estate",
   [ASSET_SECTION]: "security",
 };
@@ -18,13 +18,12 @@ const PAGE_NAMES: Record<string, string> = {
  * AI HELP — on a widget's heading: asks the AI assistant what the widget is saying, in a new chat
  * in Messages, sent at once. The assistant reads the user's data itself; the question names the
  * widget, the page it's on and what it shows. Only in the dashboard, and only for an investor's
- * own data: not on a demo account (no assistant), nor an advisor's (a client's pages aren't
- * theirs to read).
+ * own data: not an advisor's (a client's pages aren't theirs to read).
  */
 export function AiHelpButton({ title, desc, className = "" }: { title: string; desc?: string; className?: string }) {
   const openPage = useOpenDashboardPage();
-  const { user, isDemo } = useUser();
-  if (!openPage || isDemo || user?.role === "ADVISOR") return null;
+  const { user } = useUser();
+  if (!openPage || user?.role === "ADVISOR") return null;
 
   const ask = (e: React.MouseEvent) => {
     // A heading that opens the widget's detail view stays put.

@@ -10,7 +10,6 @@ import { EXPENSE_KIND_LABELS, INCENTIVE_KIND_LABELS, PREPAYMENT_EFFECT_LABELS, f
 import { today } from "../../../lib/wallets";
 import { formatCurrency } from "../../../lib/format";
 import type { ExpenseKind, IncentiveKind, Mortgage, PrepaymentEffect, PropertyTransactionInput, TaxRegime } from "../../../models/RealEstate";
-import { DEMO_DISABLED_TITLE } from "../../preview/DemoBanner";
 import { Field, INPUT, parseAmount } from "../wallets/WalletDialogs";
 import { useNewProperty } from "./NewPropertyFields";
 import { SaleTaxSummary, useSaleSimulation } from "./SaleTax";
@@ -56,14 +55,13 @@ const EXPENSE_TYPES: { value: ExpenseType; label: string }[] = [
  * property tax, works, a mortgage's instalment or prepayment. Amounts are typed as positive and
  * signed here, as each kind wants them. A sale offers to settle each open mortgage of the property
  * (its payoff booked as a prepayment, the mortgage closed on the sale day): the API doesn't close
- * them by itself. A demo account can fill it in but not save it.
+ * them by itself.
  */
-export function RealEstateTransactionForm({ initialKind = "purchase", initialPropertyUuid, taxPayment, readOnly = false, onCancel, onSaved }: {
+export function RealEstateTransactionForm({ initialKind = "purchase", initialPropertyUuid, taxPayment, onCancel, onSaved }: {
   initialKind?: RealEstateEntryKind;
   initialPropertyUuid?: string;
   // Opens on Expense, as that tax payment (taxYear set: it counts for that year's tax).
   taxPayment?: TaxPaymentPrefill;
-  readOnly?: boolean;
   onCancel: () => void;
   // The property the transaction went to (the new one, for a purchase).
   onSaved: (propertyUuid: string) => void;
@@ -188,7 +186,7 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
   };
 
   const submit = async () => {
-    if (readOnly || problems.length > 0 || busy) return;
+    if (problems.length > 0 || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -452,8 +450,7 @@ export function RealEstateTransactionForm({ initialKind = "purchase", initialPro
         <button
           type="button"
           onClick={submit}
-          disabled={readOnly || busy || problems.length > 0 || (kind !== "purchase" && !property)}
-          title={readOnly ? DEMO_DISABLED_TITLE : undefined}
+          disabled={busy || problems.length > 0 || (kind !== "purchase" && !property)}
           className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-[#1c1917] hover:bg-[#C49A3C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#1c1917]"
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -500,7 +497,6 @@ export function RealEstateTransactionDialog({ initialKind, initialPropertyUuid, 
   onClose: () => void;
   onSaved: (propertyUuid: string) => void;
 }) {
-  const { sample } = useRealEstate();
   return createPortal(
     <div className="fixed inset-0 z-100 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={onClose}>
       <div
@@ -520,12 +516,7 @@ export function RealEstateTransactionDialog({ initialKind, initialPropertyUuid, 
             <X className="h-4 w-4" />
           </button>
         </div>
-        {sample && (
-          <p className="rounded-2xl bg-[#1c1917] px-4 py-3 text-xs font-semibold text-stone-300">
-            <span className="font-black text-white">Demo account — read only.</span> Try the form out; it can&apos;t be saved.
-          </p>
-        )}
-        <RealEstateTransactionForm initialKind={initialKind} initialPropertyUuid={initialPropertyUuid} taxPayment={taxPayment} readOnly={sample} onCancel={onClose} onSaved={onSaved} />
+        <RealEstateTransactionForm initialKind={initialKind} initialPropertyUuid={initialPropertyUuid} taxPayment={taxPayment} onCancel={onClose} onSaved={onSaved} />
       </div>
     </div>,
     document.body,

@@ -32,8 +32,7 @@ import { UploadedFileState } from "./uploaderTypes";
 import { TransactionsSection, TransactionRow, DisplayTransaction, BulkOperation } from "./TransactionsSection";
 import { TransactionFilterBar, TransactionFilterState, EMPTY_TRANSACTION_FILTERS } from "./TransactionFilterBar";
 import { useInvestmentsQuery, usePortfolio } from "../../context/PortfolioContext";
-import { useUser } from "../../context/UserContext";
-import { DEMO_DISABLED_TITLE } from "../preview/DemoBanner";
+import { useReadOnly } from "../../hooks/useReadOnly";
 
 const EXISTING_PAGE_SIZE = 10;
 const PENDING_PAGE_SIZE = 10;
@@ -162,14 +161,15 @@ function groupByPortfolio<T>(items: T[], portfolioOf: (item: T) => string): Map<
 //   aggregate "All portfolios" (which merges them all, each row carrying its own
 //   portfolio_uuid), or from one portfolio when the filter picks it; writes on a saved row go
 //   to the portfolio it belongs to, and new rows to the portfolio picked where they're added.
-// - the advisor (portfolioUuid: a client's portfolio): that one portfolio, nothing to pick.
+// - the advisor (portfolioUuid: a client's portfolio): that one portfolio, read only — the saved
+//   list, with nothing to add, import, edit or delete: the client changes their own (hooks/useReadOnly).
 // `readOnly`: a virtual portfolio's (a backtest's) generated transactions — the saved list only,
 // with nothing to add, import, edit or delete.
 export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = false }: { portfolioUuid?: string; readOnly?: boolean } = {}) {
-  const { portfolios: allPortfolios, current, changed } = usePortfolio();
-  // A demo account (see lib/demo) sees the list and can open the form, but can't import, save,
-  // edit or delete anything.
-  const { isDemo } = useUser();
+  const { portfolios: allPortfolios, current, changed, client } = usePortfolio();
+  // An advisor on a client's sees the list alone.
+  const { readOnly: locked } = useReadOnly();
+  const addsRows = !readOnly && !client;
   const isFixed = fixedPortfolioUuid !== undefined;
   // The portfolios that hold the user's transactions — the aggregate only lists them, and a
   // backtest's are generated (virtual portfolios take no writes).
@@ -178,9 +178,9 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
   // Pickers and portfolio labels only make sense with a choice to make.
   const pickable = ownPortfolios.length > 1 ? ownPortfolios : undefined;
   // Where new rows go unless the user picks otherwise: the portfolio open elsewhere in the
-  // app, or the default one while that's the aggregate.
+  // app, or the oldest one while that's the aggregate.
   const defaultTarget = fixedPortfolioUuid
-    ?? (current && !current.isVirtual ? current.uuid : (ownPortfolios.find(p => p.isDefault) ?? ownPortfolios[0])?.uuid)
+    ?? (current && !current.isVirtual ? current.uuid : ownPortfolios[0]?.uuid)
     ?? "";
   const portfolioName = (uuid?: string) => allPortfolios.find(p => p.uuid === uuid)?.name ?? "";
   const [loading, setLoading] = useState(false);
@@ -821,7 +821,6 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
           onSave={handleAddManualTransaction}
           portfolios={pickable}
           defaultPortfolioUuid={defaultTarget}
-          readOnly={isDemo}
         />
       )}
 
@@ -834,7 +833,7 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
           portfolios={editingKey.startsWith("existing::") ? undefined : pickable}
           defaultPortfolioUuid={defaultTarget}
           lockKind={editingKey.startsWith("existing::")}
-          onTransfer={editingSaved && !isCashOperation(editingSaved.operation) && ownPortfolios.length > 1 && !isDemo
+          onTransfer={editingSaved && !isCashOperation(editingSaved.operation) && ownPortfolios.length > 1 && !locked
             ? () => { setTransferFrom(editingSaved); setEditingKey(null); }
             : undefined}
           onClose={() => setEditingKey(null)}
@@ -940,20 +939,17 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
       )}
 
       {/* TOOLBAR: upload actions, full width */}
-      {!readOnly && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {addsRows && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div
-          onClick={() => !isDemo && fileInputRef.current?.click()}
-          title={isDemo ? DEMO_DISABLED_TITLE : undefined}
-          className={`p-5 border-2 border-dashed border-slate-200/80 rounded-3xl bg-white/50 transition-all flex items-center gap-4 group ${
-            isDemo ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50 cursor-pointer"
-          }`}
+          onClick={() => fileInputRef.current?.click()}
+          className="p-5 border-2 border-dashed border-slate-200/80 rounded-3xl bg-white/50 transition-all flex items-center gap-4 group hover:bg-slate-50 cursor-pointer"
         >
           <div className="bg-slate-100 w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-blue-100 transition-colors">
             <UploadCloud className="h-5 w-5 text-slate-500 group-hover:text-blue-600 transition-colors" />
           </div>
           <div className="text-left overflow-hidden">
             <span className="text-sm font-bold text-slate-700 block">Browse Files</span>
-            <p className="text-xs text-slate-400 truncate">{isDemo ? "Not available on a demo account" : "Any broker export — AI maps the columns for you"}</p>
+            <p className="text-xs text-slate-400 truncate">Any broker export — AI maps the columns for you</p>
           </div>
           <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" multiple />
         </div>
@@ -1054,11 +1050,13 @@ export function FileUploader({ portfolioUuid: fixedPortfolioUuid, readOnly = fal
             ? "No transactions match the current filters."
             : readOnly
             ? "No transactions yet: the backtest is still generating them."
+            : client
+            ? `No transactions yet: ${client.name} adds them.`
             : "No transactions yet. Add one manually or upload a file to get started."
         }
         filterBar={<TransactionFilterBar filters={existingFilters} onChange={handleFiltersChange} portfolios={ownPortfolios} />}
-        onDeleteAll={isDemo || readOnly ? undefined : () => setConfirmDeleteAll(true)}
-        readOnly={isDemo || readOnly}
+        onDeleteAll={locked || readOnly ? undefined : () => setConfirmDeleteAll(true)}
+        readOnly={locked || readOnly}
         deletingAll={deletingAllExisting}
       />
     </div>

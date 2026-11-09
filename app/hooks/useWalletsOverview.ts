@@ -34,7 +34,6 @@ export interface WalletsOverview {
  * WALLETS OVERVIEW — every non-archived wallet together, and each on its own, for the Dashboard's
  * net worth and Wealth's first page: the balance, this month's money in and out, the months. null
  * where the wallets can't be shown (an advisor, a backend without them); undefined while loading.
- * A demo account's are the sample data.
  */
 export function useWalletsOverview(): WalletsOverview | null | undefined {
   const { wallets, loading, available } = useWallets();

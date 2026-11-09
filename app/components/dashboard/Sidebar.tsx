@@ -3,8 +3,7 @@
 import {
   LayoutDashboard, ChevronLeft, ChevronRight, Sparkles, Users, Newspaper, BookOpen, LineChart, Wallet, Building2, History, Inbox,
 } from "lucide-react";
-import { useUser } from "../../context/UserContext";
-import { CLIENTS_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, NEWS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, SUBSCRIPTION_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
+import { CLIENTS_SECTION, INVESTMENTS_SECTION, JOURNAL_SECTION, LIQUIDITY, NEWS_SECTION, REAL_ESTATE_SECTION, STRATEGIES_SECTION, SUBSCRIPTION_SECTION, WALLETS_SECTION } from "../../lib/dashboardNav";
 import { useWallets } from "../../context/WalletsContext";
 import { useRealEstate } from "../../context/RealEstateContext";
 import { UserRole, SubscriptionTier } from "../../models/User";
@@ -37,12 +36,8 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
   // What's left out while it's narrow: on a wide screen only.
   const wide = collapsed ? "lg:hidden" : "";
   const isAdvisor = role === 'ADVISOR';
-  const { isDemo } = useUser();
-  const { available: walletsAvailable } = useWallets();
+  const { available: hasWallets } = useWallets();
   const { available: realEstateAvailable } = useRealEstate();
-  // Wallets and Real estate only where the user has them (a backend with them, a demo account's
-  // sample data).
-  const hasWallets = isDemo || walletsAvailable;
 
   const journalItem: NavItem = { id: JOURNAL_SECTION, label: 'Journal', icon: BookOpen };
   const newsItem: NavItem = { id: NEWS_SECTION, label: 'News', icon: Newspaper };
@@ -51,7 +46,7 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: INVESTMENTS_SECTION, label: 'Investments', icon: LineChart },
     ...(realEstateAvailable ? [{ id: REAL_ESTATE_SECTION, label: 'Real estate', icon: Building2 }] : []),
-    ...(hasWallets ? [{ id: WALLETS_SECTION, label: 'Wallets', icon: Wallet }] : []),
+    ...(hasWallets ? [{ id: WALLETS_SECTION, label: LIQUIDITY, icon: Wallet }] : []),
     journalItem,
     newsItem,
   ];
@@ -133,8 +128,8 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
         </nav>
 
 
-        {/* Nothing to upgrade for a tester, nor for a demo account (see lib/demo). */}
-        {subscriptionTier !== 'TESTER' && subscriptionTier !== 'DEMO' && collapsed && (
+        {/* Nothing to upgrade on a self-hosted install (every feature). */}
+        {subscriptionTier !== 'SELF_HOSTED' && collapsed && (
           // Narrow: the upgrade as its icon.
           <div className="hidden lg:flex justify-center p-3 border-t border-white/10">
             <button
@@ -147,7 +142,7 @@ export function Sidebar({ activeSection, setActiveSection, isOpen = false, onClo
             </button>
           </div>
         )}
-        {subscriptionTier !== 'TESTER' && subscriptionTier !== 'DEMO' && (
+        {subscriptionTier !== 'SELF_HOSTED' && (
           <div className={`p-5 border-t border-white/10 ${wide}`}>
             <div className="bg-[#131210] p-5 rounded-[1.5rem] border border-[#C49A3C]/20 text-white relative overflow-hidden">
               <div className="absolute -top-10 -right-10 w-24 h-24 bg-[#C49A3C]/10 blur-2xl rounded-full" />

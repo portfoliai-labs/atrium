@@ -8,7 +8,7 @@ import type { TaxationMode } from "../models/Tax";
 import { apiFetch } from "./apiClient";
 
 export const portfoliosService = {
-  // GET /v1/portfolios — the caller's own portfolios, default one first.
+  // GET /v1/portfolios — the caller's own portfolios, the aggregate first, then oldest first.
   async list(): Promise<Portfolio[]> {
     return apiFetch<Portfolio[]>("/v1/portfolios");
   },
@@ -25,7 +25,7 @@ export const portfoliosService = {
   // POST /v1/portfolios/strategies {name, strategy} — 201 with a virtual portfolio, still empty:
   // its transactions are generated in the background (see models/Strategy). 422 when the
   // strategy doesn't add up or a security can't be resolved (InvalidFieldError, the target in the
-  // detail), 409 if the name is taken; refused for a demo account.
+  // detail), 409 if the name is taken.
   async createStrategy(payload: StrategyPortfolioPayload): Promise<Portfolio> {
     return apiFetch<Portfolio>("/v1/portfolios/strategies", {
       method: "POST",
@@ -78,25 +78,16 @@ export const portfoliosService = {
     });
   },
 
-  // DELETE /v1/portfolios/{p} — 204; deletes its transactions and all its data. 409 for the
-  // default portfolio, which can never be deleted.
+  // DELETE /v1/portfolios/{p} — 204; deletes its transactions and all its data, the last
+  // portfolio too. 409 for the aggregate.
   async remove(portfolioUuid: string): Promise<void> {
     return apiFetch<void>(`/v1/portfolios/${portfolioUuid}`, { method: "DELETE" });
   },
 
-  // GET /v1/advisor/clients/{client_uuid}/portfolios — a client's portfolios, default one
-  // first. The advisor then reaches each through the same /v1/portfolios/{p}/... paths the
-  // client would.
+  // GET /v1/advisor/clients/{client_uuid}/portfolios — a client's portfolios, the aggregate
+  // first. The advisor then reads each through the same /v1/portfolios/{p}/... paths the
+  // client would; their writes on it are refused (ADVISOR_READ_ONLY): the client changes their own.
   async listForClient(clientUuid: string): Promise<Portfolio[]> {
     return apiFetch<Portfolio[]>(`/v1/advisor/clients/${clientUuid}/portfolios`);
-  },
-
-  // POST /v1/advisor/clients/{client_uuid}/portfolios {name} — a new, empty portfolio for
-  // that client.
-  async createForClient(clientUuid: string, name: string): Promise<Portfolio> {
-    return apiFetch<Portfolio>(`/v1/advisor/clients/${clientUuid}/portfolios`, {
-      method: "POST",
-      body: JSON.stringify({ name }),
-    });
   },
 };

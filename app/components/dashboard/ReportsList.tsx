@@ -2,11 +2,11 @@
 
 import { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useUser } from "../../context/UserContext";
 import {
   FileText, Download, Search, Tag as TagIcon,
-  Loader2, AlertCircle, X, Eye, Plus, Check, Calendar, LayoutGrid,
+  Loader2, AlertCircle, X, Eye, Plus, Check, Calendar, LayoutGrid, Trash2,
 } from "lucide-react";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { reportService } from "../../services/reportService";
 import { accountKey, useAccountQuery } from "../../hooks/useAccountQuery";
 import type { Document } from "../../models/Report";
@@ -61,6 +61,7 @@ interface DocumentCardProps {
   onView: (docId: string) => void;
   onRemoveTag: (docId: string, tagName: string) => void;
   onAddTag: (docId: string) => void;
+  onDelete: (report: Document) => void;
   taggingDocId: string | null;
   setTaggingDocId: (docId: string | null) => void;
   newTagName: string;
@@ -99,8 +100,9 @@ export async function saveReportFile(url: string, fileName: string) {
 }
 
 /**
- * One portfolio's report archive, newest first (an advisor's view of a client's): search,
- * "Newest first" / "By Tag", and each report's view, download and tags.
+ * The caller's own reports on one portfolio, newest first (an advisor's on a client's are the
+ * advisor's): search, "Newest first" / "By Tag", and each report's view, download, tags and
+ * deletion.
  */
 export function ReportsList({ portfolioUuid }: { portfolioUuid: string }) {
   const queryClient = useQueryClient();
@@ -118,6 +120,11 @@ export function ReportsList({ portfolioUuid }: { portfolioUuid: string }) {
   // Tagging Logic States
   const [taggingDocId, setTaggingDocId] = useState<string | null>(null);
   const [newTagName, setNewTagName] = useState<string>("");
+
+  // Deletion States
+  const [toDelete, setToDelete] = useState<Document | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // A document's tags as a write left them, wherever the list is read.
   const setDocuments = (update: (list: Document[]) => Document[]) =>
@@ -164,6 +171,23 @@ export function ReportsList({ portfolioUuid }: { portfolioUuid: string }) {
     } catch (err: unknown) { 
       const errorMessage = err instanceof Error ? err.message : "Error removing tag";
       alert(errorMessage); 
+    }
+  };
+
+  // Gone from this list at once, and from every other list of reports (the collection's) once read again.
+  const handleDelete = async () => {
+    if (!toDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await reportService.deleteReport(portfolioUuid, toDelete.document_id);
+      setDocuments(prev => prev.filter(r => r.document_id !== toDelete.document_id));
+      void queryClient.invalidateQueries({ queryKey: accountKey("reports", "own") });
+      setToDelete(null);
+    } catch {
+      setDeleteError("The report couldn't be deleted. Please try again.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -276,6 +300,7 @@ export function ReportsList({ portfolioUuid }: { portfolioUuid: string }) {
                 onView={handleView}
                 onRemoveTag={handleRemoveTag}
                 onAddTag={handleAddTag}
+                onDelete={(report) => { setDeleteError(null); setToDelete(report); }}
                 taggingDocId={taggingDocId}
                 setTaggingDocId={setTaggingDocId}
                 newTagName={newTagName}
@@ -305,6 +330,7 @@ export function ReportsList({ portfolioUuid }: { portfolioUuid: string }) {
                     onView={handleView}
                     onRemoveTag={handleRemoveTag}
                     onAddTag={handleAddTag}
+                    onDelete={(report) => { setDeleteError(null); setToDelete(report); }}
                     taggingDocId={taggingDocId}
                     setTaggingDocId={setTaggingDocId}
                     newTagName={newTagName}
@@ -316,6 +342,17 @@ export function ReportsList({ portfolioUuid }: { portfolioUuid: string }) {
           ))
         )}
       </div>
+
+      {toDelete && (
+        <ConfirmDialog
+          title={`Delete "${toDelete.name}"?`}
+          description="The report and its file are deleted. This can't be undone."
+          confirming={deleting}
+          error={deleteError}
+          onConfirm={() => void handleDelete()}
+          onClose={() => setToDelete(null)}
+        />
+      )}
     </div>
   );
 }
@@ -329,13 +366,12 @@ function DocumentCard({
   onView,
   onRemoveTag,
   onAddTag,
+  onDelete,
   taggingDocId,
   setTaggingDocId,
   newTagName,
   setNewTagName
 }: DocumentCardProps) {
-  // A demo account (see lib/demo) sees the tags but can't add or remove them.
-  const { isDemo } = useUser();
   const period = describeReportPeriod(report);
   const title = period?.title ?? report.name ?? "Untitled Document";
   const generatedAt = new Date(report.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -367,17 +403,15 @@ function DocumentCard({
             {report.tags?.map((tag: string, index: number) => (
               <span key={`${report.document_id}-${tag}-${index}`} className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100">
                 {tag}
-                {!isDemo && (
-                  <X
-                    className="h-3 w-3 cursor-pointer text-blue-400 hover:text-rose-500 transition-colors"
-                    onClick={() => onRemoveTag(report.document_id, tag)}
-                  />
-                )}
+                <X
+                  className="h-3 w-3 cursor-pointer text-blue-400 hover:text-rose-500 transition-colors"
+                  onClick={() => onRemoveTag(report.document_id, tag)}
+                />
               </span>
             ))}
             
             {/* Inline Add Tag Input */}
-            {isDemo ? null : taggingDocId === report.document_id ? (
+            {taggingDocId === report.document_id ? (
               <div className="flex items-center gap-1.5 animate-in fade-in zoom-in duration-200">
                 <input 
                   autoFocus 
@@ -421,6 +455,14 @@ function DocumentCard({
         >
           <Download className="h-4 w-4" /> 
           <span className="md:hidden lg:inline">Download</span>
+        </button>
+        <button
+          onClick={() => onDelete(report)}
+          aria-label={`Delete ${report.name}`}
+          title="Delete"
+          className="flex-1 md:flex-none flex justify-center items-center px-4 py-3.5 text-sm font-bold bg-slate-50 text-slate-500 border border-slate-200 rounded-xl hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all"
+        >
+          <Trash2 className="h-4 w-4" />
         </button>
       </div>
       
