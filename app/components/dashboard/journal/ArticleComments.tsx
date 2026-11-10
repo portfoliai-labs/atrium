@@ -3,17 +3,15 @@
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CornerDownRight, Eye, EyeOff, Flag, Loader2, PenLine, Trash2 } from "lucide-react";
+import { CornerDownRight, Eye, EyeOff, Loader2, PenLine, Trash2 } from "lucide-react";
 import { journalKey, useJournal } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
 import type { Article, Comment } from "../../../models/Journal";
-import { COMMENT_MAX, REASON_LABELS, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
-import { ApiError } from "../../../services/apiClient";
+import { COMMENT_MAX, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
 import { AuthorBadge, ErrorState, LoadMore, PAGE_SIZE, Spinner, usePaged } from "./JournalKit";
-import { ReportDialog, type ReportTarget } from "./ReportDialog";
 import { serif, serifText } from "../../preview/PreviewKit";
 
-/** Who wrote a comment, as a round of their initials (PortfoliAI's "P" for the editors'). */
+/** Who wrote a comment, as a round of their initials. */
 function Initials({ name, small = false }: { name: string; small?: boolean }) {
   const letters = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
   return (
@@ -90,24 +88,19 @@ function Composer({ articleUuid, parentUuid, initial, placeholder, submitLabel, 
   );
 }
 
-const HIDDEN_LABELS = {
-  hidden_by_author: "Hidden by the article's author: only you, the author and the editors read it.",
-  hidden_by_editors: "Hidden by the editors: only its writer and the editors read it.",
-} as const;
+const HIDDEN_LABEL = "Hidden by the article's author: only its writer and the author read it.";
 
 /**
  * One comment: its writer, text and actions. The writer edits and deletes theirs (with its
- * replies); the article's author hides one under their article and shows it again; anyone else
- * who writes reports it. A top-level comment opens its replies and takes a reply.
+ * replies); the article's author hides one under their article and shows it again. A top-level comment opens its replies and takes a reply.
  */
-function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemove, onReport }: {
+function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemove }: {
   article: Article;
   comment: Comment;
   canWrite: boolean;
   ownArticle: boolean;
   onChange: (comment: Comment) => void;
   onRemove: (comment: Comment) => void;
-  onReport: (target: ReportTarget) => void;
 }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -123,9 +116,7 @@ function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemov
     try {
       await action();
     } catch (err) {
-      setError(err instanceof ApiError && err.errorType === "CommentModeratedError"
-        ? "The editors hid this comment: only they can show it again."
-        : journalErrorText(err, "That didn't work. Try again."));
+      setError(journalErrorText(err, "That didn't work. Try again."));
     } finally {
       setBusy(false);
     }
@@ -157,13 +148,11 @@ function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemov
             )}
             <span className="text-[#a8a29e]">{dateLabel(comment.createdAt)}{comment.editedAt && " · edited"}</span>
           </p>
-          {hidden && comment.status !== "visible" && (
+          {hidden && (
             <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-rose-700">
-              <EyeOff className="h-3 w-3" /> {HIDDEN_LABELS[comment.status]}
-              {comment.moderation && ` (${REASON_LABELS[comment.moderation.reason]})`}
+              <EyeOff className="h-3 w-3" /> {HIDDEN_LABEL}
             </p>
           )}
-          {comment.moderation?.note && <p className="mt-1 text-[11px] italic text-rose-700 whitespace-pre-line">“{comment.moderation.note}”</p>}
           {editing ? (
             <div className="mt-2">
               <Composer
@@ -193,14 +182,9 @@ function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemov
                 <button type="button" onClick={() => void remove()} disabled={busy} className={action}><Trash2 className="h-3 w-3" /> Delete</button>
               </>
             )}
-            {ownArticle && canWrite && comment.status !== "hidden_by_editors" && (
+            {ownArticle && canWrite && (
               <button type="button" onClick={() => void toggleHidden()} disabled={busy} className={action}>
                 {comment.status === "visible" ? <><EyeOff className="h-3 w-3" /> Hide</> : <><Eye className="h-3 w-3" /> Show</>}
-              </button>
-            )}
-            {!comment.mine && canWrite && !hidden && (
-              <button type="button" onClick={() => onReport({ kind: "comment", uuid: comment.uuid })} className={`${action} hover:text-rose-600`}>
-                <Flag className="h-3 w-3" /> Report
               </button>
             )}
             {busy && <Loader2 className="h-3 w-3 animate-spin text-[#a8a29e]" />}
@@ -239,7 +223,6 @@ function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemov
                 parentUuid={comment.uuid}
                 canWrite={canWrite}
                 ownArticle={ownArticle}
-                onReport={onReport}
               />
             )}
           </div>
@@ -250,12 +233,11 @@ function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemov
 }
 
 /** A page of comments: an article's top-level ones, the newest first, or a comment's replies, the oldest first. */
-function CommentThread({ article, parentUuid, canWrite, ownArticle, onReport, onCount }: {
+function CommentThread({ article, parentUuid, canWrite, ownArticle, onCount }: {
   article: Article;
   parentUuid?: string;
   canWrite: boolean;
   ownArticle: boolean;
-  onReport: (target: ReportTarget) => void;
   // The thread's total, as it changes (the article's count is the top-level page's to say).
   onCount?: (delta: number) => void;
 }) {
@@ -294,7 +276,6 @@ function CommentThread({ article, parentUuid, canWrite, ownArticle, onReport, on
               replace(next);
             }}
             onRemove={remove}
-            onReport={onReport}
           />
         ))}
       </ul>
@@ -314,7 +295,6 @@ export function ArticleComments({ article, canWrite, ownArticle, onCount }: {
   onCount: (delta: number) => void;
 }) {
   const queryClient = useQueryClient();
-  const [reporting, setReporting] = useState<ReportTarget | null>(null);
 
   return (
     <section className="pt-6">
@@ -338,11 +318,9 @@ export function ArticleComments({ article, canWrite, ownArticle, onCount }: {
           article={article}
           canWrite={canWrite}
           ownArticle={ownArticle}
-          onReport={setReporting}
           onCount={onCount}
         />
       </div>
-      {reporting && <ReportDialog target={reporting} onClose={() => setReporting(null)} />}
     </section>
   );
 }

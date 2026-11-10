@@ -1,21 +1,17 @@
 // services/journalService.ts
 import type {
-  Article, ArticleContent, ArticleFilters, ArticleReport, ArticleStatus, ArticleSummary, ArticleUpdate, Comment,
-  CommentCase, Decision, ImageFile, ImageFormat, ImageUpload, ModerationCase, ModerationCaseDetail, Page, ReportReason,
-  SavedArticle,
+  Article, ArticleContent, ArticleFilters, ArticleStatus, ArticleSummary, ArticleUpdate, Comment, ImageFile, ImageFormat,
+  ImageUpload, Page, SavedArticle,
 } from "../models/Journal";
 import { apiFetch } from "./apiClient";
 
 // Errors come back as ApiError with the backend's `detail` as the message, its `error_type`, and
 // (in `metadata`) the field at fault: InvalidArticleError (422, `field` and the block's `index`),
 // DisclosureRequiredError (422), InvalidImageError (422, `problem`: missing, too_large,
-// unsupported_format), InvalidReportError / InvalidDecisionError (422, `field`),
-// ArticleNotFoundError / ImageNotFoundError (404: not there, or not the caller's to read or
-// write), ArticleChangedError (409, a stale expectedUpdatedAt), ArticleNotDraftError,
-// ArticleHiddenError, ArticleNotHiddenError, ReviewAlreadyRequestedError, OwnArticleError (409),
-// InvalidCommentError (422, `field`), CommentNotFoundError (404), OwnCommentError,
-// CommentModeratedError (409: hidden by the editors, theirs to show again),
-// NotAnEditorError (403), AuthorUnavailableError (503, publishing: retry). A backend without the
+// unsupported_format), ArticleNotFoundError / ImageNotFoundError (404: not there, or not the
+// caller's to read or write), ArticleChangedError (409, a stale expectedUpdatedAt),
+// ArticleNotDraftError, OwnArticleError (409), InvalidCommentError (422, `field`),
+// CommentNotFoundError (404), AuthorUnavailableError (503, publishing: retry). A backend without the
 // Journal answers its routes with FastAPI's own 404, without an error_type.
 
 const BASE = "/v1/journal";
@@ -77,11 +73,6 @@ export const journalService = {
     return apiFetch<Article>(`${BASE}/articles/${articleUuid}/unpublish`, { method: "POST" });
   },
 
-  // POST .../review — a hidden article, edited: asks the editors to look again.
-  async requestReview(articleUuid: string, note?: string): Promise<Article> {
-    return apiFetch<Article>(`${BASE}/articles/${articleUuid}/review`, { method: "POST", body: JSON.stringify({ note: note || null }) });
-  },
-
   // ── Saves ──
 
   async save(articleUuid: string): Promise<{ savedAt: string }> {
@@ -141,28 +132,6 @@ export const journalService = {
     return apiFetch<Comment>(`${BASE}/comments/${commentUuid}/show`, { method: "POST" });
   },
 
-  // ── Reports ──
-
-  // POST .../reports — `note` required with "other"; reporting again while open replaces it.
-  async report(articleUuid: string, reason: ReportReason, note?: string): Promise<ArticleReport> {
-    return apiFetch<ArticleReport>(`${BASE}/articles/${articleUuid}/reports`, {
-      method: "POST",
-      body: JSON.stringify({ reason, note: note || null }),
-    });
-  },
-
-  // POST /comments/{c}/reports — as an article's, not on the caller's own (OwnCommentError).
-  async reportComment(commentUuid: string, reason: ReportReason, note?: string): Promise<ArticleReport> {
-    return apiFetch<ArticleReport>(`${BASE}/comments/${commentUuid}/reports`, {
-      method: "POST",
-      body: JSON.stringify({ reason, note: note || null }),
-    });
-  },
-
-  async reports(limit?: number, offset?: number): Promise<Page<ArticleReport>> {
-    return apiFetch<Page<ArticleReport>>(`${BASE}/reports${pageQuery(limit, offset)}`);
-  },
-
   // ── Images: the file goes from the browser to the bucket, never through ianus ──
 
   async createImageUpload(format: ImageFormat): Promise<ImageUpload> {
@@ -173,43 +142,6 @@ export const journalService = {
   // refused one is gone (InvalidImageError).
   async completeImageUpload(imageUuid: string): Promise<ImageFile> {
     return apiFetch<ImageFile>(`${BASE}/images/${imageUuid}/complete`, { method: "POST" });
-  },
-
-  // ── Moderation: the editors' ──
-
-  async editorStatus(): Promise<{ editor: boolean }> {
-    return apiFetch<{ editor: boolean }>(`${BASE}/moderation/editor`);
-  },
-
-  // GET /moderation/cases — waiting for a decision, the oldest first.
-  async cases(limit?: number, offset?: number): Promise<Page<ModerationCase>> {
-    return apiFetch<Page<ModerationCase>>(`${BASE}/moderation/cases${pageQuery(limit, offset)}`);
-  },
-
-  async getCase(articleUuid: string): Promise<ModerationCaseDetail> {
-    return apiFetch<ModerationCaseDetail>(`${BASE}/moderation/cases/${articleUuid}`);
-  },
-
-  // POST .../decision — keep (a hidden one is shown again) or hide with a reason; closes the open
-  // reports and the author's ask.
-  async decide(articleUuid: string, decision: Decision, reason?: ReportReason, note?: string): Promise<Article> {
-    return apiFetch<Article>(`${BASE}/moderation/cases/${articleUuid}/decision`, {
-      method: "POST",
-      body: JSON.stringify({ decision, reason: reason ?? null, note: note || null }),
-    });
-  },
-
-  // GET /moderation/comment-cases — the comments with open reports, the longest waiting first.
-  async commentCases(limit?: number, offset?: number): Promise<Page<CommentCase>> {
-    return apiFetch<Page<CommentCase>>(`${BASE}/moderation/comment-cases${pageQuery(limit, offset)}`);
-  },
-
-  // POST .../decision — keep (one the editors hid is shown again) or hide it, with its replies.
-  async decideComment(commentUuid: string, decision: Decision, reason?: ReportReason, note?: string): Promise<Comment> {
-    return apiFetch<Comment>(`${BASE}/moderation/comment-cases/${commentUuid}/decision`, {
-      method: "POST",
-      body: JSON.stringify({ decision, reason: reason ?? null, note: note || null }),
-    });
   },
 };
 

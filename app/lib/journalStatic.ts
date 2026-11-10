@@ -1,9 +1,9 @@
 // lib/journalStatic.ts
 //
 // THE JOURNAL WITHOUT A BACKEND — PortfoliAI's own articles, written here: what the Journal reads
-// on a backend that doesn't serve it yet (staging, for now; see JournalContext). The same four
-// were loaded into acta as the editors' articles. Written in a short form (a paragraph, a
-// subheading, a bulleted list) and turned into the API's shapes, newest first.
+// on a backend that doesn't serve it yet (staging, for now; see JournalContext). Written in a
+// short form (a paragraph, a subheading, a bulleted list) and turned into the API's shapes,
+// newest first.
 
 import type { Article, ArticleCategory, ArticleSummary, Block, Page } from "../models/Journal";
 import { ApiError } from "../services/apiClient";
@@ -123,7 +123,8 @@ const toBlock = (b: WrittenBlock): Block =>
 
 const STATIC_ARTICLES: Article[] = WRITTEN.map((a) => ({
   uuid: a.slug,
-  author: { kind: "editor", userUuid: null, displayName: null },
+  // No editors any more: a user's, unnamed (no account to link to).
+  author: { kind: "user", userUuid: null, displayName: null },
   status: "published",
   title: a.title,
   dek: a.dek,
@@ -142,18 +143,17 @@ const STATIC_ARTICLES: Article[] = WRITTEN.map((a) => ({
   commentCount: 0,
   body: a.body.map(toBlock),
   interestDisclosure: null,
-  moderation: null,
   createdAt: `${a.publishedAt}T00:00:00Z`,
   updatedAt: `${a.publishedAt}T00:00:00Z`,
 }));
 
-/** The written articles, filtered as the API would (category, an editor's, words; they name no instrument), a page at a time. */
+/** The written articles, filtered as the API would (category, a user's, words; they name no instrument), a page at a time. */
 export const staticJournalSource: JournalSource = {
   async list(filters) {
     const words = filters.q?.trim().toLowerCase().split(/\s+/).filter(Boolean) ?? [];
     const matches = STATIC_ARTICLES.filter((a) =>
       (!filters.category || a.category === filters.category)
-      && (!filters.authorKind || filters.authorKind === "editor")
+      && (!filters.authorKind || filters.authorKind === "user")
       && !filters.authorUuid && !filters.ticker && !filters.isin && !filters.instrumentId && !filters.listingId
       && words.every((w) => `${a.title} ${a.dek} ${blocksText(a.body)}`.toLowerCase().includes(w)),
     );

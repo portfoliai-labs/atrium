@@ -15,8 +15,7 @@ import type { ArticleLanguage } from "../models/Journal";
  * - `api`: the backend serves the Journal (ianus' /v1/journal): every investor and advisor reads
  *   and writes.
  * - `static`: the backend has no Journal yet (it answers FastAPI's own 404): everyone reads the
- *   platform's own articles written in the code (lib/journalStatic), without writing, saving or
- *   reporting. The articles are real ones (Matteo, 2026-10-12).
+ *   platform's own articles written in the code (lib/journalStatic), without writing or saving. The articles are real ones (Matteo, 2026-10-12).
  * - `loading` until the first answer.
  * Every Journal read is in the query cache (context/QueryContext) under a ["journal", ...] key
  * (useJournalQuery, usePaged), shared by the pages and modules that ask for it. A write patches
@@ -28,10 +27,8 @@ type JournalMode = "loading" | "api" | "static";
 interface JournalContextType {
   mode: JournalMode;
   source: JournalSource;
-  // Writing, saving and reporting: the API's.
+  // Writing and saving: the API's.
   canWrite: boolean;
-  // An editor of the Journal: the moderation pages are theirs.
-  editor: boolean;
   // The reader's language: the lists put its articles first, and a new article starts in it.
   language: ArticleLanguage;
   changed: () => void;
@@ -49,21 +46,18 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
 
   const probe = useQuery({
     queryKey: journalKey("mode"),
-    queryFn: async (): Promise<{ mode: JournalMode; editor: boolean }> => {
+    queryFn: async (): Promise<{ mode: JournalMode }> => {
       try {
         await journalService.list({ limit: 1 });
       } catch (err) {
         // A Journal that failed to answer is still there: its pages say what went wrong.
-        return { mode: isJournalMissing(err) ? "static" : "api", editor: false };
+        return { mode: isJournalMissing(err) ? "static" : "api" };
       }
-      // Only an editor sees the moderation pages; anyone else's answer is false.
-      const status = await journalService.editorStatus().catch(() => ({ editor: false }));
-      return { mode: "api", editor: status.editor };
+      return { mode: "api" };
     },
     enabled: signedIn,
   });
   const mode = probe.data?.mode ?? "loading";
-  const editor = probe.data?.editor ?? false;
 
   // What's on screen was patched by the write itself: the rest is only marked stale, not read again now.
   const changed = useCallback(() => {
@@ -74,10 +68,9 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
     mode,
     source: mode === "static" ? staticJournalSource : apiJournalSource,
     canWrite: mode === "api",
-    editor: mode === "api" && editor,
     language: readerLanguage(user?.language),
     changed,
-  }), [mode, editor, user?.language, changed]);
+  }), [mode, user?.language, changed]);
   return <JournalContext.Provider value={value}>{children}</JournalContext.Provider>;
 }
 

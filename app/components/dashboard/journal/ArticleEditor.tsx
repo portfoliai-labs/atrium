@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Editor, JSONContent } from "@tiptap/core";
 import {
-  AlertTriangle, Check, CheckCircle2, Eye, Loader2, PenLine, RotateCcw, Send, Trash2, Undo2, X,
+  AlertTriangle, Check, CheckCircle2, Eye, Loader2, PenLine, Send, Trash2, Undo2, X,
 } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
 import { journalKey, useJournal, useJournalQuery } from "../../../context/JournalContext";
@@ -17,14 +17,14 @@ import type {
 import { instrumentRef } from "../../../models/Journal";
 import {
   DEFAULT_CATEGORY, DEK_MAX, DISCLOSURE_HELP, DISCLOSURE_MAX, DISCLOSURE_TITLE, MAX_INSTRUMENTS,
-  NOTE_MAX, TITLE_MAX, dateLabel, journalErrorText,
+  TITLE_MAX, dateLabel, journalErrorText,
 } from "../../../lib/journal";
 import { serif, serifText } from "../../preview/PreviewKit";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { BackLink, ErrorState, Spinner, StatusChip } from "./JournalKit";
 import { BodyEditor, focusNode } from "./BodyEditor";
 import { docToBlocks } from "./bodyDoc";
-import { ArticleDocument, HiddenNotice } from "./ArticleReader";
+import { ArticleDocument } from "./ArticleReader";
 
 // A draft saves itself once the author pauses.
 const AUTOSAVE_MS = 1500;
@@ -93,7 +93,7 @@ function blocksWithFiles(doc: JSONContent, blocks: Block[], nodeIndex: number[])
  * THE EDITOR — one of the caller's articles (or a new one, created at its first save): its title,
  * the line under it and its body (BodyEditor), one column; the instruments it's about are those
  * tagged with "#" in the body, its cover the body's first image. Under it, for an advisor, who
- * reads it and their interests. Publishing names what's still missing, if anything. A draft saves itself as the author writes; a published or hidden article is checked
+ * reads it and their interests. Publishing names what's still missing, if anything. A draft saves itself as the author writes; a published article is checked
  * as publishing and goes live on save, so it's saved by hand. Each save sends the updatedAt last read: an article
  * changed elsewhere since (another tab) is a conflict to resolve, not overwritten.
  */
@@ -104,9 +104,9 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   onRead: (slug: string) => void;
 }) {
   const { user } = useUser();
-  const { language, editor: isEditor, changed } = useJournal();
+  const { language, changed } = useJournal();
   const queryClient = useQueryClient();
-  const isAdvisor = user?.role === "ADVISOR" && !isEditor;
+  const isAdvisor = user?.role === "ADVISOR";
 
   // Only the article it opened on: its first save hands it a uuid it already has.
   const [openedOn] = useState(uuid);
@@ -135,14 +135,12 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   // The block indexes of the last content sent: where acta's `index` points in the document.
   const sentNodeIndex = useRef<number[]>([]);
 
-  const [busy, setBusy] = useState<null | "publish" | "unpublish" | "review" | "delete">(null);
+  const [busy, setBusy] = useState<null | "publish" | "unpublish" | "delete">(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [justPublished, setJustPublished] = useState(false);
   const [preview, setPreview] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const [reviewNote, setReviewNote] = useState("");
 
   const status = article?.status ?? "draft";
   const autosave = status === "draft";
@@ -297,10 +295,6 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     if (next) setJustPublished(true);
   };
   const unpublish = () => run("unpublish", journalService.unpublish);
-  const requestReview = async () => {
-    const next = await run("review", (id) => journalService.requestReview(id, reviewNote.trim()));
-    if (next) { setReviewOpen(false); setReviewNote(""); }
-  };
   const remove = async () => {
     if (!article) { onBack(); return; }
     setBusy("delete");
@@ -342,7 +336,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   const previewBody = preview ? blocksWithFiles(docRef.current, blocks, nodeIndex) : [];
   const previewArticle: Article | null = preview ? {
     uuid: article?.uuid ?? "preview",
-    author: article?.author.kind ? article.author : { kind: isEditor ? "editor" : isAdvisor ? "advisor" : "user", userUuid: user?.uuid ?? null, displayName: [user?.first_name, user?.last_name].filter(Boolean).join(" ") || null },
+    author: article?.author.kind ? article.author : { kind: isAdvisor ? "advisor" : "user", userUuid: user?.uuid ?? null, displayName: [user?.first_name, user?.last_name].filter(Boolean).join(" ") || null },
     status,
     title: form.title,
     dek: form.dek || null,
@@ -361,7 +355,6 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     commentCount: article?.commentCount ?? 0,
     body: previewBody,
     interestDisclosure: isAdvisor ? form.interestDisclosure || null : null,
-    moderation: null,
     createdAt: article?.createdAt ?? "",
     updatedAt: article?.updatedAt ?? "",
   } : null;
@@ -413,17 +406,6 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
               {busy === "unpublish" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />} Unpublish
             </button>
           )}
-          {status === "hidden" && !article?.moderation?.reviewRequested && (
-            <button
-              type="button"
-              onClick={() => setReviewOpen(true)}
-              disabled={!!busy || dirty}
-              title={dirty ? "Save your changes first" : undefined}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold text-[#57534e] border border-[#E0DACC] bg-transparent hover:border-[#C49A3C] hover:text-[#1c1917] disabled:opacity-50"
-            >
-              <RotateCcw className="h-3.5 w-3.5" /> Ask for a review
-            </button>
-          )}
           {primary}
           <button
             type="button"
@@ -438,7 +420,6 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
         </div>
       </div>
 
-      {article && <HiddenNotice article={article} />}
 
       {justPublished && article?.slug && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-900">
@@ -559,27 +540,6 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
           onConfirm={onBack}
           onClose={() => setConfirmLeave(false)}
         />
-      )}
-      {reviewOpen && (
-        <ConfirmDialog
-          title="Ask the editors for a review"
-          description="They'll read the article again, as it is now, and decide whether to show it again."
-          confirmLabel="Ask for a review"
-          tone="neutral"
-          confirming={busy === "review"}
-          error={actionError}
-          onConfirm={() => void requestReview()}
-          onClose={() => setReviewOpen(false)}
-        >
-          <textarea
-            value={reviewNote}
-            maxLength={NOTE_MAX}
-            onChange={(e) => setReviewNote(e.target.value)}
-            rows={3}
-            placeholder="What you changed (optional)"
-            className={`${inputClass(false)} resize-none`}
-          />
-        </ConfirmDialog>
       )}
     </div>
   );

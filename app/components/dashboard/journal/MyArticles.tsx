@@ -29,7 +29,6 @@ export function MyArticles({ onOpen, onNew }: { onOpen: (uuid: string) => void; 
           { value: "all", label: "All" },
           { value: "draft", label: "Drafts" },
           { value: "published", label: "Published" },
-          { value: "hidden", label: "Hidden" },
         ]}
         value={filter}
         onChange={setFilter}

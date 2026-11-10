@@ -146,7 +146,6 @@ export function ArticleCard({ article, onOpen, footer }: { article: ArticleSumma
 const STATUS_TONES: Record<ArticleStatus, string> = {
   draft: "bg-[#F1EADB] text-[#8A6A28]",
   published: "bg-emerald-50 text-emerald-700",
-  hidden: "bg-rose-50 text-rose-700",
 };
 
 export function StatusChip({ status }: { status: ArticleStatus }) {

@@ -12,8 +12,6 @@ import { ArticleReader } from "./journal/ArticleReader";
 import { ArticleEditor } from "./journal/ArticleEditor";
 import { MyArticles } from "./journal/MyArticles";
 import { SavedArticles } from "./journal/SavedArticles";
-import { MyReports } from "./journal/MyReports";
-import { ModerationCases, ModerationCasePage } from "./journal/Moderation";
 import { JournalNavContext } from "./journal/JournalMenu";
 
 const SECTION = JOURNAL_SECTION;
@@ -35,12 +33,9 @@ export type JournalView =
   | { page: "journal"; filters?: JournalFilters; slug?: string }
   | { page: "article"; slug: string }
   | { page: "saved" }
-  | { page: "reports" }
   | { page: "mine" }
   // The editor: one of the caller's articles, or a new one.
-  | { page: "write"; uuid?: string }
-  | { page: "moderation" }
-  | { page: "case"; uuid: string };
+  | { page: "write"; uuid?: string };
 
 const LIST: JournalView = { page: "journal" };
 
@@ -53,15 +48,14 @@ function viewFromHistory(): JournalView {
 }
 
 /**
- * JOURNAL — articles on investing by PortfoliAI's editors, advisors and users (acta, through
- * ianus' /v1/journal): the latest, searchable and narrowed by category, author or instrument;
- * each article; the reader's saved articles and reports; the author's own articles and their
- * editor; the editors' moderation. On a backend without the Journal everyone reads the
+ * JOURNAL — articles on investing by PortfoliAI's advisors and users (acta, through ianus'
+ * /v1/journal): the latest, searchable and narrowed by category, author or instrument; each
+ * article; the reader's saved articles; the author's own articles and their editor. On a backend without the Journal everyone reads the
  * platform's own articles written in the code (see JournalContext). Each page is a history
  * entry, so the browser's back button walks through them (see lib/dashboardHistory).
  */
 export function JournalSection() {
-  const { mode, canWrite, editor } = useJournal();
+  const { mode, canWrite } = useJournal();
   const [view, setView] = useState<JournalView>(viewFromHistory);
 
   useEffect(() => {
@@ -83,10 +77,11 @@ export function JournalSection() {
 
   if (mode === "loading") return <Spinner />;
 
-  // The reader's and the author's pages are the API's only, and moderation the editors'.
+  // The reader's and the author's pages are the API's only; a page no longer there (an entry
+  // from before) is the list.
   const allowed =
     view.page === "journal" || view.page === "article"
-    || ((view.page === "moderation" || view.page === "case") ? editor : canWrite);
+    || ((view.page === "saved" || view.page === "mine" || view.page === "write") && canWrite);
   const page = allowed ? view : LIST;
 
   // The page itself; the Journal's menu, in each page's header, reads where it is and moves on.
@@ -103,8 +98,6 @@ export function JournalSection() {
         );
       case "saved":
         return <SavedArticles onOpen={openArticle} />;
-      case "reports":
-        return <MyReports />;
       case "mine":
         return <MyArticles onOpen={openEditor} onNew={() => openEditor()} />;
       case "write":
@@ -118,10 +111,6 @@ export function JournalSection() {
             onRead={openArticle}
           />
         );
-      case "moderation":
-        return <ModerationCases onOpen={(uuid) => go({ page: "case", uuid })} />;
-      case "case":
-        return <ModerationCasePage key={page.uuid} uuid={page.uuid} onBack={() => go({ page: "moderation" })} />;
       default:
         return (
           <ArticleList
