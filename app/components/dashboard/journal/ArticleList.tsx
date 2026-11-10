@@ -85,7 +85,7 @@ export function ArticleList({ filters, onFilters, onOpen }: {
     <div className="space-y-6 pb-12">
       <JournalHeader
         title="Journal"
-        subtitle="Notes on investing by PortfoliAI, advisors and investors: the ideas behind the numbers on your dashboard."
+        subtitle="Notes on investing by advisors and investors: the ideas behind the numbers on your dashboard."
       />
 
       <div className="space-y-3">

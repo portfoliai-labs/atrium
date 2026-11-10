@@ -5,25 +5,17 @@
 export type ArticleCategory =
   | "performance" | "risk" | "strategy" | "costs" | "markets" | "taxes" | "personal_finance" | "real_estate" | "other";
 export type ArticleLanguage = "it" | "en";
-// Told by who the author is, never chosen: an editor's article is signed by PortfoliAI.
-export type AuthorKind = "editor" | "advisor" | "user";
+// Told by who the author is, never chosen.
+export type AuthorKind = "advisor" | "user";
 // `advisor_clients`: an advisor's articles only, for their clients.
 export type ArticleAudience = "everyone" | "advisor_clients";
-// `hidden`: by the editors, its author's and theirs only.
-export type ArticleStatus = "draft" | "published" | "hidden";
+export type ArticleStatus = "draft" | "published";
 export type ListStyle = "bulleted" | "numbered";
 export type ImageFormat = "jpeg" | "png" | "webp";
-// Why a reader reports an article or a comment, and why an editor hides one.
-export type ReportReason =
-  | "spam" | "misleading" | "market_manipulation" | "hate_or_harassment" | "personal_data" | "copyright" | "illegal" | "other";
-// `comment_*`: a report on a comment.
-export type ReportStatus = "open" | "article_kept" | "article_hidden" | "comment_kept" | "comment_hidden";
 // `top_day` / `top_week`: the most applauded in the last 24 hours / 7 days first, then the newest.
 export type ArticleOrder = "newest" | "top_day" | "top_week";
-// Hidden by the article's author (the commenter's, theirs and the editors'), or by the editors on
-// a report (the commenter's and the editors'); a hidden comment hides its replies.
-export type CommentStatus = "visible" | "hidden_by_author" | "hidden_by_editors";
-export type Decision = "keep" | "hide";
+// Hidden by the article's author (the commenter's and theirs only); a hidden comment hides its replies.
+export type CommentStatus = "visible" | "hidden_by_author";
 
 // ── The body's blocks: the same shape written and read ──
 
@@ -110,19 +102,9 @@ export interface ArticleUpdate extends ArticleContent {
 export interface ArticleAuthor {
   // Null on a draft never published.
   kind: AuthorKind | null;
-  // Null on an editor's article (signed by PortfoliAI), unless the caller is an editor.
   userUuid: string | null;
-  // Null on an editor's article, or when the names couldn't be read.
+  // Null when the names couldn't be read.
   displayName: string | null;
-}
-
-/** Why the editors hid an article: for its author and the editors. */
-export interface ArticleModeration {
-  reason: ReportReason;
-  note: string | null;
-  hiddenAt: string;
-  // The author asked for a review, not decided yet.
-  reviewRequested: boolean;
 }
 
 /** An article as a list shows it: everything but its body. */
@@ -155,7 +137,6 @@ export interface ArticleSummary {
 export interface Article extends ArticleSummary {
   body: Block[];
   interestDisclosure: string | null;
-  moderation: ArticleModeration | null;
   createdAt: string;
   // What an update's expectedUpdatedAt takes.
   updatedAt: string;
@@ -207,22 +188,6 @@ export interface ImageUpload {
   uploadUrlExpiresAt: string;
 }
 
-// ── Reports ──
-
-export interface ArticleReport {
-  uuid: string;
-  articleUuid: string;
-  // The title when it was reported.
-  articleTitle: string;
-  reason: ReportReason;
-  note: string | null;
-  status: ReportStatus;
-  createdAt: string;
-  decidedAt: string | null;
-  // Set on a report on a comment (under articleUuid).
-  commentUuid: string | null;
-}
-
 // ── Comments ──
 
 /** A comment under an article: a top-level one, or a reply to one (one level only). */
@@ -231,13 +196,10 @@ export interface Comment {
   articleUuid: string;
   // The top-level comment it replies to; null on a top-level one.
   parentCommentUuid: string | null;
-  // As an article's author: an editor's comment is signed by PortfoliAI.
   author: ArticleAuthor;
   // Plain text, line breaks kept.
   text: string;
   status: CommentStatus;
-  // While the editors hide it, for its commenter and the editors (reviewRequested is always false).
-  moderation: ArticleModeration | null;
   // The caller wrote it: they can edit and delete it.
   mine: boolean;
   // The article's author wrote it.
@@ -246,45 +208,4 @@ export interface Comment {
   replyCount: number;
   createdAt: string;
   editedAt: string | null;
-}
-
-// ── Moderation (the editors') ──
-
-/** What waits on one article. */
-export interface ModerationCase {
-  article: ArticleSummary;
-  openReports: number;
-  reviewRequested: boolean;
-  reviewNote: string | null;
-  // Its oldest open report, or the author's ask.
-  waitingSince: string;
-}
-
-/** A report as the editors see it: without who made it. */
-export interface CaseReport {
-  uuid: string;
-  reason: ReportReason;
-  note: string | null;
-  status: ReportStatus;
-  createdAt: string;
-}
-
-export interface ModerationCaseDetail {
-  article: Article;
-  // Null when nothing waits on it.
-  openCase: ModerationCase | null;
-  // The newest first.
-  reports: CaseReport[];
-}
-
-/** What waits on one comment: its open reports. */
-export interface CommentCase {
-  comment: Comment;
-  // The article it is under.
-  article: ArticleSummary;
-  openReports: number;
-  // Its oldest open report.
-  waitingSince: string;
-  // The newest first.
-  reports: CaseReport[];
 }

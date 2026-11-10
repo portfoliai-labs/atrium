@@ -1,13 +1,12 @@
 // lib/journal.ts
 //
-// JOURNAL — what every Journal page shares: the names of categories, languages, reasons and
-// states, the notices an article is shown with, and where the reading pages read from (a
+// JOURNAL — what every Journal page shares: the names of categories, languages and states, the notices an article is shown with, and where the reading pages read from (a
 // JournalSource: the API, or, on a backend without the Journal, the platform's own articles
 // written in the code, lib/journalStatic).
 
 import type {
   Article, ArticleAuthor, ArticleCategory, ArticleFilters, ArticleInstrument, ArticleLanguage, ArticleStatus, ArticleSummary,
-  Block, Page, ReportReason, ReportStatus, Span,
+  Block, Page, Span,
 } from "../models/Journal";
 import { ApiError } from "../services/apiClient";
 import { journalService } from "../services/journalService";
@@ -28,27 +27,7 @@ export const CATEGORIES = Object.keys(CATEGORY_LABELS) as ArticleCategory[];
 export const LANGUAGE_LABELS: Record<ArticleLanguage, string> = { en: "English", it: "Italiano" };
 export const LANGUAGES = Object.keys(LANGUAGE_LABELS) as ArticleLanguage[];
 
-export const STATUS_LABELS: Record<ArticleStatus, string> = { draft: "Draft", published: "Published", hidden: "Hidden" };
-
-export const REASON_LABELS: Record<ReportReason, string> = {
-  spam: "Spam or advertising",
-  misleading: "Misleading or false",
-  market_manipulation: "Market manipulation",
-  hate_or_harassment: "Hate or harassment",
-  personal_data: "Someone's personal data",
-  copyright: "Copyright infringement",
-  illegal: "Other illegal content",
-  other: "Something else",
-};
-export const REASONS = Object.keys(REASON_LABELS) as ReportReason[];
-
-export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
-  open: "Waiting for review",
-  article_kept: "Reviewed: article kept",
-  article_hidden: "Reviewed: article hidden",
-  comment_kept: "Reviewed: comment kept",
-  comment_hidden: "Reviewed: comment hidden",
-};
+export const STATUS_LABELS: Record<ArticleStatus, string> = { draft: "Draft", published: "Published" };
 
 // Bounds acta checks (its constants/articles.py), so the fields stop where it would refuse.
 export const TITLE_MAX = 160;
@@ -61,7 +40,6 @@ export const MAX_INSTRUMENTS = 10;
 export const MAX_TABLE_ROWS = 50;
 export const MAX_TABLE_COLUMNS = 10;
 export const DISCLOSURE_MAX = 2000;
-export const NOTE_MAX = 1000;
 export const COMMENT_MAX = 2000;
 export const QUERY_MAX = 200;
 
@@ -69,14 +47,12 @@ export const QUERY_MAX = 200;
 // (forum's service-map, "acta": the notice, the advisors' disclosure, the authors' terms).
 export const NOT_ADVICE_NOTICE =
   "This article is its author's own opinion, published on PortfoliAI without review. It is not investment advice, and PortfoliAI doesn't endorse it.";
-export const EDITORS_NOTICE = "For education only, not investment advice. Past returns don't predict future ones.";
 export const DISCLOSURE_TITLE = "The author's interests in the instruments named";
 export const DISCLOSURE_HELP =
   "As an advisor naming instruments, say whether you, your firm or your clients hold them or have other interests in them. It is shown with the article.";
 
 /** Who an article is by, as its byline says it. */
 export function authorName(author: ArticleAuthor) {
-  if (author.kind === "editor") return "PortfoliAI";
   return author.displayName ?? "A PortfoliAI member";
 }
 
@@ -162,7 +138,7 @@ export function journalErrorText(err: unknown, fallback: string) {
 /**
  * Where the Journal's reading pages read from: the API (apiJournalSource) or, on a backend
  * without the Journal (staging, for now), the platform's own articles written in the code
- * (lib/journalStatic), in the same shapes. Writes, saves and reports go to journalService, and
+ * (lib/journalStatic), in the same shapes. Writes and saves go to journalService, and
  * only with the API.
  */
 export interface JournalSource {
@@ -178,6 +154,6 @@ export const apiJournalSource: JournalSource = {
 /** An article's summary, from a whole one. */
 export function summaryOf(article: Article): ArticleSummary {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { body, interestDisclosure, moderation, createdAt, updatedAt, ...summary } = article;
+  const { body, interestDisclosure, createdAt, updatedAt, ...summary } = article;
   return summary;
 }

@@ -3,28 +3,26 @@
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Bookmark, BookmarkCheck, EyeOff, Flag, HandHeart, Info, Loader2, PenLine } from "lucide-react";
+import { Bookmark, BookmarkCheck, HandHeart, Info, Loader2, PenLine } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
 import { journalKey, useJournal, useJournalQuery } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
 import type { Article, ArticleInstrument } from "../../../models/Journal";
 import {
-  DISCLOSURE_TITLE, EDITORS_NOTICE, NOT_ADVICE_NOTICE, REASON_LABELS, authorName, dateLabel, isArticleNotFound, journalErrorText,
+  DISCLOSURE_TITLE, NOT_ADVICE_NOTICE, authorName, dateLabel, isArticleNotFound, journalErrorText,
 } from "../../../lib/journal";
 import { serif, serifText } from "../../preview/PreviewKit";
 import type { JournalFilters } from "../JournalSection";
 import { ArticleBody, ArticleFigure } from "./ArticleBody";
 import { AuthorBadge, EmptyState, ErrorState, Meta, Spinner } from "./JournalKit";
-import { ReportDialog } from "./ReportDialog";
 import { ArticleComments } from "./ArticleComments";
 
 /**
  * An article as its readers see it: the byline, cover, body, the instruments it's about, and
- * the notices it comes with (an editor's: education only; anyone else's: their own opinion, not
- * advice, and an advisor's interests in the instruments). `onAuthor` / `onInstrument` narrow the
- * list to them; `actions` sit under the title. The editor's preview and the editors' cases show
- * an article the same way, on a card beside their own panels; the reader's page (`bare`) on the
- * page's background.
+ * the notices it comes with (its author's own opinion, not advice, and an advisor's interests in
+ * the instruments). `onAuthor` / `onInstrument` narrow the list to them; `actions` sit under the
+ * title. The editor's preview shows an article the same way, on a card; the reader's page
+ * (`bare`) on the page's background.
  */
 export function ArticleDocument({ article, actions, onAuthor, onInstrument, bare = false }: {
   article: Article;
@@ -33,7 +31,6 @@ export function ArticleDocument({ article, actions, onAuthor, onInstrument, bare
   onInstrument?: (instrument: ArticleInstrument) => void;
   bare?: boolean;
 }) {
-  const byEditors = article.author.kind === "editor";
   const name = authorName(article.author);
   return (
     <article className={bare ? "pt-4 md:pt-6" : "bg-white rounded-3xl border border-slate-200 shadow-sm px-6 py-8 md:px-14 md:py-12"}>
@@ -87,34 +84,17 @@ export function ArticleDocument({ article, actions, onAuthor, onInstrument, bare
           </div>
         )}
         <p className="mt-10 pt-6 border-t border-slate-100 flex items-start gap-2 text-[11px] text-slate-400 leading-relaxed">
-          {!byEditors && <Info className="h-3.5 w-3.5 shrink-0 mt-px" />}
-          {byEditors ? EDITORS_NOTICE : NOT_ADVICE_NOTICE}
+          <Info className="h-3.5 w-3.5 shrink-0 mt-px" />
+          {NOT_ADVICE_NOTICE}
         </p>
       </div>
     </article>
   );
 }
 
-/** Why the editors hid the caller's own article, on its pages. */
-export function HiddenNotice({ article }: { article: Article }) {
-  if (article.status !== "hidden" || !article.moderation) return null;
-  const { reason, note, hiddenAt, reviewRequested } = article.moderation;
-  return (
-    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-900">
-      <p className="flex items-center gap-2 font-bold"><EyeOff className="h-4 w-4" /> Hidden by the editors on {dateLabel(hiddenAt)}: {REASON_LABELS[reason]}</p>
-      {note && <p className="mt-1.5 text-[13px] leading-relaxed whitespace-pre-line">{note}</p>}
-      <p className="mt-1.5 text-xs text-rose-700">
-        {reviewRequested
-          ? "You asked for a review: the editors will look at it again."
-          : "Only you and the editors can read it. Edit it, then ask the editors to look again."}
-      </p>
-    </div>
-  );
-}
-
 /**
  * ARTICLE — one article by its slug, as the reader's page: applauding it (once, not one's own),
- * saving it, reporting it, its comments, and, the author's own, a way to its editor. Nothing on
+ * saving it, its comments, and, the author's own, a way to its editor. Nothing on
  * it leads back: the browser's back button does.
  */
 export function ArticleReader({ slug, onEdit, onFilter }: {
@@ -128,7 +108,6 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
   const read = useJournalQuery(["article", slug], (source) => source.bySlug(slug));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [reporting, setReporting] = useState(false);
   const [applauding, setApplauding] = useState(false);
 
   // The article as read, then as the reader's applause, save and comments left it (no refetch).
@@ -211,23 +190,18 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
           {article.saved ? "Saved" : "Save"}
         </button>
       )}
-      {own ? (
+      {own && (
         <button type="button" onClick={() => onEdit(article.uuid)} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100">
           <PenLine className="h-3.5 w-3.5" /> Edit
-        </button>
-      ) : canWrite && (
-        <button type="button" onClick={() => setReporting(true)} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Report this article">
-          <Flag className="h-3.5 w-3.5" /> Report
         </button>
       )}
     </div>
   );
 
   const { author } = article;
-  const authorUuid = author.kind !== "editor" ? author.userUuid : null;
+  const authorUuid = author.userUuid;
   return (
     <div className="pb-12 space-y-5">
-      {own && <HiddenNotice article={article} />}
       {saveError && <p className="text-xs font-medium text-rose-600">{saveError}</p>}
       <ArticleDocument
         article={article}
@@ -244,7 +218,6 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
           onCount={(delta) => setArticle((a) => ({ ...a, commentCount: Math.max(0, a.commentCount + delta) }))}
         />
       )}
-      {reporting && <ReportDialog target={{ kind: "article", uuid: article.uuid }} onClose={() => setReporting(false)} />}
     </div>
   );
 }

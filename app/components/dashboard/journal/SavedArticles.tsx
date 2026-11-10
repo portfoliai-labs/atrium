@@ -12,7 +12,7 @@ import { ArticleCard, EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE
 
 /**
  * SAVED — the reader's saved articles, the last saved first. An article that stops being readable
- * (unpublished, hidden, deleted) drops out on its own.
+ * (unpublished, deleted) drops out on its own.
  */
 export function SavedArticles({ onOpen }: { onOpen: (slug: string) => void }) {
   const { changed } = useJournal();

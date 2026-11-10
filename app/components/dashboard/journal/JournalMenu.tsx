@@ -15,27 +15,23 @@ const ENTRIES: Entry[] = [
   { key: "journal", label: "All articles", view: { page: "journal" }, here: (v) => v.page === "journal" },
   { key: "saved", label: "Saved", view: { page: "saved" }, here: (v) => v.page === "saved" },
   { key: "mine", label: "Your articles", view: { page: "mine" }, here: (v) => v.page === "mine" },
-  { key: "reports", label: "Your reports", view: { page: "reports" }, here: (v) => v.page === "reports" },
 ];
-const MODERATION: Entry = {
-  key: "moderation", label: "Moderation", view: { page: "moderation" }, here: (v) => v.page === "moderation" || v.page === "case",
-};
 
 // Pages shown as buttons; the rest go under the dots.
 const VISIBLE = 2;
 
 /**
  * JOURNAL MENU — the Journal's other pages at the top right of each page's header, the way other
- * pages show their actions (see PageHeader): the first two as buttons, the rest (Your reports, the
- * editors' Moderation, a new article) under the dots. The page open now isn't among them. The
+ * pages show their actions (see PageHeader): the first two as buttons, the rest (a new article)
+ * under the dots. The page open now isn't among them. The
  * API's only: a backend without the Journal has just the articles.
  */
 export function JournalMenu() {
   const nav = useContext(JournalNavContext);
-  const { canWrite, editor } = useJournal();
+  const { canWrite } = useJournal();
   if (!nav || !canWrite) return null;
 
-  const pages: PageAction[] = (editor ? [...ENTRIES, MODERATION] : ENTRIES)
+  const pages: PageAction[] = ENTRIES
     .filter((e) => !e.here(nav.view))
     .map((e) => ({ label: e.label, onClick: () => nav.go(e.view) }));
   // Your articles has its own New article button.
