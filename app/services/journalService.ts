@@ -1,7 +1,7 @@
 // services/journalService.ts
 import type {
   Article, ArticleContent, ArticleFilters, ArticleStatus, ArticleSummary, ArticleUpdate, Comment, Follow, ImageFile, ImageFormat,
-  ImageUpload, NetworkIdentity, NetworkKeyExport, Page, SavedArticle,
+  HiddenArticle, HiddenArticlePage, ImageUpload, Mute, MutePage, NetworkIdentity, NetworkKeyExport, Page, Report, ReportRequest, SavedArticle,
 } from "../models/Journal";
 import { apiFetch } from "./apiClient";
 
@@ -147,6 +147,53 @@ export const journalService = {
 
   async unfollow(pubkey: string): Promise<void> {
     await apiFetch(`${BASE}/follows/${encodeURIComponent(pubkey)}`, { method: "DELETE" });
+  },
+
+  // ── The reader's moderation: theirs only; mutes and hides never leave this instance ──
+
+  // GET /mutes — the authors the caller muted, as a page.
+  async mutes(limit?: number, offset?: number): Promise<Page<Mute>> {
+    const page = await apiFetch<MutePage>(`${BASE}/mutes${pageQuery(limit, offset)}`);
+    return { items: page.authors, total: page.total, limit: limit ?? page.authors.length, offset: offset ?? 0 };
+  },
+
+  // PUT /mutes/{key} — hex or npub; one's own key is InvalidFieldError.
+  async mute(pubkey: string): Promise<Mute> {
+    return apiFetch<Mute>(`${BASE}/mutes/${encodeURIComponent(pubkey)}`, { method: "PUT" });
+  },
+
+  async unmute(pubkey: string): Promise<void> {
+    await apiFetch(`${BASE}/mutes/${encodeURIComponent(pubkey)}`, { method: "DELETE" });
+  },
+
+  // PUT /articles/{a}/hidden — hidden for the caller: out of every list.
+  async hideArticle(articleUuid: string): Promise<{ hiddenAt: string }> {
+    return apiFetch<{ hiddenAt: string }>(`${BASE}/articles/${articleUuid}/hidden`, { method: "PUT" });
+  },
+
+  async unhideArticle(articleUuid: string): Promise<void> {
+    await apiFetch(`${BASE}/articles/${articleUuid}/hidden`, { method: "DELETE" });
+  },
+
+  // GET /hidden — the articles the caller hid, as a page.
+  async hiddenArticles(limit?: number, offset?: number): Promise<Page<HiddenArticle>> {
+    const page = await apiFetch<HiddenArticlePage>(`${BASE}/hidden${pageQuery(limit, offset)}`);
+    return { items: page.articles, total: page.total, limit: limit ?? page.articles.length, offset: offset ?? 0 };
+  },
+
+  // PUT /comments/{c}/hidden — hidden for the caller (not the article author's hide, for everyone).
+  async hideCommentForMe(commentUuid: string): Promise<{ hiddenAt: string }> {
+    return apiFetch<{ hiddenAt: string }>(`${BASE}/comments/${commentUuid}/hidden`, { method: "PUT" });
+  },
+
+  async unhideCommentForMe(commentUuid: string): Promise<void> {
+    await apiFetch(`${BASE}/comments/${commentUuid}/hidden`, { method: "DELETE" });
+  },
+
+  // POST /reports — the target is hidden (a key muted) for the caller; on a network target the
+  // report goes out to the network as a public NIP-56 event signed with the caller's key.
+  async report(request: ReportRequest): Promise<Report> {
+    return apiFetch<Report>(`${BASE}/reports`, { method: "POST", body: JSON.stringify(request) });
   },
 
   // ── Images: the file goes from the browser to the bucket, never through ianus ──

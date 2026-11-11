@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, FolderTree, Globe } from "lucide-react";
+import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, FolderTree, Globe, EyeOff } from "lucide-react";
 import { userService } from "../../services/userService";
 import { supabase } from "../../lib/supabaseClient";
 import { MIN_PASSWORD_LENGTH, newPasswordError } from "../../lib/password";
@@ -14,6 +14,8 @@ import { useUser } from "../../context/UserContext";
 import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
 import { NetworkIdentitySettings } from "./NetworkIdentitySettings";
+import { MutedAndHidden } from "./journal/MutedAndHidden";
+import { useJournal } from "../../context/JournalContext";
 import { WalletCategories } from "./wallets/WalletCategories";
 import { useWallets } from "../../context/WalletsContext";
 
@@ -64,6 +66,8 @@ const TABS = [
   { id: "categories", label: "Categories", icon: FolderTree },
   // The user's key on the network (Nostr), which the Journal publishes with.
   { id: "network", label: "Network identity", icon: Globe },
+  // The Journal's authors the user muted and articles they hid: where the Journal is.
+  { id: "moderation", label: "Muted and hidden", icon: EyeOff },
   { id: "account", label: "Account", icon: UserIcon },
 ] as const;
 
@@ -94,14 +98,16 @@ export function SettingsSection() {
   const { available: walletsAvailable } = useWallets();
   // Categories only where the wallets are (a backend with them).
   const hasWallets = user?.role !== "ADVISOR" && walletsAvailable;
+  const { canWrite: hasJournal } = useJournal();
   const walletTab = (id: TabId) => id === "categories";
-  const tabs = TABS.filter((t) => !walletTab(t.id) || hasWallets);
+  const unavailable = (id: TabId) => (walletTab(id) && !hasWallets) || (id === "moderation" && !hasJournal);
+  const tabs = TABS.filter((t) => !unavailable(t.id));
   const [chosenTab, setActiveTab] = useState<TabId>(() => {
     const tab = requestedTab ?? linkedTab() ?? "notifications";
     requestedTab = null;
     return tab;
   });
-  const activeTab: TabId = walletTab(chosenTab) && !hasWallets ? "notifications" : chosenTab;
+  const activeTab: TabId = unavailable(chosenTab) ? "notifications" : chosenTab;
 
   // The link's tab is read once: Settings opened again later starts on its first tab.
   useEffect(() => {
@@ -486,6 +492,8 @@ export function SettingsSection() {
       )}
 
       {activeTab === "network" && <NetworkIdentitySettings />}
+
+      {activeTab === "moderation" && <MutedAndHidden />}
 
       {activeTab === "categories" && (
         <div className="space-y-4">

@@ -3,17 +3,19 @@
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Bookmark, BookmarkCheck, HandHeart, Info, Loader2, PenLine } from "lucide-react";
+import { Bookmark, BookmarkCheck, EyeOff, HandHeart, Info, Loader2, PenLine } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
 import { journalKey, useJournal, useJournalQuery } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
-import type { Article, ArticleImage, ArticleInstrument } from "../../../models/Journal";
+import type { Article, ArticleImage, ArticleInstrument, ReportTarget } from "../../../models/Journal";
 import {
-  DISCLOSURE_TITLE, NOT_ADVICE_NOTICE, authorName, dateLabel, imageSrc, isArticleNotFound, isNetworkArticle, journalErrorText,
+  DISCLOSURE_TITLE, NOT_ADVICE_NOTICE, authorKey, authorName, dateLabel, imageSrc, isArticleNotFound, isNetworkArticle, isNewAuthor,
+  journalErrorText,
 } from "../../../lib/journal";
 import { serif, serifText } from "../../preview/PreviewKit";
 import type { JournalFilters } from "../JournalSection";
-import { ArticleBody, ArticleFigure } from "./ArticleBody";
+import { ArticleBody, ArticleFigure, ImagePolicy } from "./ArticleBody";
+import { ItemMenu, ReportDialog, reportedMessage, useIsMe, type MenuItem } from "./Moderation";
 import { AuthorAvatar, AuthorBadge, EmptyState, ErrorState, FollowButton, Meta, NetworkBadge, NpubChip, Spinner } from "./JournalKit";
 import { ArticleComments } from "./ArticleComments";
 
@@ -100,7 +102,9 @@ export function ArticleDocument({ article, actions, onAuthor, onInstrument, bare
 
 /**
  * ARTICLE — one article by its slug, as the reader's page: applauding it (once, not one's own),
- * saving it, its comments, and, the author's own, a way to its editor. Nothing on
+ * saving it, its comments, and, the author's own, a way to its editor; anyone else's, the
+ * reader's moderation (hide it, mute its author, report either). An author outside the reader's
+ * network has their images loaded only when the reader asks. Nothing on
  * it leads back: the browser's back button does.
  */
 export function ArticleReader({ slug, onEdit, onFilter }: {
@@ -115,6 +119,10 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [applauding, setApplauding] = useState(false);
+  const [showImages, setShowImages] = useState(false);
+  const [reporting, setReporting] = useState<{ target: ReportTarget; what: string } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const isMe = useIsMe();
 
   // The article as read, then as the reader's applause, save and comments left it (no refetch).
   const setArticle = (change: (a: Article) => Article) => {
@@ -136,6 +144,32 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
 
   // A network article is nobody's here: read-only, even by its author's key.
   const own = !!user && !isNetworkArticle(article) && article.author.userUuid === user.uuid;
+  // Nobody moderates their own: not by their account, nor by their key.
+  const mine = own || isMe(article.author);
+  const key = authorKey(article.author);
+
+  const moderate = async (action: () => Promise<unknown>, change: (a: Article) => Article, message: string | null) => {
+    setSaveError(null);
+    try {
+      await action();
+      setArticle(change);
+      setNotice(message);
+    } catch (err) {
+      setSaveError(journalErrorText(err, "That didn't work. Try again."));
+    }
+  };
+  const menuItems: MenuItem[] = !canWrite || mine ? [] : [
+    article.hidden
+      ? { label: "Unhide article", onClick: () => void moderate(() => journalService.unhideArticle(article.uuid), (a) => ({ ...a, hidden: false }), null) }
+      : { label: "Hide article", onClick: () => void moderate(() => journalService.hideArticle(article.uuid), (a) => ({ ...a, hidden: true }), null) },
+    ...(key ? [
+      article.author.muted
+        ? { label: `Unmute ${authorName(article.author)}`, onClick: () => void moderate(() => journalService.unmute(key), (a) => ({ ...a, author: { ...a.author, muted: false } }), null) }
+        : { label: `Mute ${authorName(article.author)}`, onClick: () => void moderate(() => journalService.mute(key), (a) => ({ ...a, author: { ...a.author, muted: true } }), null) },
+    ] : []),
+    { label: "Report article…", danger: true, onClick: () => setReporting({ target: { articleUuid: article.uuid }, what: "this article" }) },
+    ...(key ? [{ label: "Report author…", danger: true, onClick: () => setReporting({ target: { pubkey: key }, what: authorName(article.author) }) }] : []),
+  ];
 
   const toggleSave = async () => {
     setSaving(true);
@@ -208,6 +242,7 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
           <PenLine className="h-3.5 w-3.5" /> Edit
         </button>
       )}
+      <ItemMenu items={menuItems} label="Article options" />
     </div>
   );
 
@@ -220,13 +255,40 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
   return (
     <div className="pb-12 space-y-5">
       {saveError && <p className="text-xs font-medium text-rose-600">{saveError}</p>}
-      <ArticleDocument
-        article={article}
-        actions={actions}
-        bare
-        onAuthor={authorFilter ? () => onFilter({ author: authorFilter }) : undefined}
-        onInstrument={(i) => onFilter({ instrument: { ticker: i.ticker, isin: i.isin, instrumentId: i.instrumentId } })}
-      />
+      {notice && <p className="text-xs font-medium text-slate-600">{notice}</p>}
+      {(article.hidden || author.muted) && !mine && (
+        <p className="flex items-center gap-1.5 rounded-2xl bg-slate-100 px-4 py-3 text-xs font-semibold text-slate-600">
+          <EyeOff className="h-3.5 w-3.5 shrink-0" />
+          {article.hidden && author.muted
+            ? `You hid this article and muted ${authorName(author)}: neither shows in your lists.`
+            : article.hidden
+              ? "You hid this article: it doesn't show in your lists."
+              : `You muted ${authorName(author)}: their articles and comments don't show in your lists.`}
+          <span className="text-slate-400">Undo it from the menu, or in Settings → Muted and hidden.</span>
+        </p>
+      )}
+      <ImagePolicy.Provider value={{ blocked: isNewAuthor(author) && !showImages, show: () => setShowImages(true) }}>
+        <ArticleDocument
+          article={article}
+          actions={actions}
+          bare
+          onAuthor={authorFilter ? () => onFilter({ author: authorFilter }) : undefined}
+          onInstrument={(i) => onFilter({ instrument: { ticker: i.ticker, isin: i.isin, instrumentId: i.instrumentId } })}
+        />
+      </ImagePolicy.Provider>
+      {reporting && (
+        <ReportDialog
+          target={reporting.target}
+          what={reporting.what}
+          onClose={() => setReporting(null)}
+          onDone={(report) => {
+            const onAuthor = "pubkey" in reporting.target;
+            setArticle((a) => (onAuthor ? { ...a, author: { ...a.author, muted: true } } : { ...a, hidden: true }));
+            setNotice(reportedMessage(report, onAuthor ? `${reporting.what} is muted for you` : "the article is hidden for you"));
+            setReporting(null);
+          }}
+        />
+      )}
       {mode === "api" && article.status === "published" && (
         <ArticleComments
           article={article}

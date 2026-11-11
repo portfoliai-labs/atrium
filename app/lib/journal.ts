@@ -5,7 +5,7 @@
 
 import type {
   Article, ArticleAuthor, ArticleCategory, ArticleFilters, ArticleImage, ArticleInstrument, ArticleLanguage, ArticleStatus,
-  ArticleSummary, NetworkState, Page, Span,
+  ArticleSummary, NetworkState, Page, ReportReason, Span,
 } from "../models/Journal";
 import { ApiError } from "../services/apiClient";
 import { journalService } from "../services/journalService";
@@ -66,6 +66,51 @@ export const NETWORK_STATE_LABELS: Record<NetworkState, string> = {
   withdrawn: "Withdrawn from the network",
   failed: "Not sent to the network",
 };
+
+// ── The reader's moderation ──
+
+export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
+  spam: "Spam",
+  illegal: "Illegal content",
+  impersonation: "Impersonation",
+  nudity: "Nudity or sexual content",
+  profanity: "Profanity or hateful speech",
+  malware: "Malware or scam links",
+  other: "Something else",
+};
+export const REPORT_REASONS = Object.keys(REPORT_REASON_LABELS) as ReportReason[];
+// acta's bound on a report's note.
+export const REPORT_NOTE_MAX = 500;
+export const REPORT_NOTICE =
+  "A report on something from the network is published on the network: a public report, signed with your network identity, that other apps and relays can read. Either way, what you report is hidden for you.";
+
+// The feed shown when the Journal opens, as the reader last left it (on this browser).
+export const ALL_NETWORK_NOTICE = "Articles from anyone on the network, not filtered by whom you follow.";
+const FEED_SCOPE_KEY = "atrium.journal.feed";
+export type FeedScope = "trusted" | "all";
+// Unreadable storage keeps the choice for this visit only (as the Sidebar's).
+const feedListeners = new Set<() => void>();
+let feedFallback: FeedScope = "trusted";
+export const subscribeFeedScope = (listener: () => void) => {
+  feedListeners.add(listener);
+  return () => { feedListeners.delete(listener); };
+};
+export function readFeedScope(): FeedScope {
+  try { return localStorage.getItem(FEED_SCOPE_KEY) === "all" ? "all" : "trusted"; } catch { return feedFallback; }
+}
+// Before the browser's: the reader's network.
+export const serverFeedScope = (): FeedScope => "trusted";
+export function writeFeedScope(scope: FeedScope) {
+  feedFallback = scope;
+  try { localStorage.setItem(FEED_SCOPE_KEY, scope); } catch { /* feedFallback holds it */ }
+  feedListeners.forEach((listener) => listener());
+}
+
+/** Whether the reader should be careful with this author: a network author outside their web of trust. */
+export const isNewAuthor = (author: Pick<ArticleAuthor, "trusted">) => author.trusted === false;
+
+/** The key an author is muted and reported by; null when they have none. */
+export const authorKey = (author: Pick<ArticleAuthor, "pubkey" | "npub">) => author.pubkey ?? author.npub ?? null;
 
 /** Whether an article was read from the network: read-only here. */
 export const isNetworkArticle = (article: Pick<ArticleSummary, "origin">) => article.origin === "network";
