@@ -24,6 +24,8 @@ export type BrokerSessionState = "connected" | "cut_off" | "recovering" | "down"
 export interface BrokerSession {
   broker: string;
   state: BrokerSessionState;
+  // Whether the deployment reads the accounts' history (IBKR: a Flex token and query set).
+  historyConfigured: boolean;
 }
 
 /** An account at a broker the user linked: its trading account's reference is its uuid. */
@@ -36,6 +38,8 @@ export interface BrokerAccount {
   linkedAt: string;
   // When it was last read; null before its first read.
   readAt: string | null;
+  // Its history (the broker's statements) read through this day; null before its first read.
+  historyThrough: string | null;
 }
 
 export interface OnchainAddress {
