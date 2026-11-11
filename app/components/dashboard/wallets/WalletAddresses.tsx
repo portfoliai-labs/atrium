@@ -42,9 +42,9 @@ export const SETTLE_DELAYS_MS = [2_000, 6_000];
 export const shortAddress = (address: string) => `${address.slice(0, 4)}…${address.slice(-4)}`;
 
 /**
- * The account an address just added makes (arca's, on mercatura's event: a moment after the
- * address is registered): looked for now and after each of SETTLE_DELAYS_MS, null if it isn't
- * there by then.
+ * The account a trading account just made makes (arca's, on mercatura's event: a moment after the
+ * address is registered, or the broker's account linked), by its executor's reference: looked for
+ * now and after each of SETTLE_DELAYS_MS, null if it isn't there by then.
  */
 export async function findAddressAccount(addressUuid: string): Promise<string | null> {
   for (const wait of [0, ...SETTLE_DELAYS_MS]) {
@@ -67,8 +67,10 @@ const STABLECOINS = "USDC or EURC";
  * against the chain's, Unlink); not yet, a choice among the user's wallets of its currency free of another
  * source, or a new one named after it.
  */
-export function HoldingRow({ holding, wallets, taken, busy, error, onLink, onUnlink, onOpenWallet }: {
+export function HoldingRow({ holding, wallets, taken, busy, error, onLink, onUnlink, onOpenWallet, source = "the chain" }: {
   holding: ChainHolding;
+  // Where its balance is read: "the chain", or the broker.
+  source?: string;
   wallets: Wallet[];
   taken: Set<string | null>;
   busy: boolean;
@@ -91,7 +93,7 @@ export function HoldingRow({ holding, wallets, taken, busy, error, onLink, onUnl
         title={holding.symbol}
         meta={meta}
         wallet={linked}
-        check={linked && <BalanceCheck wallet={linked} reported={holding.balance} on={null} source="the chain" />}
+        check={linked && <BalanceCheck wallet={linked} reported={holding.balance} on={null} source={source} />}
         aside={<IconButton label="Unlink from the wallet" onClick={onUnlink} spinning={busy}><Unlink className="h-3.5 w-3.5" /></IconButton>}
         error={error}
         onOpen={onOpenWallet}

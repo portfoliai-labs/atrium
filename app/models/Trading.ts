@@ -14,6 +14,30 @@ export interface AddressProof {
   expiresAt: string;
 }
 
+/**
+ * The deployment's session with a broker (negotiator's): connected (orders can go), cut_off (left
+ * to reconnect alone a while), recovering (its watchdog's steps under way), down (restarting or
+ * logging in: on a live account, the 2FA waits on the broker's app), unknown (moments after start).
+ */
+export type BrokerSessionState = "connected" | "cut_off" | "recovering" | "down" | "unknown";
+
+export interface BrokerSession {
+  broker: string;
+  state: BrokerSessionState;
+}
+
+/** An account at a broker the user linked: its trading account's reference is its uuid. */
+export interface BrokerAccount {
+  uuid: string;
+  // "interactive_brokers".
+  broker: string;
+  // Its id at the broker ("U1234567").
+  brokerAccountId: string;
+  linkedAt: string;
+  // When it was last read; null before its first read.
+  readAt: string | null;
+}
+
 export interface OnchainAddress {
   uuid: string;
   // "solana".
