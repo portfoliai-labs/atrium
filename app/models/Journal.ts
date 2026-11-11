@@ -179,7 +179,14 @@ export interface ArticleSummary {
   network?: NetworkStatus | null;
   // Whether the caller hid it (only one article's page and the saved and hidden lists show those).
   hidden?: boolean;
+  // How many people the caller follows reported it or its author (absent from an older backend: 0).
+  followedReports?: number;
+  // Why it's hidden: the reader's own hide wins over followed reports (absent from an older backend: null).
+  hiddenReason?: HiddenReason | null;
 }
+
+/** Why an article is hidden for the caller: they hid it, or enough people they follow reported it or its author. */
+export type HiddenReason = "reader" | "followed_reports";
 
 export interface Article extends ArticleSummary {
   body: Block[];
@@ -258,6 +265,14 @@ export interface MutePage {
 export interface HiddenArticle {
   article: ArticleSummary;
   hiddenAt: string;
+}
+
+/**
+ * The reader's settings: hide what at least `followedReportsThreshold` people they follow reported
+ * (an article, or its author); 0 is off, otherwise 1..10.
+ */
+export interface ReaderSettings {
+  followedReportsThreshold: number;
 }
 
 export interface HiddenArticlePage {

@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Bookmark, BookmarkCheck, EyeOff, HandHeart, Info, Loader2, PenLine } from "lucide-react";
+import { Bookmark, BookmarkCheck, Eye, EyeOff, Flag, HandHeart, Info, Loader2, PenLine } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
 import { journalKey, useJournal, useJournalQuery } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
@@ -147,6 +147,13 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
   // Nobody moderates their own: not by their account, nor by their key.
   const mine = own || isMe(article.author);
   const key = authorKey(article.author);
+  // Hidden because enough people the reader follows reported it or its author: folded until shown anyway.
+  // An older backend says neither why nor how many: the reader's own hide, no reports.
+  const byReports = !!article.hidden && article.hiddenReason === "followed_reports" && !mine;
+  const followedReports = article.followedReports ?? 0;
+  const readerHidden = !!article.hidden && !byReports;
+  const shown = (a: Article): Article => ({ ...a, hidden: false, hiddenReason: null });
+  const hiddenByReader = (a: Article): Article => ({ ...a, hidden: true, hiddenReason: "reader" });
 
   const moderate = async (action: () => Promise<unknown>, change: (a: Article) => Article, message: string | null) => {
     setSaveError(null);
@@ -160,8 +167,8 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
   };
   const menuItems: MenuItem[] = !canWrite || mine ? [] : [
     article.hidden
-      ? { label: "Unhide article", onClick: () => void moderate(() => journalService.unhideArticle(article.uuid), (a) => ({ ...a, hidden: false }), null) }
-      : { label: "Hide article", onClick: () => void moderate(() => journalService.hideArticle(article.uuid), (a) => ({ ...a, hidden: true }), null) },
+      ? { label: byReports ? "Show anyway" : "Unhide article", onClick: () => void moderate(() => journalService.unhideArticle(article.uuid), shown, null) }
+      : { label: "Hide article", onClick: () => void moderate(() => journalService.hideArticle(article.uuid), hiddenByReader, null) },
     ...(key ? [
       article.author.muted
         ? { label: `Unmute ${authorName(article.author)}`, onClick: () => void moderate(() => journalService.unmute(key), (a) => ({ ...a, author: { ...a.author, muted: false } }), null) }
@@ -256,26 +263,51 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
     <div className="pb-12 space-y-5">
       {saveError && <p className="text-xs font-medium text-rose-600">{saveError}</p>}
       {notice && <p className="text-xs font-medium text-slate-600">{notice}</p>}
-      {(article.hidden || author.muted) && !mine && (
+      {(readerHidden || author.muted) && !mine && (
         <p className="flex items-center gap-1.5 rounded-2xl bg-slate-100 px-4 py-3 text-xs font-semibold text-slate-600">
           <EyeOff className="h-3.5 w-3.5 shrink-0" />
-          {article.hidden && author.muted
+          {readerHidden && author.muted
             ? `You hid this article and muted ${authorName(author)}: neither shows in your lists.`
-            : article.hidden
+            : readerHidden
               ? "You hid this article: it doesn't show in your lists."
               : `You muted ${authorName(author)}: their articles and comments don't show in your lists.`}
           <span className="text-slate-400">Undo it from the menu, or in Settings → Muted and hidden.</span>
         </p>
       )}
-      <ImagePolicy.Provider value={{ blocked: isNewAuthor(author) && !showImages, show: () => setShowImages(true) }}>
-        <ArticleDocument
-          article={article}
-          actions={actions}
-          bare
-          onAuthor={authorFilter ? () => onFilter({ author: authorFilter }) : undefined}
-          onInstrument={(i) => onFilter({ instrument: { ticker: i.ticker, isin: i.isin, instrumentId: i.instrumentId } })}
-        />
-      </ImagePolicy.Provider>
+      {byReports && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-slate-100 px-4 py-3 text-xs font-semibold text-slate-600">
+          <span className="flex flex-1 min-w-0 items-center gap-1.5">
+            <Flag className="h-3.5 w-3.5 shrink-0" />
+            Hidden: {followedReports} {followedReports === 1 ? "person" : "people"} you follow reported this article or its author.
+          </span>
+          {canWrite && (
+            <button
+              type="button"
+              onClick={() => void moderate(() => journalService.unhideArticle(article.uuid), shown, null)}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:border-slate-400 hover:text-slate-800"
+            >
+              <Eye className="h-3.5 w-3.5" /> Show anyway
+            </button>
+          )}
+        </div>
+      )}
+      {!article.hidden && followedReports > 0 && !mine && (
+        <p className="flex items-center gap-1.5 px-1 text-[11px] font-semibold text-slate-400">
+          <Flag className="h-3 w-3 shrink-0" />
+          Reported by {followedReports} {followedReports === 1 ? "person" : "people"} you follow
+        </p>
+      )}
+      {!byReports && (
+        <ImagePolicy.Provider value={{ blocked: isNewAuthor(author) && !showImages, show: () => setShowImages(true) }}>
+          <ArticleDocument
+            article={article}
+            actions={actions}
+            bare
+            onAuthor={authorFilter ? () => onFilter({ author: authorFilter }) : undefined}
+            onInstrument={(i) => onFilter({ instrument: { ticker: i.ticker, isin: i.isin, instrumentId: i.instrumentId } })}
+          />
+        </ImagePolicy.Provider>
+      )}
       {reporting && (
         <ReportDialog
           target={reporting.target}
@@ -283,13 +315,13 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
           onClose={() => setReporting(null)}
           onDone={(report) => {
             const onAuthor = "pubkey" in reporting.target;
-            setArticle((a) => (onAuthor ? { ...a, author: { ...a.author, muted: true } } : { ...a, hidden: true }));
+            setArticle((a) => (onAuthor ? { ...a, author: { ...a.author, muted: true } } : hiddenByReader(a)));
             setNotice(reportedMessage(report, onAuthor ? `${reporting.what} is muted for you` : "the article is hidden for you"));
             setReporting(null);
           }}
         />
       )}
-      {mode === "api" && article.status === "published" && (
+      {mode === "api" && article.status === "published" && !byReports && (
         <ArticleComments
           article={article}
           canWrite={canWrite}
