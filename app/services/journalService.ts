@@ -1,7 +1,7 @@
 // services/journalService.ts
 import type {
   Article, ArticleContent, ArticleFilters, ArticleStatus, ArticleSummary, ArticleUpdate, Comment, Follow, ImageFile, ImageFormat,
-  HiddenArticle, HiddenArticlePage, ImageUpload, Mute, MutePage, NetworkIdentity, NetworkKeyExport, Page, Report, ReportRequest, SavedArticle,
+  HiddenArticle, HiddenArticlePage, ImageUpload, Mute, MutePage, NetworkIdentity, NetworkKeyExport, Page, ReaderSettings, Report, ReportRequest, SavedArticle,
 } from "../models/Journal";
 import { apiFetch } from "./apiClient";
 
@@ -171,6 +171,8 @@ export const journalService = {
     return apiFetch<{ hiddenAt: string }>(`${BASE}/articles/${articleUuid}/hidden`, { method: "PUT" });
   },
 
+  // DELETE on an article hidden by followed reports records "shown anyway": back in the lists,
+  // and visible even if more reports arrive.
   async unhideArticle(articleUuid: string): Promise<void> {
     await apiFetch(`${BASE}/articles/${articleUuid}/hidden`, { method: "DELETE" });
   },
@@ -179,6 +181,16 @@ export const journalService = {
   async hiddenArticles(limit?: number, offset?: number): Promise<Page<HiddenArticle>> {
     const page = await apiFetch<HiddenArticlePage>(`${BASE}/hidden${pageQuery(limit, offset)}`);
     return { items: page.articles, total: page.total, limit: limit ?? page.articles.length, offset: offset ?? 0 };
+  },
+
+  // GET /reader-settings — a reader who never set it gets the default threshold (2).
+  async readerSettings(): Promise<ReaderSettings> {
+    return apiFetch<ReaderSettings>(`${BASE}/reader-settings`);
+  },
+
+  // PUT /reader-settings — 0 off, else 1..10 (InvalidFieldError on `followedReportsThreshold` outside).
+  async updateReaderSettings(settings: ReaderSettings): Promise<ReaderSettings> {
+    return apiFetch<ReaderSettings>(`${BASE}/reader-settings`, { method: "PUT", body: JSON.stringify(settings) });
   },
 
   // PUT /comments/{c}/hidden — hidden for the caller (not the article author's hide, for everyone).
