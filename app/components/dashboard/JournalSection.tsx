@@ -50,8 +50,8 @@ function viewFromHistory(): JournalView {
 /**
  * JOURNAL — articles on investing by PortfoliAI's advisors and users (acta, through ianus'
  * /v1/journal): the latest, searchable and narrowed by category, author or instrument; each
- * article; the reader's saved articles; the author's own articles and their editor. On a backend without the Journal everyone reads the
- * platform's own articles written in the code (see JournalContext). Each page is a history
+ * article; the reader's saved articles; the author's own articles and their editor. On a backend without the Journal the pages show no
+ * articles (see JournalContext). Each page is a history
  * entry, so the browser's back button walks through them (see lib/dashboardHistory).
  */
 export function JournalSection() {

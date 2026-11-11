@@ -1,12 +1,11 @@
 // lib/journal.ts
 //
 // JOURNAL — what every Journal page shares: the names of categories, languages and states, the notices an article is shown with, and where the reading pages read from (a
-// JournalSource: the API, or, on a backend without the Journal, the platform's own articles
-// written in the code, lib/journalStatic).
+// JournalSource: the API, or, on a backend without the Journal, no articles).
 
 import type {
   Article, ArticleAuthor, ArticleCategory, ArticleFilters, ArticleInstrument, ArticleLanguage, ArticleStatus, ArticleSummary,
-  Block, Page, Span,
+  Page, Span,
 } from "../models/Journal";
 import { ApiError } from "../services/apiClient";
 import { journalService } from "../services/journalService";
@@ -96,27 +95,6 @@ export function splitTags(text: string, pattern: RegExp | null): ({ text: string
 
 export const spansText = (spans: Span[]) => spans.map((s) => s.text).join("");
 
-/** An article's words, block by block (for the static articles' search). */
-export function blocksText(blocks: Block[]) {
-  return blocks
-    .map((b) => {
-      switch (b.type) {
-        case "paragraph":
-        case "quote":
-          return spansText(b.spans);
-        case "heading":
-          return b.text;
-        case "list":
-          return b.items.map((i) => spansText(i.spans)).join(" ");
-        case "image":
-          return [b.altText, b.caption].filter(Boolean).join(" ");
-        case "table":
-          return [...b.rows.flatMap((r) => r.cells.map((c) => spansText(c.spans))), b.caption].filter(Boolean).join(" ");
-      }
-    })
-    .join(" ");
-}
-
 /** Whether `err` is the backend telling it has no Journal: FastAPI's own 404, no error_type. */
 export const isJournalMissing = (err: unknown) => err instanceof ApiError && err.status === 404 && !err.errorType;
 
@@ -137,9 +115,8 @@ export function journalErrorText(err: unknown, fallback: string) {
 
 /**
  * Where the Journal's reading pages read from: the API (apiJournalSource) or, on a backend
- * without the Journal (staging, for now), the platform's own articles written in the code
- * (lib/journalStatic), in the same shapes. Writes and saves go to journalService, and
- * only with the API.
+ * without the Journal, nothing (emptyJournalSource: the pages show their empty state). Writes
+ * and saves go to journalService, and only with the API.
  */
 export interface JournalSource {
   list(filters: ArticleFilters): Promise<Page<ArticleSummary>>;
@@ -151,9 +128,10 @@ export const apiJournalSource: JournalSource = {
   bySlug: (slug) => journalService.getBySlug(slug),
 };
 
-/** An article's summary, from a whole one. */
-export function summaryOf(article: Article): ArticleSummary {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { body, interestDisclosure, createdAt, updatedAt, ...summary } = article;
-  return summary;
-}
+/** A backend without the Journal: no articles, and none to open. */
+export const emptyJournalSource: JournalSource = {
+  list: async (filters) => ({ items: [], total: 0, limit: filters.limit ?? 0, offset: filters.offset ?? 0 }),
+  bySlug: async () => {
+    throw new ApiError(404, "Article not found.", "ArticleNotFoundError");
+  },
+};
