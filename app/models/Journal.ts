@@ -10,6 +10,13 @@ export type AuthorKind = "advisor" | "user";
 // `advisor_clients`: an advisor's articles only, for their clients.
 export type ArticleAudience = "everyone" | "advisor_clients";
 export type ArticleStatus = "draft" | "published";
+// Where it was written: on this instance (its author's to edit), or read from the network (Nostr:
+// another instance, another client), read-only here (409 NetworkArticleReadOnlyError on a write).
+export type ArticleOrigin = "local" | "network";
+// The author's own article on the network: `pending` waiting to be sent (after a failure,
+// lastError says why and it's tried again later), `published` sent, `withdrawn` its deletion
+// request sent, `failed` given up on until it's published or edited again.
+export type NetworkState = "pending" | "published" | "withdrawn" | "failed";
 export type ListStyle = "bulleted" | "numbered";
 export type ImageFormat = "jpeg" | "png" | "webp";
 // `top_day` / `top_week`: the most applauded in the last 24 hours / 7 days first, then the newest.
@@ -19,10 +26,10 @@ export type CommentStatus = "visible" | "hidden_by_author";
 
 // ── The body's blocks: the same shape written and read ──
 
-/** A stored image: a short-lived link (the bucket is private), never to be cached. */
+/** A stored image: a short-lived link (the bucket is private), never to be cached; a network article's: its public address, no expiry. */
 export interface ImageFile {
   url: string;
-  urlExpiresAt: string;
+  urlExpiresAt: string | null;
 }
 
 /** A run of text with its marks; `linkUrl` (absolute http or https) makes it a link. No line breaks. */
@@ -35,12 +42,16 @@ export interface Span {
   highlight?: boolean;
 }
 
-/** One of the author's completed uploads. `altText` is required to publish; `file` is read only. */
+/**
+ * One of the author's completed uploads. `altText` is required to publish; `file` and `url` are
+ * read only. A network article's image has no imageUuid (empty) and its public address in `url`.
+ */
 export interface ArticleImage {
   imageUuid: string;
   altText: string;
   caption?: string | null;
   file?: ImageFile | null;
+  url?: string | null;
 }
 
 export type Block =
@@ -100,11 +111,30 @@ export interface ArticleUpdate extends ArticleContent {
 }
 
 export interface ArticleAuthor {
-  // Null on a draft never published.
+  // Null on a draft never published. A network author is a user.
   kind: AuthorKind | null;
+  // A user of this instance's; null for a network author.
   userUuid: string | null;
-  // Null when the names couldn't be read.
+  // Null when the names couldn't be read; a network author's from their profile, else their npub shortened.
   displayName: string | null;
+  // Their public key on the network (lowercase hex) and the same as an npub: a network author's,
+  // a local one's when known. What following takes.
+  pubkey?: string | null;
+  npub?: string | null;
+  // A network author's profile picture.
+  pictureUrl?: string | null;
+  // Whether the caller follows them.
+  followed?: boolean;
+}
+
+/** Where the author's own article stands on the network; null on anyone else's. */
+export interface NetworkStatus {
+  state: NetworkState;
+  eventId: string | null;
+  // The version the network was sent: its publishing or its last edit.
+  publishedVersionAt: string | null;
+  // Why the last attempt failed; null once one succeeds.
+  lastError: string | null;
 }
 
 /** An article as a list shows it: everything but its body. */
@@ -132,6 +162,9 @@ export interface ArticleSummary {
   applauded: boolean;
   // Its visible comments, replies included.
   commentCount: number;
+  // Absent from a backend before the network: local.
+  origin?: ArticleOrigin;
+  network?: NetworkStatus | null;
 }
 
 export interface Article extends ArticleSummary {
@@ -167,6 +200,12 @@ export interface ArticleFilters {
   preferredLanguage?: ArticleLanguage;
   // Unset: a search's matches by relevance, else the newest first.
   order?: ArticleOrder;
+  // This instance's, or the network's; unset: both.
+  origin?: ArticleOrigin;
+  // Only the authors the caller follows.
+  followedOnly?: boolean;
+  // One author's by their public key (lowercase hex).
+  authorPubkey?: string;
   limit?: number;
   offset?: number;
 }
@@ -176,6 +215,29 @@ export interface ArticleFilters {
 export interface SavedArticle {
   article: ArticleSummary;
   savedAt: string;
+}
+
+// ── Follows ──
+
+/** An author the caller follows (`author.followed` true). */
+export interface Follow {
+  author: ArticleAuthor;
+  followedAt: string;
+}
+
+// ── The caller's network identity (Nostr) ──
+
+/** The caller's public key and npub; nulls while they have none yet. */
+export interface NetworkIdentity {
+  pubkey: string | null;
+  npub: string | null;
+}
+
+/** The secret key encrypted with the caller's password (NIP-49, "ncryptsec1..."). */
+export interface NetworkKeyExport {
+  ncryptsec: string;
+  pubkey: string;
+  npub: string;
 }
 
 // ── Images ──

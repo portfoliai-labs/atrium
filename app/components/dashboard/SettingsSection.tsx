@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, FolderTree } from "lucide-react";
+import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, FolderTree, Globe } from "lucide-react";
 import { userService } from "../../services/userService";
 import { supabase } from "../../lib/supabaseClient";
 import { MIN_PASSWORD_LENGTH, newPasswordError } from "../../lib/password";
@@ -13,6 +13,7 @@ import { Toggle } from "./Toggle";
 import { useUser } from "../../context/UserContext";
 import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
+import { NetworkIdentitySettings } from "./NetworkIdentitySettings";
 import { WalletCategories } from "./wallets/WalletCategories";
 import { useWallets } from "../../context/WalletsContext";
 
@@ -61,6 +62,8 @@ const TABS = [
   // The wallets' categories (money in and out): an investor's, where they have wallets. The banks
   // connected are accounts, under Cash, accounts and cards (each its own page).
   { id: "categories", label: "Categories", icon: FolderTree },
+  // The user's key on the network (Nostr), which the Journal publishes with.
+  { id: "network", label: "Network identity", icon: Globe },
   { id: "account", label: "Account", icon: UserIcon },
 ] as const;
 
@@ -481,6 +484,8 @@ export function SettingsSection() {
           </div>
         </div>
       )}
+
+      {activeTab === "network" && <NetworkIdentitySettings />}
 
       {activeTab === "categories" && (
         <div className="space-y-4">

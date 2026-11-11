@@ -8,7 +8,7 @@ import type { ArticleStatus } from "../../../models/Journal";
 import { CATEGORY_LABELS, DEFAULT_CATEGORY, dateLabel } from "../../../lib/journal";
 import { Pills, serif } from "../../preview/PreviewKit";
 import { ActionButton } from "../PageHeader";
-import { EmptyState, ErrorState, JournalHeader, LoadMore, PAGE_SIZE, Spinner, StatusChip, usePaged } from "./JournalKit";
+import { EmptyState, ErrorState, JournalHeader, LoadMore, NetworkStatusLine, PAGE_SIZE, Spinner, StatusChip, usePaged } from "./JournalKit";
 
 type Filter = "all" | ArticleStatus;
 
@@ -21,7 +21,7 @@ export function MyArticles({ onOpen, onNew }: { onOpen: (uuid: string) => void; 
     <div className="space-y-6 pb-12">
       <JournalHeader
         title="Your articles"
-        subtitle="Drafts only you can read, and what you've published."
+        subtitle="Drafts only you can read, and what you've published to the network."
         actions={<ActionButton action={{ label: "New article", onClick: onNew, primary: true }} />}
       />
       <Pills<Filter>
@@ -55,6 +55,7 @@ export function MyArticles({ onOpen, onNew }: { onOpen: (uuid: string) => void; 
                     <StatusChip status={a.status} />
                     {a.category && a.category !== DEFAULT_CATEGORY && <span className="text-[10px] font-black uppercase tracking-wider text-[#C49A3C]">{CATEGORY_LABELS[a.category]}</span>}
                     {a.audience === "advisor_clients" && <span className="text-[10px] font-bold text-slate-400">Clients only</span>}
+                    <NetworkStatusLine network={a.network} />
                   </div>
                   <p className={`mt-1.5 text-base font-black leading-snug truncate ${a.title ? "text-slate-900" : "text-slate-400"}`} style={serif}>
                     {a.title || "Untitled draft"}

@@ -1,7 +1,7 @@
 // services/journalService.ts
 import type {
-  Article, ArticleContent, ArticleFilters, ArticleStatus, ArticleSummary, ArticleUpdate, Comment, ImageFile, ImageFormat,
-  ImageUpload, Page, SavedArticle,
+  Article, ArticleContent, ArticleFilters, ArticleStatus, ArticleSummary, ArticleUpdate, Comment, Follow, ImageFile, ImageFormat,
+  ImageUpload, NetworkIdentity, NetworkKeyExport, Page, SavedArticle,
 } from "../models/Journal";
 import { apiFetch } from "./apiClient";
 
@@ -11,14 +11,17 @@ import { apiFetch } from "./apiClient";
 // unsupported_format), ArticleNotFoundError / ImageNotFoundError (404: not there, or not the
 // caller's to read or write), ArticleChangedError (409, a stale expectedUpdatedAt),
 // ArticleNotDraftError, OwnArticleError (409), InvalidCommentError (422, `field`),
-// CommentNotFoundError (404), AuthorUnavailableError (503, publishing: retry). A backend without the
+// CommentNotFoundError (404), AuthorUnavailableError (503, publishing: retry),
+// NetworkArticleReadOnlyError (409, a write to an article read from the network), InvalidFieldError
+// (422, `field` pubkey: following what isn't a key, or oneself); the network identity's
+// PasswordTooShortError / KeyNotDecryptedError (422), KeyTakenError (409). A backend without the
 // Journal answers its routes with FastAPI's own 404, without an error_type.
 
 const BASE = "/v1/journal";
 
-function query(params: Record<string, string | number | undefined>) {
+function query(params: Record<string, string | number | boolean | undefined>) {
   const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== "") search.set(key, String(value));
+  for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== "" && value !== false) search.set(key, String(value));
   const text = search.toString();
   return text ? `?${text}` : "";
 }
@@ -132,6 +135,20 @@ export const journalService = {
     return apiFetch<Comment>(`${BASE}/comments/${commentUuid}/show`, { method: "POST" });
   },
 
+  // ── Follows: by public key (hex or npub); the caller's contact list goes to the network ──
+
+  async follows(limit?: number, offset?: number): Promise<Page<Follow>> {
+    return apiFetch<Page<Follow>>(`${BASE}/follows${pageQuery(limit, offset)}`);
+  },
+
+  async follow(pubkey: string): Promise<Follow> {
+    return apiFetch<Follow>(`${BASE}/follows/${encodeURIComponent(pubkey)}`, { method: "PUT" });
+  },
+
+  async unfollow(pubkey: string): Promise<void> {
+    await apiFetch(`${BASE}/follows/${encodeURIComponent(pubkey)}`, { method: "DELETE" });
+  },
+
   // ── Images: the file goes from the browser to the bucket, never through ianus ──
 
   async createImageUpload(format: ImageFormat): Promise<ImageUpload> {
@@ -168,3 +185,20 @@ function imageFormatOf(file: File): ImageFormat | null {
   if (file.type === "image/webp") return "webp";
   return null;
 }
+
+/** The caller's identity on the network (ianus' /v1/network, pons' keys). */
+export const networkService = {
+  async identity(): Promise<NetworkIdentity> {
+    return apiFetch<NetworkIdentity>("/v1/network/identity");
+  },
+
+  // The secret key encrypted with `password` (8 characters at least); makes the key if there's none.
+  async exportKey(password: string): Promise<NetworkKeyExport> {
+    return apiFetch<NetworkKeyExport>("/v1/network/identity/export", { method: "POST", body: JSON.stringify({ password }) });
+  },
+
+  // Replaces the caller's key with one exported elsewhere.
+  async importKey(ncryptsec: string, password: string): Promise<NetworkIdentity> {
+    return apiFetch<NetworkIdentity>("/v1/network/identity/import", { method: "POST", body: JSON.stringify({ ncryptsec, password }) });
+  },
+};

@@ -3,7 +3,7 @@
 
 import { createContext, useContext, useMemo } from "react";
 import type { ArticleImage, ArticleInstrument, Block, Span } from "../../../models/Journal";
-import { splitTags, tagPattern } from "../../../lib/journal";
+import { imageSrc, splitTags, tagPattern } from "../../../lib/journal";
 import { serif, serifText } from "../../preview/PreviewKit";
 
 // The article's instruments, for the tags in its text: what "#" and a ticker names, and where it leads.
@@ -52,14 +52,15 @@ function Spans({ spans }: { spans: Span[] }) {
   );
 }
 
-/** An image of the article, from its short-lived link; its caption under it. */
+/** An image of the article, from its short-lived link (a network article's: its public address); its caption under it. */
 export function ArticleFigure({ image, className = "" }: { image: ArticleImage; className?: string }) {
-  if (!image.file?.url) return null;
+  const src = imageSrc(image);
+  if (!src) return null;
   return (
     <figure className={className}>
       {/* A signed link to a private bucket: next/image can't optimise it. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={image.file.url} alt={image.altText} className="w-full rounded-2xl border border-slate-100" />
+      <img src={src} alt={image.altText} className="w-full rounded-2xl border border-slate-100" />
       {image.caption && <figcaption className="mt-2.5 text-[13px] italic text-[#78716c] text-center leading-relaxed" style={serifText}>{image.caption}</figcaption>}
     </figure>
   );

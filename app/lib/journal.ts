@@ -4,8 +4,8 @@
 // JournalSource: the API, or, on a backend without the Journal, no articles).
 
 import type {
-  Article, ArticleAuthor, ArticleCategory, ArticleFilters, ArticleInstrument, ArticleLanguage, ArticleStatus, ArticleSummary,
-  Page, Span,
+  Article, ArticleAuthor, ArticleCategory, ArticleFilters, ArticleImage, ArticleInstrument, ArticleLanguage, ArticleStatus,
+  ArticleSummary, NetworkState, Page, Span,
 } from "../models/Journal";
 import { ApiError } from "../services/apiClient";
 import { journalService } from "../services/journalService";
@@ -49,6 +49,31 @@ export const NOT_ADVICE_NOTICE =
 export const DISCLOSURE_TITLE = "The author's interests in the instruments named";
 export const DISCLOSURE_HELP =
   "As an advisor naming instruments, say whether you, your firm or your clients hold them or have other interests in them. It is shown with the article.";
+
+// ── The network (Nostr) ──
+
+// What the author confirms before a draft goes out: a published article is on the network.
+export const NETWORK_PUBLISH_TITLE = "Publish to the network?";
+export const NETWORK_PUBLISH_NOTICE =
+  "Your article goes out to the network: other PortfoliAI instances and Nostr apps can read it. You can edit it and ask for its deletion later, but older copies may remain on other nodes.";
+// Under a published article's editor: saving sends the edit out too, without asking again.
+export const NETWORK_EDIT_NOTE = "This article is on the network: your saved edits go out to it too.";
+
+export const NETWORK_STATE_LABELS: Record<NetworkState, string> = {
+  pending: "Sending to the network",
+  published: "On the network",
+  withdrawn: "Withdrawn from the network",
+  failed: "Not sent to the network",
+};
+
+/** Whether an article was read from the network: read-only here. */
+export const isNetworkArticle = (article: Pick<ArticleSummary, "origin">) => article.origin === "network";
+
+/** "npub1abcd…wxyz": an npub short enough for a byline. */
+export const shortNpub = (npub: string) => (npub.length > 20 ? `${npub.slice(0, 10)}…${npub.slice(-4)}` : npub);
+
+/** Where an image is fetched from: a network article's public address, else the stored file's link. */
+export const imageSrc = (image: ArticleImage | null | undefined) => image?.url ?? image?.file?.url ?? null;
 
 /** Who an article is by, as its byline says it. */
 export function authorName(author: ArticleAuthor) {
@@ -106,6 +131,7 @@ export function journalErrorText(err: unknown, fallback: string) {
   if (err instanceof ApiError) {
     if (err.errorType === "AuthorUnavailableError") return "Your profile couldn't be read just now. Try publishing again in a moment.";
     if (err.errorType === "CommentNotFoundError") return "This comment isn't available anymore.";
+    if (err.errorType === "NetworkArticleReadOnlyError") return "This article comes from the network: only its author can change it, where they wrote it.";
     if (err.status === 404) return "This article isn't available anymore.";
   }
   return err instanceof Error && err.message ? err.message : fallback;
