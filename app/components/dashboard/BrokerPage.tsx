@@ -81,9 +81,13 @@ export function BrokerPage({ portfolio, trail, onRemoved }: {
     }
   };
   const read = async () => {
-    const { balancesSeen } = await tradingService.readBrokerAccount(brokerAccount.uuid);
+    const { balancesSeen, movementsSeen } = await tradingService.readBrokerAccount(brokerAccount.uuid);
     SETTLE_DELAYS_MS.forEach((ms) => setTimeout(changed, ms));
-    return balancesSeen === 0 ? "Read: nothing new." : `Read: ${balancesSeen} new balance${balancesSeen === 1 ? "" : "s"}, here in a moment.`;
+    const told = [
+      balancesSeen > 0 && `${balancesSeen} new balance${balancesSeen === 1 ? "" : "s"}`,
+      movementsSeen > 0 && `${movementsSeen} movement${movementsSeen === 1 ? "" : "s"} from its history`,
+    ].filter(Boolean);
+    return told.length === 0 ? "Read: nothing new." : `Read: ${told.join(", ")}, here in a moment.`;
   };
   const remove = () => void act("remove", async () => {
     await tradingService.removeBrokerAccount(brokerAccount.uuid);
@@ -101,6 +105,11 @@ export function BrokerPage({ portfolio, trail, onRemoved }: {
   const figures: PageFigure[] = [
     { label: "Broker", value: broker, sub: `account ${brokerAccount.brokerAccountId}` },
     { label: "Last read", value: brokerAccount.readAt ? dayLabel(brokerAccount.readAt.slice(0, 10)) : "Not yet", sub: "every hour, and on request" },
+    {
+      label: "History",
+      value: !session.data?.historyConfigured ? "Not set up" : brokerAccount.historyThrough ? `to ${dayLabel(brokerAccount.historyThrough)}` : "Not read yet",
+      sub: session.data?.historyConfigured ? "its statements, every day" : "a Flex query, set up by whoever runs this platform",
+    },
     { label: "Linked", value: dayLabel(brokerAccount.linkedAt.slice(0, 10)) },
   ];
 
@@ -117,6 +126,12 @@ export function BrokerPage({ portfolio, trail, onRemoved }: {
       />
       {state !== "connected" && state !== "unknown" && (
         <p className="text-[12.5px] font-semibold text-amber-700">{sessionHint(state)} Reads and orders wait for it.</p>
+      )}
+      {session.data && !session.data.historyConfigured && (
+        <p className="text-[12.5px] text-[#857e78]">
+          Its trades and its cash before this page knew it come from the broker&apos;s statements: until they are set up
+          (a Flex query, in this platform&apos;s settings), its portfolio holds only what is bought from here.
+        </p>
       )}
       {note && <p className="text-[12.5px] font-semibold text-emerald-700">{note}</p>}
       {error && !removing && <p className="text-[12.5px] font-semibold text-rose-600">{error}</p>}

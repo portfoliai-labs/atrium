@@ -43,10 +43,10 @@ export const tradingService = {
     return apiFetch<BrokerAccount[]>(`/v1/brokers/accounts`);
   },
 
-  // POST /v1/brokers/accounts/{a}/read — the positions and currencies not seen before come in a
-  // moment later.
-  async readBrokerAccount(accountUuid: string): Promise<{ balancesSeen: number }> {
-    return apiFetch<{ balancesSeen: number }>(`/v1/brokers/accounts/${accountUuid}/read`, { method: "POST" });
+  // POST /v1/brokers/accounts/{a}/read — the positions and currencies not seen before, then its
+  // history not read yet, come in a moment later.
+  async readBrokerAccount(accountUuid: string): Promise<{ balancesSeen: number; movementsSeen: number }> {
+    return apiFetch<{ balancesSeen: number; movementsSeen: number }>(`/v1/brokers/accounts/${accountUuid}/read`, { method: "POST" });
   },
 
   // DELETE /v1/brokers/accounts/{a} — nothing is read from it any more; its portfolio and wallets stay.
