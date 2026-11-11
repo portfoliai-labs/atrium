@@ -5,8 +5,7 @@ import React, { createContext, useCallback, useContext, useMemo } from "react";
 import { keepPreviousData, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useUser } from "./UserContext";
 import { journalService } from "../services/journalService";
-import { apiJournalSource, isJournalMissing, readerLanguage, type JournalSource } from "../lib/journal";
-import { staticJournalSource } from "../lib/journalStatic";
+import { apiJournalSource, emptyJournalSource, isJournalMissing, readerLanguage, type JournalSource } from "../lib/journal";
 import type { ArticleLanguage } from "../models/Journal";
 
 /**
@@ -14,15 +13,15 @@ import type { ArticleLanguage } from "../models/Journal";
  * asked once: the Sidebar and the Journal's pages read it.
  * - `api`: the backend serves the Journal (ianus' /v1/journal): every investor and advisor reads
  *   and writes.
- * - `static`: the backend has no Journal yet (it answers FastAPI's own 404): everyone reads the
- *   platform's own articles written in the code (lib/journalStatic), without writing or saving. The articles are real ones (Matteo, 2026-10-12).
+ * - `missing`: the backend has no Journal (it answers FastAPI's own 404): the pages show no
+ *   articles, and nobody writes or saves.
  * - `loading` until the first answer.
  * Every Journal read is in the query cache (context/QueryContext) under a ["journal", ...] key
  * (useJournalQuery, usePaged), shared by the pages and modules that ask for it. A write patches
  * what's on screen in place, then `changed()` marks every other Journal read stale: each is read
  * again when it's next shown.
  */
-type JournalMode = "loading" | "api" | "static";
+type JournalMode = "loading" | "api" | "missing";
 
 interface JournalContextType {
   mode: JournalMode;
@@ -51,7 +50,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
         await journalService.list({ limit: 1 });
       } catch (err) {
         // A Journal that failed to answer is still there: its pages say what went wrong.
-        return { mode: isJournalMissing(err) ? "static" : "api" };
+        return { mode: isJournalMissing(err) ? "missing" : "api" };
       }
       return { mode: "api" };
     },
@@ -66,7 +65,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<JournalContextType>(() => ({
     mode,
-    source: mode === "static" ? staticJournalSource : apiJournalSource,
+    source: mode === "missing" ? emptyJournalSource : apiJournalSource,
     canWrite: mode === "api",
     language: readerLanguage(user?.language),
     changed,
