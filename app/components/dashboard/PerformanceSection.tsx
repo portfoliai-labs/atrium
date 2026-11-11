@@ -60,6 +60,9 @@ import type { TransactionResponse } from "../../models/Transaction";
 import { DIMENSION_PANELS, LOOK_THROUGH_INFO, allocationRows, dimensionOf, isInformative } from "../../lib/classifications";
 import { AiHelpButton } from "./assistant/AiHelpButton";
 import { TrackerOrderButtons } from "./TrackerOrderButtons";
+import { useBrokerOrderAccounts } from "./BrokerOrderPage";
+import { ASSET_SECTION, useOpenDashboardPage } from "../../lib/dashboardNav";
+import type { AssetView } from "./AssetSection";
 
 const chartDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const fullDateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
@@ -2174,6 +2177,9 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
     () => tradeMarkers((trades.data?.items ?? []).filter((t) => t.asset_id === assetId), points),
     [trades.data, assetId, points],
   );
+  // Bought and sold at the user's broker: a security's own listing (not a token tracking it).
+  const brokerAccounts = useBrokerOrderAccounts();
+  const openPage = useOpenDashboardPage();
 
   if (data === null) {
     return loading ? (
@@ -2222,6 +2228,18 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
       figure: `${e.weightPct.toFixed(0)}%`,
       color: e.label === "Unknown" ? UNKNOWN_EXPOSURE_COLOR : CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length],
     }));
+  const listing = data.listing;
+  const brokerActions = listing && listing.kind === "security" && !listing.tracking && brokerAccounts.length > 0 && openPage
+    ? (["buy", "sell"] as const).map((side) => ({
+      label: side === "buy" ? "Buy at your broker" : "Sell at your broker",
+      primary: side === "buy",
+      plus: false,
+      onClick: () => openPage(ASSET_SECTION, {
+        listingId: listing.listingId, instrumentId: listing.instrumentId, ticker: listing.ticker, name: listing.name,
+        brokerOrder: { side, currency: listing.currency },
+      } satisfies AssetView),
+    }))
+    : [];
   const chip = (on: boolean) =>
     `px-2.5 py-1 rounded-full border text-[11.5px] font-semibold transition-colors ${on ? "bg-[#1c1917] border-[#1c1917] text-white" : "border-[#E0DACC] text-[#78716c] hover:text-[#1c1917]"}`;
 
@@ -2234,6 +2252,7 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
         value={held ? formatCurrency(held.marketValue, posCurrency, 0) : last !== undefined ? formatCurrency(last, unit, 2) : undefined}
         change={held ? { text: `${formatPct(held.roiPct)} since first buy`, tone: toneOfValue(held.roiPct) } : null}
         note={data.listing ? listingLine(data.listing) : data.ticker}
+        actions={brokerActions}
       />
 
       <Module>

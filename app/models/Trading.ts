@@ -98,7 +98,8 @@ export type OrderSide = "buy" | "sell";
 // requested → awaiting_signature (the wallet signs it) → submitted → filled, or rejected, failed,
 // expired, cancelled.
 export type OrderState =
-  | "requested" | "awaiting_signature" | "submitted" | "filled" | "rejected" | "failed" | "expired" | "cancelled";
+  | "requested" | "awaiting_signature" | "submitted" | "partially_filled" | "filled" | "rejected" | "failed" | "expired"
+  | "cancelled";
 
 /** A venue's quote: what it would do now. */
 export interface OrderQuote {
@@ -116,8 +117,19 @@ export interface OrderQuote {
   // The least the order gets: units for a buy, cash for a sale.
   minimum: number;
   priceImpactPct: number | null;
-  // "jupiterz": a market maker's firm quote.
+  // "jupiterz": a market maker's firm quote; "limit" at a broker.
   route: string;
+  // At a broker (route "limit"): whole units; `price` is the limit, `referencePrice` (the
+  // listing's, at `referenceTime`) moved by `slippageBps` against the order; `cashAmount` the most a
+  // buy spends (the least a sale gets) before the commission; `fees` the broker's expected
+  // commission (its highest when it tells a range, `minFees`..`maxFees`, in `feesCurrency`).
+  referencePrice?: number | null;
+  referenceTime?: string | null;
+  slippageBps?: number | null;
+  minFees?: number | null;
+  maxFees?: number | null;
+  feesCurrency?: string | null;
+  warning?: string | null;
 }
 
 export interface OrderEvent {
@@ -188,6 +200,13 @@ export interface OrderExecution {
   fees: number | null;
   // Sent: the transaction on an explorer of the deployment's network, once its signature is known.
   explorerUrl?: string | null;
+  // At a broker: the limit placed, the reference price it came from, the broker's id of the order,
+  // the commission's currency, when the user asked to cancel it.
+  limitPrice?: number | null;
+  referencePrice?: number | null;
+  brokerOrderId?: string | null;
+  feesCurrency?: string | null;
+  cancelRequestedAt?: string | null;
 }
 
 // GET /v1/orders/{o}/details (ianus' OrderDetailsResponse): a part its service can't give now is null.

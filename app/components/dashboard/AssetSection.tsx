@@ -3,6 +3,8 @@
 import { useDashboardEntry } from "../../lib/dashboardHistory";
 import { ASSET_SECTION, useOpenDashboardPage } from "../../lib/dashboardNav";
 import type { Listing } from "../../models/Listing";
+import type { OrderSide } from "../../models/Trading";
+import { BrokerOrderPage } from "./BrokerOrderPage";
 import { OrderPage, type OrderTarget } from "./OrderPage";
 import { AssetExplore } from "./PerformanceSection";
 
@@ -10,6 +12,8 @@ import { AssetExplore } from "./PerformanceSection";
  * of one of its tokens (a tracker), over it, and the reference price it compares the venue's to. */
 export type AssetView = Pick<Listing, "listingId" | "instrumentId" | "ticker" | "name"> & {
   order?: OrderTarget & { referencePrice: number | null; referenceCurrency: string | null };
+  // The page's own listing bought or sold at the user's broker, in its currency.
+  brokerOrder?: { side: OrderSide; currency: string };
 };
 
 /**
@@ -27,6 +31,21 @@ export function AssetSection({ portfolioUuid }: { portfolioUuid?: string }) {
 
   if (!view?.listingId) {
     return <p className="py-16 text-center text-sm font-semibold text-[#78716c]">Search for a security from the top bar.</p>;
+  }
+
+  if (view.brokerOrder) {
+    const { brokerOrder, ...asset } = view;
+    return (
+      <BrokerOrderPage
+        key={`${asset.listingId}:${brokerOrder.side}`}
+        listingId={asset.listingId}
+        ticker={asset.ticker}
+        assetName={asset.name}
+        side={brokerOrder.side}
+        currency={brokerOrder.currency}
+        onBack={() => openPage?.(ASSET_SECTION, asset)}
+      />
+    );
   }
 
   if (view.order) {
