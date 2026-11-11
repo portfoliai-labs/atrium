@@ -1,6 +1,8 @@
 // services/tradingService.ts
 import type {
   AddressProof,
+  BrokerAccount,
+  BrokerSession,
   ChainHolding,
   EligibilityNotice,
   OnchainAddress,
@@ -21,8 +23,37 @@ import { apiFetch } from "./apiClient";
 // AddressNotFoundError (404), TradingAccountNotFoundError (404), ChainHoldingNotFoundError (404),
 // InvalidChainHoldingLinkError (422, a wallet of another currency or a day out of range),
 // WalletAlreadyLinkedError (409, the wallet takes a bank account's or another stablecoin's
-// movements), WalletArchivedError (409).
+// movements), WalletArchivedError (409). A broker's: BrokerUnavailableError (503, the deployment's
+// session with it isn't connected), BrokerAccountLinkedElsewhereError (409, another user linked
+// it), BrokerAccountNotFoundError (404).
 export const tradingService = {
+  // GET /v1/brokers/{b}/session — the deployment's session with the broker ("interactive_brokers").
+  async brokerSession(broker: string): Promise<BrokerSession> {
+    return apiFetch<BrokerSession>(`/v1/brokers/${broker}/session`);
+  },
+
+  // POST /v1/brokers/{b}/accounts — the accounts the deployment's broker login manages, linked to
+  // the user and read: each makes a trading account (a portfolio, an account) moments later.
+  async linkBroker(broker: string): Promise<BrokerAccount[]> {
+    return apiFetch<BrokerAccount[]>(`/v1/brokers/${broker}/accounts`, { method: "POST" });
+  },
+
+  // GET /v1/brokers/accounts — oldest first.
+  async brokerAccounts(): Promise<BrokerAccount[]> {
+    return apiFetch<BrokerAccount[]>(`/v1/brokers/accounts`);
+  },
+
+  // POST /v1/brokers/accounts/{a}/read — the positions and currencies not seen before come in a
+  // moment later.
+  async readBrokerAccount(accountUuid: string): Promise<{ balancesSeen: number }> {
+    return apiFetch<{ balancesSeen: number }>(`/v1/brokers/accounts/${accountUuid}/read`, { method: "POST" });
+  },
+
+  // DELETE /v1/brokers/accounts/{a} — nothing is read from it any more; its portfolio and wallets stay.
+  async removeBrokerAccount(accountUuid: string): Promise<void> {
+    await apiFetch(`/v1/brokers/accounts/${accountUuid}`, { method: "DELETE" });
+  },
+
   // POST /v1/addresses/proofs — the message the address' wallet signs, valid for 5 minutes.
   async startProof(chain: string, address: string): Promise<AddressProof> {
     return apiFetch<AddressProof>(`/v1/addresses/proofs`, { method: "POST", body: JSON.stringify({ chain, address }) });

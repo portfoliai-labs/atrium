@@ -13,7 +13,7 @@ import { bankingService } from "../../../services/bankingService";
 import { tradingService } from "../../../services/tradingService";
 import type { Account } from "../../../models/Account";
 import type { BankLink } from "../../../models/Banking";
-import type { ChainHolding, OnchainAddress } from "../../../models/Trading";
+import type { BrokerAccount, ChainHolding, OnchainAddress } from "../../../models/Trading";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { PageHeader, type PageAction, type PageFigure } from "../PageHeader";
@@ -22,6 +22,7 @@ import {
   BankAccountRow, ConnectBankDialog, NEW_WALLET, daysLeft, linkNewWallet, renewable, syncText, useBankLinks, useSourcedWallets,
 } from "./WalletBanks";
 import { AddFunds, HoldingRow, SETTLE_DELAYS_MS, shortAddress, useOnchainAddresses } from "./WalletAddresses";
+import { BROKERS, SessionChip, sessionHint, useBrokerAccounts, useBrokerSession } from "./WalletBrokers";
 import { OnchainOrders } from "./OnchainOrders";
 import { OrderDetails } from "./OrderDetails";
 import { ArchivedList, type WalletPage } from "./WalletNode";
@@ -29,8 +30,9 @@ import { ArchivedList, type WalletPage } from "./WalletNode";
 type Dialog = "renew" | "remove";
 
 /**
- * AN ACCOUNT'S PAGE — under Cash, accounts and cards, above its wallets: a bank connected, or an
- * on-chain address. Not its wallets' figures (those are each wallet's, and every wallet's
+ * AN ACCOUNT'S PAGE — under Cash, accounts and cards, above its wallets: a bank connected, an
+ * on-chain address, or an account at a broker (its cash per currency, as an address' stablecoins,
+ * and the deployment's session with the broker). Not its wallets' figures (those are each wallet's, and every wallet's
  * together): where they come from and whether they are right. Its header tells what they hold
  * together (arca's, each at today's rate in the reference currency), its source (the bank's
  * consent, renewed from here, or the chain) and its last read (read again from here). Under it,
@@ -55,7 +57,11 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
   const addresses = useOnchainAddresses();
   const holdings = useChainHoldings(chain);
   const tradingAccount = chain ? trading.data?.find((t) => t.uuid === account!.tradingAccountUuid) : undefined;
-  const address = tradingAccount ? addresses.data?.find((a) => a.uuid === tradingAccount.reference) : undefined;
+  const atBroker = tradingAccount?.kind === "broker_account";
+  const address = tradingAccount && !atBroker ? addresses.data?.find((a) => a.uuid === tradingAccount.reference) : undefined;
+  const brokerAccounts = useBrokerAccounts(atBroker);
+  const brokerAccount = atBroker ? brokerAccounts.data?.find((b) => b.uuid === tradingAccount.reference) : undefined;
+  const session = useBrokerSession(brokerAccount?.broker ?? "", !!brokerAccount);
   const coins = chain ? (holdings.data ?? []).filter((h) => h.tradingAccountUuid === account!.tradingAccountUuid) : [];
   const cards = useCards(!!account);
   const taken = useSourcedWallets();
@@ -121,12 +127,18 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
     SETTLE_DELAYS_MS.forEach((ms) => setTimeout(changed, ms));
     return movements === 0 ? "Read: nothing new." : `Read: ${movements} new movement${movements === 1 ? "" : "s"}, in its wallets in a moment.`;
   };
+  const readBroker = async (b: BrokerAccount) => {
+    const { balancesSeen } = await tradingService.readBrokerAccount(b.uuid);
+    SETTLE_DELAYS_MS.forEach((ms) => setTimeout(changed, ms));
+    return balancesSeen === 0 ? "Read: nothing new." : `Read: ${balancesSeen} new balance${balancesSeen === 1 ? "" : "s"}, here in a moment.`;
+  };
   const remove = async () => {
     await act("remove", async () => {
       if (link) await bankingService.remove(link.uuid);
       else if (address) await tradingService.remove(address.uuid);
+      else if (brokerAccount) await tradingService.removeBrokerAccount(brokerAccount.uuid);
       setDialog(null);
-    }, link ? "Unable to remove this bank." : "Unable to remove this address.");
+    }, link ? "Unable to remove this bank." : brokerAccount ? "Unable to remove this account." : "Unable to remove this address.");
   };
 
   // ── What can be done with it ──
@@ -139,11 +151,16 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
     actions.push({ label: "Read now", primary: true, plus: false, onClick: () => void act("read", () => readAddress(address), "Unable to read this address now."), disabled: busy === "read" });
     actions.push({ label: funding ? "Hide Add funds" : "Add funds", onClick: () => setFunding((f) => !f) });
     actions.push({ label: "Remove the address", danger: true, onClick: () => { setError(null); setDialog("remove"); } });
+  } else if (brokerAccount) {
+    actions.push({ label: "Read now", primary: true, plus: false, onClick: () => void act("read", () => readBroker(brokerAccount), "Unable to read this account now."), disabled: busy === "read" });
+    actions.push({ label: "Remove the account", danger: true, onClick: () => { setError(null); setDialog("remove"); } });
   }
 
   const figures: PageFigure[] = [
-    sourceFigure(account, link, address, links.isPending || addresses.isPending),
-    lastReadFigure(link, address),
+    brokerAccount ? brokerSourceFigure(brokerAccount)
+      : atBroker ? { label: "Broker", value: account.institution ?? "…" }
+      : sourceFigure(account, link, address, links.isPending || addresses.isPending),
+    brokerAccount ? brokerReadFigure(brokerAccount) : lastReadFigure(link, address),
     { label: "Wallets", value: String(active.length), sub: archived.length ? `${archived.length} archived` : undefined },
     ...(account.holder ? [{ label: "Holder", value: account.holder }] : []),
   ].filter((f): f is PageFigure => !!f);
@@ -154,6 +171,7 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
       {link && link.status !== "active" && <Chip tone="loss">Consent ended</Chip>}
       {link && link.status === "active" && left !== null && renewable(link) && <Chip tone="warn">{left <= 1 ? "Ends today" : `${left} days left`}</Chip>}
       {!bank && !chain && <Chip>Not connected</Chip>}
+      {brokerAccount && <SessionChip state={session.data?.state ?? "unknown"} />}
     </>
   );
   const currencies = new Set(active.map(({ wallet }) => wallet.currency));
@@ -213,7 +231,40 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
       )}
       {bank && !link && links.isError && <p className="text-sm font-semibold text-rose-600">{errorText(links.error, "Unable to load your banks.")}</p>}
 
-      {chain && (
+      {brokerAccount && session.data && session.data.state !== "connected" && (
+        <p className="text-[12.5px] font-semibold text-amber-700">{sessionHint(session.data.state)} Reads and orders wait for it.</p>
+      )}
+      {chain && atBroker && (
+        <Module>
+          <ModuleHead
+            title="Cash"
+            desc="Each currency comes into one wallet of its own, read from the broker: one of yours, or a new one named after it. Read only: nothing here can move money."
+          />
+          <div className={MODULE_BODY}>
+            {coins.length === 0 ? (
+              <p className="text-[12.5px] text-[#857e78]">{brokerAccount?.readAt ? "No cash read yet." : "Its cash shows here after its first read."}</p>
+            ) : (
+              <ul className="space-y-2">
+                {coins.map((h: ChainHolding) => (
+                  <HoldingRow
+                    key={h.uuid}
+                    holding={h}
+                    wallets={wallets}
+                    taken={taken}
+                    busy={busy === h.uuid}
+                    error={rowErrors[h.uuid]}
+                    source="the broker"
+                    onOpenWallet={openWallet}
+                    onLink={(walletUuid) => void act(h.uuid, async () => { await tradingService.linkHolding(h.uuid, walletUuid); }, "Unable to link this currency.", true)}
+                    onUnlink={() => void act(h.uuid, async () => { await tradingService.unlinkHolding(h.uuid); }, "Unable to unlink this currency.", true)}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        </Module>
+      )}
+      {chain && !atBroker && (
         <Module>
           <ModuleHead
             title="Stablecoins"
@@ -242,7 +293,7 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
           </div>
         </Module>
       )}
-      {tradingAccount && <OnchainOrders accounts={[tradingAccount]} onOpen={setOrder} />}
+      {tradingAccount && !atBroker && <OnchainOrders accounts={[tradingAccount]} onOpen={setOrder} />}
 
       {/* Detached (its link or address removed): its wallets, each to open. */}
       {!bank && !chain && (
@@ -296,10 +347,12 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
       {dialog === "renew" && link && <ConnectBankDialog renew={link} onClose={() => setDialog(null)} />}
       {dialog === "remove" && (
         <ConfirmDialog
-          title={link ? `Remove ${link.bankName}?` : `Remove Solana ${address ? shortAddress(address.address) : ""}?`}
+          title={link ? `Remove ${link.bankName}?` : brokerAccount ? `Remove ${account.name}?` : `Remove Solana ${address ? shortAddress(address.address) : ""}?`}
           description={link
             ? "The consent at the bank ends, and its accounts stop coming into their wallets. The account and its wallets stay, with the movements already there."
-            : "Its movements stop coming in. Its portfolio, this account and its wallets stay, with their history; the wallet itself is untouched."}
+            : brokerAccount
+              ? "It is no longer read here. Its portfolio, this account and its wallets stay, with their history; the account at the broker is untouched."
+              : "Its movements stop coming in. Its portfolio, this account and its wallets stay, with their history; the wallet itself is untouched."}
           confirmLabel="Remove"
           confirming={busy === "remove"}
           error={error}
@@ -324,6 +377,16 @@ function sourceFigure(account: Account, link: BankLink | undefined, address: Onc
     sub: link.status === "active" && link.validUntil ? `consent until ${dayLabel(link.validUntil.slice(0, 10))}` : "consent ended: renew it",
     tone: link.status === "active" ? undefined : "loss",
   };
+}
+
+/** Where a broker account's wallets come from: the broker, by the account's id there. */
+function brokerSourceFigure(b: BrokerAccount): PageFigure {
+  const broker = BROKERS.find((x) => x.id === b.broker)?.label ?? b.broker;
+  return { label: "Broker", value: broker, sub: `account ${b.brokerAccountId}` };
+}
+
+function brokerReadFigure(b: BrokerAccount): PageFigure {
+  return { label: "Last read", value: b.readAt ? dayLabel(b.readAt.slice(0, 10)) : "Not yet", sub: "every hour, and on request" };
 }
 
 function lastReadFigure(link: BankLink | undefined, address: OnchainAddress | undefined): PageFigure | null {
