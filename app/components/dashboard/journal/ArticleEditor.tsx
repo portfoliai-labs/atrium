@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Editor, JSONContent } from "@tiptap/core";
 import {
-  AlertTriangle, Check, CheckCircle2, Eye, Loader2, PenLine, Send, Trash2, Undo2, X,
+  AlertTriangle, Check, CheckCircle2, Eye, Globe, Loader2, PenLine, Send, Trash2, Undo2, X,
 } from "lucide-react";
 import { useUser } from "../../../context/UserContext";
 import { journalKey, useJournal, useJournalQuery } from "../../../context/JournalContext";
@@ -16,12 +16,12 @@ import type {
 } from "../../../models/Journal";
 import { instrumentRef } from "../../../models/Journal";
 import {
-  DEFAULT_CATEGORY, DEK_MAX, DISCLOSURE_HELP, DISCLOSURE_MAX, DISCLOSURE_TITLE, MAX_INSTRUMENTS,
-  TITLE_MAX, dateLabel, journalErrorText,
+  DEFAULT_CATEGORY, DEK_MAX, DISCLOSURE_HELP, DISCLOSURE_MAX, DISCLOSURE_TITLE, MAX_INSTRUMENTS, NETWORK_EDIT_NOTE,
+  NETWORK_PUBLISH_NOTICE, NETWORK_PUBLISH_TITLE, TITLE_MAX, dateLabel, journalErrorText,
 } from "../../../lib/journal";
 import { serif, serifText } from "../../preview/PreviewKit";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { BackLink, ErrorState, Spinner, StatusChip } from "./JournalKit";
+import { BackLink, ErrorState, NetworkStatusLine, Spinner, StatusChip } from "./JournalKit";
 import { BodyEditor, focusNode } from "./BodyEditor";
 import { docToBlocks } from "./bodyDoc";
 import { ArticleDocument } from "./ArticleReader";
@@ -140,6 +140,8 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
   const [justPublished, setJustPublished] = useState(false);
   const [preview, setPreview] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // The network's notice, confirmed before each draft is published.
+  const [confirmPublish, setConfirmPublish] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
 
   const status = article?.status ?? "draft";
@@ -291,7 +293,13 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
       setActionError(`To publish it, it still needs ${missing.join(", ").replace(/, ([^,]*)$/, " and $1")}.`);
       return;
     }
+    // An article for an advisor's clients never goes out to the network: no notice to confirm.
+    if (form.audience !== "advisor_clients" && !confirmPublish) {
+      setConfirmPublish(true);
+      return;
+    }
     const next = await run("publish", journalService.publish);
+    setConfirmPublish(false);
     if (next) setJustPublished(true);
   };
   const unpublish = () => run("unpublish", journalService.unpublish);
@@ -353,6 +361,8 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     applauseCount: article?.applauseCount ?? 0,
     applauded: false,
     commentCount: article?.commentCount ?? 0,
+    origin: "local",
+    network: article?.network ?? null,
     body: previewBody,
     interestDisclosure: isAdvisor ? form.interestDisclosure || null : null,
     createdAt: article?.createdAt ?? "",
@@ -386,6 +396,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
           <BackLink label="Your articles" onClick={() => void leave()} />
           <StatusChip status={status} />
           <span className="text-[11px] font-semibold text-[#a8a29e]">{saveState}</span>
+          <NetworkStatusLine network={article?.network} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -400,7 +411,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
               type="button"
               onClick={() => void unpublish()}
               disabled={!!busy}
-              title="Back to a draft: only you can read it"
+              title={article?.network ? "Back to a draft: only you can read it, and a deletion request goes to the network" : "Back to a draft: only you can read it"}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold text-[#57534e] border border-[#E0DACC] bg-transparent hover:border-[#C49A3C] hover:text-[#1c1917] disabled:opacity-50"
             >
               {busy === "unpublish" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />} Unpublish
@@ -423,9 +434,16 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
 
       {justPublished && article?.slug && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-900">
-          <span className="flex items-center gap-2 font-bold"><CheckCircle2 className="h-4 w-4" /> Published: it&apos;s in the Journal now.</span>
+          <span className="flex items-center gap-2 font-bold">
+            <CheckCircle2 className="h-4 w-4" />
+            {form.audience === "advisor_clients" ? "Published: your clients can read it now." : "Published: it's in the Journal and on its way to the network."}
+          </span>
           <button type="button" onClick={() => onRead(article.slug!)} className="text-xs font-bold underline underline-offset-2">Read it</button>
         </div>
+      )}
+
+      {status === "published" && article?.network && (
+        <p className="flex items-center gap-2 text-[12px] text-slate-500"><Globe className="h-3.5 w-3.5 shrink-0 text-sky-600" /> {NETWORK_EDIT_NOTE}</p>
       )}
 
       {conflict && (
@@ -525,11 +543,25 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
           title="Delete this article?"
           description={status === "draft"
             ? "The draft and its images are deleted for good."
-            : "It disappears from the Journal and from everyone's saved articles, for good. To take it down for now, unpublish it instead."}
+            : article?.network
+              ? "It disappears from the Journal and from everyone's saved articles, for good, and a deletion request goes to the network: older copies may remain on other nodes. To take it down for now, unpublish it instead."
+              : "It disappears from the Journal and from everyone's saved articles, for good. To take it down for now, unpublish it instead."}
           confirming={busy === "delete"}
           error={actionError}
           onConfirm={() => void remove()}
           onClose={() => setConfirmDelete(false)}
+        />
+      )}
+      {confirmPublish && (
+        <ConfirmDialog
+          title={NETWORK_PUBLISH_TITLE}
+          description={NETWORK_PUBLISH_NOTICE}
+          confirmLabel="Publish"
+          tone="neutral"
+          confirming={busy === "publish"}
+          error={actionError}
+          onConfirm={() => void publish(missing)}
+          onClose={() => setConfirmPublish(false)}
         />
       )}
       {confirmLeave && (

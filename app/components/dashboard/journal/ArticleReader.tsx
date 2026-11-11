@@ -7,15 +7,18 @@ import { Bookmark, BookmarkCheck, HandHeart, Info, Loader2, PenLine } from "luci
 import { useUser } from "../../../context/UserContext";
 import { journalKey, useJournal, useJournalQuery } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
-import type { Article, ArticleInstrument } from "../../../models/Journal";
+import type { Article, ArticleImage, ArticleInstrument } from "../../../models/Journal";
 import {
-  DISCLOSURE_TITLE, NOT_ADVICE_NOTICE, authorName, dateLabel, isArticleNotFound, journalErrorText,
+  DISCLOSURE_TITLE, NOT_ADVICE_NOTICE, authorName, dateLabel, imageSrc, isArticleNotFound, isNetworkArticle, journalErrorText,
 } from "../../../lib/journal";
 import { serif, serifText } from "../../preview/PreviewKit";
 import type { JournalFilters } from "../JournalSection";
 import { ArticleBody, ArticleFigure } from "./ArticleBody";
-import { AuthorBadge, EmptyState, ErrorState, Meta, Spinner } from "./JournalKit";
+import { AuthorAvatar, AuthorBadge, EmptyState, ErrorState, FollowButton, Meta, NetworkBadge, NpubChip, Spinner } from "./JournalKit";
 import { ArticleComments } from "./ArticleComments";
+
+/** The same image: by its upload, or (a network article's, with none) by its address. */
+const sameImage = (a: ArticleImage, b: ArticleImage) => (a.imageUuid ? a.imageUuid === b.imageUuid : imageSrc(a) === imageSrc(b));
 
 /**
  * An article as its readers see it: the byline, cover, body, the instruments it's about, and
@@ -40,6 +43,7 @@ export function ArticleDocument({ article, actions, onAuthor, onInstrument, bare
         {article.dek && <p className="text-lg md:text-[21px] italic text-[#57534e] mt-4 leading-snug" style={serifText}>{article.dek}</p>}
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <p className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <AuthorAvatar author={article.author} size={24} />
             <span>By</span>
             {onAuthor ? (
               <button type="button" onClick={onAuthor} className="font-bold text-slate-800 hover:text-[#C49A3C]">{name}</button>
@@ -47,12 +51,14 @@ export function ArticleDocument({ article, actions, onAuthor, onInstrument, bare
               <span className="font-bold text-slate-800">{name}</span>
             )}
             <AuthorBadge author={article.author} />
+            {isNetworkArticle(article) && <NetworkBadge />}
+            {isNetworkArticle(article) && article.author.npub && <NpubChip npub={article.author.npub} />}
             {article.editedAt && <span className="text-slate-400">· Updated {dateLabel(article.editedAt)}</span>}
           </p>
           {actions}
         </div>
         {/* The cover is the body's first image, now: shown there, not twice. */}
-        {article.cover && !article.body.some((b) => b.type === "image" && b.imageUuid === article.cover!.imageUuid) && (
+        {article.cover && !article.body.some((b) => b.type === "image" && sameImage(b, article.cover!)) && (
           <ArticleFigure image={article.cover} className="mt-8" />
         )}
         <div className="mt-8 pt-8 border-t border-slate-100">
@@ -128,7 +134,8 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
   const article = read.data;
   if (!article) return <div className="pb-12"><Spinner /></div>;
 
-  const own = !!user && article.author.userUuid === user.uuid;
+  // A network article is nobody's here: read-only, even by its author's key.
+  const own = !!user && !isNetworkArticle(article) && article.author.userUuid === user.uuid;
 
   const toggleSave = async () => {
     setSaving(true);
@@ -178,6 +185,12 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
 
   const actions = (
     <div className="flex items-center gap-1.5">
+      {!own && (
+        <FollowButton
+          author={article.author}
+          onChange={(followed) => setArticle((a) => ({ ...a, author: { ...a.author, followed } }))}
+        />
+      )}
       {applause}
       {canWrite && (
         <button
@@ -200,6 +213,10 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
 
   const { author } = article;
   const authorUuid = author.userUuid;
+  // A local author by their account, a network one by their key.
+  const authorFilter = authorUuid
+    ? { uuid: authorUuid, name: authorName(author) }
+    : author.pubkey ? { pubkey: author.pubkey, name: authorName(author) } : null;
   return (
     <div className="pb-12 space-y-5">
       {saveError && <p className="text-xs font-medium text-rose-600">{saveError}</p>}
@@ -207,7 +224,7 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
         article={article}
         actions={actions}
         bare
-        onAuthor={authorUuid ? () => onFilter({ author: { uuid: authorUuid, name: authorName(author) } }) : undefined}
+        onAuthor={authorFilter ? () => onFilter({ author: authorFilter }) : undefined}
         onInstrument={(i) => onFilter({ instrument: { ticker: i.ticker, isin: i.isin, instrumentId: i.instrumentId } })}
       />
       {mode === "api" && article.status === "published" && (

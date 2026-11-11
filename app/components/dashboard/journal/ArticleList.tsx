@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { HandHeart, Search, X } from "lucide-react";
+import { HandHeart, Search, UserCheck, X } from "lucide-react";
 import { useJournal, useJournalRead } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
 import { CATEGORIES, CATEGORY_LABELS, QUERY_MAX } from "../../../lib/journal";
@@ -52,7 +52,7 @@ export function ArticleList({ filters, onFilters, onOpen }: {
   onFilters: (filters: JournalFilters) => void;
   onOpen: (slug: string) => void;
 }) {
-  const { language, mode } = useJournal();
+  const { language, mode, canWrite } = useJournal();
   const [query, setQuery] = useState(filters.q ?? "");
 
   // Words typed reach the list once the reader pauses.
@@ -63,18 +63,20 @@ export function ArticleList({ filters, onFilters, onOpen }: {
     return () => clearTimeout(timer);
   }, [query, filters, onFilters]);
 
-  const { category, q, author, instrument } = filters;
+  const { category, q, author, instrument, following } = filters;
   const list = useArticles({
     category,
     q,
     authorUuid: author?.uuid,
+    authorPubkey: author?.uuid ? undefined : author?.pubkey,
+    followedOnly: following || undefined,
     ...(instrument?.instrumentId
       ? { instrumentId: instrument.instrumentId }
       : { ticker: instrument?.ticker, isin: instrument?.isin ?? undefined }),
     preferredLanguage: language,
   });
 
-  const narrowed = !!(category || q || author || instrument);
+  const narrowed = !!(category || q || author || instrument || following);
   const setCategory = (next: ArticleCategory | undefined) => onFilters({ ...filters, category: next });
   const top = useTopArticle(!narrowed && mode === "api", language);
   // The large card only on the unnarrowed list: today's most applauded, or the newest.
@@ -107,6 +109,21 @@ export function ArticleList({ filters, onFilters, onOpen }: {
                 </button>
               );
             })}
+            {canWrite && (
+              <>
+                <span className="shrink-0 w-px my-1 bg-slate-200" />
+                <button
+                  type="button"
+                  onClick={() => onFilters({ ...filters, following: following ? undefined : true })}
+                  title="Only the authors you follow"
+                  className={`shrink-0 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
+                    following ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <UserCheck className="h-3.5 w-3.5" /> Following
+                </button>
+              </>
+            )}
           </div>
           <label className="relative block shrink-0 md:w-64">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -133,7 +150,11 @@ export function ArticleList({ filters, onFilters, onOpen }: {
       ) : !list.items || top === undefined ? (
         <Spinner />
       ) : list.items.length === 0 ? (
-        <EmptyState>{narrowed ? "No articles match." : "No articles yet."}</EmptyState>
+        <EmptyState>
+          {following && !category && !q && !author && !instrument
+            ? "No articles from the authors you follow yet: follow an author from one of their articles."
+            : narrowed ? "No articles match." : "No articles yet."}
+        </EmptyState>
       ) : (
         <>
           {lead && (

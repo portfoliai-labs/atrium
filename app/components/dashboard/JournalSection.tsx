@@ -12,6 +12,7 @@ import { ArticleReader } from "./journal/ArticleReader";
 import { ArticleEditor } from "./journal/ArticleEditor";
 import { MyArticles } from "./journal/MyArticles";
 import { SavedArticles } from "./journal/SavedArticles";
+import { FollowingAuthors } from "./journal/FollowingAuthors";
 import { JournalNavContext } from "./journal/JournalMenu";
 
 const SECTION = JOURNAL_SECTION;
@@ -20,7 +21,10 @@ const SECTION = JOURNAL_SECTION;
 export interface JournalFilters {
   category?: ArticleCategory;
   q?: string;
-  author?: { uuid: string; name: string };
+  // A local author by their account, a network one by their public key.
+  author?: { uuid?: string; pubkey?: string; name: string };
+  // Only the authors the reader follows.
+  following?: boolean;
   // By census' instrument; one saved before listings by its ticker and ISIN.
   instrument?: { ticker: string; isin: string | null; instrumentId?: string | null };
 }
@@ -34,6 +38,8 @@ export type JournalView =
   | { page: "article"; slug: string }
   | { page: "saved" }
   | { page: "mine" }
+  // The authors the reader follows.
+  | { page: "following" }
   // The editor: one of the caller's articles, or a new one.
   | { page: "write"; uuid?: string };
 
@@ -81,7 +87,7 @@ export function JournalSection() {
   // from before) is the list.
   const allowed =
     view.page === "journal" || view.page === "article"
-    || ((view.page === "saved" || view.page === "mine" || view.page === "write") && canWrite);
+    || ((view.page === "saved" || view.page === "mine" || view.page === "write" || view.page === "following") && canWrite);
   const page = allowed ? view : LIST;
 
   // The page itself; the Journal's menu, in each page's header, reads where it is and moves on.
@@ -98,6 +104,8 @@ export function JournalSection() {
         );
       case "saved":
         return <SavedArticles onOpen={openArticle} />;
+      case "following":
+        return <FollowingAuthors onAuthor={(author) => go({ page: "journal", filters: { author } })} />;
       case "mine":
         return <MyArticles onOpen={openEditor} onNew={() => openEditor()} />;
       case "write":
