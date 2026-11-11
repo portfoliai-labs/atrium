@@ -17,6 +17,7 @@ const CHIPS: Record<Order["state"], string> = {
   requested: "bg-slate-100 text-slate-600",
   awaiting_signature: "bg-amber-50 text-amber-700",
   submitted: "bg-sky-50 text-sky-700",
+  partially_filled: "bg-sky-50 text-sky-700",
   filled: "bg-emerald-50 text-emerald-700",
   rejected: "bg-rose-50 text-rose-600",
   failed: "bg-rose-50 text-rose-600",

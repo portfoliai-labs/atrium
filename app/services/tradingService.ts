@@ -103,14 +103,18 @@ export const tradingService = {
     return apiFetch<ChainHolding>(`/v1/chain-holdings/${holdingUuid}/wallet`, { method: "DELETE" });
   },
 
-  // GET /v1/orders/quote — the venue's quote for an order not placed yet: a buy by the cash to
-  // spend, a sale by the units to give. 409 NoRouteError, NoVenueError (devnet has none).
-  async quote(input: { tradingAccountUuid: string; listingId: string; side: OrderSide; quantity?: number; cashAmount?: number; cashCurrency: string }): Promise<OrderQuote> {
+  // GET /v1/orders/quote — the venue's quote for an order not placed yet. On chain: a buy by the
+  // cash to spend, a sale by the units to give; 409 NoRouteError, NoVenueError (devnet has none).
+  // At a broker: whole units both ways, a limit from the listing's price and `slippageBps`
+  // (nothing sent); 422 AmountUnsupportedError, CurrencyUnsupportedError, 409
+  // ContractNotFoundError, ReferencePriceUnavailableError, 503 BrokerUnavailableError.
+  async quote(input: { tradingAccountUuid: string; listingId: string; side: OrderSide; quantity?: number; cashAmount?: number; cashCurrency: string; slippageBps?: number }): Promise<OrderQuote> {
     const params = new URLSearchParams({
       tradingAccountUuid: input.tradingAccountUuid, listingId: input.listingId, side: input.side, cashCurrency: input.cashCurrency,
     });
     if (input.quantity !== undefined) params.set("quantity", String(input.quantity));
     if (input.cashAmount !== undefined) params.set("cashAmount", String(input.cashAmount));
+    if (input.slippageBps !== undefined) params.set("slippageBps", String(input.slippageBps));
     return apiFetch<OrderQuote>(`/v1/orders/quote?${params.toString()}`);
   },
 
@@ -145,7 +149,8 @@ export const tradingService = {
     return apiFetch<OrderDetails>(`/v1/orders/${orderUuid}/details`);
   },
 
-  // POST /v1/orders/{o}/cancel — an order not sent yet; 409 OrderNotCancellableError once sent.
+  // POST /v1/orders/{o}/cancel — an order not sent yet; one working at a broker gets its cancel
+  // asked (the outcome the broker's); 409 OrderNotCancellableError once over.
   async cancelOrder(orderUuid: string): Promise<Order> {
     return apiFetch<Order>(`/v1/orders/${orderUuid}/cancel`, { method: "POST" });
   },

@@ -65,6 +65,7 @@ const STATE_LABELS: Record<Order["state"], string> = {
   requested: "Requested",
   awaiting_signature: "Awaiting signature",
   submitted: "Sent",
+  partially_filled: "Partly filled",
   filled: "Filled",
   rejected: "Rejected",
   failed: "Failed",
