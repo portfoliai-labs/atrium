@@ -42,20 +42,21 @@ export const DISCLOSURE_MAX = 2000;
 export const COMMENT_MAX = 2000;
 export const QUERY_MAX = 200;
 
-// The notices an article is shown with. PLACEHOLDERS: their wording is waiting for a legal review
-// (forum's service-map, "acta": the notice, the advisors' disclosure, the authors' terms).
+// The notices an article is shown with (reviewed 2026-11-11: the project hosts nothing and an
+// article may come from anyone on the network; the disclosure follows MAR art. 20 and its
+// Delegated Regulation 2016/958, arts. 5-6).
 export const NOT_ADVICE_NOTICE =
-  "This article is its author's own opinion, published on PortfoliAI without review. It is not investment advice, and PortfoliAI doesn't endorse it.";
+  "This article is its author's own opinion. Nobody has reviewed it, and it is neither investment advice nor a personal recommendation: read it critically and talk to an authorised advisor before you invest.";
 export const DISCLOSURE_TITLE = "The author's interests in the instruments named";
 export const DISCLOSURE_HELP =
-  "As an advisor naming instruments, say whether you, your firm or your clients hold them or have other interests in them. It is shown with the article.";
+  "Required by the EU's market abuse rules (MAR, art. 20; Delegated Regulation 2016/958, arts. 5-6) when you, as an advisor, write about instruments. Say whether you, your firm or the people working with you hold positions in them or in their issuers (long or short), are paid by an issuer, or have any other interest that could affect your objectivity, or write that you have none. It is shown with the article.";
 
 // ── The network (Nostr) ──
 
 // What the author confirms before a draft goes out: a published article is on the network.
 export const NETWORK_PUBLISH_TITLE = "Publish to the network?";
 export const NETWORK_PUBLISH_NOTICE =
-  "Your article goes out to the network: other PortfoliAI instances and Nostr apps can read it. You can edit it and ask for its deletion later, but older copies may remain on other nodes.";
+  "Your article becomes public: it goes out signed with your network identity, and anyone can read and copy it, on other PortfoliAI installs and in any Nostr app. You can edit it and ask for its deletion later, but the servers that received it decide whether to honour that, and copies may remain.";
 // Under a published article's editor: saving sends the edit out too, without asking again.
 export const NETWORK_EDIT_NOTE = "This article is on the network: your saved edits go out to it too.";
 
