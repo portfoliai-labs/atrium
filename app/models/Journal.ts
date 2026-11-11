@@ -23,6 +23,13 @@ export type ImageFormat = "jpeg" | "png" | "webp";
 export type ArticleOrder = "newest" | "top_day" | "top_week";
 // Hidden by the article's author (the commenter's and theirs only); a hidden comment hides its replies.
 export type CommentStatus = "visible" | "hidden_by_author";
+// `trusted`: this instance's articles and the network authors in the caller's web of trust (whom
+// they follow, and whom those follow). Unset: every article ("All the network").
+export type ArticleScope = "trusted";
+// A report's reason, as NIP-56 names them.
+export type ReportReason = "spam" | "illegal" | "impersonation" | "nudity" | "profanity" | "malware" | "other";
+// A report on a network target goes out signed by the reporter: `local` on this instance's only.
+export type ReportNetworkState = "local" | "pending" | "published" | "failed";
 
 // ── The body's blocks: the same shape written and read ──
 
@@ -125,6 +132,11 @@ export interface ArticleAuthor {
   pictureUrl?: string | null;
   // Whether the caller follows them.
   followed?: boolean;
+  // Whether the caller muted them: their articles and comments are left out of the lists.
+  muted?: boolean;
+  // A local author always; a network author when in the caller's web of trust. Absent from a
+  // backend before moderation: trusted.
+  trusted?: boolean;
 }
 
 /** Where the author's own article stands on the network; null on anyone else's. */
@@ -165,6 +177,8 @@ export interface ArticleSummary {
   // Absent from a backend before the network: local.
   origin?: ArticleOrigin;
   network?: NetworkStatus | null;
+  // Whether the caller hid it (only one article's page and the saved and hidden lists show those).
+  hidden?: boolean;
 }
 
 export interface Article extends ArticleSummary {
@@ -206,6 +220,8 @@ export interface ArticleFilters {
   followedOnly?: boolean;
   // One author's by their public key (lowercase hex).
   authorPubkey?: string;
+  // Only the reader's network (see ArticleScope); unset: everyone's.
+  scope?: ArticleScope;
   limit?: number;
   offset?: number;
 }
@@ -223,6 +239,48 @@ export interface SavedArticle {
 export interface Follow {
   author: ArticleAuthor;
   followedAt: string;
+}
+
+// ── The reader's moderation: mutes, hidden articles, reports (the reader's own) ──
+
+/** An author the caller muted (local only, never published). */
+export interface Mute {
+  author: ArticleAuthor;
+  mutedAt: string;
+}
+
+export interface MutePage {
+  authors: Mute[];
+  total: number;
+}
+
+/** An article the caller hid. */
+export interface HiddenArticle {
+  article: ArticleSummary;
+  hiddenAt: string;
+}
+
+export interface HiddenArticlePage {
+  articles: HiddenArticle[];
+  total: number;
+}
+
+/** What a report is about: exactly one of an article, a comment or an author's key. */
+export type ReportTarget = { articleUuid: string } | { commentUuid: string } | { pubkey: string };
+
+export type ReportRequest = ReportTarget & { reason: ReportReason; note?: string | null };
+
+/** A report made: its target is hidden (or, a key, muted) for the reporter. Reporting again answers the first. */
+export interface Report {
+  reportUuid: string;
+  articleUuid?: string | null;
+  commentUuid?: string | null;
+  pubkey?: string | null;
+  reason: ReportReason;
+  note?: string | null;
+  createdAt: string;
+  networkState: ReportNetworkState;
+  eventId?: string | null;
 }
 
 // ── The caller's network identity (Nostr) ──

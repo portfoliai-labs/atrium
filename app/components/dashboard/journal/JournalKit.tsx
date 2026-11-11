@@ -11,7 +11,7 @@ import { journalService } from "../../../services/journalService";
 import type { ArticleAuthor, ArticleFilters, ArticleStatus, ArticleSummary, NetworkStatus, Page } from "../../../models/Journal";
 import {
   CATEGORY_LABELS, DEFAULT_CATEGORY, NETWORK_STATE_LABELS, STATUS_LABELS, authorName, dateLabel, imageSrc, isNetworkArticle,
-  journalErrorText, shortNpub,
+  isNewAuthor, journalErrorText, shortNpub,
 } from "../../../lib/journal";
 import { serif } from "../../preview/PreviewKit";
 import { JournalMenu } from "./JournalMenu";
@@ -41,12 +41,27 @@ export function BackLink({ label, onClick }: { label: string; onClick: () => voi
   );
 }
 
+/** An advisor; a network author outside the reader's network ("New author"). */
 export function AuthorBadge({ author, dark = false }: { author: ArticleAuthor; dark?: boolean }) {
-  if (author.kind !== "advisor") return null;
+  const advisor = author.kind === "advisor";
+  const newAuthor = isNewAuthor(author);
+  if (!advisor && !newAuthor) return null;
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${dark ? "bg-white/10 text-stone-300" : "bg-slate-100 text-slate-500"}`}>
-      Advisor
-    </span>
+    <>
+      {advisor && (
+        <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${dark ? "bg-white/10 text-stone-300" : "bg-slate-100 text-slate-500"}`}>
+          Advisor
+        </span>
+      )}
+      {newAuthor && (
+        <span
+          title="Outside your network: neither you nor anyone you follow follows them"
+          className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${dark ? "bg-amber-400/15 text-amber-200" : "bg-amber-50 text-amber-700"}`}
+        >
+          New author
+        </span>
+      )}
+    </>
   );
 }
 
@@ -64,7 +79,8 @@ export function NetworkBadge({ dark = false }: { dark?: boolean }) {
 
 /** A network author's profile picture, when they have one. */
 export function AuthorAvatar({ author, size = 20 }: { author: ArticleAuthor; size?: number }) {
-  if (!author.pictureUrl) return null;
+  // An author outside the reader's network: their picture isn't loaded.
+  if (!author.pictureUrl || isNewAuthor(author)) return null;
   return (
     // An address on another server: next/image can't optimise it.
     // eslint-disable-next-line @next/next/no-img-element
@@ -201,12 +217,17 @@ function CardByline({ article, dark = false }: { article: ArticleSummary; dark?:
   );
 }
 
-const coverUrl = (article: ArticleSummary) => imageSrc(article.cover);
+/** A card's cover: none for an author outside the reader's network (loaded on the article's page, when asked). */
+const coverUrl = (article: ArticleSummary) => (isNewAuthor(article.author) ? null : imageSrc(article.cover));
 
-/** The list's lead (today's most applauded, or the newest): dark and full width, the way into the page; `badge` says why it leads. */
-export function LeadCard({ article, onOpen, badge }: { article: ArticleSummary; onOpen: () => void; badge?: React.ReactNode }) {
+/**
+ * The list's lead (today's most applauded, or the newest): dark and full width, the way into the
+ * page; `badge` says why it leads; `menu` (the reader's moderation) at its top right.
+ */
+export function LeadCard({ article, onOpen, badge, menu }: { article: ArticleSummary; onOpen: () => void; badge?: React.ReactNode; menu?: React.ReactNode }) {
   const cover = coverUrl(article);
   return (
+    <div className="relative">
     <button
       type="button"
       onClick={onOpen}
@@ -231,13 +252,15 @@ export function LeadCard({ article, onOpen, badge }: { article: ArticleSummary; 
         <img src={cover} alt={article.cover?.altText ?? ""} className="relative w-full md:w-2/5 h-48 md:h-auto object-cover" />
       )}
     </button>
+    {menu && <div className="absolute top-3 right-3 z-10">{menu}</div>}
+    </div>
   );
 }
 
-export function ArticleCard({ article, onOpen, footer }: { article: ArticleSummary; onOpen: () => void; footer?: React.ReactNode }) {
+export function ArticleCard({ article, onOpen, footer, menu }: { article: ArticleSummary; onOpen: () => void; footer?: React.ReactNode; menu?: React.ReactNode }) {
   const cover = coverUrl(article);
   return (
-    <div className="group h-full bg-white rounded-3xl border border-slate-200 shadow-sm hover:border-[#C49A3C]/50 hover:shadow-md transition-all overflow-hidden flex flex-col">
+    <div className="relative group h-full bg-white rounded-3xl border border-slate-200 shadow-sm hover:border-[#C49A3C]/50 hover:shadow-md transition-all overflow-hidden flex flex-col">
       <button type="button" onClick={onOpen} className="flex-1 text-left flex flex-col outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C49A3C]/60">
         {cover && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -256,6 +279,7 @@ export function ArticleCard({ article, onOpen, footer }: { article: ArticleSumma
         </div>
       </button>
       {footer && <div className="border-t border-slate-100 px-5 py-3 md:px-6">{footer}</div>}
+      {menu && <div className={`absolute right-3 z-10 ${cover ? "top-3" : "top-4"}`}>{menu}</div>}
     </div>
   );
 }

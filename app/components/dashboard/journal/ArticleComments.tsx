@@ -7,8 +7,9 @@ import { CornerDownRight, Eye, EyeOff, Loader2, PenLine, Trash2 } from "lucide-r
 import { journalKey, useJournal } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
 import type { Article, Comment } from "../../../models/Journal";
-import { COMMENT_MAX, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
+import { COMMENT_MAX, authorKey, authorName, dateLabel, journalErrorText } from "../../../lib/journal";
 import { AuthorBadge, ErrorState, LoadMore, PAGE_SIZE, Spinner, usePaged } from "./JournalKit";
+import { ItemMenu, ReportDialog, UndoBar, reportedMessage, useIsMe, type MenuItem, type Undoable } from "./Moderation";
 import { serif, serifText } from "../../preview/PreviewKit";
 
 /** Who wrote a comment, as a round of their initials. */
@@ -94,11 +95,13 @@ const HIDDEN_LABEL = "Hidden by the article's author: only its writer and the au
  * One comment: its writer, text and actions. The writer edits and deletes theirs (with its
  * replies); the article's author hides one under their article and shows it again. A top-level comment opens its replies and takes a reply.
  */
-function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemove }: {
+function CommentItem({ article, comment, canWrite, ownArticle, menu, onChange, onRemove }: {
   article: Article;
   comment: Comment;
   canWrite: boolean;
   ownArticle: boolean;
+  // The reader's moderation of someone else's comment.
+  menu?: React.ReactNode;
   onChange: (comment: Comment) => void;
   onRemove: (comment: Comment) => void;
 }) {
@@ -140,14 +143,15 @@ function CommentItem({ article, comment, canWrite, ownArticle, onChange, onRemov
       <Initials name={name} small={!topLevel} />
       <div className="min-w-0 flex-1">
         <div className={hidden ? "opacity-70" : undefined}>
-          <p className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="font-bold text-[#1c1917]">{name}</span>
             <AuthorBadge author={comment.author} />
             {comment.byArticleAuthor && (
               <span className="rounded-full bg-[#C49A3C]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#8A6A28]">Author</span>
             )}
             <span className="text-[#a8a29e]">{dateLabel(comment.createdAt)}{comment.editedAt && " · edited"}</span>
-          </p>
+            {menu && <span className="ml-auto">{menu}</span>}
+          </div>
           {hidden && (
             <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-rose-700">
               <EyeOff className="h-3 w-3" /> {HIDDEN_LABEL}
@@ -242,10 +246,72 @@ function CommentThread({ article, parentUuid, canWrite, ownArticle, onCount }: {
   onCount?: (delta: number) => void;
 }) {
   const { changed } = useJournal();
+  const isMe = useIsMe();
   const list = usePaged(
     ["comments", article.uuid, parentUuid ?? null],
     (offset) => journalService.comments(article.uuid, parentUuid, PAGE_SIZE, offset),
   );
+  // What the reader hid, muted or reported: off the thread at once.
+  const [goneComments, setGoneComments] = useState<ReadonlySet<string>>(new Set());
+  const [goneAuthors, setGoneAuthors] = useState<ReadonlySet<string>>(new Set());
+  const [last, setLast] = useState<Undoable | null>(null);
+  const [reporting, setReporting] = useState<Comment | null>(null);
+  const toggle = (set: ReadonlySet<string>, key: string, on: boolean) => {
+    const next = new Set(set);
+    if (on) next.add(key);
+    else next.delete(key);
+    return next;
+  };
+
+  const hideForMe = async (comment: Comment) => {
+    setGoneComments((s) => toggle(s, comment.uuid, true));
+    try {
+      await journalService.hideCommentForMe(comment.uuid);
+      changed();
+      setLast({
+        message: "Comment hidden for you.",
+        undo: async () => {
+          await journalService.unhideCommentForMe(comment.uuid);
+          setGoneComments((s) => toggle(s, comment.uuid, false));
+          changed();
+        },
+      });
+    } catch (err) {
+      setGoneComments((s) => toggle(s, comment.uuid, false));
+      setLast({ message: journalErrorText(err, "The comment couldn't be hidden. Try again.") });
+    }
+  };
+  const mute = async (comment: Comment) => {
+    const key = authorKey(comment.author);
+    if (!key) return;
+    setGoneAuthors((s) => toggle(s, key, true));
+    try {
+      await journalService.mute(key);
+      changed();
+      setLast({
+        message: `${authorName(comment.author)} muted: their articles and comments are hidden for you.`,
+        undo: async () => {
+          await journalService.unmute(key);
+          setGoneAuthors((s) => toggle(s, key, false));
+          changed();
+        },
+      });
+    } catch (err) {
+      setGoneAuthors((s) => toggle(s, key, false));
+      setLast({ message: journalErrorText(err, "The author couldn't be muted. Try again.") });
+    }
+  };
+  const menuFor = (comment: Comment) => {
+    if (!canWrite || comment.mine || isMe(comment.author)) return undefined;
+    const items: MenuItem[] = [{ label: "Hide comment", onClick: () => void hideForMe(comment) }];
+    if (authorKey(comment.author)) items.push({ label: `Mute ${authorName(comment.author)}`, onClick: () => void mute(comment) });
+    items.push({ label: "Report…", danger: true, onClick: () => setReporting(comment) });
+    return <ItemMenu items={items} label="Comment options" />;
+  };
+  const visible = (c: Comment) => {
+    const key = authorKey(c.author);
+    return !goneComments.has(c.uuid) && !(key && goneAuthors.has(key));
+  };
   const replace = (next: Comment) => {
     list.update((items) => items.map((c) => (c.uuid === next.uuid ? next : c)));
     changed();
@@ -256,21 +322,47 @@ function CommentThread({ article, parentUuid, canWrite, ownArticle, onCount }: {
     onCount?.(-(1 + gone.replyCount));
   };
 
+  const moderation = (
+    <>
+      {last && <div className="py-2"><UndoBar action={last} onClose={() => setLast(null)} /></div>}
+      {reporting && (
+        <ReportDialog
+          target={{ commentUuid: reporting.uuid }}
+          what="this comment"
+          onClose={() => setReporting(null)}
+          onDone={(report) => {
+            setGoneComments((s) => toggle(s, reporting.uuid, true));
+            setReporting(null);
+            setLast({ message: reportedMessage(report, "the comment is hidden for you") });
+          }}
+        />
+      )}
+    </>
+  );
+
   if (list.error) return <ErrorState message={list.error} onRetry={list.retry} />;
   if (!list.items) return <Spinner />;
-  if (list.items.length === 0) {
-    return parentUuid ? null : <p className="py-6 text-center text-[17px] italic text-[#a8a29e]" style={serifText}>No comments yet.</p>;
+  const items = list.items.filter(visible);
+  if (items.length === 0 && !list.hasMore) {
+    return (
+      <>
+        {moderation}
+        {parentUuid ? null : <p className="py-6 text-center text-[17px] italic text-[#a8a29e]" style={serifText}>No comments yet.</p>}
+      </>
+    );
   }
   return (
     <>
+      {moderation}
       <ul className={parentUuid ? "divide-y divide-[#F1EADB]" : "divide-y divide-[#E7E1D3]"}>
-        {list.items.map((c) => (
+        {items.map((c) => (
           <CommentItem
             key={c.uuid}
             article={article}
             comment={c}
             canWrite={canWrite}
             ownArticle={ownArticle}
+            menu={menuFor(c)}
             onChange={(next) => {
               if (next.replyCount > c.replyCount) onCount?.(next.replyCount - c.replyCount);
               replace(next);

@@ -5,6 +5,13 @@ import { createContext, useContext, useMemo } from "react";
 import type { ArticleImage, ArticleInstrument, Block, Span } from "../../../models/Journal";
 import { imageSrc, splitTags, tagPattern } from "../../../lib/journal";
 import { serif, serifText } from "../../preview/PreviewKit";
+import { ImagesHidden } from "./Moderation";
+
+/**
+ * Whether the article's images wait for the reader (an author outside their network: `blocked`
+ * until they ask, with `show`). Unset: loaded.
+ */
+export const ImagePolicy = createContext<{ blocked: boolean; show: () => void }>({ blocked: false, show: () => {} });
 
 // The article's instruments, for the tags in its text: what "#" and a ticker names, and where it leads.
 const Tags = createContext<{ instruments: ArticleInstrument[]; pattern: RegExp | null; onInstrument?: (i: ArticleInstrument) => void }>({
@@ -54,8 +61,10 @@ function Spans({ spans }: { spans: Span[] }) {
 
 /** An image of the article, from its short-lived link (a network article's: its public address); its caption under it. */
 export function ArticleFigure({ image, className = "" }: { image: ArticleImage; className?: string }) {
+  const policy = useContext(ImagePolicy);
   const src = imageSrc(image);
   if (!src) return null;
+  if (policy.blocked) return <ImagesHidden onShow={policy.show} className={className} />;
   return (
     <figure className={className}>
       {/* A signed link to a private bucket: next/image can't optimise it. */}
