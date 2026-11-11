@@ -7,6 +7,8 @@ import { Landmark } from "lucide-react";
 import { useWalletQuery } from "../../../context/WalletsContext";
 import { tradingService } from "../../../services/tradingService";
 import { errorText } from "../../../lib/wallets";
+import { SETTLE_DELAYS_MS } from "./WalletAddresses";
+import type { Portfolio } from "../../../models/Portfolio";
 import type { BrokerAccount, BrokerSessionState } from "../../../models/Trading";
 import { DialogShell } from "./WalletDialogs";
 
@@ -34,6 +36,23 @@ export function useBrokerSession(broker: string, enabled = true) {
     enabled,
     refetchInterval: SESSION_EVERY_MS,
   });
+}
+
+/**
+ * The portfolio a broker account just linked makes (nucleo's, on mercatura's event: a moment after
+ * the link), found through its trading account (whose reference is the broker account's uuid):
+ * looked for now and after each of SETTLE_DELAYS_MS, the portfolios read again each time; null if
+ * it isn't there by then.
+ */
+export async function findBrokerPortfolio(brokerAccountUuid: string, refresh: () => Promise<Portfolio[]>): Promise<string | null> {
+  for (const wait of [0, ...SETTLE_DELAYS_MS]) {
+    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+    const [trading, portfolios] = await Promise.all([tradingService.tradingAccounts(), refresh()]).catch(() => [[], []] as const);
+    const own = trading.find((t) => t.reference === brokerAccountUuid);
+    const portfolio = own && portfolios.find((p) => p.tradingAccountUuid === own.uuid);
+    if (portfolio) return portfolio.uuid;
+  }
+  return null;
 }
 
 const SESSION_TEXT: Record<BrokerSessionState, { label: string; hint: string; tone: "gain" | "warn" | "loss" | "muted" }> = {
