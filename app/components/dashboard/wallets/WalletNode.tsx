@@ -23,7 +23,6 @@ import { ExploreHost } from "../ExploreView";
 import { WalletsComposition } from "./WalletsComposition";
 import { WalletAlerts } from "./WalletAlerts";
 import { ConnectWalletDialog, findAddressAccount } from "./WalletAddresses";
-import { ConnectBrokerDialog } from "./WalletBrokers";
 import { ConnectBankDialog, WalletBankDialog, useWalletLinked } from "./WalletBanks";
 import { WalletBudgets } from "./WalletBudgets";
 import { WalletCards, cardKindsFor } from "./WalletCards";
@@ -41,9 +40,9 @@ export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
 
 const ARCHIVED_TITLE = "An archived wallet is read only";
 
-// "connectBank", "connectChain" and "connectBroker" make an account (a bank connected, an address
-// proved, a broker's account linked), opened once there.
-type Dialog = "new" | "edit" | "movement" | "import" | "archive" | "delete" | "bank" | "connectBank" | "connectChain" | "connectBroker";
+// "connectBank" and "connectChain" make an account (a bank connected, an address proved), opened once there.
+// A broker's account is linked from Investments: it is a portfolio first.
+type Dialog = "new" | "edit" | "movement" | "import" | "archive" | "delete" | "bank" | "connectBank" | "connectChain";
 
 // Back from the bank with more than one account to choose (see /dashboard/bank-link): the wallet's
 // bank dialog opens on it.
@@ -146,7 +145,6 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         // Each makes an account, its page opened to choose its wallets.
         { label: "Connect a bank", onClick: () => setDialog("connectBank") },
         { label: "Connect a wallet", onClick: () => setDialog("connectChain") },
-        { label: "Connect a broker", onClick: () => setDialog("connectBroker") },
       ];
   const counters = [
     // All wallets' only counts them: their movements are each wallet's, on its own page.
@@ -195,18 +193,6 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
             close();
             changed();
             void findAddressAccount(address.uuid).then((uuid) => { changed(); if (uuid) openAccount(uuid); });
-          }}
-        />
-      )}
-      {dialog === "connectBroker" && (
-        <ConnectBrokerDialog
-          onClose={close}
-          onConnected={(accounts) => {
-            close();
-            changed();
-            // Its trading account's reference is the broker account's uuid, as an address'.
-            const first = accounts[0];
-            if (first) void findAddressAccount(first.uuid).then((uuid) => { changed(); if (uuid) openAccount(uuid); });
           }}
         />
       )}

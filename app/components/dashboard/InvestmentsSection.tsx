@@ -41,6 +41,9 @@ import { ProjectionPage } from "./projection/ProjectionPage";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
 import { openAssetSettings } from "./SettingsSection";
 import { StrategiesNode, strategiesViewOf, type BacktestPage, type StrategiesView } from "./StrategiesSection";
+import { BrokerPage } from "./BrokerPage";
+import { useTradingAccounts } from "../../hooks/useChainHoldings";
+import { ConnectBrokerDialog, SessionChip, findBrokerPortfolio, useBrokerAccounts, useBrokerSession } from "./wallets/WalletBrokers";
 
 // A portfolio's pages: its own (overview), and those its header leads to.
 // "taxes": the investments' (All portfolios', or the only portfolio's), the owner's taxes on them all.
@@ -48,7 +51,8 @@ import { StrategiesNode, strategiesViewOf, type BacktestPage, type StrategiesVie
 // "manualAssets": the investments with no market price, valued by hand (the investments'). Both it and
 // "categories" are reached from links (an old history entry, adopting on a client): their buttons are
 // in Settings (the user's) and Client details (a client's).
-export type PortfolioPage = "overview" | "transactions" | "alerts" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "projection" | "manualAssets";
+// "broker": a portfolio holding an account at a broker, that account (its session, its cash).
+export type PortfolioPage = "overview" | "transactions" | "alerts" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "projection" | "manualAssets" | "broker";
 
 export type InvestmentsView =
   // A portfolio, "All portfolios" (the investments) included. A strategy's backtest is Strategies'.
@@ -63,7 +67,7 @@ export type InvestmentsView =
 
 const NO_SCOPE: Record<string, string> = {};
 const NO_TRAIL: Crumb[] = [];
-const PORTFOLIO_PAGES: PortfolioPage[] = ["overview", "transactions", "alerts", "compare", "portfolios", "categories", "strategy", "taxes", "projection", "manualAssets"];
+const PORTFOLIO_PAGES: PortfolioPage[] = ["overview", "transactions", "alerts", "compare", "portfolios", "categories", "strategy", "taxes", "projection", "manualAssets", "broker"];
 const PAGE_LABELS: Record<Exclude<PortfolioPage, "overview">, string> = {
   transactions: "Transactions",
   alerts: "Alerts",
@@ -74,6 +78,7 @@ const PAGE_LABELS: Record<Exclude<PortfolioPage, "overview">, string> = {
   taxes: "Taxes",
   projection: "Projection",
   manualAssets: "Manual assets",
+  broker: "Broker",
 };
 
 // The fields every view of one client's investments carries, beside its own: `{ client }`.
@@ -399,7 +404,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   onBacktestGone?: () => void;
   onNavigate: (section: string) => void;
 }) {
-  const { portfolios, deletePortfolio, client, canManage } = usePortfolio();
+  const { portfolios, deletePortfolio, client, canManage, refreshPortfolios } = usePortfolio();
   const { lock } = useReadOnly();
   const colorOf = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
   const real = useMemo(() => portfolios.filter((p) => !p.isVirtual), [portfolios]);
@@ -411,7 +416,9 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const strategyAction: PageAction[] = hasAdoption || shared.length > 0 || client ? [{ label: "Strategy", onClick: () => open("strategy") }] : [];
   // In the user's Settings (Assets), or where it's opened from says (a client's settings).
   const openCategories = onOpenAssetSettings ?? (() => openAssetSettings(onNavigate));
-  const [dialog, setDialog] = useState<"new" | "rename" | "delete" | "adopt" | "publish" | "withdraw" | null>(null);
+  const [dialog, setDialog] = useState<"new" | "rename" | "delete" | "adopt" | "publish" | "withdraw" | "connectBroker" | null>(null);
+  // A portfolio holding an account at a broker: that account's page, and its session in the header.
+  const atBroker = useBrokerOf(portfolio);
   // An advisor's backtest: whether it's in the catalog.
   const { publications, reload: reloadPublications, canPublish } = useMyPublications();
   const publication = backtest ? publications?.get(portfolio.uuid) : undefined;
@@ -433,8 +440,11 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       }
     },
   };
-  // New portfolios are added on the investments' page (a client adds their own).
+  // New portfolios are added on the investments' page (a client adds their own), and a broker's
+  // accounts linked there, each a portfolio.
   const addsPortfolios = isInvestments && !client;
+  const brokerAction: PageAction[] = atBroker ? [{ label: "Broker", onClick: () => open("broker") }] : [];
+  const connectBroker: PageAction[] = addsPortfolios ? [{ label: "Connect a broker", onClick: () => setDialog("connectBroker"), ...lock }] : [];
 
   // ── What can be done with it ──
   const actions: PageAction[] = backtest
@@ -455,14 +465,17 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           // Manage portfolios is also where a new one is made.
           { label: "Manage portfolios", primary: true, onClick: () => open("portfolios") },
           ...strategyAction,
+          ...connectBroker,
           ...extraActions,
         ]
       : [
           // Its activity pages: what's there, and where to add to it.
           { label: "Transactions", primary: true, plus: false, onClick: () => open("transactions") },
+          ...brokerAction,
           ...strategyAction,
           // The only portfolio stands for the investments: the way to a second one is here.
           ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new"), ...lock }] : []),
+          ...connectBroker,
           ...extraActions,
           ...(canManage ? [
             { label: "Rename", onClick: () => setDialog("rename"), ...lock },
@@ -525,6 +538,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       crumbs={trail}
       notice={backtest ? <BacktestBanner portfolioUuid={portfolio.uuid} /> : undefined}
       title={portfolio.name}
+      badge={atBroker ? <BrokerSessionBadge broker={atBroker} /> : undefined}
       counters={counters}
       actions={actions}
       figures={figures}
@@ -554,6 +568,17 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const dialogs = (
     <>
       {dialog === "new" && <NewPortfolioDialog onClose={() => setDialog(null)} />}
+      {dialog === "connectBroker" && (
+        <ConnectBrokerDialog
+          onClose={() => setDialog(null)}
+          onConnected={(linked) => {
+            setDialog(null);
+            // Its portfolio comes a moment after (mercatura's event to nucleo): opened once there.
+            const first = linked[0];
+            if (first) void findBrokerPortfolio(first.uuid, refreshPortfolios).then((uuid) => uuid && onOpen(uuid, "broker"));
+          }}
+        />
+      )}
       {dialog === "rename" && <RenamePortfolioDialog portfolio={portfolio} onClose={() => setDialog(null)} />}
       {dialog === "adopt" && (
         <AdoptStrategyDialog
@@ -648,6 +673,9 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   }
 
   const pageTrail = [...trail, nodeCrumb];
+  if (page === "broker") {
+    return <BrokerPage portfolio={portfolio} trail={pageTrail} onRemoved={() => open("overview")} />;
+  }
   if (page === "compare") {
     return (
       <PortfoliosCompare
@@ -781,4 +809,19 @@ function ReadOnlyNote({ children }: { children: React.ReactNode }) {
       {children}
     </p>
   );
+}
+
+/** The broker of the account the portfolio holds, if it holds one ("interactive_brokers"); null otherwise. */
+function useBrokerOf(portfolio: Portfolio): string | null {
+  const trading = useTradingAccounts(!!portfolio.tradingAccountUuid);
+  const held = trading.data?.find((t) => t.uuid === portfolio.tradingAccountUuid);
+  const brokerAccounts = useBrokerAccounts(held?.kind === "broker_account");
+  if (held?.kind !== "broker_account") return null;
+  return brokerAccounts.data?.find((b) => b.uuid === held.reference)?.broker ?? null;
+}
+
+/** The deployment's session with the broker, as a chip in a portfolio's header. */
+function BrokerSessionBadge({ broker }: { broker: string }) {
+  const session = useBrokerSession(broker);
+  return <SessionChip state={session.data?.state ?? "unknown"} />;
 }

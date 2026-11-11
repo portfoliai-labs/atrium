@@ -4,9 +4,10 @@
 import { useState } from "react";
 import { CreditCard, Loader2 } from "lucide-react";
 import { useWallets } from "../../../context/WalletsContext";
+import { usePortfolio } from "../../../context/PortfolioContext";
 import { useAccounts, useCards } from "../../../hooks/useAccounts";
 import { useChainHoldings, useTradingAccounts } from "../../../hooks/useChainHoldings";
-import { LIQUIDITY } from "../../../lib/dashboardNav";
+import { INVESTMENTS_SECTION, LIQUIDITY, useOpenDashboardPage } from "../../../lib/dashboardNav";
 import { formatCurrency } from "../../../lib/format";
 import { ALL_WALLETS, dayLabel, errorText, walletColor } from "../../../lib/wallets";
 import { bankingService } from "../../../services/bankingService";
@@ -62,6 +63,10 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
   const brokerAccounts = useBrokerAccounts(atBroker);
   const brokerAccount = atBroker ? brokerAccounts.data?.find((b) => b.uuid === tradingAccount.reference) : undefined;
   const session = useBrokerSession(brokerAccount?.broker ?? "", !!brokerAccount);
+  const { portfolios } = usePortfolio();
+  const brokerPortfolio = atBroker ? portfolios.find((p) => p.tradingAccountUuid === tradingAccount.uuid) : undefined;
+  const openPage = useOpenDashboardPage();
+  const openBroker = () => brokerPortfolio && openPage?.(INVESTMENTS_SECTION, { kind: "portfolio", uuid: brokerPortfolio.uuid, page: "broker" });
   const coins = chain ? (holdings.data ?? []).filter((h) => h.tradingAccountUuid === account!.tradingAccountUuid) : [];
   const cards = useCards(!!account);
   const taken = useSourcedWallets();
@@ -127,18 +132,12 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
     SETTLE_DELAYS_MS.forEach((ms) => setTimeout(changed, ms));
     return movements === 0 ? "Read: nothing new." : `Read: ${movements} new movement${movements === 1 ? "" : "s"}, in its wallets in a moment.`;
   };
-  const readBroker = async (b: BrokerAccount) => {
-    const { balancesSeen } = await tradingService.readBrokerAccount(b.uuid);
-    SETTLE_DELAYS_MS.forEach((ms) => setTimeout(changed, ms));
-    return balancesSeen === 0 ? "Read: nothing new." : `Read: ${balancesSeen} new balance${balancesSeen === 1 ? "" : "s"}, here in a moment.`;
-  };
   const remove = async () => {
     await act("remove", async () => {
       if (link) await bankingService.remove(link.uuid);
       else if (address) await tradingService.remove(address.uuid);
-      else if (brokerAccount) await tradingService.removeBrokerAccount(brokerAccount.uuid);
       setDialog(null);
-    }, link ? "Unable to remove this bank." : brokerAccount ? "Unable to remove this account." : "Unable to remove this address.");
+    }, link ? "Unable to remove this bank." : "Unable to remove this address.");
   };
 
   // ── What can be done with it ──
@@ -151,9 +150,8 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
     actions.push({ label: "Read now", primary: true, plus: false, onClick: () => void act("read", () => readAddress(address), "Unable to read this address now."), disabled: busy === "read" });
     actions.push({ label: funding ? "Hide Add funds" : "Add funds", onClick: () => setFunding((f) => !f) });
     actions.push({ label: "Remove the address", danger: true, onClick: () => { setError(null); setDialog("remove"); } });
-  } else if (brokerAccount) {
-    actions.push({ label: "Read now", primary: true, plus: false, onClick: () => void act("read", () => readBroker(brokerAccount), "Unable to read this account now."), disabled: busy === "read" });
-    actions.push({ label: "Remove the account", danger: true, onClick: () => { setError(null); setDialog("remove"); } });
+  } else if (brokerAccount && brokerPortfolio) {
+    actions.push({ label: "Broker", primary: true, plus: false, onClick: openBroker });
   }
 
   const figures: PageFigure[] = [
@@ -237,30 +235,18 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
       {chain && atBroker && (
         <Module>
           <ModuleHead
-            title="Cash"
-            desc="Each currency comes into one wallet of its own, read from the broker: one of yours, or a new one named after it. Read only: nothing here can move money."
+            title={brokerAccount ? `At ${BROKERS.find((b) => b.id === brokerAccount.broker)?.label ?? brokerAccount.broker}` : "At a broker"}
+            desc="An account at a broker is a portfolio first: its session, its cash per currency (each linked to a wallet here), Read now and Remove are on its portfolio's Broker page."
           />
           <div className={MODULE_BODY}>
-            {coins.length === 0 ? (
-              <p className="text-[12.5px] text-[#857e78]">{brokerAccount?.readAt ? "No cash read yet." : "Its cash shows here after its first read."}</p>
-            ) : (
-              <ul className="space-y-2">
-                {coins.map((h: ChainHolding) => (
-                  <HoldingRow
-                    key={h.uuid}
-                    holding={h}
-                    wallets={wallets}
-                    taken={taken}
-                    busy={busy === h.uuid}
-                    error={rowErrors[h.uuid]}
-                    source="the broker"
-                    onOpenWallet={openWallet}
-                    onLink={(walletUuid) => void act(h.uuid, async () => { await tradingService.linkHolding(h.uuid, walletUuid); }, "Unable to link this currency.", true)}
-                    onUnlink={() => void act(h.uuid, async () => { await tradingService.unlinkHolding(h.uuid); }, "Unable to unlink this currency.", true)}
-                  />
-                ))}
-              </ul>
-            )}
+            <button
+              type="button"
+              onClick={openBroker}
+              disabled={!brokerPortfolio || !openPage}
+              className="px-3 py-2 rounded-lg text-[11.5px] font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-40"
+            >
+              Open its Broker page
+            </button>
           </div>
         </Module>
       )}
@@ -347,12 +333,10 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
       {dialog === "renew" && link && <ConnectBankDialog renew={link} onClose={() => setDialog(null)} />}
       {dialog === "remove" && (
         <ConfirmDialog
-          title={link ? `Remove ${link.bankName}?` : brokerAccount ? `Remove ${account.name}?` : `Remove Solana ${address ? shortAddress(address.address) : ""}?`}
+          title={link ? `Remove ${link.bankName}?` : `Remove Solana ${address ? shortAddress(address.address) : ""}?`}
           description={link
             ? "The consent at the bank ends, and its accounts stop coming into their wallets. The account and its wallets stay, with the movements already there."
-            : brokerAccount
-              ? "It is no longer read here. Its portfolio, this account and its wallets stay, with their history; the account at the broker is untouched."
-              : "Its movements stop coming in. Its portfolio, this account and its wallets stay, with their history; the wallet itself is untouched."}
+            : "Its movements stop coming in. Its portfolio, this account and its wallets stay, with their history; the wallet itself is untouched."}
           confirmLabel="Remove"
           confirming={busy === "remove"}
           error={error}

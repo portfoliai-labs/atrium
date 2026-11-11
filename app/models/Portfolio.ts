@@ -30,6 +30,9 @@ interface Portfolio {
   createdAt: string;
   // Who pays its taxes: the user ("declared", the default) or its broker ("withheld"). See models/Tax.
   taxationMode: TaxationMode;
+  // The trading account it holds the assets of (an on-chain address', a broker's account), while it
+  // is there; null (or absent) for a portfolio of the user's own.
+  tradingAccountUuid?: string | null;
 }
 
 /** A strategy's backtest: virtual, and not the aggregate. */
