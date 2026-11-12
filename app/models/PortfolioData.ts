@@ -66,13 +66,14 @@ interface PortfolioHoldingResponse {
   assetClassCode: string;
   currency: string;
   quantity: number;
-  currentPrice: number;
-  marketValue: number;
-  weightPct: number;
+  // null while the asset has never been priced: it is held, its value unknown (listed last).
+  currentPrice: number | null;
+  marketValue: number | null;
+  weightPct: number | null;
   avgCost: number;
   costBasis: number;
-  unrealizedPnl: number;
-  roiPct: number;
+  unrealizedPnl: number | null;
+  roiPct: number | null;
 }
 
 // ---------- exposure ----------
