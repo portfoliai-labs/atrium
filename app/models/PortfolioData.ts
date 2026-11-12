@@ -132,8 +132,9 @@ interface DividendAssetEntry {
   trailing12MIncome: number;
   prior12MIncome: number;
   lifetimeIncome: number;
-  marketValue: number;
-  costBasis: number;
+  // null while it has never been priced (its value unknown), as a holding's (nucleo 0.78.0).
+  marketValue: number | null;
+  costBasis: number | null;
   yieldPct: number | null;
   yieldOnCostPct: number | null;
   growthYoyPct: number | null;
