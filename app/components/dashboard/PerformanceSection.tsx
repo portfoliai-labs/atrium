@@ -1554,14 +1554,15 @@ function HoldingsExplorer({
   const [exploringAsset, setExploringAsset] = useState<PortfolioHoldingResponse | null>(null);
 
   const items = useMemo((): CompositionItem[] => {
-    const total = holdings.reduce((sum, h) => sum + h.marketValue, 0);
+    // A holding never priced (null value) counts as nothing.
+    const total = holdings.reduce((sum, h) => sum + (h.marketValue ?? 0), 0);
     const palette = (i: number) => CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length];
     if (breakdown === "holding") {
       return holdings.map((h, i) => ({
         key: h.assetId,
         label: h.name,
-        value: h.marketValue,
-        weightPct: h.weightPct,
+        value: h.marketValue ?? 0,
+        weightPct: h.weightPct ?? 0,
         color: palette(i),
         onOpen: h.listingId ? () => setExploringAsset(h) : undefined,
       }));
@@ -1570,7 +1571,7 @@ function HoldingsExplorer({
       const byClass = new Map<AssetClassCode, number>();
       for (const h of holdings) {
         const code = assetClassCodeOf(h);
-        byClass.set(code, (byClass.get(code) ?? 0) + h.marketValue);
+        byClass.set(code, (byClass.get(code) ?? 0) + (h.marketValue ?? 0));
       }
       let classColor = 0;
       return [...byClass.entries()].sort((a, b) => b[1] - a[1]).map(([code, value]) => ({
@@ -1852,16 +1853,17 @@ function CompositionExplore({
   onOpenAsset: (holding: PortfolioHoldingResponse) => void;
   onOpenPortfolio?: (uuid: string) => void;
 }) {
-  const total = holdings.reduce((sum, h) => sum + h.marketValue, 0);
+  // A holding never priced (null value) counts as nothing and comes last.
+  const total = holdings.reduce((sum, h) => sum + (h.marketValue ?? 0), 0);
   const weightOf = (v: number) => (total > 0 ? (v / total) * 100 : 0);
-  const byValue = useMemo(() => [...holdings].sort((a, b) => b.marketValue - a.marketValue), [holdings]);
+  const byValue = useMemo(() => [...holdings].sort((a, b) => (b.marketValue ?? -1) - (a.marketValue ?? -1)), [holdings]);
 
   // Asset classes, largest first, each with its colour (the map's and the bars').
   const classes = useMemo(() => {
     const map = new Map<AssetClassCode, number>();
     for (const h of holdings) {
       const code = assetClassCodeOf(h);
-      map.set(code, (map.get(code) ?? 0) + h.marketValue);
+      map.set(code, (map.get(code) ?? 0) + (h.marketValue ?? 0));
     }
     let colorIndex = 0;
     return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([code, value]) => ({
@@ -1875,7 +1877,7 @@ function CompositionExplore({
 
   // Concentration: the largest holding, the largest five, and the effective number of holdings
   // (1 / Σw², the count of equal-sized holdings that would be as concentrated).
-  const weights = byValue.map((h) => weightOf(h.marketValue) / 100);
+  const weights = byValue.map((h) => weightOf(h.marketValue ?? 0) / 100);
   const top5 = weights.slice(0, 5).reduce((sum, w) => sum + w, 0) * 100;
   const herfindahl = weights.reduce((sum, w) => sum + w * w, 0);
   const effective = herfindahl > 0 ? 1 / herfindahl : null;
@@ -1904,11 +1906,11 @@ function CompositionExplore({
     }));
   };
 
-  const map = byValue.filter((h) => h.marketValue > 0).map((h) => ({
+  const map = byValue.filter((h) => (h.marketValue ?? 0) > 0).map((h) => ({
     name: h.ticker ?? h.isin ?? h.name,
-    size: h.marketValue,
+    size: h.marketValue ?? 0,
     fullName: h.name,
-    weightPct: weightOf(h.marketValue),
+    weightPct: weightOf(h.marketValue ?? 0),
     color: classColor(h),
     assetId: h.assetId,
   }));
@@ -1934,11 +1936,11 @@ function CompositionExplore({
         </span>
       ),
     },
-    { key: "value", label: "Value", align: "right", sortValue: (h) => h.marketValue, render: (h) => <span className="font-bold">{formatCurrency(h.marketValue, currency, 0)}</span> },
-    { key: "weight", label: "Weight", align: "right", sortValue: (h) => h.marketValue, render: (h) => `${weightOf(h.marketValue).toFixed(1)}%` },
+    { key: "value", label: "Value", align: "right", sortValue: (h) => h.marketValue, render: (h) => h.marketValue === null ? <NotPriced /> : <span className="font-bold">{formatCurrency(h.marketValue, currency, 0)}</span> },
+    { key: "weight", label: "Weight", align: "right", sortValue: (h) => h.marketValue, render: (h) => h.marketValue === null ? <NotPriced /> : `${weightOf(h.marketValue).toFixed(1)}%` },
     { key: "cost", label: "Invested", align: "right", sortValue: (h) => h.costBasis, render: (h) => formatCurrency(h.costBasis, currency, 0) },
-    { key: "pnl", label: "Unrealized", align: "right", sortValue: (h) => h.unrealizedPnl, render: (h) => <SignedAmount amount={h.unrealizedPnl} currency={currency} /> },
-    { key: "roi", label: "Return", align: "right", sortValue: (h) => h.roiPct, render: (h) => <SignedPct pct={h.roiPct} /> },
+    { key: "pnl", label: "Unrealized", align: "right", sortValue: (h) => h.unrealizedPnl, render: (h) => h.unrealizedPnl === null ? <NotPriced /> : <SignedAmount amount={h.unrealizedPnl} currency={currency} /> },
+    { key: "roi", label: "Return", align: "right", sortValue: (h) => h.roiPct, render: (h) => h.roiPct === null ? <NotPriced /> : <SignedPct pct={h.roiPct} /> },
   ];
 
   return (
@@ -1946,7 +1948,7 @@ function CompositionExplore({
       <ExplorePanel title="Concentration" desc="How much of the value sits in a few holdings.">
         <Figs className={MODULE_BODY}>
           <Fig label="Holdings" value={String(holdings.length)} sub={`${classes.length} asset ${classes.length === 1 ? "class" : "classes"}`} strong />
-          {largest && <Fig label="Largest" value={`${weightOf(largest.marketValue).toFixed(1)}%`} sub={largest.ticker ?? largest.name} />}
+          {largest && <Fig label="Largest" value={`${weightOf(largest.marketValue ?? 0).toFixed(1)}%`} sub={largest.ticker ?? largest.name} />}
           <Fig label="Largest five" value={`${top5.toFixed(1)}%`} sub="Of the value" />
           <Fig
             label="Effective holdings"
@@ -2249,8 +2251,8 @@ export function AssetExplore({ listingId, assetId, portfolioUuid }: { listingId:
       <PageHeader
         eyebrow={`Holding · ${assetClassSingularLabel(assetClassCode)}`}
         title={data.name}
-        value={held ? formatCurrency(held.marketValue, posCurrency, 0) : last !== undefined ? formatCurrency(last, unit, 2) : undefined}
-        change={held ? { text: `${formatPct(held.roiPct)} since first buy`, tone: toneOfValue(held.roiPct) } : null}
+        value={held && held.marketValue !== null ? formatCurrency(held.marketValue, posCurrency, 0) : last !== undefined ? formatCurrency(last, unit, 2) : undefined}
+        change={held && held.roiPct !== null ? { text: `${formatPct(held.roiPct)} since first buy`, tone: toneOfValue(held.roiPct) } : null}
         note={data.listing ? listingLine(data.listing) : data.ticker}
         actions={brokerActions}
       />
@@ -2444,13 +2446,13 @@ function PositionPanel({ position }: { position: PositionResponse }) {
           <Figs className={MODULE_BODY}>
             {holding && (
               <>
-                <Fig label="Market value" value={formatCurrency(holding.marketValue, currency, 0)} strong />
-                <Fig label="Unrealized P&L" value={formatSignedCurrency(holding.unrealizedPnl, currency)} tone={toneOfValue(holding.unrealizedPnl)} />
+                <Fig label="Market value" value={holding.marketValue === null ? NOT_PRICED : formatCurrency(holding.marketValue, currency, 0)} sub={holding.marketValue === null ? NOT_PRICED_NOTE : undefined} strong />
+                <Fig label="Unrealized P&L" value={holding.unrealizedPnl === null ? NOT_PRICED : formatSignedCurrency(holding.unrealizedPnl, currency)} tone={holding.unrealizedPnl === null ? undefined : toneOfValue(holding.unrealizedPnl)} />
                 <Fig label="Quantity" value={formatQuantity(holding.quantity)} />
                 <Fig label="Avg. cost" value={formatCurrency(holding.avgCost, currency, 2)} />
-                <Fig label="Price" value={formatCurrency(holding.currentPrice, holding.currency, 2)} />
+                <Fig label="Price" value={holding.currentPrice === null ? NOT_PRICED : formatCurrency(holding.currentPrice, holding.currency, 2)} />
                 <Fig label="Invested" value={formatCurrency(holding.costBasis, currency, 0)} />
-                <Fig label="In portfolio" value={`${holding.weightPct.toFixed(1)}%`} sub="Of its value" />
+                <Fig label="In portfolio" value={holding.weightPct === null ? NOT_PRICED : `${holding.weightPct.toFixed(1)}%`} sub="Of its value" />
               </>
             )}
             {sold && <Fig label="Realized from sales" value={formatSignedCurrency(realized.realizedTradingPnl, currency)} tone={toneOfValue(realized.realizedTradingPnl)} />}
@@ -4297,10 +4299,23 @@ const GAINS_LOSSES_ROWS = 3;
  * same holdings. The unrealized P&L of the open positions (market value against what they cost),
  * then the holdings gaining and losing the most of it. Closed positions are Realized P&L's.
  */
+// A holding with its P&L: one priced at least once.
+type PricedHolding = PortfolioHoldingResponse & { unrealizedPnl: number; roiPct: number };
+
+// What a holding never priced shows where its value would be.
+const NOT_PRICED = "—";
+const NOT_PRICED_NOTE = "Not priced yet";
+
+function NotPriced() {
+  return <span className="text-[#a8a29e]" title={NOT_PRICED_NOTE}>{NOT_PRICED}</span>;
+}
+
 function GainsLossesCard({ slot, currency }: { slot: ModuleSlot<InsightsHoldingsModule>; currency: string }) {
   const holdings = slot.module?.holdings ?? [];
-  const gaining = holdings.filter((h) => h.unrealizedPnl > 0).sort((a, b) => b.unrealizedPnl - a.unrealizedPnl).slice(0, GAINS_LOSSES_ROWS);
-  const losing = holdings.filter((h) => h.unrealizedPnl < 0).sort((a, b) => a.unrealizedPnl - b.unrealizedPnl).slice(0, GAINS_LOSSES_ROWS);
+  // A holding never priced has no P&L yet: in neither list.
+  const priced = holdings.filter((h): h is PricedHolding => h.unrealizedPnl !== null && h.roiPct !== null);
+  const gaining = priced.filter((h) => h.unrealizedPnl > 0).sort((a, b) => b.unrealizedPnl - a.unrealizedPnl).slice(0, GAINS_LOSSES_ROWS);
+  const losing = priced.filter((h) => h.unrealizedPnl < 0).sort((a, b) => a.unrealizedPnl - b.unrealizedPnl).slice(0, GAINS_LOSSES_ROWS);
 
   return (
     // No title of its own: the two lists' headings say what it is.
@@ -4317,7 +4332,7 @@ function GainsLossesCard({ slot, currency }: { slot: ModuleSlot<InsightsHoldings
   );
 }
 
-function GainsLossesList({ title, holdings, currency }: { title: string; holdings: PortfolioHoldingResponse[]; currency: string }) {
+function GainsLossesList({ title, holdings, currency }: { title: string; holdings: PricedHolding[]; currency: string }) {
   if (holdings.length === 0) return null;
   return (
     <div>
