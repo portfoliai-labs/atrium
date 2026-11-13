@@ -246,14 +246,14 @@ export function SettingsSection() {
 
       {/* Tab bar — a full-width 2-column grid on mobile (so the selector never
           scrolls sideways), the original inline pill row from sm and up. */}
-      <div className="grid grid-cols-2 sm:inline-flex gap-1 p-1 bg-white rounded-2xl sm:rounded-full border border-[rgba(196,154,60,0.2)]">
+      <div className="grid grid-cols-2 sm:inline-flex sm:flex-wrap gap-1 p-1 bg-white rounded-2xl sm:rounded-[1.5rem] border border-[rgba(196,154,60,0.2)]">
         {tabs.map((tab) => {
           const active = tab.id === activeTab;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2 sm:px-5 py-2.5 sm:py-2 rounded-xl sm:rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors ${
+              className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 sm:whitespace-nowrap px-2 sm:px-5 py-2.5 sm:py-2 rounded-xl sm:rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors ${
                 active ? "bg-[#1c1917] text-white" : "text-[#78716c] hover:text-[#1c1917]"
               }`}
             >

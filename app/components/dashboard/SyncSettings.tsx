@@ -1,7 +1,7 @@
 // components/dashboard/SyncSettings.tsx
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import { AlertTriangle, Check, Cloud, Copy, KeyRound, Link2, Loader2, LifeBuoy, PowerOff, RefreshCw, Smartphone } from "lucide-react";
@@ -80,11 +80,13 @@ const EMPTY_S3: SyncStorage = { kind: "s3", endpoint: "", region: "", bucket: ""
 
 /** A storage's details, as tabella asks them: a WebDAV folder or an S3 bucket. */
 function StorageFields({ value, onChange }: { value: SyncStorage; onChange: (next: SyncStorage) => void }) {
+  // Two forms on the page (start, recover): each its own ids.
+  const idPrefix = useId();
   const field = (name: string, label: string, current: string, set: (v: string) => SyncStorage, props: { type?: string; placeholder?: string } = {}) => (
     <div>
-      <label htmlFor={`sync-${name}`} className={labelClass}>{label}</label>
+      <label htmlFor={`${idPrefix}-${name}`} className={labelClass}>{label}</label>
       <input
-        id={`sync-${name}`} className={inputClass} value={current} autoComplete="off" spellCheck={false}
+        id={`${idPrefix}-${name}`} className={inputClass} value={current} autoComplete="off" spellCheck={false}
         type={props.type ?? "text"} placeholder={props.placeholder} onChange={(e) => onChange(set(e.target.value))}
       />
     </div>
