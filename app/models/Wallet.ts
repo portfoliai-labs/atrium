@@ -208,18 +208,23 @@ export interface Transfer {
 
 export interface WalletSummaryMonth {
   month: string;
+  // The transfers between the user's wallets left out.
   income: number;
-  // A positive amount.
+  // A positive amount, the transfers left out.
   spending: number;
   net: number;
   // At the month's end (today, for the current one).
   closingBalance: number;
+  // The transfers' legs in and out, positive amounts: across wallets, those between them about
+  // cancel out. Absent from an older ianus.
+  transfersIn?: number;
+  transfersOut?: number;
 }
 
 /**
  * A wallet's months in its own currency, or every non-archived wallet's in the user's reference
- * currency (transfers between them neither income nor spending). Oldest first, empty months
- * included.
+ * currency (transfers between the wallets neither income nor spending: apart). Oldest first,
+ * empty months included.
  */
 export interface WalletSummary {
   currency: string;

@@ -183,6 +183,11 @@ function FlowModule({ months, scope, eur }: { months: Months; scope: string | nu
     { key: "out", label: "Out", align: "right", sortValue: (m) => m.spending, render: (m) => <span className="text-rose-600 font-bold tabular-nums">{eur(m.spending)}</span> },
     { key: "net", label: "Net", align: "right", sortValue: (m) => m.income - m.spending, render: (m) => <span className="font-bold tabular-nums">{eur(m.income - m.spending)}</span> },
     { key: "saved", label: "Saved", align: "right", sortValue: (m) => (m.income > 0 ? (m.income - m.spending) / m.income : null), render: (m) => rateText(m.income > 0 ? ((m.income - m.spending) / m.income) * 100 : null) },
+    // The transfers with the user's other wallets, in less out: neither income nor spending.
+    ...(months.some((m) => (m.transfersIn ?? 0) !== (m.transfersOut ?? 0)) ? [{
+      key: "transfers", label: "Transfers", align: "right" as const, sortValue: (m: Months[number]) => (m.transfersIn ?? 0) - (m.transfersOut ?? 0),
+      render: (m: Months[number]) => <span className="tabular-nums text-slate-500">{eur((m.transfersIn ?? 0) - (m.transfersOut ?? 0))}</span>,
+    }] : []),
   ];
   const figs = (
     <Figs>
