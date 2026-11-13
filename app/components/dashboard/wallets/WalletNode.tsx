@@ -166,7 +166,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
   const currency = wallet?.currency ?? summary?.currency ?? "EUR";
   const money = (v: number) => formatCurrency(v, currency, 0);
   const rate = summary ? savingsRate(summary.months) : null;
-  const transfers = summary ? summary.months.reduce((s, m) => s + m.transfersIn - m.transfersOut, 0) : 0;
+  const transfers = summary ? summary.months.reduce((s, m) => s + (m.transfersIn ?? 0) - (m.transfersOut ?? 0), 0) : 0;
   const figures: PageFigure[] = summary ? [
     { label: "In, 12 months", value: money(summary.months.reduce((s, m) => s + m.income, 0)), tone: "gain" },
     { label: "Out, 12 months", value: money(summary.months.reduce((s, m) => s + m.spending, 0)), tone: "loss" },

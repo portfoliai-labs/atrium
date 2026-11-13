@@ -216,9 +216,9 @@ export interface WalletSummaryMonth {
   // At the month's end (today, for the current one).
   closingBalance: number;
   // The transfers' legs in and out, positive amounts: across wallets, those between them about
-  // cancel out.
-  transfersIn: number;
-  transfersOut: number;
+  // cancel out. Absent from an older ianus.
+  transfersIn?: number;
+  transfersOut?: number;
 }
 
 /**
