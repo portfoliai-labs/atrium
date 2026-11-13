@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, FolderTree, Globe, EyeOff } from "lucide-react";
+import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, FolderTree, Globe, EyeOff, RefreshCw } from "lucide-react";
 import { userService } from "../../services/userService";
 import { supabase } from "../../lib/supabaseClient";
 import { MIN_PASSWORD_LENGTH, newPasswordError } from "../../lib/password";
@@ -14,6 +14,7 @@ import { useUser } from "../../context/UserContext";
 import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
 import { NetworkIdentitySettings } from "./NetworkIdentitySettings";
+import { SyncSettings } from "./SyncSettings";
 import { MutedAndHidden } from "./journal/MutedAndHidden";
 import { useJournal } from "../../context/JournalContext";
 import { WalletCategories } from "./wallets/WalletCategories";
@@ -68,6 +69,8 @@ const TABS = [
   { id: "network", label: "Network identity", icon: Globe },
   // The Journal's authors the user muted and articles they hid: where the Journal is.
   { id: "moderation", label: "Muted and hidden", icon: EyeOff },
+  // This server as one of the user's devices, syncing with their phones through their own storage.
+  { id: "sync", label: "Sync", icon: RefreshCw },
   { id: "account", label: "Account", icon: UserIcon },
 ] as const;
 
@@ -494,6 +497,8 @@ export function SettingsSection() {
       {activeTab === "network" && <NetworkIdentitySettings />}
 
       {activeTab === "moderation" && <MutedAndHidden />}
+
+      {activeTab === "sync" && <SyncSettings />}
 
       {activeTab === "categories" && (
         <div className="space-y-4">
