@@ -269,7 +269,8 @@ export function RealEstateAlerts({ trail, property, onOpenProperty }: {
 
 /**
  * A rule, new or to change: the property it watches (every one, or one; fixed once made), what it
- * watches and its number, and how it tells.
+ * watches and its number, and how it tells. A tax falling due is fiscus' rule, the others
+ * praedium's: an edit keeps the rule on its side (ianus' 422 AlertRuleKindChangeError otherwise).
  */
 function AlertRuleDialog({ rule, properties, initialPropertyUuid, onClose, onSaved }: {
   rule?: RealEstateAlertRule;
@@ -291,6 +292,9 @@ function AlertRuleDialog({ rule, properties, initialPropertyUuid, onClose, onSav
   const number = parsed === null ? null : Number(parsed);
   const valid = number !== null && (spec.exclusiveMin ? number > spec.min : number >= spec.min) && number <= spec.max;
   const params = valid ? alertParams(type, spec.decimal ? parsed! : number!) : null;
+  const types = !rule ? ALERT_TYPE_LIST
+    : rule.params.type === "tax_due" ? ALERT_TYPE_LIST.filter((t) => t === "tax_due")
+    : ALERT_TYPE_LIST.filter((t) => t !== "tax_due");
   const pickType = (t: RealEstateAlertType) => {
     setType(t);
     setValue(String(rule?.params.type === t ? alertParamValue(rule.params) : ALERT_TYPES[t].param.initial));
@@ -342,8 +346,15 @@ function AlertRuleDialog({ rule, properties, initialPropertyUuid, onClose, onSav
 
       <div className="space-y-1.5">
         <span className="block text-[11px] font-black uppercase tracking-widest text-slate-400">Tell me when</span>
+        {rule && (
+          <span className="block text-[11px] text-slate-500">
+            {rule.params.type === "tax_due"
+              ? "A tax alert stays a tax alert: to watch something else, delete it and add another."
+              : "To be told of a tax falling due, add a new alert."}
+          </span>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {ALERT_TYPE_LIST.map((t) => {
+          {types.map((t) => {
             const Icon = ALERT_ICONS[t];
             const on = t === type;
             return (

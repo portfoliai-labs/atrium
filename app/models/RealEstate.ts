@@ -659,6 +659,10 @@ export interface PropertyTax {
   withheldAmount: number;
   // The sale's tax: its gain; null for an inheritance, when not computed, and for the other taxes.
   capitalGain: CapitalGain | null;
+  // What the instalments (and what was withheld) ask beyond `amount`, to offset in the F24 or
+  // claim back: IMU's first instalment at last year's higher rates, the rents' tax's payments on
+  // account above the year's. 0 when none.
+  credit: number;
 }
 
 // within_five_years: sold within 5 years of the purchase (a donation: the donor's). superbonus:
