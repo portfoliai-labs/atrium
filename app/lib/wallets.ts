@@ -6,7 +6,7 @@
 
 import type {
   BudgetMonth, Cadence, Category, CategoryKind, CategoryMonths, Merchants, MovementCategory, MovementFilters, MovementList, Observation, Observations,
-  RecurringPayments, Wallet, WalletAlertFinding, WalletAlertParams,
+  RecurringPayments, TransferSuggestionList, Wallet, WalletAlertFinding, WalletAlertParams,
   WalletAlertRule, WalletAlertType, WalletKind, WalletSummary,
 } from "../models/Wallet";
 import { formatCurrency } from "./format";
@@ -204,6 +204,8 @@ export interface WalletSource {
   merchants(walletUuid: string | null, from?: string, to?: string, limit?: number): Promise<Merchants>;
   recurringPayments(walletUuid: string | null): Promise<RecurringPayments>;
   observations(walletUuid: string | null): Promise<Observations>;
+  // The pairs of movements that may be a transfer, and how many are pending.
+  transferSuggestions(): Promise<TransferSuggestionList>;
 }
 
 export const apiWalletSource: WalletSource = {
@@ -216,6 +218,7 @@ export const apiWalletSource: WalletSource = {
   merchants: (walletUuid, from, to, limit) => walletService.merchants(walletUuid, from, to, limit),
   recurringPayments: (walletUuid) => walletService.recurringPayments(walletUuid),
   observations: (walletUuid) => walletService.observations(walletUuid),
+  transferSuggestions: () => walletService.transferSuggestions(),
 };
 
 // ── Insights ──

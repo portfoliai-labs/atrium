@@ -30,12 +30,14 @@ import { AddMovementDialog, WalletFormDialog } from "./WalletDialogs";
 import { ManageWallets } from "./ManageWallets";
 import { WalletImportDialog } from "./WalletImportDialog";
 import { WalletInsights } from "./WalletInsights";
+import { TransferSuggestions } from "./TransferSuggestions";
 import { WalletTransactions } from "./WalletTransactions";
 
-export type WalletPage = "insights" | "transactions" | "budgets" | "alerts" | "cards" | "manage";
+export type WalletPage = "insights" | "transactions" | "budgets" | "alerts" | "cards" | "manage" | "transfers";
 
 export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
   insights: "Insights", transactions: "Transactions", budgets: "Budgets", alerts: "Alerts", cards: "Cards", manage: "Manage wallets",
+  transfers: "Transfers to confirm",
 };
 
 const ARCHIVED_TITLE = "An archived wallet is read only";
@@ -252,8 +254,10 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
             lock={wallet?.archived ? ARCHIVED_TITLE : active.length === 0 ? "Add a wallet first" : undefined}
             onAdd={() => setDialog("movement")}
             onImport={() => setDialog("import")}
+            onOpenSuggestions={() => onOpen(ALL_WALLETS, "transfers")}
           />
         )}
+        {page === "transfers" && <TransferSuggestions />}
         {page === "budgets" && (
           <WalletBudgets scope={scope} onManage={() => onOpen(ALL_WALLETS, "budgets")} />
         )}

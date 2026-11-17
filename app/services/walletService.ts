@@ -3,10 +3,14 @@ import type {
   AnalyzeStatementRequest, Budget, BudgetInput, BudgetMonth, Category, CategoryCreateRequest, CategoryMonths, CategoryRule, CategoryUpdateRequest,
   Merchants, Observations, RecurringPayments, Movement, MovementFilters, MovementInput, MovementList,
   MovementUpdateRequest, StatementColumnMapping, StatementColumnMappingResponse, StatementImportResult,
-  Transfer, TransferCreateRequest, Wallet, WalletAlertRule, WalletAlertRuleCreateRequest, WalletAlertRuleUpdateRequest,
+  Transfer, TransferCreateRequest, TransferSuggestionList, Wallet, WalletAlertRule, WalletAlertRuleCreateRequest, WalletAlertRuleUpdateRequest,
   WalletCreateRequest, WalletReport, WalletSummary, WalletUpdateRequest,
 } from "../models/Wallet";
 import { apiFetch, apiFetchForm } from "./apiClient";
+
+// The transfer suggestions read at once: ianus' most (TRANSFER_SUGGESTIONS_MAX_LIMIT), so the
+// page lists them all but in an unusual backlog, which it then says.
+export const TRANSFER_SUGGESTIONS_ASKED = 200;
 
 // Errors come back as ApiError with the backend's `detail` as the message and its `error_type`:
 // WalletNotFoundError / MovementNotFoundError (404, someone else's included), WalletArchivedError
@@ -127,6 +131,28 @@ export const walletService = {
   // POST /v1/wallets/transfers/{t}/unlink — back to two plain, uncategorised movements.
   async unlinkTransfer(transferUuid: string): Promise<Movement[]> {
     return apiFetch<Movement[]>(`/v1/wallets/transfers/${transferUuid}/unlink`, { method: "POST" });
+  },
+
+  // GET /v1/wallets/transfers/suggestions — the pairs of movements that may be a transfer between
+  // the user's wallets, newest first, and how many are pending (arca never links them itself).
+  async transferSuggestions(limit = TRANSFER_SUGGESTIONS_ASKED): Promise<TransferSuggestionList> {
+    return apiFetch<TransferSuggestionList>(`/v1/wallets/transfers/suggestions?limit=${limit}`);
+  },
+
+  // POST /v1/wallets/transfers/suggestions/accept — each made a transfer, all or none.
+  async acceptTransferSuggestions(suggestionUuids: string[]): Promise<Transfer[]> {
+    return apiFetch<Transfer[]>(`/v1/wallets/transfers/suggestions/accept`, {
+      method: "POST",
+      body: JSON.stringify({ suggestionUuids }),
+    });
+  },
+
+  // POST /v1/wallets/transfers/suggestions/dismiss — never suggested again, all or none.
+  async dismissTransferSuggestions(suggestionUuids: string[]): Promise<{ dismissed: number }> {
+    return apiFetch<{ dismissed: number }>(`/v1/wallets/transfers/suggestions/dismiss`, {
+      method: "POST",
+      body: JSON.stringify({ suggestionUuids }),
+    });
   },
 
   // GET /v1/wallets/insights/categories or /v1/wallets/{w}/insights/categories — each month's money
