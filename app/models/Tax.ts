@@ -1,3 +1,4 @@
+import type { PropertyTax, TaxKind } from "./RealEstate";
 // models/Tax.ts
 // The user's taxes on their investments (GET /v1/taxes/..., an advisor's client's under
 // /v1/advisor/clients/{c}/taxes/...), after nucleo's contracts: camelCase, amounts numbers in the
@@ -229,9 +230,118 @@ interface WithheldIncome {
 // The 409's error_type: no tax residence, or no regime for it.
 const TAX_REGIME_UNAVAILABLE = "TaxRegimeUnavailableError";
 
+// ── A whole year ──────────────────────────────────────────────────────────────────────────
+
+// A currency's taxes of the year, never converted.
+interface YearTotal {
+  currency: string;
+  // What the tax return pays on the investments (gains and income).
+  investments: number;
+  // What the brokers withhold.
+  withheld: number;
+  // The properties' computed taxes, what was paid of them (up to each tax) and what is left.
+  properties: number;
+  propertiesPaid: number;
+  propertiesDue: number;
+  total: number;
+}
+
+// A property's tax instalment with something to pay.
+interface DueInstalment {
+  propertyUuid: string;
+  propertyName: string;
+  kind: TaxKind;
+  taxName: string;
+  number: number;
+  dueOn: string;
+  currency: string;
+  amount: number;
+  paid: boolean;
+}
+
+// GET /v1/taxes/overview/{year} — every tax of a year. 422 for a year before 1900 or in the
+// future; 503 for a currency without rates.
+interface YearTaxes {
+  year: number;
+  // Null without a regime: investmentsUnavailable says why (TAX_REGIME_UNAVAILABLE).
+  investments: TaxYear | null;
+  investmentsUnavailable: { errorType: string; country: string | null } | null;
+  // False for an advisor reading a client's: the properties are the owner's to read.
+  propertiesIncluded: boolean;
+  properties: { propertyUuid: string; name: string; taxes: PropertyTax[] }[];
+  totals: YearTotal[];
+  // The properties' instalments by due day.
+  instalments: DueInstalment[];
+}
+
+// ── The tax alert rules (/v1/taxes/alert-rules) ──────────────────────────────────────────
+
+type TaxAlertType = "tax_due" | "losses_expiring";
+
+// tax_due: an instalment of a property's tax due within `daysBefore` days (or overdue), not paid.
+// losses_expiring: earlier losses the year in course is the last to offset, from fromMonth/fromDay
+// on (1 October by default).
+type TaxAlertParams =
+  | { type: "tax_due"; daysBefore: number }
+  | { type: "losses_expiring"; fromMonth: number; fromDay: number };
+
+interface ExpiringLoss {
+  category: TaxCategory;
+  originYear: number;
+  amount: number;
+  // A withheld portfolio's; null for the tax return's.
+  portfolioUuid: string | null;
+  portfolioName: string | null;
+}
+
+interface TaxAlertFinding {
+  key: string;
+  kind: TaxAlertType;
+  currency: string;
+  // The instalment's due day; the year's last day for losses_expiring.
+  dueOn: string | null;
+  amount: number;
+  // tax_due.
+  propertyUuid: string | null;
+  propertyName: string | null;
+  taxKind: TaxKind | null;
+  taxName: string | null;
+  taxYear: number | null;
+  instalmentNumber: number | null;
+  // losses_expiring.
+  losses: ExpiringLoss[];
+  harvestablePositions: number | null;
+}
+
+interface TaxAlertRule {
+  uuid: string;
+  // tax_due only: one property's taxes; null: every tax.
+  propertyUuid: string | null;
+  params: TaxAlertParams;
+  notifyEmail: boolean;
+  notifyInApp: boolean;
+  enabled: boolean;
+  findings: TaxAlertFinding[];
+  lastCheckedAt: string | null;
+  lastTriggeredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TaxAlertRuleRequest {
+  propertyUuid: string | null;
+  params: TaxAlertParams;
+  notifyEmail: boolean;
+  notifyInApp: boolean;
+}
+
+type TaxAlertRuleUpdateRequest = Partial<Pick<TaxAlertRule, "params" | "notifyEmail" | "notifyInApp" | "enabled">>;
+
 export type {
   TaxationMode, CostMethod, TaxCategory, ConsumedLot, RealizedGain, GainsBreakdown, RealizedGains,
   OffsetLoss, TaxedIncome, WithheldAccount, CarriedLoss, UnrealizedGain, TaxYear,
   IncomeKind, IncomePayment, InvestmentIncome, IncomeCategory, WithheldIncome,
+  YearTotal, DueInstalment, YearTaxes,
+  TaxAlertType, TaxAlertParams, ExpiringLoss, TaxAlertFinding, TaxAlertRule, TaxAlertRuleRequest, TaxAlertRuleUpdateRequest,
 };
 export { TAX_REGIME_UNAVAILABLE };

@@ -7,7 +7,9 @@ import { Area, AreaChart, Bar, BarChart, ReferenceLine, ResponsiveContainer, Too
 import { useRealEstate, useRealEstateOverview, useRealEstateRead, useRealEstateSummary } from "../../../context/RealEstateContext";
 import { CATEGORICAL_PALETTE } from "../../../lib/chartColors";
 import { formatCompact, formatCurrency } from "../../../lib/format";
+import { INVESTMENTS_SECTION, useOpenDashboardPage } from "../../../lib/dashboardNav";
 import { PROPERTY_KIND_LABELS, PROPERTY_USE_LABELS } from "../../../lib/realEstate";
+import type { InvestmentsView } from "../InvestmentsSection";
 import { dayLabel, monthLabel, today } from "../../../lib/wallets";
 import type { Property, PropertyTax, PropertyUse, TaxList } from "../../../models/RealEstate";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
@@ -53,6 +55,7 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
   onOpen: (page: RealEstatePage, property?: string) => void;
 }) {
   const { properties, loading, error } = useRealEstate();
+  const openPage = useOpenDashboardPage();
   const property = propertyUuid ? properties.find((p) => p.uuid === propertyUuid) : undefined;
   const page: RealEstatePage = requested === "property" && !property ? "home" : requested;
   const active = useMemo(() => properties.filter((p) => !p.archived), [properties]);
@@ -165,7 +168,11 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
               {hasIncome && <CashFlowModule summary={summary} />}
             </div>
           ) : hasIncome && <CashFlowModule summary={summary} />}
-          <TaxesModule properties={active} onOpen={(uuid) => onOpen("property", uuid)} />
+          <TaxesModule
+            properties={active}
+            onOpen={(uuid) => onOpen("property", uuid)}
+            onOpenTaxes={openPage ? () => openPage(INVESTMENTS_SECTION, { kind: "portfolio", uuid: "", page: "taxes" } satisfies InvestmentsView) : undefined}
+          />
         </>
       )}
       <ArchivedList archived={archived} onOpen={(uuid) => onOpen("property", uuid)} />
@@ -181,7 +188,12 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
  * can't be worked out yet; then each property, its taxes as chips with their state, opening its page
  * (where they're worked out and paid). Shown only when some property has them (one in Italy).
  */
-function TaxesModule({ properties, onOpen }: { properties: Property[]; onOpen: (uuid: string) => void }) {
+function TaxesModule({ properties, onOpen, onOpenTaxes }: {
+  properties: Property[];
+  onOpen: (uuid: string) => void;
+  // The Taxes page: the year's taxes, the investments' with the properties'.
+  onOpenTaxes?: () => void;
+}) {
   const year = Number(today().slice(0, 4));
   const taxed = properties.some((p) => p.address.country === "IT");
   const list = useRealEstateRead<TaxList>(["taxes", "all", year], (source) => source.taxes(null, year), taxed);
@@ -208,6 +220,7 @@ function TaxesModule({ properties, onOpen }: { properties: Property[]; onOpen: (
       <ModuleHead
         title={`Taxes ${year}`}
         desc="IMU and the tax on rents this year, at your share. Open a property to see how they're worked out and record a payment."
+        onExplore={onOpenTaxes}
         right={provisional ? <span className="px-2 py-0.5 rounded-full bg-amber-50 text-[10px] font-black uppercase tracking-wider text-amber-700">Estimate</span> : undefined}
       />
       <div className={`${MODULE_BODY} space-y-5`}>

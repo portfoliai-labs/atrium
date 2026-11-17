@@ -48,7 +48,11 @@ export function RealEstateProvider({ children }: { children: React.ReactNode }) 
     : null;
   // Loading until the first answer only: a reload after a write keeps the pages up.
   const loading = enabled && list.isPending;
-  const changed = useCallback(() => { void queryClient.invalidateQueries({ queryKey: realEstateKey() }); }, [queryClient]);
+  const changed = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: realEstateKey() });
+    // The Taxes page's year has the properties' taxes in it.
+    void queryClient.invalidateQueries({ queryKey: ["investments", "taxes"] });
+  }, [queryClient]);
   const properties = list.data ?? NO_PROPERTIES;
 
   const value = useMemo<RealEstateContextType>(() => ({

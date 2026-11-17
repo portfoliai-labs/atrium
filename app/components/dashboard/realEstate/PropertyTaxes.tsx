@@ -348,6 +348,7 @@ function Instalments({ tax, money, readOnly, names, kind, onRecordPayment }: {
 }) {
   if (tax.instalments.length === 0) return null;
   return (
+    <>
     <ul className="divide-y divide-[#EEE9DD] rounded-2xl border border-[#EEE9DD]">
       {tax.instalments.map((i, index) => {
         const before = tax.instalments.slice(0, index).reduce((s, x) => s + x.amount, 0);
@@ -381,6 +382,13 @@ function Instalments({ tax, money, readOnly, names, kind, onRecordPayment }: {
         );
       })}
     </ul>
+    {tax.credit > 0 && (
+      // The first instalment at last year's higher rates, or payments on account above the year's.
+      <p className="text-[12px] font-semibold text-sky-700">
+        The instalments come to {money(tax.credit)} more than the year&apos;s tax: a credit to offset in the F24 or claim back.
+      </p>
+    )}
+    </>
   );
 }
 
