@@ -206,6 +206,32 @@ export interface Transfer {
   incoming: Movement;
 }
 
+// How sure arca is that two movements are a transfer: the bank named the other wallet's IBAN, each
+// the other's only candidate, one of several, two currencies at the day's rate, or a stablecoin
+// bought (the fee inside the difference).
+export type TransferSuggestionReason =
+  | "own_iban" | "sole_candidate" | "several_candidates" | "different_currencies" | "stablecoin_purchase";
+
+// Two of the user's movements that may be one transfer: arca never links them itself.
+export interface TransferSuggestion {
+  uuid: string;
+  // The money leaving (negative) and arriving (positive).
+  outgoing: Movement;
+  incoming: Movement;
+  // Between their days, 0 to 3.
+  daysApart: number;
+  reason: TransferSuggestionReason;
+  createdAt: string;
+}
+
+export interface TransferSuggestionList {
+  items: TransferSuggestion[];
+  // How many are pending across every page: the badge.
+  pending: number;
+  limit: number;
+  offset: number;
+}
+
 export interface WalletSummaryMonth {
   month: string;
   // The transfers between the user's wallets left out.
