@@ -8,7 +8,8 @@ import { formatCurrency, formatQuantity } from "../../lib/format";
 import { errorText } from "../../lib/wallets";
 import { signTransaction, transactionUrl, walletFor } from "../../lib/solanaWallets";
 import { OrderDetails } from "./wallets/OrderDetails";
-import type { Order, OrderExecution, OrderQuote, OrderSide, TradingAccount } from "../../models/Trading";
+import { ProveAddress } from "./wallets/WalletAddresses";
+import type { OnchainAddress, Order, OrderExecution, OrderQuote, OrderSide, TradingAccount } from "../../models/Trading";
 import { ApiError } from "../../services/apiClient";
 import { tradingService } from "../../services/tradingService";
 import { Breadcrumb } from "./Breadcrumb";
@@ -52,6 +53,7 @@ const REASONS: Record<string, string> = {
   TOKEN_NOT_TRADABLE: "This token can't be traded here.",
   CURRENCY_UNSUPPORTED: "There's no stablecoin in this currency on this network.",
   ADDRESS_NOT_FOUND: "The address was removed.",
+  ADDRESS_NOT_PROVED: "Orders are placed only on an address proved yours: prove it in its wallet, then try again.",
   TRANSACTION_UNEXPECTED: "The venue's transaction wasn't what catena allows to be signed: nothing was sent.",
   SLIPPAGE_ABOVE_LIMIT: "The venue's price could move more than the order allows.",
   TRANSACTION_FAILED: "The transaction failed.",
@@ -77,6 +79,7 @@ export const orderStateLabel = (state: Order["state"]) => STATE_LABELS[state];
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 const isError = (err: unknown, type: string) => err instanceof ApiError && err.errorType === type;
+const NOT_PROVED = "AddressNotProvedError";
 
 /** The token an order page trades: a tracker listing of the asset's (Ondo's AAPLon). */
 export interface OrderTarget {
@@ -100,7 +103,8 @@ type Step =
   | { kind: "done"; order: Order; execution: OrderExecution | null };
 
 /**
- * ORDER PAGE — buying or selling a token of the asset's (a tracker) on one of the user's addresses:
+ * ORDER PAGE — buying or selling a token of the asset's (a tracker) on one of the user's addresses
+ * (proved theirs first: an address added without a proof offers its proof here, not the order):
  * the venue's quote beside the asset's reference price (the gap is said above 1%, never blocking),
  * the eligibility notice before the first order, then the order placed, its transaction signed in
  * the user's own wallet and sent by catena. A page of the asset's, under its breadcrumb.
@@ -116,6 +120,25 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
   const accounts = useOrderAccounts();
   const [accountUuid, setAccountUuid] = useState("");
   const account = accounts.find((a) => a.uuid === accountUuid) ?? accounts[0] ?? null;
+  // The user's addresses (catena's), the trading account's by its reference: whether it's proved,
+  // and what its wallet signs with. Read from the name's ends would be a guess, so they're asked.
+  const [addresses, setAddresses] = useState<OnchainAddress[]>([]);
+  useEffect(() => {
+    void tradingService.addresses().then(setAddresses).catch(() => undefined);
+  }, []);
+  const address = account ? addresses.find((x) => x.uuid === account.reference) ?? null : null;
+  // Orders only on an address proved the user's: not one known unproved (the server checks again).
+  const unproved = !!address && !address.proved;
+  const setProved = (uuid: string, proved: boolean) =>
+    setAddresses((list) => list.map((x) => (x.uuid === uuid ? { ...x, proved } : x)));
+  // A refusal for an address not proved (proved elsewhere and then removed, or not known here yet):
+  // its proof is offered again.
+  const notProved = (err: unknown) => {
+    if (!isError(err, NOT_PROVED)) return false;
+    if (address) setProved(address.uuid, false);
+    setError(REASONS.ADDRESS_NOT_PROVED);
+    return true;
+  };
   const [amount, setAmount] = useState("");
   const [quote, setQuote] = useState<OrderQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -147,6 +170,7 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
         ...(buying ? { cashAmount: value } : { quantity: value }),
       }));
     } catch (err) {
+      if (notProved(err)) return;
       setError(err instanceof ApiError && err.errorType && REASONS[toCode(err.errorType)] ? REASONS[toCode(err.errorType)] : errorText(err, "Unable to get a quote now."));
     } finally {
       setQuoting(false);
@@ -190,7 +214,7 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
       });
     } catch (err) {
       setStep({ kind: "form" });
-      setError(errorText(err, "Unable to place the order now."));
+      if (!notProved(err)) setError(errorText(err, "Unable to place the order now."));
       return;
     }
     keyRef.current = newKey();
@@ -209,7 +233,7 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
       } catch (err) {
         if (!isError(err, "ExecutionNotFoundError") || i === PREPARE_TRIES - 1) {
           setStep({ kind: "done", order: await reread(order), execution: null });
-          setError(errorText(err, "Unable to prepare the transaction now."));
+          if (!notProved(err)) setError(errorText(err, "Unable to prepare the transaction now."));
           return;
         }
         await sleep(PREPARE_PAUSE_MS);
@@ -217,6 +241,7 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
     }
     if (!execution || !alive.current) return;
     if (execution.state !== "awaiting_signature" || !execution.transaction) {
+      if (execution.reason === "ADDRESS_NOT_PROVED" && address) setProved(address.uuid, false);
       setStep({ kind: "done", order: await reread(order), execution });
       return;
     }
@@ -224,8 +249,7 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
     setStep({ kind: "working", label: "Sign the transaction in your wallet…" });
     let signed: string;
     try {
-      const address = account ? addressOf(account) : null;
-      const found = address ? await walletFor(address) : null;
+      const found = address ? await walletFor(address.address) : null;
       if (!found) throw new Error("No wallet here holds this address: open the wallet that does, and try again.");
       signed = await signTransaction(found.wallet, found.account, execution.transaction);
     } catch (err) {
@@ -255,16 +279,6 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
     setStep({ kind: "done", order: await reread(order), execution });
   };
 
-  // The trading account's address: catena's, by its reference. Read from the name's ends would be
-  // a guess, so the addresses are asked.
-  const addressesRef = useRef<Record<string, string>>({});
-  const addressOf = (a: TradingAccount) => addressesRef.current[a.reference] ?? null;
-  useEffect(() => {
-    void tradingService.addresses().then((list) => {
-      addressesRef.current = Object.fromEntries(list.map((x) => [x.uuid, x.address]));
-    }).catch(() => undefined);
-  }, []);
-
   const reread = async (order: Order) => {
     try { return await tradingService.order(order.uuid); } catch { return order; }
   };
@@ -292,7 +306,7 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
         />
         <div className={`${MODULE_BODY} space-y-4`}>
           {accounts.length === 0 ? (
-            <p className="text-[12.5px] text-slate-500">Connect a Solana wallet under Cash, accounts and cards › On-chain first: orders are placed on one of your addresses.</p>
+            <p className="text-[12.5px] text-slate-500">Add a Solana address under Cash, accounts and cards first (Add an address): orders are placed on one of your addresses.</p>
           ) : step.kind === "notice" ? (
             <EligibilityNoticePanel onAccept={() => void accept()} onCancel={() => setStep({ kind: "form" })} />
           ) : step.kind === "working" ? (
@@ -327,40 +341,50 @@ export function OrderPage({ target, assetName, referencePrice, referenceCurrency
                   />
                 </label>
               </div>
-              {quote && <QuoteSummary quote={quote} ticker={target.ticker} referencePrice={referencePrice} gapPct={gapPct} />}
-              <div className="flex flex-wrap items-center gap-2">
-                {step.kind === "expired" ? (
-                  <button
-                    type="button"
-                    onClick={() => void signAndSend(step.order)}
-                    className="px-4 py-2 rounded-lg text-[12px] font-bold bg-[#1c1917] text-white hover:bg-black transition-colors"
-                  >
-                    Get a new quote and sign
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => void getQuote()}
-                      disabled={!valid || quoting}
-                      className="px-4 py-2 rounded-lg text-[12px] font-bold border border-slate-200 text-slate-700 hover:border-[#C49A3C]/60 disabled:opacity-50 transition-colors"
-                    >
-                      {quoting ? "Getting a quote…" : "Get quote"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void confirm()}
-                      disabled={!quote}
-                      className="px-4 py-2 rounded-lg text-[12px] font-bold bg-[#1c1917] text-white hover:bg-black disabled:opacity-40 transition-colors"
-                    >
-                      {verb}
-                    </button>
-                  </>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400">
-                The transaction is prepared when you {buying ? "buy" : "sell"}, at the venue&apos;s price then (it may differ from this quote within 1%), and your wallet shows it before you approve.
-              </p>
+              {unproved && address ? (
+                <ProveAddress
+                  address={address}
+                  desc={`This address isn't proved yours yet: ${buying ? "buying" : "selling"} on it needs that once. Its wallet signs a message; it moves no funds and costs nothing.`}
+                  onProved={(proved) => { setProved(proved.uuid, true); setError(null); }}
+                />
+              ) : (
+                <>
+                  {quote && <QuoteSummary quote={quote} ticker={target.ticker} referencePrice={referencePrice} gapPct={gapPct} />}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {step.kind === "expired" ? (
+                      <button
+                        type="button"
+                        onClick={() => void signAndSend(step.order)}
+                        className="px-4 py-2 rounded-lg text-[12px] font-bold bg-[#1c1917] text-white hover:bg-black transition-colors"
+                      >
+                        Get a new quote and sign
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void getQuote()}
+                          disabled={!valid || quoting}
+                          className="px-4 py-2 rounded-lg text-[12px] font-bold border border-slate-200 text-slate-700 hover:border-[#C49A3C]/60 disabled:opacity-50 transition-colors"
+                        >
+                          {quoting ? "Getting a quote…" : "Get quote"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void confirm()}
+                          disabled={!quote}
+                          className="px-4 py-2 rounded-lg text-[12px] font-bold bg-[#1c1917] text-white hover:bg-black disabled:opacity-40 transition-colors"
+                        >
+                          {verb}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    The transaction is prepared when you {buying ? "buy" : "sell"}, at the venue&apos;s price then (it may differ from this quote within 1%), and your wallet shows it before you approve.
+                  </p>
+                </>
+              )}
             </>
           )}
           {error && <p className="text-xs font-medium text-rose-600">{error}</p>}

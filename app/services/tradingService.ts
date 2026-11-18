@@ -17,9 +17,10 @@ import type {
 import { apiFetch } from "./apiClient";
 
 // Errors come back as ApiError with the backend's `error_type`: InvalidFieldError (422, an unknown
-// chain or not an address), AddressProofExpiredError (409, the message is older than 5 minutes or
-// was used: ask for a new one), AddressSignatureInvalidError (422, another wallet signed),
-// AddressAlreadyRegisteredError (409), AddressLimitReachedError (409, 20 addresses),
+// chain or not an address), AddressTakenError (409, another user's address),
+// AddressProofExpiredError (409, the message is older than 5 minutes or was used: ask for a new
+// one), AddressSignatureInvalidError (422, another wallet signed), AddressNotProvedError (409, an
+// order's quote or transaction on an address not proved), AddressLimitReachedError (409, 20 addresses),
 // AddressNotFoundError (404), TradingAccountNotFoundError (404), ChainHoldingNotFoundError (404),
 // InvalidChainHoldingLinkError (422, a wallet of another currency or a day out of range),
 // WalletAlreadyLinkedError (409, the wallet takes a bank account's or another stablecoin's
@@ -54,14 +55,23 @@ export const tradingService = {
     await apiFetch(`/v1/brokers/accounts/${accountUuid}`, { method: "DELETE" });
   },
 
-  // POST /v1/addresses/proofs — the message the address' wallet signs, valid for 5 minutes.
+  // POST /v1/addresses/proofs — the message the address' wallet signs to prove it the caller's
+  // (Sign-In With Solana), valid for 5 minutes.
   async startProof(chain: string, address: string): Promise<AddressProof> {
     return apiFetch<AddressProof>(`/v1/addresses/proofs`, { method: "POST", body: JSON.stringify({ chain, address }) });
   },
 
-  // POST /v1/addresses — the proof's address, with the wallet's signature of its message (base64).
-  async register(nonce: string, signature: string): Promise<OnchainAddress> {
-    return apiFetch<OnchainAddress>(`/v1/addresses`, { method: "POST", body: JSON.stringify({ nonce, signature }) });
+  // POST /v1/addresses — the address added without a proof, to read: its trading account (a
+  // portfolio, an account, each stablecoin's wallet) comes moments later. The caller's own already
+  // there comes back as it is.
+  async add(chain: string, address: string): Promise<OnchainAddress> {
+    return apiFetch<OnchainAddress>(`/v1/addresses`, { method: "POST", body: JSON.stringify({ chain, address }) });
+  },
+
+  // POST /v1/addresses/proved — the proof's address proved the caller's (added when it wasn't
+  // there), with the wallet's signature of its message (base64): orders can then be placed on it.
+  async prove(nonce: string, signature: string): Promise<OnchainAddress> {
+    return apiFetch<OnchainAddress>(`/v1/addresses/proved`, { method: "POST", body: JSON.stringify({ nonce, signature }) });
   },
 
   // GET /v1/addresses — oldest first.
@@ -90,8 +100,9 @@ export const tradingService = {
     return apiFetch<ChainHolding[]>(`/v1/chain-holdings`);
   },
 
-  // PUT /v1/chain-holdings/{h}/wallet — into one of the user's wallets of its currency, or a new
-  // one (null); the movements already read come in at once.
+  // PUT /v1/chain-holdings/{h}/wallet — relinked (each is linked to a wallet made for it at its
+  // first read) into one of the user's wallets of its currency, or a new one (null); the movements
+  // already read come in at once.
   async linkHolding(holdingUuid: string, walletUuid: string | null): Promise<ChainHolding> {
     return apiFetch<ChainHolding>(`/v1/chain-holdings/${holdingUuid}/wallet`, {
       method: "PUT", body: JSON.stringify(walletUuid ? { walletUuid } : {}),
