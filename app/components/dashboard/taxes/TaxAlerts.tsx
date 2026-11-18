@@ -28,6 +28,10 @@ const TYPES: Record<TaxAlertType, { label: string; desc: string }> = {
 
 const ALERT_RULES_KEY = investmentsKey("taxes", "own", "alertRules");
 
+// The investments' tax alerts, the Taxes page's: earlier losses about to expire.
+export const INVESTMENT_TAX_ALERTS: TaxAlertType[] = ["losses_expiring"];
+export const isInvestmentAlert = (r: TaxAlertRule) => INVESTMENT_TAX_ALERTS.includes(r.params.type);
+
 export function taxAlertRuleText(params: TaxAlertParams): string {
   if (params.type === "tax_due") {
     return params.daysBefore === 0 ? "A tax instalment due today or overdue" : `A tax instalment due within ${params.daysBefore} ${params.daysBefore === 1 ? "day" : "days"}`;
@@ -59,16 +63,18 @@ const channelsText = (r: Pick<TaxAlertRule, "notifyEmail" | "notifyInApp">) =>
  * TAX ALERTS — the user's own rules on their taxes (fiscus'): a property's tax instalment falling
  * due, earlier losses about to expire; each with what it finds today. Checked every morning: only
  * what's new is told, by email and/or in the app. No rule exists until the user adds one. The
- * real estate's Alerts list the tax_due ones too.
+ * real estate's Alerts list the tax_due ones too: here (the investments' Taxes) only the
+ * investments' are, the losses about to expire (INVESTMENT_TAX_ALERTS); a property's tax falling
+ * due is the real estate's to watch.
  */
-export function TaxAlerts({ properties }: { properties: { uuid: string; name: string }[] }) {
+export function TaxAlerts({ properties = [] }: { properties?: { uuid: string; name: string }[] }) {
   const queryClient = useQueryClient();
   const read = useTaxAlertRules(true);
   const [editing, setEditing] = useState<TaxAlertRule | "new" | null>(null);
   const [deleting, setDeleting] = useState<TaxAlertRule | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const rules = read.isError ? null : read.data;
+  const rules = read.isError ? null : read.data?.filter(isInvestmentAlert);
   const reload = () => {
     void queryClient.invalidateQueries({ queryKey: ALERT_RULES_KEY });
     // The real estate's Alerts list the tax_due rules too.
@@ -126,7 +132,7 @@ export function TaxAlerts({ properties }: { properties: { uuid: string; name: st
           <p className="text-[12.5px] font-semibold text-rose-600">{fieldErrorText(read.error, "Unable to load the tax alerts.")}</p>
         ) : rules.length === 0 ? (
           <p className="text-[12.5px] text-[#857e78]">
-            No tax alert yet. Add one to be told when a property&apos;s tax falls due or when earlier losses are about to expire.
+            No tax alert yet. Add one to be told when earlier losses are about to expire. A property&apos;s tax falling due is watched in Real estate&apos;s alerts.
           </p>
         ) : (
           <ul className="divide-y divide-[#EEE9DD]">
@@ -245,8 +251,9 @@ function TaxAlertDialog({ rule, properties, onClose, onSaved }: {
     }
   };
 
-  // A rule on one property stays a tax falling due: its property can't change.
-  const types: TaxAlertType[] = rule?.propertyUuid ? ["tax_due"] : ["losses_expiring", "tax_due"];
+  // A rule on one property stays a tax falling due: its property can't change. A new one is the
+  // investments' (a property's tax falling due is made in Real estate's alerts).
+  const types: TaxAlertType[] = rule?.propertyUuid ? ["tax_due"] : rule?.params.type === "tax_due" ? ["tax_due"] : INVESTMENT_TAX_ALERTS;
   return (
     <DialogShell
       icon={<BellRing className="h-5 w-5" />}

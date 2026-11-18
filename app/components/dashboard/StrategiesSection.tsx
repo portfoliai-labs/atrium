@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, Columns3, History, Info, Target, Telescope, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Columns3, History, Target, Telescope, Trash2, X } from "lucide-react";
 import { usePortfolio } from "../../context/PortfolioContext";
 import { useSectionView } from "../../lib/dashboardHistory";
 import { STRATEGIES_SECTION, openClientPage, openPortfolioPage } from "../../lib/dashboardNav";
@@ -13,7 +13,7 @@ import type { PublishedStrategy } from "../../models/PublishedStrategy";
 import { PortfolioNode, type PortfolioPage } from "./InvestmentsSection";
 import { isBacktest, type Portfolio } from "../../models/Portfolio";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
-import { ActionButton } from "./PageHeader";
+import { ActionButton, PAGE_HEAD, PageTitle } from "./PageHeader";
 import { StrategyBuilder } from "./StrategyBuilder";
 import { StrategiesCompare } from "./StrategiesCompare";
 import type { CompareStrategy } from "./ComparisonView";
@@ -220,22 +220,20 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
 
   return (
     <div className="space-y-6 pb-12">
-      <Breadcrumb trail={trail} current={mine ? "Your strategies" : "Strategies"} />
-      {/* As the Journal's pages: the actions beside the line under the title, not the title, level
-          with its top (it runs to a few lines, which would leave a gap above them at its foot). */}
-      <header className="space-y-2">
-        <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>{mine ? "Your strategies" : "Strategies"}</h1>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <p className="flex items-start gap-2 flex-1 min-w-64 text-[12.5px] text-[#78716c] max-w-2xl">
-            <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            {mine
+      {/* The breadcrumb, then the title with what the page is in its "i", the actions beside it. */}
+      <header className={PAGE_HEAD}>
+        <Breadcrumb trail={trail} current={mine ? "Your strategies" : "Strategies"} />
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <PageTitle
+            title={mine ? "Your strategies" : "Strategies"}
+            info={mine
               ? canPublish
                 ? "The strategies you backtested: open one, adopt it on a client's portfolio, or publish it to the catalog."
                 : "The strategies you backtested: open one to see how it would have done, or adopt it on one of your portfolios."
               : canPublish
                 ? "Yours and the ones advisors publish. Backtest a strategy on historical prices and adopt it on a client's portfolio: each of its targets becomes a range, and an alert tells you where the portfolio stands against it; share it to let the client read it. Or publish it, for everyone to read."
                 : "Yours and the ones advisors publish. Backtest how you would invest on historical prices; when one of yours fits, adopt it on one of your portfolios: each of its targets becomes a range, and an alert says where the portfolio stands against it."}
-          </p>
+          />
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <ActionButton action={{ label: mine ? "All strategies" : `Your strategies · ${backtests.length}`, onClick: onToggleMine }} />
             <button

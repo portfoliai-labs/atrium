@@ -36,7 +36,9 @@ import { BacktestBanner } from "./BacktestMarks";
 import { ReadOnlySimulation } from "./ReadOnlySimulation";
 import type { SharedStrategy } from "../../models/AdoptedStrategy";
 import { useReadOnly } from "../../hooks/useReadOnly";
-import { TaxesPage } from "./taxes/TaxesPage";
+import { TaxAlertsPage, TaxesPage } from "./taxes/TaxesPage";
+import { TaxesOverviewPage } from "./taxes/TaxesOverview";
+import { ProfitLossYearPage } from "./pnl/ProfitLossYears";
 import { ProjectionPage } from "./projection/ProjectionPage";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
 import { openAssetSettings } from "./SettingsSection";
@@ -46,28 +48,36 @@ import { useTradingAccounts } from "../../hooks/useChainHoldings";
 import { ConnectBrokerDialog, SessionChip, findBrokerPortfolio, useBrokerAccounts, useBrokerSession } from "./wallets/WalletBrokers";
 
 // A portfolio's pages: its own (overview), and those its header leads to.
-// "taxes": the investments' (All portfolios', or the only portfolio's), the owner's taxes on them all.
+// "taxOverview": the investments' (All portfolios', or the only portfolio's) taxes, every year
+// together, opened from Profit & Loss; "taxes" one year's (`taxYear`), the owner's taxes on them
+// all; "taxAlerts" its alerts (the user's own, not a client's), opened from its header.
 // "projection": a Monte Carlo of where it could go as it is: a goal, withdrawals, the safe withdrawal.
 // "manualAssets": the investments with no market price, valued by hand (the investments'). Both it and
 // "categories" are reached from links (an old history entry, adopting on a client): their buttons are
 // in Settings (the user's) and Client details (a client's).
 // "broker": a portfolio holding an account at a broker, that account (its session, its cash).
-export type PortfolioPage = "overview" | "transactions" | "alerts" | "compare" | "portfolios" | "categories" | "strategy" | "taxes" | "projection" | "manualAssets" | "broker";
+// "pnlYear": what a calendar year realized (`pnlYear`), opened from Profit & Loss's year by year.
+export type PortfolioPage = "overview" | "transactions" | "alerts" | "compare" | "portfolios" | "categories" | "strategy" | "taxOverview" | "taxes" | "taxAlerts" | "projection" | "manualAssets" | "broker" | "pnlYear";
+
+// A portfolio page's detail a link opens it with: Profit & Loss (the Realized P&L's).
+export type PortfolioExplore = "realizedPnl";
 
 export type InvestmentsView =
   // A portfolio, "All portfolios" (the investments) included. A strategy's backtest is Strategies'.
   // `simulation`: on its Strategy page, the advisor's strategy portfolio a shared strategy came
   // from, opened read-only. `compareWith`: on Compare, strategies that aren't the user's compared
   // beside their portfolios (one from the catalog, one an advisor shared). `taxYear`: on Taxes,
-  // the year it opens on (a year of the Realized P&L's), this one without.
-  | { kind: "portfolio"; uuid: string; page: PortfolioPage; simulation?: string; compareWith?: CompareStrategy[]; taxYear?: number }
+  // the year it opens on (a year of the Realized P&L's), this one without. `pnlYear`: on pnlYear,
+  // the year. `explore`: on its own page, the detail it opens with (Profit & Loss, from a year's
+  // trail).
+  | { kind: "portfolio"; uuid: string; page: PortfolioPage; simulation?: string; compareWith?: CompareStrategy[]; taxYear?: number; pnlYear?: number; explore?: PortfolioExplore }
   // Strategies, beside All portfolios: the user's strategies (backtests) and the published ones.
   // An investor's own, not a client's (an advisor's Strategies is a section of its own).
   | ({ kind: "strategies" } & StrategiesView);
 
 const NO_SCOPE: Record<string, string> = {};
 const NO_TRAIL: Crumb[] = [];
-const PORTFOLIO_PAGES: PortfolioPage[] = ["overview", "transactions", "alerts", "compare", "portfolios", "categories", "strategy", "taxes", "projection", "manualAssets", "broker"];
+const PORTFOLIO_PAGES: PortfolioPage[] = ["overview", "transactions", "alerts", "compare", "portfolios", "categories", "strategy", "taxOverview", "taxes", "taxAlerts", "projection", "manualAssets", "broker", "pnlYear"];
 const PAGE_LABELS: Record<Exclude<PortfolioPage, "overview">, string> = {
   transactions: "Transactions",
   alerts: "Alerts",
@@ -75,10 +85,13 @@ const PAGE_LABELS: Record<Exclude<PortfolioPage, "overview">, string> = {
   portfolios: "Manage portfolios",
   categories: "Asset categories",
   strategy: "Strategy",
+  taxOverview: "Taxes",
   taxes: "Taxes",
+  taxAlerts: "Alerts",
   projection: "Projection",
   manualAssets: "Manual assets",
   broker: "Broker",
+  pnlYear: "Profit & loss",
 };
 
 // The fields every view of one client's investments carries, beside its own: `{ client }`.
@@ -108,15 +121,18 @@ function viewFromHistory(hasStrategies: boolean, portfolios: Portfolio[], sectio
   if (!view) return top;
   switch (view.kind) {
     case "portfolio": {
-      const v = view as { uuid?: string; page?: string; simulation?: unknown; compareWith?: unknown; taxYear?: unknown };
-      // A portfolio had tabs (`tab`), then Insights as its first page, before its own page.
-      const page = PORTFOLIO_PAGES.includes(v.page as PortfolioPage) ? (v.page as PortfolioPage) : "overview";
+      const v = view as { uuid?: string; page?: string; simulation?: unknown; compareWith?: unknown; taxYear?: unknown; pnlYear?: unknown; explore?: unknown };
+      // A portfolio had tabs (`tab`), then Insights as its first page, before its own page. A
+      // year's Profit & Loss without its year is the portfolio's own.
+      const named = PORTFOLIO_PAGES.includes(v.page as PortfolioPage) ? (v.page as PortfolioPage) : "overview";
+      const page = named === "pnlYear" && typeof v.pnlYear !== "number" ? "overview" : named;
+      const pnlYear = page === "pnlYear" ? { pnlYear: v.pnlYear as number } : { ...(page === "overview" && v.explore === "realizedPnl" ? { explore: "realizedPnl" as const } : {}) };
       const compareWith = page === "compare" ? compareStrategiesOf(v.compareWith) : undefined;
       const compare = compareWith ? { compareWith } : {};
-      const taxYear = page === "taxes" && typeof v.taxYear === "number" ? { taxYear: v.taxYear } : {};
+      const taxYear = (page === "taxes" || page === "taxAlerts") && typeof v.taxYear === "number" ? { taxYear: v.taxYear } : {};
       // No portfolio named (""): the investments, on that page (a link from outside, which
       // doesn't know which portfolio stands for them).
-      if (v.uuid === "" && investments) return { kind: "portfolio", uuid: investments.uuid, page, ...compare, ...taxYear };
+      if (v.uuid === "" && investments) return { kind: "portfolio", uuid: investments.uuid, page, ...compare, ...taxYear, ...pnlYear };
       const found = portfolios.find((p) => p.uuid === v.uuid);
       if (!found) return top;
       // A backtest is Strategies' (a link to one from before it was).
@@ -124,10 +140,10 @@ function viewFromHistory(hasStrategies: boolean, portfolios: Portfolio[], sectio
         return hasStrategies ? { kind: "strategies", ...strategiesViewOf({ page: "backtest", uuid: found.uuid, sub: page }) } : top;
       }
       // The taxes are all the investments'.
-      if (page === "taxes" && investments && v.uuid !== investments.uuid) return { kind: "portfolio", uuid: investments.uuid, page, ...taxYear };
+      if ((page === "taxOverview" || page === "taxes" || page === "taxAlerts") && investments && v.uuid !== investments.uuid) return { kind: "portfolio", uuid: investments.uuid, page, ...taxYear };
       return page === "strategy" && typeof v.simulation === "string"
         ? { kind: "portfolio", uuid: v.uuid!, page, simulation: v.simulation }
-        : { kind: "portfolio", uuid: v.uuid!, page, ...compare, ...taxYear };
+        : { kind: "portfolio", uuid: v.uuid!, page, ...compare, ...taxYear, ...pnlYear };
     }
     // The investments' own pages before they were the investments' (Manage / Investments / Alerts…).
     case "investments":
@@ -238,6 +254,8 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
   const simulation = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.simulation : undefined;
   const compareWith = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.compareWith : undefined;
   const taxYear = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.taxYear : undefined;
+  const pnlYear = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.pnlYear : undefined;
+  const explore = view.kind === "portfolio" && view.uuid === portfolio.uuid ? view.explore : undefined;
   // A backtest is a simulation, not something owned: it's Strategies' (a client's have none).
   if (isBacktest(portfolio)) {
     if (!hasStrategies) return null;
@@ -263,7 +281,13 @@ export function InvestmentsSection({ onNavigate, section = INVESTMENTS_SECTION, 
       simulation={simulation}
       compareWith={compareWith}
       taxYear={taxYear}
-      onOpenTaxes={investments ? (year) => go({ kind: "portfolio", uuid: investments.uuid, page: "taxes", ...(year ? { taxYear: year } : {}) }) : undefined}
+      pnlYear={pnlYear}
+      onOpenPnlYear={(year) => go({ kind: "portfolio", uuid: portfolio.uuid, page: "pnlYear", pnlYear: year })}
+      explore={explore}
+      onOpenProfitLoss={() => go({ kind: "portfolio", uuid: portfolio.uuid, page: "overview", explore: "realizedPnl" })}
+      // A year's Taxes, or without one every year's (the Taxes section).
+      onOpenTaxes={investments ? (year) => go(year ? { kind: "portfolio", uuid: investments.uuid, page: "taxes", taxYear: year } : { kind: "portfolio", uuid: investments.uuid, page: "taxOverview" }) : undefined}
+      onOpenTaxAlerts={investments ? (year) => go({ kind: "portfolio", uuid: investments.uuid, page: "taxAlerts", taxYear: year }) : undefined}
       onCompareWith={investments ? (strategy) => go({ kind: "portfolio", uuid: investments.uuid, page: "compare", compareWith: [strategy] }) : undefined}
       onOpenSimulation={(uuid) => go({ kind: "portfolio", uuid: portfolio.uuid, page: "strategy", simulation: uuid })}
       onOpenTaxSettings={onOpenTaxSettings ?? (() => openProfilePreferences(onNavigate))}
@@ -377,7 +401,7 @@ function useActivityCounts(portfolio: Portfolio, real: Portfolio[]) {
  * client's (PortfolioContext's `client`) only reads it: the client changes their own (hooks/useReadOnly);
  * its alerts and adopted strategy are the advisor's, and its Strategy page says whether the client sees it.
  */
-export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, compareWith, onCompareWith, taxYear, onOpenTaxes, onOpenSimulation, onOpenTaxSettings, onOpenAssetSettings, onBacktestGone, onNavigate }: {
+export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActions = [], onOpen, simulation, compareWith, onCompareWith, taxYear, onOpenTaxes, onOpenTaxAlerts, pnlYear, onOpenPnlYear, explore, onOpenProfitLoss, onOpenSimulation, onOpenTaxSettings, onOpenAssetSettings, onBacktestGone, onNavigate }: {
   portfolio: Portfolio;
   page: PortfolioPage;
   trail: Crumb[];
@@ -393,6 +417,14 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   // On Taxes: the year it opens on. And the way there, on a year, from the Realized P&L.
   taxYear?: number;
   onOpenTaxes?: (year?: number) => void;
+  // The Taxes' alerts, coming back to Taxes on that year.
+  onOpenTaxAlerts?: (year: number) => void;
+  // On pnlYear: the year. And the way there, from Profit & Loss's year by year.
+  pnlYear?: number;
+  onOpenPnlYear?: (year: number) => void;
+  // On its own page: the detail it opens with. And the way to its Profit & Loss (a year's trail).
+  explore?: PortfolioExplore;
+  onOpenProfitLoss?: () => void;
   // On its Strategy page: the advisor's simulation a shared strategy came from, open read-only,
   // and the way to open one.
   simulation?: string;
@@ -661,6 +693,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           // All portfolios (with two or more): how they did next to each other, its Compare module.
           onCompare={!backtest && real.length > 1 && portfolio.isAggregate ? () => open("compare") : undefined}
           onOpenTaxes={backtest ? undefined : onOpenTaxes}
+          onOpenPnlYear={backtest ? undefined : onOpenPnlYear}
+          initialExplore={explore}
           // The investments' page, the investor's own: the strategies their portfolios follow, its Strategies module.
           onOpenStrategy={!backtest && !client && isInvestments ? (uuid) => onOpen(uuid, "strategy") : undefined}
           onOpenPortfolio={(uuid) => onOpen(uuid)}
@@ -721,18 +755,48 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       />
     );
   }
-  // The owner's taxes on every portfolio: the investments' page (a link to another portfolio's
-  // lands on theirs, see viewFromHistory).
-  if (page === "taxes") {
+  // A year's Profit & Loss: what it realized, each asset's part, the year's taxes.
+  if (page === "pnlYear" && pnlYear !== undefined) {
+    return (
+      <ProfitLossYearPage
+        key={`${portfolio.uuid}:${pnlYear}`}
+        portfolioUuid={portfolio.uuid}
+        year={pnlYear}
+        trail={[...pageTrail, { label: "Profit & loss", onClick: onOpenProfitLoss }]}
+        isInvestments={isInvestments}
+        onOpenTaxes={backtest ? undefined : onOpenTaxes}
+      />
+    );
+  }
+  // The owner's taxes on every portfolio: the investments' pages (a link to another portfolio's
+  // lands on theirs, see viewFromHistory), under Profit & Loss: every year's (the Taxes section),
+  // a year's, its alerts.
+  const profitLossCrumb: Crumb = { label: "Profit & loss", onClick: onOpenProfitLoss };
+  const taxesTrail: Crumb[] = [...pageTrail, profitLossCrumb, { label: PAGE_LABELS.taxOverview, onClick: () => onOpenTaxes?.() }];
+  if (page === "taxOverview") {
+    return <TaxesOverviewPage trail={[...pageTrail, profitLossCrumb]} onOpenYear={(year) => onOpenTaxes?.(year)} onOpenSettings={onOpenTaxSettings} />;
+  }
+  const shownTaxYear = taxYear ?? new Date().getFullYear();
+  // Its alerts, the user's own (a client's Taxes has none: their Taxes page).
+  if (page === "taxAlerts" && !client) {
+    return (
+      <TaxAlertsPage
+        trail={[...taxesTrail, { label: String(shownTaxYear), onClick: () => onOpenTaxes?.(shownTaxYear) }]}
+        year={taxYear}
+      />
+    );
+  }
+  if (page === "taxes" || page === "taxAlerts") {
     const investments = investmentsOf(portfolios);
     return (
       <TaxesPage
         key={`${client?.uuid ?? "own"}:${taxYear ?? ""}`}
-        trail={pageTrail}
+        trail={taxesTrail}
         initialYear={taxYear}
         onOpenSettings={onOpenTaxSettings}
         // Manage portfolios, where each one's taxation mode is set (the only portfolio's list too).
         onOpenPortfolios={() => investments && onOpen(investments.uuid, "portfolios")}
+        onOpenAlerts={onOpenTaxAlerts}
       />
     );
   }
