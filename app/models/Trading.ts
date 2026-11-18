@@ -40,7 +40,14 @@ export interface BrokerAccount {
   readAt: string | null;
   // Its history (the broker's statements) read through this day; null before its first read.
   historyThrough: string | null;
+  // Why its last read of the history failed, and when; null after a good one.
+  historyProblem?: BrokerHistoryProblem | null;
+  historyFailedAt?: string | null;
 }
+
+/** token: the deployment's Flex token expired or is wrong; query: the Flex query lacks a field or
+ * isn't XML; unavailable: IBKR's statements service failed (the daily read asks again). */
+export type BrokerHistoryProblem = "token" | "query" | "unavailable";
 
 export interface OnchainAddress {
   uuid: string;

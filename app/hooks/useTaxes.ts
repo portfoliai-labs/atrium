@@ -25,6 +25,17 @@ export function useTaxYear(year: number) {
   return useInvestmentsQuery(taxesKey(clientUuid, "year", year), () => taxService.year(year, clientUuid));
 }
 
+/** Every tax of a calendar year, the investments' and the properties' (GET /v1/taxes/overview/{year}). */
+export function useYearTaxes(year: number) {
+  const clientUuid = usePortfolio().client?.uuid ?? null;
+  return useInvestmentsQuery(taxesKey(clientUuid, "overview", year), () => taxService.overview(year, clientUuid));
+}
+
+/** The user's tax alert rules (none for a client's pages: the rules are the user's own). */
+export function useTaxAlertRules(enabled: boolean) {
+  return useInvestmentsQuery(taxesKey(null, "alertRules"), () => taxService.alertRules(), { enabled });
+}
+
 /** A calendar year's dividends and interest, as taxed. */
 export function useTaxIncome(year: number) {
   const clientUuid = usePortfolio().client?.uuid ?? null;

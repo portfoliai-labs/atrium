@@ -10,7 +10,7 @@ import { WALLETS_SECTION, useOpenDashboardPage } from "../../lib/dashboardNav";
 import { accountView, dayLabel, errorText } from "../../lib/wallets";
 import { tradingService } from "../../services/tradingService";
 import type { Portfolio } from "../../models/Portfolio";
-import type { ChainHolding } from "../../models/Trading";
+import type { BrokerHistoryProblem, ChainHolding } from "../../models/Trading";
 import type { Crumb } from "./Breadcrumb";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { PageHeader, type PageAction, type PageFigure } from "./PageHeader";
@@ -18,6 +18,25 @@ import { MODULE_BODY, Module, ModuleHead } from "./PerformanceSection";
 import { HoldingRow, SETTLE_DELAYS_MS } from "./wallets/WalletAddresses";
 import { useSourcedWallets } from "./wallets/WalletBanks";
 import { BROKERS, SessionChip, sessionHint, useBrokerAccounts, useBrokerSession } from "./wallets/WalletBrokers";
+
+// What to do when the broker's statements couldn't be read: the token and the query are the
+// deployment's (whoever runs this platform), IBKR's service failing passes alone.
+const HISTORY_PROBLEMS: Record<BrokerHistoryProblem, { label: string; text: string }> = {
+  token: {
+    label: "Token expired",
+    text:
+      "The broker's statements can't be read: the Flex token has expired or is wrong. Whoever runs this platform makes a new one in IBKR's portal (Settings › Flex Web Service), puts it in negotiator's FLEX__TOKEN and restarts negotiator.",
+  },
+  query: {
+    label: "Query to fix",
+    text:
+      "The broker's statements can't be read: the Flex query lacks a field negotiator needs, or isn't XML. Whoever runs this platform fixes it in IBKR's portal (Performance & Reports › Flex Queries; the fields are in negotiator's README).",
+  },
+  unavailable: {
+    label: "Not read",
+    text: "IBKR's statements service didn't answer at the last read: the daily read asks again.",
+  },
+};
 
 /**
  * A BROKER'S ACCOUNT — a portfolio's page (Investments › the portfolio › Broker) when the portfolio
@@ -76,6 +95,8 @@ export function BrokerPage({ portfolio, trail, onRemoved }: {
     } catch (err) {
       if (row) setRowErrors((e) => ({ ...e, [key]: errorText(err, fallback) }));
       else setError(errorText(err, fallback));
+      // A failed read leaves why on the account (its history's problem): shown at once.
+      changed();
     } finally {
       setBusy(null);
     }
@@ -97,6 +118,7 @@ export function BrokerPage({ portfolio, trail, onRemoved }: {
 
   const broker = BROKERS.find((b) => b.id === brokerAccount.broker)?.label ?? brokerAccount.broker;
   const state = session.data?.state ?? "unknown";
+  const problem = brokerAccount.historyProblem ? HISTORY_PROBLEMS[brokerAccount.historyProblem] : null;
   const actions: PageAction[] = [
     { label: "Read now", primary: true, plus: false, onClick: () => void act("read", read, "Unable to read this account now."), disabled: busy === "read" },
     ...(account && openPage ? [{ label: "Its wallets", onClick: () => openPage(WALLETS_SECTION, { id: accountView(account.uuid), page: "insights" }) }] : []),
@@ -107,8 +129,16 @@ export function BrokerPage({ portfolio, trail, onRemoved }: {
     { label: "Last read", value: brokerAccount.readAt ? dayLabel(brokerAccount.readAt.slice(0, 10)) : "Not yet", sub: "every hour, and on request" },
     {
       label: "History",
-      value: !session.data?.historyConfigured ? "Not set up" : brokerAccount.historyThrough ? `to ${dayLabel(brokerAccount.historyThrough)}` : "Not read yet",
-      sub: session.data?.historyConfigured ? "its statements, every day" : "a Flex query, set up by whoever runs this platform",
+      value: !session.data?.historyConfigured
+        ? "Not set up"
+        : problem
+          ? problem.label
+          : brokerAccount.historyThrough ? `to ${dayLabel(brokerAccount.historyThrough)}` : "Not read yet",
+      sub: !session.data?.historyConfigured
+        ? "a Flex query, set up by whoever runs this platform"
+        : problem && brokerAccount.historyFailedAt
+          ? `since ${dayLabel(brokerAccount.historyFailedAt.slice(0, 10))}${brokerAccount.historyThrough ? `, read to ${dayLabel(brokerAccount.historyThrough)}` : ""}`
+          : "its statements, every day",
     },
     { label: "Linked", value: dayLabel(brokerAccount.linkedAt.slice(0, 10)) },
   ];
@@ -132,6 +162,9 @@ export function BrokerPage({ portfolio, trail, onRemoved }: {
           Its trades and its cash before this page knew it come from the broker&apos;s statements: until they are set up
           (a Flex query, in this platform&apos;s settings), its portfolio holds only what is bought from here.
         </p>
+      )}
+      {session.data?.historyConfigured && problem && (
+        <p className="text-[12.5px] font-semibold text-amber-700">{problem.text}</p>
       )}
       {note && <p className="text-[12.5px] font-semibold text-emerald-700">{note}</p>}
       {error && !removing && <p className="text-[12.5px] font-semibold text-rose-600">{error}</p>}

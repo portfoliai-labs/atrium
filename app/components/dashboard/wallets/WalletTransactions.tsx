@@ -16,6 +16,7 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { Pills } from "../../preview/PreviewKit";
 import { DialogShell, MovementDialog } from "./WalletDialogs";
 import { CategoryOptions } from "./WalletCategories";
+import { TransferSuggestionsBadge } from "./TransferSuggestions";
 
 const PAGE = 25;
 
@@ -55,14 +56,17 @@ type Direction = "all" | "in" | "out";
  * the saved ones in one card, filtered, searched and paged by the API, newest first. A movement
  * opens to be changed; several picked on a page can be given a category, deleted, or (two of
  * them, in and out of two wallets) linked as one transfer, which a transfer's leg can be unlinked
- * from. An archived wallet's are read only (`lock` says why).
+ * from. An archived wallet's are read only (`lock` says why). Above, how many pairs of movements may be
+ * a transfer, to confirm.
  */
-export function WalletTransactions({ initial, lock, onAdd, onImport }: {
+export function WalletTransactions({ initial, lock, onAdd, onImport, onOpenSuggestions }: {
   initial: string;
   // Why movements can't be added here (an archived wallet, no wallet yet); undefined when they can.
   lock?: string;
   onAdd: () => void;
   onImport: () => void;
+  // The pairs of movements that may be a transfer, from the badge above the list.
+  onOpenSuggestions: () => void;
 }) {
   const { wallets, changed } = useWallets();
   const [wallet, setWallet] = useState(initial);
@@ -168,6 +172,7 @@ export function WalletTransactions({ initial, lock, onAdd, onImport }: {
 
   return (
     <>
+      <TransferSuggestionsBadge scope={scope} onOpen={onOpenSuggestions} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <AddCard
           icon={<UploadCloud className="h-5 w-5" />}
