@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, FolderTree, Globe, EyeOff } from "lucide-react";
+import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, FolderTree, Globe, EyeOff, RefreshCw } from "lucide-react";
 import { userService } from "../../services/userService";
 import { supabase } from "../../lib/supabaseClient";
 import { MIN_PASSWORD_LENGTH, newPasswordError } from "../../lib/password";
@@ -14,6 +14,7 @@ import { useUser } from "../../context/UserContext";
 import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
 import { NetworkIdentitySettings } from "./NetworkIdentitySettings";
+import { SyncSettings } from "./SyncSettings";
 import { MutedAndHidden } from "./journal/MutedAndHidden";
 import { useJournal } from "../../context/JournalContext";
 import { WalletCategories } from "./wallets/WalletCategories";
@@ -68,6 +69,8 @@ const TABS = [
   { id: "network", label: "Network identity", icon: Globe },
   // The Journal's authors the user muted and articles they hid: where the Journal is.
   { id: "moderation", label: "Muted and hidden", icon: EyeOff },
+  // This server as one of the user's devices, syncing with their phones through their own storage.
+  { id: "sync", label: "Sync", icon: RefreshCw },
   { id: "account", label: "Account", icon: UserIcon },
 ] as const;
 
@@ -243,14 +246,14 @@ export function SettingsSection() {
 
       {/* Tab bar — a full-width 2-column grid on mobile (so the selector never
           scrolls sideways), the original inline pill row from sm and up. */}
-      <div className="grid grid-cols-2 sm:inline-flex gap-1 p-1 bg-white rounded-2xl sm:rounded-full border border-[rgba(196,154,60,0.2)]">
+      <div className="grid grid-cols-2 sm:inline-flex sm:flex-wrap gap-1 p-1 bg-white rounded-2xl sm:rounded-[1.5rem] border border-[rgba(196,154,60,0.2)]">
         {tabs.map((tab) => {
           const active = tab.id === activeTab;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2 sm:px-5 py-2.5 sm:py-2 rounded-xl sm:rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors ${
+              className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 sm:whitespace-nowrap px-2 sm:px-5 py-2.5 sm:py-2 rounded-xl sm:rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors ${
                 active ? "bg-[#1c1917] text-white" : "text-[#78716c] hover:text-[#1c1917]"
               }`}
             >
@@ -494,6 +497,8 @@ export function SettingsSection() {
       {activeTab === "network" && <NetworkIdentitySettings />}
 
       {activeTab === "moderation" && <MutedAndHidden />}
+
+      {activeTab === "sync" && <SyncSettings />}
 
       {activeTab === "categories" && (
         <div className="space-y-4">
