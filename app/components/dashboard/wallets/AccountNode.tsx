@@ -22,7 +22,7 @@ import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 import {
   BankAccountRow, ConnectBankDialog, NEW_WALLET, daysLeft, linkNewWallet, renewable, syncText, useBankLinks, useSourcedWallets,
 } from "./WalletBanks";
-import { AddFunds, HoldingRow, SETTLE_DELAYS_MS, shortAddress, useOnchainAddresses } from "./WalletAddresses";
+import { AddFunds, HoldingRow, ProveAddress, SETTLE_DELAYS_MS, shortAddress, useOnchainAddresses } from "./WalletAddresses";
 import { BROKERS, SessionChip, sessionHint, useBrokerAccounts, useBrokerSession } from "./WalletBrokers";
 import { OnchainOrders } from "./OnchainOrders";
 import { OrderDetails } from "./OrderDetails";
@@ -38,8 +38,9 @@ type Dialog = "renew" | "remove";
  * together (arca's, each at today's rate in the reference currency), its source (the bank's
  * consent, renewed from here, or the chain) and its last read (read again from here). Under it,
  * the bank's accounts (or the address' stablecoins), each going into a wallet: one of the user's
- * of its currency, or a new one, then its balance checked against the bank's (or the chain's);
- * the cards of its wallets; for an address, its funding and its orders. Once its bank link or
+ * of its currency, or a new one (an address' stablecoin: one made for it, relinkable), then its
+ * balance checked against the bank's (or the chain's); the cards of its wallets; for an address,
+ * whether it's proved the user's (and proving it, which orders need), its funding and its orders. Once its bank link or
  * address is removed, it keeps its wallets and says so.
  */
 export function AccountNode({ accountUuid, rootTrail, onOpen }: {
@@ -170,6 +171,7 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
       {link && link.status === "active" && left !== null && renewable(link) && <Chip tone="warn">{left <= 1 ? "Ends today" : `${left} days left`}</Chip>}
       {!bank && !chain && <Chip>Not connected</Chip>}
       {brokerAccount && <SessionChip state={session.data?.state ?? "unknown"} />}
+      {address && (address.proved ? <Chip tone="ok">Proved yours</Chip> : <Chip tone="warn">Not proved</Chip>)}
     </>
   );
   const currencies = new Set(active.map(({ wallet }) => wallet.currency));
@@ -191,6 +193,17 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
       {note && <p className="text-[12.5px] font-semibold text-emerald-700">{note}</p>}
       {error && !dialog && <p className="text-[12.5px] font-semibold text-rose-600">{error}</p>}
       {funding && address && <AddFunds address={address.address} />}
+      {address && !address.proved && (
+        <Module>
+          <ModuleHead
+            title="Prove it's yours"
+            desc="Added without a proof, it's read like any public address. To buy or sell on it, prove it's yours once: its wallet signs a message."
+          />
+          <div className={MODULE_BODY}>
+            <ProveAddress address={address} onProved={() => { setNote("Proved: orders can be placed on this address."); changed(); }} />
+          </div>
+        </Module>
+      )}
 
       {link && (
         <Module>
@@ -254,7 +267,7 @@ export function AccountNode({ accountUuid, rootTrail, onOpen }: {
         <Module>
           <ModuleHead
             title="Stablecoins"
-            desc="Each comes into one wallet of its currency, read from the chain: one of yours, or a new one named after it. Your keys stay in your wallet: nothing here can move money."
+            desc="Each comes into a wallet made for it when first read; unlink it to move it into another of yours of its currency. Your keys stay in your wallet: nothing here can move money."
           />
           <div className={MODULE_BODY}>
             {coins.length === 0 ? (
@@ -379,7 +392,8 @@ function lastReadFigure(link: BankLink | undefined, address: OnchainAddress | un
   return { label: "Last read", value: at ? dayLabel(at.slice(0, 10)) : "Not yet", sub: link ? "twice a day, and on request" : "every few minutes, and on request" };
 }
 
-function Chip({ tone, children }: { tone?: "loss" | "warn"; children: React.ReactNode }) {
-  const colors = tone === "loss" ? "bg-rose-50 text-rose-600" : tone === "warn" ? "bg-amber-50 text-amber-700" : "bg-[#EEE9DD] text-[#78716c]";
+function Chip({ tone, children }: { tone?: "loss" | "warn" | "ok"; children: React.ReactNode }) {
+  const colors = tone === "loss" ? "bg-rose-50 text-rose-600" : tone === "warn" ? "bg-amber-50 text-amber-700"
+    : tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-[#EEE9DD] text-[#78716c]";
   return <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${colors}`}>{children}</span>;
 }

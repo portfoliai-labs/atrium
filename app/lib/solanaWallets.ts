@@ -1,10 +1,10 @@
 // lib/solanaWallets.ts
 //
 // The user's Solana wallets in the browser (Phantom, Solflare, any other), through the Wallet
-// Standard: each extension announces itself, nothing is bundled per wallet. Only what proving an
-// address needs (connecting: the wallet's address; signing a message) and an order needs (signing
-// the transaction catena prepared, which catena sends). The platform never holds
-// a key; the user signs in their wallet.
+// Standard: each extension announces itself, nothing is bundled per wallet. Only what adding an
+// address needs (connecting: the wallet's address, nothing signed), proving it the user's before
+// orders (signing a message) and an order needs (signing the transaction catena prepared, which
+// catena sends). The platform never holds a key; the user signs in their wallet.
 
 import { getWallets } from "@wallet-standard/app";
 import type { Wallet, WalletAccount } from "@wallet-standard/base";
@@ -76,6 +76,31 @@ export async function connectWallet(wallet: Wallet): Promise<WalletAccount> {
   return account;
 }
 
+const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+// A Solana address: a 32-byte public key.
+const ADDRESS_BYTES = 32;
+
+/** Whether `text` is a Solana address: base58 of 32 bytes (the server checks it again). */
+export function isSolanaAddress(text: string): boolean {
+  if (!text || /[^1-9A-HJ-NP-Za-km-z]/.test(text)) return false;
+  // Big-endian base58 → bytes; each leading "1" is a leading zero byte.
+  const bytes: number[] = [];
+  for (const char of text) {
+    let carry = BASE58.indexOf(char);
+    for (let i = 0; i < bytes.length; i++) {
+      carry += bytes[i] * 58;
+      bytes[i] = carry & 0xff;
+      carry >>= 8;
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+  const zeros = text.length - text.replace(/^1+/, "").length;
+  return bytes.length + zeros === ADDRESS_BYTES;
+}
+
 /** The wallet's signature of the message (the user approves in the wallet), base64. */
 export async function signMessage(wallet: Wallet, account: WalletAccount, message: string): Promise<string> {
   const sign = (wallet.features as SolanaSignMessageFeature)[SolanaSignMessage];
@@ -97,11 +122,14 @@ const fromBase64 = (text: string) => Uint8Array.from(atob(text), (c) => c.charCo
 export const canSignTransactions = (wallet: Wallet) => SolanaSignTransaction in wallet.features;
 
 /**
- * The wallet and its account holding `address`: one already connected to the page first, else
- * each wallet asked in turn (the user approves the connection in it). Null when none holds it.
+ * The wallet and its account holding `address`, among those that can sign what's meant (a
+ * transaction, or the proof's message): one already connected to the page first, else each wallet
+ * asked in turn (the user approves the connection in it). Null when none holds it.
  */
-export async function walletFor(address: string): Promise<{ wallet: Wallet; account: WalletAccount } | null> {
-  const wallets = getSolanaWallets().map((w) => w.wallet).filter(canSignTransactions);
+export async function walletFor(
+  address: string, signs: "transaction" | "message" = "transaction",
+): Promise<{ wallet: Wallet; account: WalletAccount } | null> {
+  const wallets = getSolanaWallets().map((w) => w.wallet).filter(signs === "transaction" ? canSignTransactions : () => true);
   for (const wallet of wallets) {
     const account = wallet.accounts.find((a) => a.address === address);
     if (account) return { wallet, account };

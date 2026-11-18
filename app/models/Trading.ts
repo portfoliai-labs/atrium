@@ -1,11 +1,12 @@
 // models/Trading.ts
 //
 // Buying from the app (ianus' /v1/addresses, catena's addresses/v1, and /v1/trading-accounts,
-// mercatura's trading_accounts/v1). An address is proved the user's by signing, with the wallet
-// that holds it, a message the backend composes: nothing else of the wallet is ever sent, no key
-// is kept. Each registered address becomes a trading account, and with it a portfolio (its assets)
-// and a wallets' account; its stablecoins (/v1/chain-holdings, arca's chain/v1) come into the
-// wallets the user links them to, as a bank's accounts do.
+// mercatura's trading_accounts/v1). An address is added without a proof (pasted, or given by a
+// wallet in the browser: what is read of it is public), and proved the user's only before orders, by
+// signing, with the wallet that holds it, a message the backend composes: nothing else of the
+// wallet is ever sent, no key is kept. Each address becomes a trading account, and with it a
+// portfolio (its assets) and a wallets' account; each of its stablecoins (/v1/chain-holdings,
+// arca's chain/v1) comes into a wallet made and linked for it, which the user may relink.
 
 export interface AddressProof {
   nonce: string;
@@ -57,6 +58,8 @@ export interface OnchainAddress {
   registeredAt: string;
   // When the chain was last read for it; null before its first read.
   readAt: string | null;
+  // Proved the user's (a signature in its wallet): only then can orders be placed on it.
+  proved: boolean;
 }
 
 export type TradingAccountKind = "chain_address" | "broker_account";
@@ -89,7 +92,7 @@ export interface ChainHolding {
   balance: number;
   // Its first read: where its history starts.
   openedAt: string;
-  // The wallet its movements come into; null while not linked.
+  // The wallet its movements come into (one made for it at its first read); null once unlinked.
   walletUuid: string | null;
   syncFrom: string | null;
   lastMovementAt: string | null;

@@ -3,7 +3,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Check, Copy, ExternalLink, TriangleAlert, Unlink, Wallet as WalletIcon } from "lucide-react";
+import { Check, Copy, ExternalLink, ShieldCheck, TriangleAlert, Unlink, Wallet as WalletIcon } from "lucide-react";
 import { useWalletQuery } from "../../../context/WalletsContext";
 import { tradingService } from "../../../services/tradingService";
 import { accountService } from "../../../services/accountService";
@@ -12,17 +12,20 @@ import {
   connectWallet,
   getServerSolanaWallets,
   getSolanaWallets,
+  isSolanaAddress,
   signMessage,
   subscribeSolanaWallets,
+  walletFor,
 } from "../../../lib/solanaWallets";
 import { formatCurrency } from "../../../lib/format";
+import { ApiError } from "../../../services/apiClient";
 import { dayLabel, errorText } from "../../../lib/wallets";
 import type { ChainHolding, OnchainAddress } from "../../../models/Trading";
 import type { Wallet } from "../../../models/Wallet";
 import { DialogShell } from "./WalletDialogs";
 import { BalanceCheck, IconButton, LinkedSourceRow, NEW_WALLET } from "./WalletBanks";
 
-// The chains an address can be proved on: Solana's, for now (forum's service map, "Buying from the app").
+// The chains an address can be added on: Solana's, for now (forum's service map, "Buying from the app").
 const SOLANA = "solana";
 const CHAINS = [{ id: SOLANA, label: "Solana" }];
 
@@ -43,7 +46,7 @@ export const shortAddress = (address: string) => `${address.slice(0, 4)}…${add
 
 /**
  * The account a trading account just made makes (arca's, on mercatura's event: a moment after the
- * address is registered, or the broker's account linked), by its executor's reference: looked for
+ * address is added, or the broker's account linked), by its executor's reference: looked for
  * now and after each of SETTLE_DELAYS_MS, null if it isn't there by then.
  */
 export async function findAddressAccount(addressUuid: string): Promise<string | null> {
@@ -63,9 +66,9 @@ const STABLECOINS = "USDC or EURC";
 
 /**
  * One stablecoin of an address, on its account's page, as a bank's account: its balance read from
- * the chain; linked, the wallet it comes into (the whole row opening it, its balance checked
- * against the chain's, Unlink); not yet, a choice among the user's wallets of its currency free of another
- * source, or a new one named after it.
+ * the chain; linked (to the wallet made for it at its first read, or another), the wallet it comes
+ * into (the whole row opening it, its balance checked against the chain's, Unlink); unlinked, a
+ * choice among the user's wallets of its currency free of another source, or a new one named after it.
  */
 export function HoldingRow({ holding, wallets, taken, busy, error, onLink, onUnlink, onOpenWallet, source = "the chain" }: {
   holding: ChainHolding;
@@ -166,7 +169,7 @@ export function AddFunds({ address }: { address: string }) {
         <ol className="list-decimal pl-4 space-y-1">
           <li>Buy {STABLECOINS} in your wallet (Phantom and Solflare have a Buy button), or at an exchange where you have an account.</li>
           <li>From an exchange, withdraw it to this address, choosing the <strong>Solana</strong> network.</li>
-          <li>It shows under this address once the chain is read, in the wallet you link it to; the card or bank payment can then be linked to it as a transfer.</li>
+          <li>It shows under this address once the chain is read, in its stablecoin&apos;s wallet; the card or bank payment can then be linked to it as a transfer.</li>
         </ol>
         <p className="flex gap-2 rounded-xl bg-amber-50 px-3 py-2 text-[11.5px] font-medium text-amber-800">
           <TriangleAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -178,61 +181,72 @@ export function AddFunds({ address }: { address: string }) {
   );
 }
 
-type Step = "connect" | "sign" | "register";
-
-const STEP_LABELS: Record<Step, string> = {
-  connect: "Approve the connection in your wallet…",
-  sign: "Sign the message in your wallet…",
-  register: "Adding the address…",
-};
+/** What a refusal of adding an address means to the user. */
+function addError(err: unknown) {
+  if (err instanceof ApiError && err.errorType === "AddressTakenError") {
+    return "This address is already on another account here: an address can be on one account only.";
+  }
+  if (err instanceof ApiError && err.errorType === "AddressLimitReachedError") {
+    return "You have as many addresses as an account may have: remove one to add another.";
+  }
+  return errorText(err, "Unable to add this address.");
+}
 
 /**
- * CONNECT A WALLET — as Connect a bank: a chain (Solana's, for now), a wallet of it found in the
- * browser, then its address proved: the wallet gives it, the backend composes the message
- * (Sign-In With Solana, valid 5 minutes), the wallet signs it, the backend checks the signature and
- * adds the address, read at once so that its stablecoins show, each to link to a wallet.
+ * ADD AN ADDRESS — as Connect a bank, but nothing to sign: a chain (Solana's, for now) and an
+ * address, pasted (a hardware wallet's too) or given by a wallet in the browser (it approves the
+ * connection, signs nothing). What is read of it is public, so no proof is asked: it is added, read
+ * at once, and each stablecoin it holds comes into a wallet made for it. Proving it's the user's
+ * (a signature in its wallet) is asked only before an order, on its account's page or the order's.
  */
-export function ConnectWalletDialog({ onClose, onConnected }: { onClose: () => void; onConnected: (address: OnchainAddress) => void }) {
+export function AddAddressDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (address: OnchainAddress) => void }) {
   // The extensions announce themselves as the page loads, and later when one is installed.
   const wallets = useSyncExternalStore(subscribeSolanaWallets, getSolanaWallets, getServerSolanaWallets);
   const [chain, setChain] = useState(SOLANA);
-  const [picked, setPicked] = useState<string | null>(null);
-  const [step, setStep] = useState<Step | null>(null);
+  const [address, setAddress] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // The only wallet there is is the one meant.
-  const chosen = picked ?? (wallets.length === 1 ? wallets[0].name : null);
+  const trimmed = address.trim();
+  const valid = isSolanaAddress(trimmed);
 
-  const prove = async () => {
-    const wallet = wallets.find((w) => w.name === chosen);
+  const fill = async (name: string) => {
+    const wallet = wallets.find((w) => w.name === name);
     if (!wallet) return;
     setError(null);
+    setBusy("Approve the connection in your wallet…");
     try {
-      setStep("connect");
-      const account = await connectWallet(wallet.wallet);
-      const proof = await tradingService.startProof(chain, account.address);
-      setStep("sign");
-      const signature = await signMessage(wallet.wallet, account, proof.message);
-      setStep("register");
-      const added = await tradingService.register(proof.nonce, signature);
-      // Its first read tells its stablecoins; the job would, within 5 minutes.
-      await tradingService.read(added.uuid).catch(() => undefined);
-      onConnected(added);
+      setAddress((await connectWallet(wallet.wallet)).address);
     } catch (err) {
-      setError(errorText(err, "Unable to connect this wallet."));
-      setStep(null);
+      setError(errorText(err, "The wallet gave no address."));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const add = async () => {
+    setError(null);
+    setBusy("Adding the address…");
+    try {
+      const added = await tradingService.add(chain, trimmed);
+      // Its first read tells its stablecoins; the job would, within minutes.
+      await tradingService.read(added.uuid).catch(() => undefined);
+      onAdded(added);
+    } catch (err) {
+      setError(addError(err));
+      setBusy(null);
     }
   };
 
   return (
     <DialogShell
       icon={<WalletIcon className="h-5 w-5" />}
-      title="Connect a wallet"
-      subtitle="Your wallet signs a message to prove the address is yours. It moves no funds and costs nothing; its stablecoins then show, each to link to a wallet."
-      busy={step !== null}
+      title="Add an address"
+      subtitle="Its stablecoins and tokens are read from the chain, each stablecoin into a wallet of its own. Nothing to sign: you prove it's yours, in its wallet, only before placing an order."
+      busy={busy !== null}
       error={error}
-      submitLabel="Connect and sign"
-      canSubmit={chosen !== null}
-      onSubmit={() => void prove()}
+      submitLabel="Add the address"
+      canSubmit={valid}
+      onSubmit={() => void add()}
       onClose={onClose}
     >
       <label className="block space-y-1.5">
@@ -240,15 +254,104 @@ export function ConnectWalletDialog({ onClose, onConnected }: { onClose: () => v
         <select
           value={chain}
           onChange={(e) => setChain(e.target.value)}
-          disabled={step !== null}
+          disabled={busy !== null}
           className="w-full h-10 px-3 rounded-xl bg-white text-[13px] font-semibold text-slate-700 border border-slate-200 outline-none focus:border-[#C49A3C]/60"
         >
           {CHAINS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
       </label>
+      <label className="block space-y-1.5">
+        <span className="block text-[11px] font-black uppercase tracking-widest text-slate-400">Address</span>
+        <input
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          disabled={busy !== null}
+          placeholder="Paste a Solana address"
+          spellCheck={false}
+          autoComplete="off"
+          className="w-full h-10 px-3 rounded-xl bg-white text-[12.5px] font-semibold font-mono text-slate-700 border border-slate-200 outline-none focus:border-[#C49A3C]/60"
+        />
+        {trimmed && !valid && <span className="block text-[11.5px] font-medium text-rose-600">That isn&apos;t a Solana address.</span>}
+      </label>
+      {wallets.length > 0 && (
+        <div className="space-y-1.5">
+          <span className="block text-[11px] font-black uppercase tracking-widest text-slate-400">Or from a wallet in this browser</span>
+          <ul className="flex flex-wrap gap-2">
+            {wallets.map((w) => (
+              <li key={w.name}>
+                <button
+                  type="button"
+                  onClick={() => void fill(w.name)}
+                  disabled={busy !== null}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 text-left hover:border-[#C49A3C]/60 transition-colors disabled:opacity-50"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- the wallet's own icon, a data URI */}
+                  <img src={w.icon} alt="" className="h-5 w-5 rounded-md" />
+                  <span className="text-[12.5px] font-bold text-slate-800">{w.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {busy && <p className="text-[12px] font-semibold text-[#C49A3C]">{busy}</p>}
+    </DialogShell>
+  );
+}
+
+type ProofStep = "connect" | "sign" | "prove";
+
+const PROOF_STEP_LABELS: Record<ProofStep, string> = {
+  connect: "Approve the connection in your wallet…",
+  sign: "Sign the message in your wallet…",
+  prove: "Checking the signature…",
+};
+
+/**
+ * PROVE IT'S YOURS — what an address needs before orders: the wallet holding it (one connected to
+ * the page, else each asked in turn) signs a message the backend composes (Sign-In With Solana,
+ * valid 5 minutes), the backend checks the signature. It moves no funds and costs nothing. A
+ * hardware wallet signs through the browser wallet it's paired with.
+ */
+export function ProveAddress({ address, onProved, desc }: {
+  address: OnchainAddress;
+  onProved: (address: OnchainAddress) => void;
+  // What it's for, where it shows.
+  desc?: string;
+}) {
+  const wallets = useSyncExternalStore(subscribeSolanaWallets, getSolanaWallets, getServerSolanaWallets);
+  const [step, setStep] = useState<ProofStep | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const prove = async () => {
+    setError(null);
+    try {
+      setStep("connect");
+      const found = await walletFor(address.address, "message");
+      if (!found) throw new Error("No wallet in this browser holds this address: open the one that does (a hardware wallet through the wallet it's paired with), and try again.");
+      const proof = await tradingService.startProof(address.chain, address.address);
+      setStep("sign");
+      const signature = await signMessage(found.wallet, found.account, proof.message);
+      setStep("prove");
+      onProved(await tradingService.prove(proof.nonce, signature));
+    } catch (err) {
+      setError(err instanceof ApiError && err.errorType === "AddressProofExpiredError"
+        ? "The message expired before it was signed: try again."
+        : errorText(err, "Unable to prove this address."));
+    } finally {
+      setStep(null);
+    }
+  };
+
+  return (
+    <div className="space-y-2.5">
+      <p className="flex items-start gap-2 text-[12.5px] text-slate-600">
+        <ShieldCheck className="h-4 w-4 shrink-0 mt-px text-[#C49A3C]" />
+        <span>{desc ?? "Orders are placed only on an address you've proved yours: its wallet signs a message. It moves no funds and costs nothing."}</span>
+      </p>
       {wallets.length === 0 ? (
-        <div className="space-y-3">
-          <p className="text-[12.5px] text-slate-600">No Solana wallet found in this browser. Install one, then open this again:</p>
+        <div className="space-y-2">
+          <p className="text-[12.5px] text-slate-600">No Solana wallet found in this browser. Install one holding this address, then come back:</p>
           <ul className="flex flex-wrap gap-2">
             {WALLET_DOWNLOADS.map((download) => (
               <li key={download.name}>
@@ -265,24 +368,16 @@ export function ConnectWalletDialog({ onClose, onConnected }: { onClose: () => v
           </ul>
         </div>
       ) : (
-        <ul className="space-y-2">
-          {wallets.map((w) => (
-            <li key={w.name}>
-              <button
-                type="button"
-                onClick={() => setPicked(w.name)}
-                disabled={step !== null}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${chosen === w.name ? "border-[#C49A3C] bg-[#C49A3C]/5" : "border-slate-200 hover:border-[#C49A3C]/60"}`}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element -- the wallet's own icon, a data URI */}
-                <img src={w.icon} alt="" className="h-7 w-7 rounded-lg" />
-                <span className="text-[13px] font-bold text-slate-800">{w.name}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <button
+          type="button"
+          onClick={() => void prove()}
+          disabled={step !== null}
+          className="px-4 py-2 rounded-lg text-[12px] font-bold bg-[#1c1917] text-white hover:bg-[#C49A3C] transition-colors disabled:opacity-50"
+        >
+          {step ? PROOF_STEP_LABELS[step] : "Prove it's yours"}
+        </button>
       )}
-      {step && <p className="text-[12px] font-semibold text-[#C49A3C]">{STEP_LABELS[step]}</p>}
-    </DialogShell>
+      {error && <p className="text-[11.5px] font-medium text-rose-600">{error}</p>}
+    </div>
   );
 }

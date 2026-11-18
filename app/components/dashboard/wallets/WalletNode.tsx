@@ -22,7 +22,7 @@ import { ExploreHost } from "../ExploreView";
 // import { VIRTUAL_COLOR } from "../BacktestMarks";
 import { WalletsComposition } from "./WalletsComposition";
 import { WalletAlerts } from "./WalletAlerts";
-import { ConnectWalletDialog, findAddressAccount } from "./WalletAddresses";
+import { AddAddressDialog, findAddressAccount } from "./WalletAddresses";
 import { ConnectBankDialog, WalletBankDialog, useWalletLinked } from "./WalletBanks";
 import { WalletBudgets } from "./WalletBudgets";
 import { WalletCards, cardKindsFor } from "./WalletCards";
@@ -42,9 +42,9 @@ export const WALLET_PAGE_LABELS: Record<WalletPage, string> = {
 
 const ARCHIVED_TITLE = "An archived wallet is read only";
 
-// "connectBank" and "connectChain" make an account (a bank connected, an address proved), opened once there.
+// "connectBank" and "addAddress" make an account (a bank connected, an address added), opened once there.
 // A broker's account is linked from Investments: it is a portfolio first.
-type Dialog = "new" | "edit" | "movement" | "import" | "archive" | "delete" | "bank" | "connectBank" | "connectChain";
+type Dialog = "new" | "edit" | "movement" | "import" | "archive" | "delete" | "bank" | "connectBank" | "addAddress";
 
 // Back from the bank with more than one account to choose (see /dashboard/bank-link): the wallet's
 // bank dialog opens on it.
@@ -58,8 +58,9 @@ const CONNECT_PARAM = "connectBank";
  * its own page, AccountNode) and the wallets in none, each going down to its page (the archived
  * ones listed after it), then the Insights. Its Transactions, Budgets and Alerts are pages of
  * their own, and so is All wallets' Manage wallets (each wallet's bank account linked there). A
- * bank is connected (open banking) or an address proved (a signature in the user's own wallet)
- * from All wallets, which makes an account, opened once there to choose its wallets. A wallet
+ * bank is connected (open banking) or an address added (pasted or given by a browser wallet, no
+ * proof: that's asked before orders) from All wallets, which makes an account, opened once there.
+ * A wallet
  * that's gone (deleted, or from an old link) opens all of them. Archived wallets are read only.
  */
 export function WalletNode({ id, page, rootTrail, onOpen }: {
@@ -146,7 +147,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
         { label: "Manage wallets", primary: true, onClick: () => onOpen(ALL_WALLETS, "manage") },
         // Each makes an account, its page opened to choose its wallets.
         { label: "Connect a bank", onClick: () => setDialog("connectBank") },
-        { label: "Connect a wallet", onClick: () => setDialog("connectChain") },
+        { label: "Add an address", onClick: () => setDialog("addAddress") },
       ];
   const counters = [
     // All wallets' only counts them: their movements are each wallet's, on its own page.
@@ -190,10 +191,10 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
       {dialog === "bank" && wallet && <WalletBankDialog wallet={wallet} onClose={close} />}
       {/* The bank sends the user back to /dashboard/bank-link, which opens the account. */}
       {dialog === "connectBank" && <ConnectBankDialog onClose={close} />}
-      {dialog === "connectChain" && (
-        <ConnectWalletDialog
+      {dialog === "addAddress" && (
+        <AddAddressDialog
           onClose={close}
-          onConnected={(address) => {
+          onAdded={(address) => {
             close();
             changed();
             void findAddressAccount(address.uuid).then((uuid) => { changed(); if (uuid) openAccount(uuid); });
@@ -239,7 +240,7 @@ export function WalletNode({ id, page, rootTrail, onOpen }: {
     const right = page === "manage" ? (
       <div className="flex gap-2">
         <SmallButton icon={<Landmark className="h-3.5 w-3.5" />} onClick={() => setDialog("connectBank")}>Connect a bank</SmallButton>
-        <SmallButton icon={<WalletIcon className="h-3.5 w-3.5" />} onClick={() => setDialog("connectChain")}>Connect a wallet</SmallButton>
+        <SmallButton icon={<WalletIcon className="h-3.5 w-3.5" />} onClick={() => setDialog("addAddress")}>Add an address</SmallButton>
         <SmallButton icon={<Plus className="h-3.5 w-3.5" />} dark onClick={() => setDialog("new")}>New wallet</SmallButton>
       </div>
     ) : undefined;
