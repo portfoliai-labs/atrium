@@ -6,6 +6,7 @@ import type {
   Transfer, TransferCreateRequest, TransferSuggestionList, Wallet, WalletAlertRule, WalletAlertRuleCreateRequest, WalletAlertRuleUpdateRequest,
   WalletCreateRequest, WalletReport, WalletSummary, WalletUpdateRequest,
 } from "../models/Wallet";
+import type { CustodyRequest } from "../models/Custody";
 import { apiFetch, apiFetchForm } from "./apiClient";
 
 // The transfer suggestions read at once: ianus' most (TRANSFER_SUGGESTIONS_MAX_LIMIT), so the
@@ -65,6 +66,14 @@ export const walletService = {
   // PATCH /v1/wallets/{w} — only the fields sent change.
   async update(walletUuid: string, payload: WalletUpdateRequest): Promise<Wallet> {
     return apiFetch<Wallet>(`/v1/wallets/${walletUuid}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+
+  // PUT /v1/wallets/{w}/custody — who keeps it, where (models/Custody), the user's from now on;
+  // null: DELETE, back to the prefill.
+  async setCustody(walletUuid: string, custody: CustodyRequest | null): Promise<Wallet> {
+    return custody
+      ? apiFetch<Wallet>(`/v1/wallets/${walletUuid}/custody`, { method: "PUT", body: JSON.stringify(custody) })
+      : apiFetch<Wallet>(`/v1/wallets/${walletUuid}/custody`, { method: "DELETE" });
   },
 
   // PUT /v1/wallets/{w}/archived — an archived wallet is read only and out of the summary.

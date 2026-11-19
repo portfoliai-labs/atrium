@@ -3,7 +3,8 @@
 // the tax alert rules. With `clientUuid`, an advisor's view of that client's (the same answers;
 // 403 for someone who isn't their client; a year's without the properties; no alert rules).
 import type {
-  CostMethod, InvestmentIncome, RealizedGains, TaxAlertRule, TaxAlertRuleRequest, TaxAlertRuleUpdateRequest, TaxYear, YearTaxes,
+  CostMethod, HoldingKind, HoldingOverrideRequest, InvestmentIncome, RealizedGains, TaxAlertRule, TaxAlertRuleRequest,
+  TaxAlertRuleUpdateRequest, TaxYear, YearTaxes,
 } from "../models/Tax";
 import { apiFetch } from "./apiClient";
 
@@ -39,6 +40,18 @@ export const taxService = {
   // instalments by due day.
   async overview(year: number, clientUuid?: string | null): Promise<YearTaxes> {
     return apiFetch<YearTaxes>(`${base(clientUuid)}/overview/${year}`);
+  },
+
+  // PUT /v1/taxes/wealth/overrides/{kind}/{uuid}/{year} — the user's own figure for a holding's
+  // year: a property's value (the IVIE's base), an account's or a portfolio's wealth tax paid
+  // abroad. 404 for a holding not theirs; 422 for the wrong figure for its kind.
+  async setHoldingOverride(kind: HoldingKind, uuid: string, year: number, figure: HoldingOverrideRequest): Promise<void> {
+    await apiFetch(`/v1/taxes/wealth/overrides/${kind}/${uuid}/${year}`, { method: "PUT", body: JSON.stringify(figure) });
+  },
+
+  // DELETE /v1/taxes/wealth/overrides/{kind}/{uuid}/{year} — back to the facts' figure.
+  async deleteHoldingOverride(kind: HoldingKind, uuid: string, year: number): Promise<void> {
+    await apiFetch(`/v1/taxes/wealth/overrides/${kind}/${uuid}/${year}`, { method: "DELETE" });
   },
 
   // GET /v1/taxes/alert-rules — the user's tax alert rules, each with what it finds today.

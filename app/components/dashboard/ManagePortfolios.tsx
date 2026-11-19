@@ -1,6 +1,7 @@
 // components/dashboard/ManagePortfolios.tsx
 "use client";
 
+import { CustodyField } from "./custody/CustodyField";
 import { useMemo, useState } from "react";
 import { ArrowUpRight, Bell, Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useInvestmentsRead, usePortfolio } from "../../context/PortfolioContext";
@@ -188,7 +189,7 @@ function ManageRow({
   onOpen: () => void;
   onDelete: () => void;
 }) {
-  const { renamePortfolio, setTaxationMode } = usePortfolio();
+  const { renamePortfolio, setTaxationMode, setCustody } = usePortfolio();
   const [savingMode, setSavingMode] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(portfolio.name);
@@ -338,6 +339,16 @@ function ManageRow({
           {savingMode && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-300" />}
           <span className="hidden sm:inline text-slate-400">{TAXATION_MODE_LABELS[portfolio.taxationMode ?? "declared"].detail}</span>
         </label>
+      )}
+      {taxable && (
+        <div className="mt-1.5 pl-5.5">
+          <CustodyField
+            custody={portfolio.custody}
+            onSave={(custody) => setCustody(portfolio.uuid, custody)}
+            disabled={readOnly !== undefined}
+            ownKeeping={Boolean(portfolio.tradingAccountUuid) || portfolio.custody?.kind === "self"}
+          />
+        </div>
       )}
       {error && <p className="mt-1.5 pl-5.5 text-xs font-medium text-rose-600">{error}</p>}
     </li>

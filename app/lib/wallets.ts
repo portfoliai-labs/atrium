@@ -28,9 +28,10 @@ export const KIND_LABELS: Record<WalletKind, string> = {
   savings: "Savings",
   cash: "Cash",
   crypto: "Crypto",
+  deposit: "Deposit account",
 };
 // The kinds a wallet is made with: a crypto one also when a stablecoin is linked to a new wallet.
-export const WALLET_KINDS: WalletKind[] = ["current_account", "credit_card", "savings", "cash", "crypto"];
+export const WALLET_KINDS: WalletKind[] = ["current_account", "credit_card", "savings", "deposit", "cash", "crypto"];
 
 // The presets, as every user's categories start: worded and coloured here until renamed or recoloured.
 export const INCOME_CATEGORIES: MovementCategory[] = ["salary", "freelance", "refunds", "interest", "other_income"];
