@@ -342,12 +342,14 @@ const toneOfValue = (v: number | null | undefined): "gain" | "loss" | undefined 
  * many to a row as fit, 120px at least). `strong` is the headline one, a size up; `sub` a faint
  * line under the value; `info`, a tooltip on the label.
  */
-export function Figs({ children, className = "", pairs = false }: { children: React.ReactNode; className?: string; pairs?: boolean }) {
+export function Figs({ children, className = "", pairs = false, wide = false }: { children: React.ReactNode; className?: string; pairs?: boolean; wide?: boolean }) {
   // `pairs`: two to a row whatever the width, for a half-width module that lines up with its neighbour.
-  return <div className={`grid ${pairs ? "grid-cols-2" : "grid-cols-[repeat(auto-fit,minmax(120px,1fr))]"} gap-x-5 gap-y-3.5 ${className}`}>{children}</div>;
+  // `wide`: columns of 150px at least, for figures in the thousands with their cents.
+  const cols = pairs ? "grid-cols-2" : wide ? "grid-cols-[repeat(auto-fit,minmax(150px,1fr))]" : "grid-cols-[repeat(auto-fit,minmax(120px,1fr))]";
+  return <div className={`grid ${cols} gap-x-5 gap-y-3.5 ${className}`}>{children}</div>;
 }
 
-export function Fig({ label, value, sub, tone, strong = false, info, badge }: {
+export function Fig({ label, value, sub, tone, strong = false, info, badge, className = "" }: {
   label: string;
   value: string;
   sub?: string;
@@ -355,9 +357,11 @@ export function Fig({ label, value, sub, tone, strong = false, info, badge }: {
   strong?: boolean;
   info?: string;
   badge?: React.ReactNode;
+  // E.g. "col-span-full": a figure on a row of its own.
+  className?: string;
 }) {
   return (
-    <span className="flex flex-col gap-[3px] min-w-0 border-t border-[#EEE9DD] pt-2.5 text-left">
+    <span className={`flex flex-col gap-[3px] min-w-0 border-t border-[#EEE9DD] pt-2.5 text-left ${className}`}>
       <span className="flex items-center gap-1 min-w-0 text-[11px] text-[#78716c]">
         <span className="truncate">{label}</span>
         {info && (
@@ -370,7 +374,7 @@ export function Fig({ label, value, sub, tone, strong = false, info, badge }: {
         <span className={`font-bold tabular-nums truncate tracking-[-0.01em] ${strong ? "text-[22px]" : "text-[17px]"} ${toneClass(tone)}`}>{value}</span>
         {badge}
       </span>
-      {sub && <span className="text-[11px] text-[#857e78] truncate">{sub}</span>}
+      {sub && <span className="text-[11px] text-[#857e78] break-words">{sub}</span>}
     </span>
   );
 }

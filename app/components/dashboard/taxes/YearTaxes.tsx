@@ -8,6 +8,7 @@ import { dayLabel, today } from "../../../lib/wallets";
 import type { PropertyTax } from "../../../models/RealEstate";
 import type { YearTaxes } from "../../../models/Tax";
 import { Fig, Figs, MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
+import { WEALTH_TAX_LABEL } from "./WealthTaxes";
 
 /**
  * THE YEAR AT A GLANCE — every tax of the year in each currency met (never converted): what the
@@ -27,8 +28,8 @@ export function YearGlance({ data, onOpenProperty }: { data: YearTaxes; onOpenPr
         {data.totals.map((t) => {
           const money = (v: number) => formatCurrency(v, t.currency);
           return (
-            <Figs key={t.currency}>
-              <Fig label={data.totals.length > 1 ? `Total in ${t.currency}` : "Total"} value={money(t.total)} strong info="Every tax of the year: the tax return's on the investments, what the brokers withhold and the properties'." />
+            <Figs key={t.currency} wide>
+              <Fig className="col-span-full" label={data.totals.length > 1 ? `Total in ${t.currency}` : "Total"} value={money(t.total)} strong info="Every tax of the year: the tax return's on the investments and on holdings, what the brokers withhold and the properties'. The stamp duty the banks charge is apart." />
               <Fig label="Investments" value={money(t.investments)} info="What the declared portfolios' gains and income owe, to put in the tax return." />
               <Fig label="Withheld by brokers" value={money(t.withheld)} />
               {(t.wealth ?? 0) > 0 && (
@@ -55,15 +56,18 @@ export function YearGlance({ data, onOpenProperty }: { data: YearTaxes; onOpenPr
             </p>
             <ul className="divide-y divide-[#EEE9DD]">
               {data.instalments.map((i) => {
-                // A tax on holdings' payments aren't recorded: due, never overdue nor paid here.
+                // A tax on holdings' payments aren't recorded: to pay, then past its day not
+                // tracked (never overdue nor paid here).
                 const onHoldings = Boolean(i.wealthKind);
                 const overdue = !onHoldings && !i.paid && i.dueOn < now;
-                const state = onHoldings ? (i.dueOn < now ? "Due" : "To pay") : i.paid ? "Paid" : overdue ? "Overdue" : "To pay";
+                const state = onHoldings ? (i.dueOn < now ? "Not tracked" : "To pay") : i.paid ? "Paid" : overdue ? "Overdue" : "To pay";
+                const name = i.wealthKind ? WEALTH_TAX_LABEL[i.wealthKind] ?? i.taxName : i.taxName;
                 return (
-                  <li key={`${i.propertyUuid ?? i.wealthKind}:${i.kind}:${i.number}`} className="flex items-center gap-3 py-2.5">
-                    <span className="w-24 shrink-0 text-[12.5px] font-bold tabular-nums text-[#1c1917]">{dayLabel(i.dueOn)}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[13px] font-semibold text-[#1c1917] truncate">{i.taxName} · instalment {i.number}</span>
+                  // On a phone: the day, the amount and the state on a line, the tax beneath.
+                  <li key={`${i.propertyUuid ?? i.wealthKind}:${i.kind}:${i.number}`} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-0.5 py-2.5">
+                    <span className="w-24 shrink-0 grow sm:grow-0 text-[12.5px] font-bold tabular-nums text-[#1c1917]">{dayLabel(i.dueOn)}</span>
+                    <span className="min-w-0 basis-full sm:basis-auto sm:flex-1 order-last sm:order-none">
+                      <span className="block text-[13px] font-semibold text-[#1c1917] truncate">{name} · instalment {i.number}</span>
                       {onHoldings ? (
                         <span className="block text-[11.5px] text-[#78716c]">Taxes on holdings{i.taxCode ? ` · F24 code ${i.taxCode}` : ""}</span>
                       ) : onOpenProperty && i.propertyUuid ? (
@@ -75,7 +79,7 @@ export function YearGlance({ data, onOpenProperty }: { data: YearTaxes; onOpenPr
                       )}
                     </span>
                     <span className="text-[13px] font-bold tabular-nums text-[#1c1917]">{formatCurrency(i.amount, i.currency, 0)}</span>
-                    <span className={`w-16 text-right text-[10px] font-black uppercase tracking-wider ${i.paid ? "text-emerald-700" : overdue ? "text-rose-600" : "text-[#857e78]"}`}>
+                    <span className={`w-20 text-right text-[10px] font-black uppercase tracking-wider ${i.paid ? "text-emerald-700" : overdue ? "text-rose-600" : "text-[#857e78]"}`}>
                       {state}
                     </span>
                   </li>
