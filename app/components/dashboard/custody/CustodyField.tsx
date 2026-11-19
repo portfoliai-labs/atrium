@@ -61,7 +61,7 @@ export function CustodyField({ custody, onSave, disabled, ownKeeping = true }: {
           className={`${control} pl-2 pr-6`}
         >
           <option value="unknown">Not known</option>
-          <option value="intermediary">A bank or broker in…</option>
+          <option value="intermediary">A bank or broker</option>
           {(ownKeeping || current === "self") && <option value="self">Me (my own address)</option>}
         </select>
         {current !== "self" && (
@@ -71,9 +71,9 @@ export function CustodyField({ custody, onSave, disabled, ownKeeping = true }: {
             onBlur={() => current === "intermediary" && country && saveCountry()}
             onKeyDown={(e) => { if (e.key === "Enter") saveCountry(); }}
             disabled={disabled || saving}
-            placeholder="IT"
+            placeholder="Country"
             aria-label="The custodian's country"
-            className={`${control} w-12 px-2 uppercase text-center`}
+            className={`${control} w-[4.5rem] px-2 text-center ${country ? "uppercase" : ""}`}
           />
         )}
         {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-300" />}

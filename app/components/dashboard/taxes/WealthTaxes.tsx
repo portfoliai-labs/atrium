@@ -7,7 +7,7 @@ import { AlertTriangle, Check, Loader2, Pencil, RotateCcw, X } from "lucide-reac
 import { investmentsKey } from "../../../context/PortfolioContext";
 import { formatCurrency } from "../../../lib/format";
 import { dayLabel } from "../../../lib/wallets";
-import type { HoldingKind, WealthLine, WealthTax, WealthTaxes } from "../../../models/Tax";
+import type { HoldingKind, WealthLine, WealthTax, WealthTaxKind, WealthTaxes } from "../../../models/Tax";
 import { taxService } from "../../../services/taxService";
 import { MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 
@@ -22,19 +22,57 @@ const SOURCE_TEXT: Record<string, string> = {
 
 const HOLDING_WORD: Record<HoldingKind, string> = { account: "wallet", portfolio: "portfolio", property: "property" };
 
+// Each tax in the app's words; fiscus' name (Italy's official one) goes beneath it.
+export const WEALTH_TAX_LABEL: Record<WealthTaxKind, string> = {
+  accounts_stamp_duty: "Stamp duty on accounts",
+  securities_stamp_duty: "Stamp duty on investments",
+  foreign_accounts_tax: "Tax on accounts abroad (IVAFE)",
+  foreign_securities_tax: "Tax on investments abroad (IVAFE)",
+  crypto_assets_tax: "Tax on crypto-assets",
+  foreign_property_tax: "Tax on properties abroad (IVIE)",
+};
+
+// The taxes whose lines are lots: one row per holding and asset, its lots added up.
+const BY_LOT: WealthTaxKind[] = ["securities_stamp_duty", "foreign_securities_tax", "crypto_assets_tax"];
+
+type Row = { line: WealthLine; lots: WealthLine[] };
+
+/** A tax's lines as rows: a holding's lots of one asset together (taxes and credits added up). */
+function rows(tax: WealthTax): Row[] {
+  if (!BY_LOT.includes(tax.kind)) return tax.lines.map((line) => ({ line, lots: [line] }));
+  const found = new Map<string, WealthLine[]>();
+  for (const line of tax.lines) {
+    const key = `${line.holding.uuid}:${line.assetId ?? line.isin ?? line.ticker ?? ""}`;
+    found.set(key, [...(found.get(key) ?? []), line]);
+  }
+  return [...found.values()].map((lots) => ({
+    lots,
+    line: lots.length === 1 ? lots[0] : {
+      ...lots[0],
+      value: lots.some((l) => l.value === null) ? null : lots.reduce((s, l) => s + (l.value ?? 0), 0),
+      tax: lots.reduce((s, l) => s + l.tax, 0),
+      credit: lots.reduce((s, l) => s + l.credit, 0),
+    },
+  }));
+}
+
 const pct = (v: number) => `${v.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
 
-/** A line's facts, short: where it's kept, its value and for how long, the rate. */
-function lineFacts(line: WealthLine): string {
+/** A row's facts, short: where it's kept, its value and for how long (each lot's), the rate. */
+function lineFacts({ line, lots }: Row): string {
   const parts: string[] = [];
-  if (line.custodyCountry) parts.push(line.intermediaryName ? `${line.intermediaryName} (${line.custodyCountry})` : line.custodyCountry);
-  if (line.value !== null) parts.push(`${formatCurrency(line.value, line.currency, 0)} ${line.valueSource ? SOURCE_TEXT[line.valueSource] : ""}`.trim());
+  // A portfolio's cash has the portfolio for its intermediary: its name once is enough.
+  const intermediary = line.intermediaryName && line.intermediaryName !== line.holding.name ? line.intermediaryName : null;
+  if (line.custodyCountry) parts.push(intermediary ? `${intermediary} (${line.custodyCountry})` : line.custodyCountry);
+  if (line.value !== null) parts.push(`${formatCurrency(line.value, line.currency, 0)} ${lots.length > 1 ? "value" : line.valueSource ? SOURCE_TEXT[line.valueSource] : ""}`.trim());
   else parts.push("no value yet: set one");
   if (line.months) parts.push(`${line.months} months${line.exemptMonths ? `, ${line.exemptMonths} as your main home (exempt)` : ""}`);
+  else if (lots.length > 1) parts.push(`${lots.length} lots: ${lots.map((l) => l.days).join(", ")} days`);
   else if (line.days) parts.push(`${line.days} days`);
   if (line.sharePct !== 100) parts.push(`your share ${pct(line.sharePct)}`);
   if (line.fixedAmount !== null) parts.push(line.aboveThreshold ? `${formatCurrency(line.fixedAmount, "EUR")} a year` : "within the 5,000 € average: none due");
   else if (line.ratePct !== null) parts.push(`${pct(line.ratePct)}${line.privilegedRegime ? " (a privileged tax regime's state)" : ""}`);
+  if (line.holding.kind === "property" && line.value !== null && !line.aboveThreshold) parts.push("200 € or less on its whole value: none due");
   return parts.join(" · ");
 }
 
@@ -84,14 +122,17 @@ function TaxBlock({ tax, year, currency }: { tax: WealthTax; year: number; curre
   const money = (v: number, digits?: number) => formatCurrency(v, currency, digits);
   const state = tax.status === "not_computed" ? "Not computed for this year"
     : tax.withheld ? "Charged by your bank or broker (estimated)"
-    : tax.gross > 0 && tax.amount === 0 && tax.kind === "foreign_property_tax" ? "Not due: 200 € or less"
     : tax.credit > 0 ? `${money(tax.gross)} less ${money(tax.credit)} paid abroad`
     : null;
+  const shown = rows(tax);
+  // The wealth tax paid abroad is a wallet's or a portfolio's: asked on its first row only.
+  const asked = new Set<string>();
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline gap-3">
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-bold text-[#1c1917]">{tax.name}</span>
+          <span className="block text-sm font-bold text-[#1c1917]">{WEALTH_TAX_LABEL[tax.kind] ?? tax.name}</span>
+          <span className="block text-[11px] italic text-[#857e78]">{tax.name}</span>
           {state && <span className={`block text-[11.5px] ${tax.status === "not_computed" ? "text-amber-700" : "text-[#78716c]"}`}>{state}</span>}
         </span>
         <span className={`text-sm font-bold tabular-nums ${tax.withheld ? "text-[#78716c]" : "text-[#1c1917]"}`}>
@@ -99,21 +140,26 @@ function TaxBlock({ tax, year, currency }: { tax: WealthTax; year: number; curre
         </span>
       </div>
       <ul className="divide-y divide-[#EEE9DD]">
-        {tax.lines.map((line, i) => (
+        {shown.map((row, i) => {
+          const { line } = row;
+          const ask = !tax.withheld && (line.holding.kind === "property" || !asked.has(line.holding.uuid));
+          asked.add(line.holding.uuid);
+          return (
           <li key={`${line.holding.uuid}:${line.assetId ?? ""}:${i}`} className="flex items-baseline gap-3 py-2">
             <span className="min-w-0 flex-1">
               <span className="block text-[13px] font-semibold text-[#1c1917] truncate">
                 {line.holding.name}{line.ticker || line.isin ? ` · ${line.ticker ?? line.isin}` : ""}
               </span>
-              <span className="block text-[11.5px] text-[#78716c]">{lineFacts(line)}</span>
-              {!tax.withheld && <FigureEditor line={line} year={year} />}
+              <span className="block text-[11.5px] text-[#78716c]">{lineFacts(row)}</span>
+              {ask && <FigureEditor line={line} year={year} credited={tax.lines.some((l) => l.holding.uuid === line.holding.uuid && l.credit > 0)} />}
             </span>
             <span className="text-[13px] font-bold tabular-nums text-[#1c1917]">
               {money(line.tax)}
               {line.credit > 0 && <span className="block text-right text-[11px] font-semibold text-emerald-700">−{money(line.credit)}</span>}
             </span>
           </li>
-        ))}
+          );
+        })}
       </ul>
       {tax.instalments.length > 0 && (
         <ul className="pt-1 space-y-1">
@@ -135,10 +181,11 @@ function TaxBlock({ tax, year, currency }: { tax: WealthTax; year: number; curre
  * currency), a wallet's or portfolio's wealth tax paid abroad (euro). Saved at once; the taxes read
  * again.
  */
-function FigureEditor({ line, year }: { line: WealthLine; year: number }) {
+function FigureEditor({ line, year, credited }: { line: WealthLine; year: number; credited: boolean }) {
   const queryClient = useQueryClient();
   const property = line.holding.kind === "property";
-  const own = property ? line.valueSource === "user" : line.credit > 0;
+  // A wallet's or portfolio's figure is spread over its lines: `credited` when any took some.
+  const own = property ? line.valueSource === "user" : credited;
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);

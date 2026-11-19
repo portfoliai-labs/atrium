@@ -96,7 +96,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
     // Its colour runs a screen up above it (before:): pulled past the page's top (the rubber-band
     // bounce of macOS / iOS), the bar slides down with the page while the fixed Sidebar stays, and
     // the gap above it would show blank white and the Sidebar's top.
-    <header className="sticky top-0 z-[60] w-full bg-[#F7F5EF] border-b border-[rgba(196,154,60,0.2)] px-4 md:px-8 py-4 flex justify-between items-center transition-all before:content-[''] before:absolute before:inset-x-0 before:bottom-full before:h-screen before:bg-[#F7F5EF] before:pointer-events-none">
+    <header className="sticky top-0 z-[60] w-full bg-[#F7F5EF] border-b border-[rgba(196,154,60,0.2)] px-3 sm:px-4 md:px-8 py-4 flex justify-between items-center transition-all before:content-[''] before:absolute before:inset-x-0 before:bottom-full before:h-screen before:bg-[#F7F5EF] before:pointer-events-none">
       {/* LEFT: Hamburger + Logo */}
       <div className="flex items-center gap-3 md:gap-4">
         <button
@@ -139,7 +139,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
       </div>
 
       {/* RIGHT: Actions */}
-      <div className="flex items-center gap-2 md:gap-3">
+      <div className="flex items-center gap-0.5 sm:gap-2 md:gap-3">
 
         {/* Search: a security's page, from anywhere in the dashboard. */}
         {onOpenPage && (
@@ -156,7 +156,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
             onClick={() => onOpenPage("messages", aiChatView())}
             title="Ask the AI assistant"
             aria-label="Ask the AI assistant"
-            className="p-2 md:p-2.5 text-[#C49A3C] hover:text-[#1c1917] hover:bg-[#E0DACC] rounded-xl md:rounded-2xl transition-all"
+            className="p-1.5 sm:p-2 md:p-2.5 text-[#C49A3C] hover:text-[#1c1917] hover:bg-[#E0DACC] rounded-xl md:rounded-2xl transition-all"
           >
             <Sparkles className="h-5 w-5" />
           </button>
@@ -167,7 +167,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
             full-page NotificationsSection instead. */}
         <button
           onClick={() => onNavigate?.("notifications")}
-          className="relative md:hidden p-2 text-[#857e78] hover:text-[#1c1917] hover:bg-[#E0DACC] rounded-xl transition-all"
+          className="relative md:hidden p-1.5 sm:p-2 text-[#857e78] hover:text-[#1c1917] hover:bg-[#E0DACC] rounded-xl transition-all"
         >
           <Bell className="h-5 w-5" />
           {hasUnread && (
@@ -237,7 +237,7 @@ export function DashboardHeader({ onLogout, onMenuToggle, isMenuOpen, subscripti
 
         <button
           onClick={onLogout}
-          className="ml-1 md:ml-2 p-2 md:p-2.5 text-[#857e78] hover:text-rose-600 hover:bg-rose-50 rounded-xl md:rounded-2xl transition-all group"
+          className="sm:ml-1 md:ml-2 p-1.5 sm:p-2 md:p-2.5 text-[#857e78] hover:text-rose-600 hover:bg-rose-50 rounded-xl md:rounded-2xl transition-all group"
           title="Sign Out"
         >
           <LogOut className="h-5 w-5 group-hover:translate-x-0.5 transition-transform" />

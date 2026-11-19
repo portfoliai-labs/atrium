@@ -324,7 +324,8 @@ interface WealthLine {
   sharePct: number;
   ratePct: number | null;
   fixedAmount: number | null;
-  // Accounts: false when the intermediary's mean balance is within 5,000 euro (no tax).
+  // Accounts: false when the intermediary's mean balance is within 5,000 euro; properties: false
+  // when the tax on the whole value for a whole year is within 200 euro. Either way no tax.
   aboveThreshold: boolean;
   // The IVAFE at 4 per mille, in a state with a privileged tax regime.
   privilegedRegime: boolean;

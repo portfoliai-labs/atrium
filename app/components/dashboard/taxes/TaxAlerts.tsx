@@ -126,7 +126,7 @@ export function TaxAlerts({ properties }: { properties: { uuid: string; name: st
           <p className="text-[12.5px] font-semibold text-rose-600">{fieldErrorText(read.error, "Unable to load the tax alerts.")}</p>
         ) : rules.length === 0 ? (
           <p className="text-[12.5px] text-[#857e78]">
-            No tax alert yet. Add one to be told when a property&apos;s tax falls due or when earlier losses are about to expire.
+            No tax alert yet. Add one to be told when a property&apos;s tax or a tax on your holdings falls due, or when earlier losses are about to expire.
           </p>
         ) : (
           <ul className="divide-y divide-[#EEE9DD]">
