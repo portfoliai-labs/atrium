@@ -21,7 +21,7 @@ export function YearGlance({ data, onOpenProperty }: { data: YearTaxes; onOpenPr
     <Module>
       <ModuleHead
         title="The year at a glance"
-        desc={data.propertiesIncluded ? "The investments' and the properties' taxes, in each currency." : "The investments' taxes. The properties' are read by their owner only."}
+        desc={data.propertiesIncluded ? "The investments', the holdings' and the properties' taxes, in each currency." : "The investments' taxes. The holdings' and the properties' are read by their owner only."}
       />
       <div className={`${MODULE_BODY} space-y-5`}>
         {data.totals.map((t) => {
@@ -31,6 +31,12 @@ export function YearGlance({ data, onOpenProperty }: { data: YearTaxes; onOpenPr
               <Fig label={data.totals.length > 1 ? `Total in ${t.currency}` : "Total"} value={money(t.total)} strong info="Every tax of the year: the tax return's on the investments, what the brokers withhold and the properties'." />
               <Fig label="Investments" value={money(t.investments)} info="What the declared portfolios' gains and income owe, to put in the tax return." />
               <Fig label="Withheld by brokers" value={money(t.withheld)} />
+              {(t.wealth ?? 0) > 0 && (
+                <Fig label="On holdings" value={money(t.wealth ?? 0)} info="IVAFE on accounts and investments abroad, the tax on crypto-assets, IVIE on properties abroad: paid with the tax return." />
+              )}
+              {(t.wealthWithheld ?? 0) > 0 && (
+                <Fig label="Stamp duty" value={money(t.wealthWithheld ?? 0)} info="What Italian banks and brokers charge on your accounts and investments, estimated: they take it themselves, so it isn't in the total." />
+              )}
               {data.propertiesIncluded && (
                 <Fig
                   label="Properties"
@@ -49,15 +55,19 @@ export function YearGlance({ data, onOpenProperty }: { data: YearTaxes; onOpenPr
             </p>
             <ul className="divide-y divide-[#EEE9DD]">
               {data.instalments.map((i) => {
-                const overdue = !i.paid && i.dueOn < now;
-                const state = i.paid ? "Paid" : overdue ? "Overdue" : "To pay";
+                // A tax on holdings' payments aren't recorded: due, never overdue nor paid here.
+                const onHoldings = Boolean(i.wealthKind);
+                const overdue = !onHoldings && !i.paid && i.dueOn < now;
+                const state = onHoldings ? (i.dueOn < now ? "Due" : "To pay") : i.paid ? "Paid" : overdue ? "Overdue" : "To pay";
                 return (
-                  <li key={`${i.propertyUuid}:${i.kind}:${i.number}`} className="flex items-center gap-3 py-2.5">
+                  <li key={`${i.propertyUuid ?? i.wealthKind}:${i.kind}:${i.number}`} className="flex items-center gap-3 py-2.5">
                     <span className="w-24 shrink-0 text-[12.5px] font-bold tabular-nums text-[#1c1917]">{dayLabel(i.dueOn)}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-[13px] font-semibold text-[#1c1917] truncate">{i.taxName} · instalment {i.number}</span>
-                      {onOpenProperty ? (
-                        <button type="button" onClick={() => onOpenProperty(i.propertyUuid)} className="text-[11.5px] font-bold text-[#8A6A28] hover:text-[#C49A3C]">
+                      {onHoldings ? (
+                        <span className="block text-[11.5px] text-[#78716c]">Taxes on holdings{i.taxCode ? ` · F24 code ${i.taxCode}` : ""}</span>
+                      ) : onOpenProperty && i.propertyUuid ? (
+                        <button type="button" onClick={() => onOpenProperty(i.propertyUuid!)} className="text-[11.5px] font-bold text-[#8A6A28] hover:text-[#C49A3C]">
                           {i.propertyName}
                         </button>
                       ) : (

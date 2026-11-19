@@ -20,6 +20,7 @@ import { REAL_ESTATE_SECTION, useOpenDashboardPage } from "../../../lib/dashboar
 import type { RealEstateView } from "../realEstate/RealEstateSection";
 import { PropertiesTaxes, YearGlance } from "./YearTaxes";
 import { TaxAlerts } from "./TaxAlerts";
+import { WealthTaxesModule } from "./WealthTaxes";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
 import { Fig, Figs, Module, ModuleHead, MODULE_BODY } from "../PerformanceSection";
 
@@ -172,6 +173,19 @@ export function TaxesPage({ trail, initialYear, onOpenSettings, onOpenPortfolios
       />
 
       <IncomeModule loaded={payments} nameOf={nameOf} whose={whose} />
+
+      {overview?.data?.wealth && (
+        <>
+          <SectionTitle title="Holdings" />
+          <WealthTaxesModule data={overview.data.wealth} onOpenPortfolios={onOpenPortfolios} />
+        </>
+      )}
+      {overview?.data?.wealthUnavailable && overview.data.wealthUnavailable.errorType !== TAX_REGIME_UNAVAILABLE && (
+        <>
+          <SectionTitle title="Holdings" />
+          <ErrorNote text="The taxes on your holdings can't be computed yet: a currency's exchange rate is missing. Try again later." />
+        </>
+      )}
 
       {overview?.data?.propertiesIncluded && overview.data.properties.length > 0 && (
         <>

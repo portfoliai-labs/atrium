@@ -3,11 +3,15 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftRight, Loader2, Pencil, Plus, X } from "lucide-react";
+import { investmentsKey } from "../../../context/PortfolioContext";
 import { useWallets } from "../../../context/WalletsContext";
 import { walletService } from "../../../services/walletService";
 import { COMMON_CURRENCIES, KIND_LABELS, WALLET_COLORS, WALLET_KINDS, errorText, today } from "../../../lib/wallets";
+import type { CustodyRequest } from "../../../models/Custody";
 import type { Movement, Wallet, WalletKind } from "../../../models/Wallet";
+import { CustodyField } from "../custody/CustodyField";
 import { useCards } from "../../../hooks/useAccounts";
 import { WalletBankSync } from "./WalletBanks";
 import { cardLabel } from "./WalletCards";
@@ -129,7 +133,17 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
   const [settlementDay, setSettlementDay] = useState(wallet?.settlementDay ? String(wallet.settlementDay) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { wallets } = useWallets();
+  const { wallets, changed } = useWallets();
+  const queryClient = useQueryClient();
+  const [custody, setCustody] = useState(wallet?.custody ?? null);
+  // Saved at once, apart from the form: it moves the taxes on holdings (the Taxes page).
+  const saveCustody = async (request: CustodyRequest | null) => {
+    if (!wallet) return;
+    const saved = await walletService.setCustody(wallet.uuid, request);
+    setCustody(saved.custody ?? null);
+    changed();
+    void queryClient.invalidateQueries({ queryKey: investmentsKey("taxes") });
+  };
 
   useEffect(() => {
     if (!wallet || storedIban !== undefined) return;
@@ -249,6 +263,11 @@ export function WalletFormDialog({ wallet, takenColors = [], onClose, onSaved }:
               placeholder={wallet?.ibanLast4 && storedIban === undefined ? `•••• ${wallet.ibanLast4}` : "IT60 X054 2811 1010 0000 0123 456"}
               className={INPUT}
             />
+          </Field>
+        )}
+        {wallet && kind !== "credit_card" && kind !== "cash" && (
+          <Field label="Who keeps it" hint="Where the bank, broker or exchange is: it picks the stamp duty or the IVAFE." className="sm:col-span-2">
+            <CustodyField custody={custody} onSave={saveCustody} ownKeeping={kind === "crypto"} />
           </Field>
         )}
         {credit && (

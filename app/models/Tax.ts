@@ -243,20 +243,27 @@ interface YearTotal {
   properties: number;
   propertiesPaid: number;
   propertiesDue: number;
+  // The taxes on holdings the user pays (IVAFE, the crypto-assets' tax, IVIE: in `total`), and the
+  // stamp duty the banks and brokers charge (estimated: outside `total`). Absent from an older backend.
+  wealth?: number;
+  wealthWithheld?: number;
   total: number;
 }
 
-// A property's tax instalment with something to pay.
+// A property's tax instalment with something to pay, or a tax on holdings' (`wealthKind`: no
+// property, `paid` always false, its F24 `taxCode`).
 interface DueInstalment {
-  propertyUuid: string;
-  propertyName: string;
-  kind: TaxKind;
+  propertyUuid: string | null;
+  propertyName: string | null;
+  kind: TaxKind | null;
   taxName: string;
   number: number;
   dueOn: string;
   currency: string;
   amount: number;
   paid: boolean;
+  wealthKind?: WealthTaxKind | null;
+  taxCode?: string | null;
 }
 
 // GET /v1/taxes/overview/{year} — every tax of a year. 422 for a year before 1900 or in the
@@ -270,8 +277,104 @@ interface YearTaxes {
   propertiesIncluded: boolean;
   properties: { propertyUuid: string; name: string; taxes: PropertyTax[] }[];
   totals: YearTotal[];
-  // The properties' instalments by due day.
+  // The properties' and the taxes on holdings' instalments by due day.
   instalments: DueInstalment[];
+  // The taxes on holdings: the user's own only (null for an advisor's client, or with
+  // wealthUnavailable: no regime, a currency without a rate).
+  wealth?: WealthTaxes | null;
+  wealthUnavailable?: { errorType: string; country: string | null } | null;
+}
+
+// ── The taxes on holdings (GET /v1/taxes/wealth/{year}, and the overview's `wealth`) ──────
+// Italy's, by who keeps each holding (models/Custody): the stamp duty a bank or broker in Italy
+// charges (withheld, estimated, outside what the user pays), the IVAFE on accounts and products
+// abroad, the tax on crypto-assets kept without an Italian intermediary, the IVIE on properties
+// abroad (their purchase price, else the latest valuation, else the user's value for the year).
+
+type WealthTaxKind =
+  | "accounts_stamp_duty" | "securities_stamp_duty" | "foreign_accounts_tax" | "foreign_securities_tax"
+  | "crypto_assets_tax" | "foreign_property_tax";
+
+type HoldingKind = "account" | "portfolio" | "property";
+
+type WealthValueSource = "year_end_price" | "exit_price" | "average_balance" | "purchase_price" | "valuation" | "user";
+
+interface Holding {
+  kind: HoldingKind;
+  uuid: string;
+  name: string;
+}
+
+// One holding's part of a tax: an account, an instrument (or the cash) in a portfolio, a property.
+interface WealthLine {
+  holding: Holding;
+  assetId: string | null;
+  isin: string | null;
+  ticker: string | null;
+  custodyCountry: string | null;
+  intermediaryName: string | null;
+  // An account's mean balance (the threshold's), else the value taxed, at full ownership, in
+  // `currency`; null for a property without one (set it: PUT .../overrides).
+  value: number | null;
+  currency: string;
+  valueSource: WealthValueSource | null;
+  // Days held (accounts, products, crypto-assets), months (properties).
+  days: number;
+  months: number;
+  sharePct: number;
+  ratePct: number | null;
+  fixedAmount: number | null;
+  // Accounts: false when the intermediary's mean balance is within 5,000 euro (no tax).
+  aboveThreshold: boolean;
+  // The IVAFE at 4 per mille, in a state with a privileged tax regime.
+  privilegedRegime: boolean;
+  tax: number;
+  credit: number;
+  exemptMonths: number;
+}
+
+interface WealthInstalment {
+  // 1, 2: on account for the year; 3: the balance with the next year's return.
+  number: number;
+  dueOn: string;
+  amount: number;
+  // The F24's codice tributo.
+  taxCode: string;
+}
+
+interface WealthTax {
+  kind: WealthTaxKind;
+  name: string;
+  status: "computed" | "exempt" | "not_computed";
+  notComputed: string | null;
+  // The stamp duty: charged by the bank or broker, outside toPay, no instalments.
+  withheld: boolean;
+  gross: number;
+  credit: number;
+  deduction: number;
+  amount: number;
+  lines: WealthLine[];
+  instalments: WealthInstalment[];
+}
+
+interface WealthTaxes {
+  year: number;
+  country: string;
+  // Every amount's (the regime's: EUR).
+  currency: string;
+  taxes: WealthTax[];
+  toPay: number;
+  withheld: number;
+  // Left out: who keeps them isn't known yet (set it on the wallet or the portfolio).
+  unknownCustody: Holding[];
+  unpricedAssetIds: string[];
+}
+
+// PUT /v1/taxes/wealth/overrides/{kind}/{uuid}/{year}: a property's `value` (its currency, the
+// whole property's), an account's or a portfolio's `foreignTaxPaid` (euro).
+interface HoldingOverrideRequest {
+  value?: number | null;
+  foreignTaxPaid?: number | null;
 }
 
 // ── The tax alert rules (/v1/taxes/alert-rules) ──────────────────────────────────────────
@@ -342,6 +445,8 @@ export type {
   OffsetLoss, TaxedIncome, WithheldAccount, CarriedLoss, UnrealizedGain, TaxYear,
   IncomeKind, IncomePayment, InvestmentIncome, IncomeCategory, WithheldIncome,
   YearTotal, DueInstalment, YearTaxes,
+  WealthTaxKind, HoldingKind, WealthValueSource, Holding, WealthLine, WealthInstalment, WealthTax, WealthTaxes,
+  HoldingOverrideRequest,
   TaxAlertType, TaxAlertParams, ExpiringLoss, TaxAlertFinding, TaxAlertRule, TaxAlertRuleRequest, TaxAlertRuleUpdateRequest,
 };
 export { TAX_REGIME_UNAVAILABLE };

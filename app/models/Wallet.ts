@@ -4,7 +4,11 @@
 // months YYYY-MM.
 
 // "crypto": a stablecoin's balance on an on-chain address, made by the chain's reads (never by hand).
-export type WalletKind = "current_account" | "credit_card" | "savings" | "cash" | "crypto";
+import type { Custody, CustodyRequest } from "./Custody";
+
+// "deposit": money set aside at a bank for interest (Italy: a conto deposito, its stamp duty
+// proportional to the balance).
+export type WalletKind = "current_account" | "credit_card" | "savings" | "cash" | "crypto" | "deposit";
 
 // Whether a movement is income or spending is its sign (money in positive), never its category.
 // The 16 presets every user's categories start from (see Category). As a field next to a
@@ -89,6 +93,8 @@ export interface Wallet {
   // A credit card's only: the wallet it is settled from, and the day of the month.
   settlesFromWalletUuid: string | null;
   settlementDay: number | null;
+  // Who keeps it, where (models/Custody); null: not known yet. Absent from an older backend.
+  custody?: Custody | null;
 }
 
 export interface WalletCreateRequest {
@@ -104,6 +110,8 @@ export interface WalletCreateRequest {
   settlesFromWalletUuid?: string | null;
   // 1-31.
   settlementDay?: number | null;
+  // Who keeps it, where; absent: prefilled (the IBAN's country, a crypto wallet's own keeping).
+  custody?: CustodyRequest | null;
 }
 
 // The fields to change: null or left out keeps the value; "" clears the institution, the colour,

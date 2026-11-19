@@ -7,6 +7,7 @@ import { portfoliosService } from "../services/portfoliosService";
 import { useUser } from "./UserContext";
 import { firstRealOf, isBacktest, type Portfolio } from "../models/Portfolio";
 import type { StrategyPortfolioPayload } from "../models/Strategy";
+import type { CustodyRequest } from "../models/Custody";
 import type { TaxationMode } from "../models/Tax";
 
 const LAST_SELECTED_KEY = "last_selected_portfolio_uuid";
@@ -44,6 +45,8 @@ interface PortfolioContextType {
   renamePortfolio: (uuid: string, name: string) => Promise<Portfolio>;
   // Who pays a real portfolio's taxes (see models/Tax): the owner's to set, not their advisor's.
   setTaxationMode: (uuid: string, mode: TaxationMode) => Promise<Portfolio>;
+  // Who keeps its assets (null: back to the prefill); it changes the taxes on holdings.
+  setCustody: (uuid: string, custody: CustodyRequest | null) => Promise<Portfolio>;
   // Throws (with the backend's own message) on a 409 — callers show it.
   // Resolves with the portfolios left, refetched: the aggregate may have gone with it.
   deletePortfolio: (uuid: string) => Promise<Portfolio[]>;
@@ -141,6 +144,14 @@ export function PortfolioProvider({ children, client = null }: { children: React
     async (uuid: string, mode: TaxationMode) => replace(await portfoliosService.setTaxationMode(uuid, mode)),
     [replace],
   );
+  const setCustody = useCallback(
+    async (uuid: string, custody: CustodyRequest | null) => {
+      const saved = replace(await portfoliosService.setCustody(uuid, custody));
+      void queryClient.invalidateQueries({ queryKey: investmentsKey("taxes") });
+      return saved;
+    },
+    [replace, queryClient],
+  );
 
   // If the deleted one (or the aggregate, gone once only one portfolio is left) was selected,
   // `current` falls back to the oldest real one on its own (null with none left).
@@ -159,9 +170,9 @@ export function PortfolioProvider({ children, client = null }: { children: React
   const ownPortfolios = client ? outer?.ownPortfolios ?? [] : portfolios;
   const contextValue: PortfolioContextType = useMemo(() => ({
     portfolios, current, loading, failed, selectPortfolio,
-    refreshPortfolios: fetchPortfolios, createPortfolio, createStrategyPortfolio, renamePortfolio, setTaxationMode, deletePortfolio,
+    refreshPortfolios: fetchPortfolios, createPortfolio, createStrategyPortfolio, renamePortfolio, setTaxationMode, setCustody, deletePortfolio,
     client, ownPortfolios, canManage: client === null, changed,
-  }), [portfolios, current, loading, failed, selectPortfolio, fetchPortfolios, createPortfolio, createStrategyPortfolio, renamePortfolio, setTaxationMode, deletePortfolio, client, ownPortfolios, changed]);
+  }), [portfolios, current, loading, failed, selectPortfolio, fetchPortfolios, createPortfolio, createStrategyPortfolio, renamePortfolio, setTaxationMode, setCustody, deletePortfolio, client, ownPortfolios, changed]);
 
   return <PortfolioContext.Provider value={contextValue}>{children}</PortfolioContext.Provider>;
 }

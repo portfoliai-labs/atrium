@@ -1,6 +1,7 @@
 // services/portfoliosService.ts
 // The portfolio-IDENTITY endpoints (list/create/rename/delete a Portfolio itself), as opposed
 // to portfolioService.ts, which reads the DASHBOARD DATA inside one already-known portfolio.
+import type { CustodyRequest } from "../models/Custody";
 import type { Portfolio } from "../models/Portfolio";
 import type { PortfolioComparisonEntry } from "../models/PortfolioData";
 import type { StrategyPortfolioPayload, StrategyResponse } from "../models/Strategy";
@@ -76,6 +77,14 @@ export const portfoliosService = {
       method: "PUT",
       body: JSON.stringify({ taxationMode }),
     });
+  },
+
+  // PUT /v1/portfolios/{p}/custody — who keeps its assets, where (models/Custody), the user's
+  // from now on; null: DELETE, back to the prefill. 409 for a virtual portfolio.
+  async setCustody(portfolioUuid: string, custody: CustodyRequest | null): Promise<Portfolio> {
+    return custody
+      ? apiFetch<Portfolio>(`/v1/portfolios/${portfolioUuid}/custody`, { method: "PUT", body: JSON.stringify(custody) })
+      : apiFetch<Portfolio>(`/v1/portfolios/${portfolioUuid}/custody`, { method: "DELETE" });
   },
 
   // DELETE /v1/portfolios/{p} — 204; deletes its transactions and all its data, the last

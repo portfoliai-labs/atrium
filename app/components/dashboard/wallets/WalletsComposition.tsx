@@ -13,7 +13,7 @@ import type { Account } from "../../../models/Account";
 import { HBars, MODULE_BODY, Module, ModuleHead } from "../PerformanceSection";
 
 const KIND_COLORS: Record<WalletKind, string> = {
-  current_account: "#2a78d6", credit_card: "#e34948", savings: "#1baf7a", cash: "#eda100", crypto: "#7c5cd6",
+  current_account: "#2a78d6", credit_card: "#e34948", savings: "#1baf7a", cash: "#eda100", crypto: "#7c5cd6", deposit: "#0f8a8a",
 };
 
 /**
