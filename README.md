@@ -1,8 +1,9 @@
 # atrium
 
-PortfoliAI's web app (the *atrium*, where a Roman house received its guests): the homepage, the
-login and the dashboard. A [Next.js](https://nextjs.org) app deployed on Vercel; it talks only to
-ianus, the platform's public API. Its place among the services is in forum's
+PortfoliAI's web app (the *atrium*, where a Roman house received its guests): the login and
+the dashboard. The public homepage is vestibulum, a repo of its own. A
+[Next.js](https://nextjs.org) app deployed on Vercel; it talks only to ianus, the platform's
+public API. Its place among the services is in forum's
 [service map](https://github.com/portfoliai-labs/forum/blob/main/docs/service-map.md); the mobile
 app is tabella.
 

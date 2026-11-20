@@ -35,7 +35,7 @@ export function LegalLayout({
           className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.05em] transition-colors duration-200"
           style={{ color: "#78716c" }}
         >
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to home
+          <ArrowLeft className="w-3.5 h-3.5" /> Back to PortfoliAI
         </Link>
       </header>
 
