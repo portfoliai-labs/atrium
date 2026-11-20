@@ -249,7 +249,7 @@ function LoginContent() {
                 </div>
                 )}
                 {authMode === "signin" && (
-                  <div className="flex justify-end">
+                  <div className="flex justify-end pb-2">
                     <button
                       type="button"
                       onClick={() => setAuthMode("reset")}
