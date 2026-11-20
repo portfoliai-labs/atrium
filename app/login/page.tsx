@@ -2,44 +2,12 @@
 
 import React, { Suspense, useState } from "react";
 import { motion } from "framer-motion";
-import { BarChart3, Building2, Landmark, LineChart, Wallet, Loader2, AlertCircle, Mail, Lock, MailCheck } from "lucide-react";
+import { BarChart3, Loader2, AlertCircle, Mail, Lock, MailCheck } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useAuthFlow } from "@/app/hooks/useAuthFlow";
 import { MIN_PASSWORD_LENGTH } from "@/app/lib/password";
 
 const SOURCE_URL = "https://github.com/portfoliai-labs";
-
-// What waits behind the sign-in, one line per area: the platform's four domains, in the words the
-// public homepage (vestibulum) uses for them.
-const loginAreas: Array<{ icon: React.ElementType; title: string; description: string }> = [
-  {
-    icon: LineChart,
-    title: "Investments",
-    description: "Returns, risk, the cost of every trade, and strategies backtested on real prices.",
-  },
-  {
-    icon: Wallet,
-    title: "Cash & spending",
-    description: "Accounts, cards and crypto wallets, with budgets and recurring payments.",
-  },
-  {
-    icon: Building2,
-    title: "Real estate",
-    description: "Properties, mortgages and rents, with the market prices of their zone.",
-  },
-  {
-    icon: Landmark,
-    title: "Taxes",
-    description: "Every tax of the year in one page, with the instalments and their F24 codes.",
-  },
-];
-
-// Three facts from inside the product, the same the homepage opens with.
-const loginFacts = [
-  { num: "40 yrs", label: "of prices behind every backtest" },
-  { num: "3", label: "real crises in every stress test" },
-  { num: "10,000", label: "scenarios in every projection" },
-];
 
 function LoginContent() {
   const searchParams = useSearchParams();
@@ -354,7 +322,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col md:flex-row" style={{ background: "#F7F5EF" }}>
 
-      {/* ── LEFT — branding ── */}
+      {/* ── LEFT — branding: the name, one line on what it is, and that it is open source. ── */}
       <div
         className="hidden md:flex md:w-1/2 flex-col justify-between gap-10 p-14 lg:p-20 border-r relative overflow-hidden"
         style={{ background: "#131210", borderColor: "rgba(255,255,255,0.06)" }}
@@ -362,10 +330,10 @@ export default function LoginPage() {
         <div
           className="absolute pointer-events-none"
           style={{
-            top: "-80px", left: "-80px",
-            width: "480px", height: "480px",
+            bottom: "-160px", right: "-160px",
+            width: "560px", height: "560px",
             borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(196,154,60,0.07) 0%, transparent 70%)",
+            background: "radial-gradient(circle, rgba(196,154,60,0.10) 0%, transparent 70%)",
             filter: "blur(32px)",
           }}
         />
@@ -388,68 +356,33 @@ export default function LoginPage() {
           initial={{ opacity: 0, x: -24 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.7, delay: 0.15 }}
+          className="relative"
         >
-          <div className="flex items-center gap-2 mb-8">
-            <span className="w-5 h-px" style={{ background: "rgba(196,154,60,0.5)" }} />
-            <span className="text-[10px] font-medium tracking-[0.14em] uppercase" style={{ color: "rgba(196,154,60,0.6)" }}>
-              Open source · Self-hosted
-            </span>
-          </div>
           <h1
-            className="text-[clamp(30px,3.4vw,52px)] font-black leading-[1.06] tracking-tight mb-6"
+            className="text-[clamp(34px,3.8vw,56px)] font-black leading-[1.06] tracking-tight mb-6"
             style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#fafaf9" }}
           >
-            Everything you own,<br />
-            on a server<br />
-            <em style={{ fontStyle: "italic", color: "#C49A3C" }}>you own.</em>
+            All of your wealth,<br />
+            in one place,<br />
+            <em style={{ fontStyle: "italic", color: "#C49A3C" }}>understood.</em>
           </h1>
-          <p className="text-[14px] font-light leading-[1.75] max-w-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
-            Portfolios, bank accounts and property in one view, analysed the way a professional
-            would. Your records stay in this server&apos;s database, and the AI assistant only
-            quotes your real figures.
+          <p className="text-[15px] font-light leading-[1.75] max-w-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
+            Investments, cash and property in a single view, on a server of your own.
           </p>
         </motion.div>
 
-        <motion.div
+        <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.7, delay: 0.35 }}
+          className="relative text-[11px]"
+          style={{ color: "rgba(255,255,255,0.3)" }}
         >
-          <div className="grid grid-cols-2 gap-x-6 gap-y-6">
-            {loginAreas.map((area) => {
-              const Icon = area.icon;
-              return (
-                <div key={area.title}>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <Icon className="w-4 h-4 flex-shrink-0" style={{ color: "#C49A3C" }} strokeWidth={1.5} />
-                    <h3 className="text-[14px] font-bold" style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#fafaf9" }}>
-                      {area.title}
-                    </h3>
-                  </div>
-                  <p className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.4)" }}>
-                    {area.description}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="hidden lg:flex mt-8 pt-6 border-t" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-            {loginFacts.map((s, i) => (
-              <div key={s.num} className={`flex-1 ${i > 0 ? "pl-4 border-l" : ""} ${i < 2 ? "pr-4" : ""}`} style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-                <div className="text-[22px] font-bold leading-none mb-1.5" style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#fafaf9" }}>{s.num}</div>
-                <div className="text-[10px] leading-snug" style={{ color: "rgba(255,255,255,0.35)" }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          <p className="mt-6 text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>
-            Free software under the Apache License 2.0.{" "}
-            <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/60 transition-colors">
-              Source on GitHub
-            </a>
-          </p>
-        </motion.div>
+          Open source under the Apache License 2.0 ·{" "}
+          <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/60 transition-colors">
+            Source on GitHub
+          </a>
+        </motion.p>
       </div>
 
       {/* ── RIGHT — auth form ── */}
