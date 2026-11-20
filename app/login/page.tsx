@@ -2,22 +2,43 @@
 
 import React, { Suspense, useState } from "react";
 import { motion } from "framer-motion";
-import { BarChart3, ShieldCheck, Zap, Loader2, AlertCircle, Mail, Lock, MailCheck } from "lucide-react";
+import { BarChart3, Building2, Landmark, LineChart, Wallet, Loader2, AlertCircle, Mail, Lock, MailCheck } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useAuthFlow } from "@/app/hooks/useAuthFlow";
 import { MIN_PASSWORD_LENGTH } from "@/app/lib/password";
 
-const loginFeatures: Array<{ icon: React.ElementType; title: string; description: string }> = [
+const SOURCE_URL = "https://github.com/portfoliai-labs";
+
+// What waits behind the sign-in, one line per area: the platform's four domains, in the words the
+// public homepage (vestibulum) uses for them.
+const loginAreas: Array<{ icon: React.ElementType; title: string; description: string }> = [
   {
-    icon: Zap,
-    title: "Instant AI Analysis",
-    description: "Get your portfolio parsed and analysed in seconds.",
+    icon: LineChart,
+    title: "Investments",
+    description: "Returns, risk, the cost of every trade, and strategies backtested on real prices.",
   },
   {
-    icon: ShieldCheck,
-    title: "Secure & Private",
-    description: "Your data is encrypted and access-controlled — retained only while your account is active, deletable anytime.",
+    icon: Wallet,
+    title: "Cash & spending",
+    description: "Accounts, cards and crypto wallets, with budgets and recurring payments.",
   },
+  {
+    icon: Building2,
+    title: "Real estate",
+    description: "Properties, mortgages and rents, with the market prices of their zone.",
+  },
+  {
+    icon: Landmark,
+    title: "Taxes",
+    description: "Every tax of the year in one page, with the instalments and their F24 codes.",
+  },
+];
+
+// Three facts from inside the product, the same the homepage opens with.
+const loginFacts = [
+  { num: "40 yrs", label: "of prices behind every backtest" },
+  { num: "3", label: "real crises in every stress test" },
+  { num: "10,000", label: "scenarios in every projection" },
 ];
 
 function LoginContent() {
@@ -335,7 +356,7 @@ export default function LoginPage() {
 
       {/* ── LEFT — branding ── */}
       <div
-        className="hidden md:flex md:w-1/2 flex-col justify-between p-14 lg:p-20 border-r relative overflow-hidden"
+        className="hidden md:flex md:w-1/2 flex-col justify-between gap-10 p-14 lg:p-20 border-r relative overflow-hidden"
         style={{ background: "#131210", borderColor: "rgba(255,255,255,0.06)" }}
       >
         <div
@@ -371,20 +392,21 @@ export default function LoginPage() {
           <div className="flex items-center gap-2 mb-8">
             <span className="w-5 h-px" style={{ background: "rgba(196,154,60,0.5)" }} />
             <span className="text-[10px] font-medium tracking-[0.14em] uppercase" style={{ color: "rgba(196,154,60,0.6)" }}>
-              AI Portfolio Intelligence
+              Open source · Self-hosted
             </span>
           </div>
           <h1
-            className="text-[clamp(34px,3.8vw,52px)] font-black leading-[1.06] tracking-tight mb-6"
+            className="text-[clamp(30px,3.4vw,52px)] font-black leading-[1.06] tracking-tight mb-6"
             style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#fafaf9" }}
           >
-            Master your<br />
-            wealth with<br />
-            <em style={{ fontStyle: "italic", color: "#8A6A28" }}>absolute</em> clarity.
+            Everything you own,<br />
+            on a server<br />
+            <em style={{ fontStyle: "italic", color: "#C49A3C" }}>you own.</em>
           </h1>
-          <p className="text-[14px] font-light leading-[1.75] max-w-sm" style={{ color: "rgba(255,255,255,0.35)" }}>
-            Join investors and advisors who use PortfoliAI to uncover
-            hidden costs and understand their real returns.
+          <p className="text-[14px] font-light leading-[1.75] max-w-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
+            Portfolios, bank accounts and property in one view, analysed the way a professional
+            would. Your records stay in this server&apos;s database, and the AI assistant only
+            quotes your real figures.
           </p>
         </motion.div>
 
@@ -392,38 +414,41 @@ export default function LoginPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.7, delay: 0.35 }}
-          className="flex flex-col gap-6"
         >
-          {loginFeatures.map((feature, i) => {
-            const Icon = feature.icon;
-            return (
-              <div key={i} className="flex items-start gap-4">
-                <div
-                  className="w-9 h-9 flex items-center justify-center rounded-[4px] border flex-shrink-0"
-                  style={{ borderColor: "rgba(196,154,60,0.22)" }}
-                >
-                  <Icon className="w-4 h-4" style={{ color: "#E8C97A" }} strokeWidth={1.5} />
-                </div>
-                <div>
-                  <h3 className="text-[14px] font-bold mb-0.5" style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#fafaf9" }}>
-                    {feature.title}
-                  </h3>
-                  <p className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.3)" }}>
-                    {feature.description}
+          <div className="grid grid-cols-2 gap-x-6 gap-y-6">
+            {loginAreas.map((area) => {
+              const Icon = area.icon;
+              return (
+                <div key={area.title}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Icon className="w-4 h-4 flex-shrink-0" style={{ color: "#C49A3C" }} strokeWidth={1.5} />
+                    <h3 className="text-[14px] font-bold" style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#fafaf9" }}>
+                      {area.title}
+                    </h3>
+                  </div>
+                  <p className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.4)" }}>
+                    {area.description}
                   </p>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
 
-          <div className="flex gap-0 mt-4 pt-6 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-            {[{ num: "€ 0", label: "to start" }, { num: "100%", label: "private" }, { num: "1", label: "click away" }].map((s, i) => (
-              <div key={i} className={`flex-1 ${i > 0 ? "pl-4 border-l" : ""} ${i < 2 ? "pr-4" : ""}`} style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-                <div className="text-[22px] font-bold leading-none mb-1" style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#fafaf9" }}>{s.num}</div>
-                <div className="text-[9px] uppercase tracking-[0.09em]" style={{ color: "rgba(255,255,255,0.22)" }}>{s.label}</div>
+          <div className="hidden lg:flex mt-8 pt-6 border-t" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+            {loginFacts.map((s, i) => (
+              <div key={s.num} className={`flex-1 ${i > 0 ? "pl-4 border-l" : ""} ${i < 2 ? "pr-4" : ""}`} style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+                <div className="text-[22px] font-bold leading-none mb-1.5" style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#fafaf9" }}>{s.num}</div>
+                <div className="text-[10px] leading-snug" style={{ color: "rgba(255,255,255,0.35)" }}>{s.label}</div>
               </div>
             ))}
           </div>
+
+          <p className="mt-6 text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+            Free software under the Apache License 2.0.{" "}
+            <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/60 transition-colors">
+              Source on GitHub
+            </a>
+          </p>
         </motion.div>
       </div>
 
