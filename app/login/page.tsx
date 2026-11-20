@@ -291,12 +291,6 @@ function LoginContent() {
             </>
           )}
 
-          <div className="flex items-center gap-4 my-8">
-            <div className="flex-1 h-px" style={{ background: "#E0DACC" }} />
-            <span className="text-[10px] uppercase tracking-[0.1em]" style={{ color: "#c4bdb5" }}>secure login</span>
-            <div className="flex-1 h-px" style={{ background: "#E0DACC" }} />
-          </div>
-
           <p className="text-center text-[11px] mt-8 leading-relaxed" style={{ color: "#857e78" }}>
             By continuing, you agree to our{" "}
             <a href="#" className="underline transition-colors" style={{ color: "#78716c" }}
@@ -338,6 +332,8 @@ export default function LoginPage() {
           }}
         />
 
+        {/* The name and the line together at the top; the license alone at the bottom. */}
+        <div className="relative flex flex-col gap-16">
         <motion.div
           initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -370,6 +366,7 @@ export default function LoginPage() {
             Investments, cash and property in a single view, on a server of your own.
           </p>
         </motion.div>
+        </div>
 
         <motion.p
           initial={{ opacity: 0 }}
