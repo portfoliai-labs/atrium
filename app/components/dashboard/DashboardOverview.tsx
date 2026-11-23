@@ -22,6 +22,7 @@ import { useOwnAlertRules } from "../../hooks/useAlertRules";
 import { alertState, type AlertState, type AlertTone } from "../../lib/alerts";
 import { useWalletsOverview, type WalletsOverview } from "../../hooks/useWalletsOverview";
 import { useRealEstateNetWorth, type RealEstateNetWorth } from "../../hooks/useRealEstateNetWorth";
+import { netWorthOf } from "../../hooks/useNetWorth";
 import { WealthBreakdown } from "./WealthBreakdown";
 import { MODULE_BODY, ModuleHead, Module as SummaryModule } from "./PerformanceSection";
 
@@ -213,12 +214,8 @@ function NetWorthModule({
   const moves = useRecentMoves(portfolio?.uuid);
   // The bar's piece under the pointer: its name, kind, value and share over it.
   const [hovered, setHovered] = useState<string | null>(null);
-  const currency = snapshot?.currency ?? wallets?.currency ?? realEstate?.overview?.currency ?? "EUR";
-  const investments = snapshot?.totalMarketValue ?? 0;
-  const walletsCounted = wallets && wallets.currency === currency ? wallets.balance ?? 0 : 0;
+  const { currency, investments, walletsCounted, realEstateCounted, total } = netWorthOf(snapshot, wallets, realEstate);
   const reOverview = realEstate?.overview ?? null;
-  const realEstateCounted = reOverview && reOverview.currency === currency ? reOverview.equity : 0;
-  const total = investments + walletsCounted + realEstateCounted;
   const shareOf = (value: number) => (total > 0 ? Math.max(0, (value / total) * 100) : 0);
 
   // The bar, one piece per group counted in the total, in its colour (the same as its column's).

@@ -56,6 +56,9 @@ interface IpsObjectives {
   targetReturnPct: number | null;
   annualIncomeNeed: number | null;
   monthlyContribution: number | null;
+  // How much the investor would entrust to an advisor, in the reference currency: an advisor's
+  // smallest client wealth (in EUR) is compared with it when that currency is EUR; unset excludes no one.
+  amountToEntrust: number | null;
 }
 
 interface IpsRisk {
