@@ -180,6 +180,16 @@ interface PublishedStrategy {
   recompute?: NetworkRecompute | null;
   // The caller's own publications only; null on anyone else's.
   networkState?: PublicationNetworkState | null;
+  // The reader hid it themselves (hidden or reported): its page and its menu show it again rather
+  // than hide it. Only GET by id answers hidden ones. Absent from an ianus before it: false.
+  hiddenByYou?: boolean;
+  // Its author is in the reader's web of trust (followed, or followed by whom they follow), or is
+  // the reader: a network strategy without it carries the "New author" mark. Absent from an ianus
+  // before it: false.
+  authorTrusted?: boolean;
+  // Hidden because people the reader follows reported it, and the reader hasn't shown it anyway:
+  // its page and its menu show it anyway (DELETE .../hidden). Absent from an ianus before it: false.
+  hiddenByReports?: boolean;
 }
 
 interface CatalogPage {
@@ -254,6 +264,16 @@ const isFigureSort = (sort: CatalogSort) => sort !== "newest";
 /** Whether it was read from the network (another instance's or client's), recomputed here. */
 const isNetworkStrategy = (s: Pick<PublishedStrategy, "source">) => s.source === "network";
 
+/** Whether the reader hid it themselves: "Show strategy" in place of "Hide strategy". */
+const isHiddenByYou = (s: Pick<PublishedStrategy, "hiddenByYou">) => s.hiddenByYou === true;
+
+/** Whether the reports of people the reader follows hid it: "Show anyway", as the Journal's. */
+const isHiddenByReports = (s: Pick<PublishedStrategy, "hiddenByReports">) => s.hiddenByReports === true;
+
+/** Whether it carries the "New author" mark: someone else's from the network, its author outside the reader's web of trust. */
+const isNewStrategyAuthor = (s: Pick<PublishedStrategy, "source" | "networkState" | "authorTrusted">) =>
+  isNetworkStrategy(s) && !s.networkState && s.authorTrusted !== true;
+
 /** Whether its figures can be drawn and compared: its backtest exists here. */
 const hasBacktest = (s: Pick<PublishedStrategy, "portfolioUuid">): s is { portfolioUuid: string } => s.portfolioUuid !== null;
 
@@ -292,5 +312,5 @@ export type {
 };
 export {
   MAX_DESCRIPTION_LENGTH, FILTER_HORIZONS, HORIZON_LABELS, SORT_LABELS, CRISIS_LABELS, RECOMPUTE_LABELS, NETWORK_STATE_LABELS,
-  isFigureSort, isNetworkStrategy, hasBacktest,
+  isFigureSort, isNetworkStrategy, isHiddenByYou, isHiddenByReports, isNewStrategyAuthor, hasBacktest,
 };

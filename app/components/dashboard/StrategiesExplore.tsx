@@ -27,7 +27,7 @@ import { Markdown } from "./assistant/Markdown";
 import { FeedSwitch } from "./journal/ArticleList";
 import { ItemMenu } from "./journal/Moderation";
 import {
-  NetworkBadge, NetworkStateBadge, authorLabel, isRecomputing, plainThesis, recomputeNote, useStrategyModeration,
+  NetworkBadge, NetworkStateBadge, StrategyNewAuthorBadge, authorLabel, isRecomputing, plainThesis, recomputeNote, useStrategyModeration,
 } from "./NetworkStrategy";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
@@ -402,6 +402,7 @@ function StrategyCard({ strategy: s, horizon, menu, onOpen }: {
         {(network || s.networkState) && (
           <p className="flex flex-wrap items-center gap-1.5 mb-2">
             {network && <NetworkBadge />}
+            <StrategyNewAuthorBadge strategy={s} />
             <NetworkStateBadge strategy={s} />
           </p>
         )}
@@ -550,6 +551,7 @@ export function PublishedStrategyPage({ publicationId, trail, onNavigate }: {
           {(network || s.networkState) && (
             <p className="flex flex-wrap items-center gap-1.5">
               {network && <NetworkBadge />}
+              <StrategyNewAuthorBadge strategy={s} />
               <NetworkStateBadge strategy={s} />
             </p>
           )}
