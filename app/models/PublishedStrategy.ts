@@ -187,6 +187,9 @@ interface PublishedStrategy {
   // the reader: a network strategy without it carries the "New author" mark. Absent from an ianus
   // before it: false.
   authorTrusted?: boolean;
+  // Hidden because people the reader follows reported it, and the reader hasn't shown it anyway:
+  // its page and its menu show it anyway (DELETE .../hidden). Absent from an ianus before it: false.
+  hiddenByReports?: boolean;
 }
 
 interface CatalogPage {
@@ -264,6 +267,9 @@ const isNetworkStrategy = (s: Pick<PublishedStrategy, "source">) => s.source ===
 /** Whether the reader hid it themselves: "Show strategy" in place of "Hide strategy". */
 const isHiddenByYou = (s: Pick<PublishedStrategy, "hiddenByYou">) => s.hiddenByYou === true;
 
+/** Whether the reports of people the reader follows hid it: "Show anyway", as the Journal's. */
+const isHiddenByReports = (s: Pick<PublishedStrategy, "hiddenByReports">) => s.hiddenByReports === true;
+
 /** Whether it carries the "New author" mark: someone else's from the network, its author outside the reader's web of trust. */
 const isNewStrategyAuthor = (s: Pick<PublishedStrategy, "source" | "networkState" | "authorTrusted">) =>
   isNetworkStrategy(s) && !s.networkState && s.authorTrusted !== true;
@@ -306,5 +312,5 @@ export type {
 };
 export {
   MAX_DESCRIPTION_LENGTH, FILTER_HORIZONS, HORIZON_LABELS, SORT_LABELS, CRISIS_LABELS, RECOMPUTE_LABELS, NETWORK_STATE_LABELS,
-  isFigureSort, isNetworkStrategy, isHiddenByYou, isNewStrategyAuthor, hasBacktest,
+  isFigureSort, isNetworkStrategy, isHiddenByYou, isHiddenByReports, isNewStrategyAuthor, hasBacktest,
 };

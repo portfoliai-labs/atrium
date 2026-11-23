@@ -11,7 +11,7 @@ import { publicationService } from "../../services/publicationService";
 import { journalService } from "../../services/journalService";
 import { journalErrorText, shortNpub } from "../../lib/journal";
 import {
-  NETWORK_STATE_LABELS, RECOMPUTE_LABELS, isHiddenByYou, isNetworkStrategy, isNewStrategyAuthor, type PublishedStrategy,
+  NETWORK_STATE_LABELS, RECOMPUTE_LABELS, isHiddenByReports, isHiddenByYou, isNetworkStrategy, isNewStrategyAuthor, type PublishedStrategy,
 } from "../../models/PublishedStrategy";
 import { ReportDialog, UndoBar, reportedMessage, type MenuItem, type Undoable } from "./journal/Moderation";
 import { NewAuthorBadge } from "./journal/JournalKit";
@@ -86,7 +86,8 @@ export function useIsOwnStrategy() {
  * The reader's moderation on the catalog's strategies, theirs only: hide one (or show it again),
  * mute its author (the Journal's mute, which hides their articles too), report it (NIP-56, public
  * on the network). Never on their own, nor on one whose author has no key. Whether it offers
- * "Show strategy" or "Hide strategy" is ianus' `hiddenByYou`. What they took away leaves the list
+ * "Show strategy" (ianus' `hiddenByYou`), "Show anyway" (`hiddenByReports`, the Journal's
+ * wording) or "Hide strategy" is ianus' to say; both shows are the same DELETE .../hidden. What they took away leaves the list
  * at once (`visible`), the last action with its Undo (`bar`), the report's `dialog`; `menuFor` a
  * card's "…" items, `actionsFor` a strategy page's. The catalog and the strategy's page are read
  * again after each.
@@ -131,12 +132,12 @@ export function useStrategyModeration() {
     }
   };
 
-  const unhide = async (s: PublishedStrategy) => {
+  const unhide = async (s: PublishedStrategy, message = "Strategy shown again in your catalog.") => {
     try {
       await publicationService.unhide(s.publicationId);
       setGoneIds((g) => drop(g, s.publicationId));
       reread(s.publicationId);
-      setLast({ message: "Strategy shown again in your catalog." });
+      setLast({ message });
     } catch (err) {
       setLast({ message: journalErrorText(err, "The strategy couldn't be shown again. Try again.") });
     }
@@ -177,7 +178,9 @@ export function useStrategyModeration() {
     return [
       isHiddenByYou(s)
         ? { label: "Show strategy", onClick: () => void unhide(s) }
-        : { label: "Hide strategy", onClick: () => void hide(s) },
+        : isHiddenByReports(s)
+          ? { label: "Show anyway", onClick: () => void unhide(s, "Strategy shown anyway in your catalog.") }
+          : { label: "Hide strategy", onClick: () => void hide(s) },
       ...(muted(s) ? [] : [{ label: `Mute ${authorLabel(s)}`, onClick: () => void mute(s) }]),
       { label: "Report strategy…", onClick: () => setReporting(s), danger: true },
     ];
