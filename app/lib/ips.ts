@@ -151,7 +151,7 @@ export function optionLabel<T extends string>(options: Option<T>[], value: T | n
 
 export function emptyPolicy(): InvestorPolicy {
   return {
-    objectives: { purpose: null, goals: [], targetReturnPct: null, annualIncomeNeed: null, monthlyContribution: null },
+    objectives: { purpose: null, goals: [], targetReturnPct: null, annualIncomeNeed: null, monthlyContribution: null, amountToEntrust: null },
     risk: { maxDrawdownPct: null, dropReaction: null, incomeStability: null, emergencyFundMonths: null },
     constraints: { timeHorizonYears: null, liquidityNeed: null, liquidityNotes: "", taxNotes: "", otherConstraints: "" },
     allocation: {
@@ -305,6 +305,7 @@ export function policySections(p: InvestorPolicy, ctx: PolicyContext): PolicySec
         row("Target annual return", pct(p.objectives.targetReturnPct)),
         row("Income needed per year", money(p.objectives.annualIncomeNeed, currency)),
         row("Contribution per month", money(p.objectives.monthlyContribution, currency)),
+        row("Amount to entrust to an advisor", money(p.objectives.amountToEntrust, currency)),
       ],
     },
     {

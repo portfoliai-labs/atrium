@@ -5,6 +5,8 @@ import {
   DROP_REACTION_OPTIONS, EXCLUSION_SUGGESTIONS, FEE_OPTIONS, GOAL_LIMIT, INCOME_STABILITY_OPTIONS, INSTRUMENT_OPTIONS,
   LANGUAGE_OPTIONS, LIQUIDITY_OPTIONS, MEETING_OPTIONS, PURPOSE_OPTIONS, REBALANCE_OPTIONS, REVIEW_OPTIONS, TOPIC_OPTIONS,
 } from "../../../lib/ips";
+import { useNetWorth } from "../../../hooks/useNetWorth";
+import { formatCurrency } from "../../../lib/format";
 import type { InvestorPolicy, IpsGoal } from "../../../models/InvestorPolicy";
 import {
   ChipSelect, ChoiceCards, Field, FieldGroup, INPUT_CLASS, NumberInput, TagList, TextArea, TextInput, YesNo,
@@ -89,6 +91,45 @@ export function ObjectivesStep({ policy, update, currency }: StepProps) {
         <Field label="Contribution per month" hint="What you add regularly.">
           <NumberInput value={o.monthlyContribution} onChange={(monthlyContribution) => set({ monthlyContribution })} placeholder="0" suffix={currency} />
         </Field>
+      </div>
+
+      <AmountToEntrust value={o.amountToEntrust} onChange={(amountToEntrust) => set({ amountToEntrust })} currency={currency} />
+    </div>
+  );
+}
+
+/**
+ * The amount to entrust to an advisor: advisors' minimums are compared with it. It can be filled
+ * in one tap from what the app tracks (the Dashboard's net worth), when that is in the same
+ * currency; never filled on its own.
+ */
+function AmountToEntrust({ value, onChange, currency }: {
+  value: number | null;
+  onChange: (value: number | null) => void;
+  currency: string;
+}) {
+  const netWorth = useNetWorth();
+  const tracked = netWorth && netWorth.currency === currency && netWorth.total > 0 ? Math.round(netWorth.total) : null;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* The prefill sits outside the Field: a button doesn't belong in its label. */}
+      <div className="space-y-2">
+        <Field
+          label="Amount to entrust to an advisor"
+          hint="What an advisor would look after for you. Advisors' minimum client wealth is compared with it. Optional."
+        >
+          <NumberInput value={value} onChange={onChange} placeholder="0" suffix={currency} />
+        </Field>
+        {tracked !== null && tracked !== value && (
+          <button
+            type="button"
+            onClick={() => onChange(tracked)}
+            className="ml-1 text-[13px] font-semibold text-[#C49A3C] hover:underline"
+          >
+            Use what you track: {formatCurrency(tracked, currency, 0)}
+          </button>
+        )}
       </div>
     </div>
   );
