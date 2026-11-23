@@ -1,5 +1,7 @@
 // models/Advisor.ts
-import type { IpsAdvisoryTopic, IpsFeeModel, IpsMeetingMode } from "./InvestorPolicy";
+import type {
+  AssetClassId, IpsAdvisoryTopic, IpsFeeModel, IpsInstrument, IpsMeetingMode, IpsPurpose, IpsReviewFrequency,
+} from "./InvestorPolicy";
 // Aligned with backend DTOs in app/api/dto/routes_advisor.py
 
 // Matches UserRoles enum from backend (app/domain/models/core/user.py)
@@ -49,6 +51,12 @@ interface Client {
   tax_residence?: string | null;
 }
 
+// The risk profiles an advisor follows; an investor's is the more cautious of their policy's
+// largest acceptable loss (up to 10% cautious, up to 25% balanced) and their reaction to a 20% fall.
+type AdvisorRiskProfile = "cautious" | "balanced" | "dynamic";
+// The horizons an advisor works with: under 3 years, 3 to 10, over 10.
+type AdvisorHorizon = "short" | "medium" | "long";
+
 // The advisor's statement (GET/PUT /advisor/statement): what they offer, in the words of the
 // investor policy's advisor preferences, and their OCF register number. An empty list matches
 // nothing: an advisor says what they do.
@@ -64,6 +72,19 @@ interface AdvisorStatementPayload {
   acceptingClients: boolean;
   bio: string;
   registerNumber: string;
+  // What they manage, in the investor policy's words. Matching excludes an advisor who doesn't
+  // manage a class the investor allocates 10% or more to, handles none of the instruments the
+  // investor allows, follows only profiles at the opposite end of the investor's, or reviews less
+  // often than the investor asks.
+  assetClasses: AssetClassId[];
+  instruments: IpsInstrument[];
+  // Whether they advise on leveraged positions.
+  leverage: boolean;
+  purposes: IpsPurpose[];
+  riskProfiles: AdvisorRiskProfile[];
+  horizons: AdvisorHorizon[];
+  // The most frequent review they offer; null: not said.
+  reviewFrequency: IpsReviewFrequency | null;
 }
 
 interface AdvisorStatement extends AdvisorStatementPayload {
@@ -74,6 +95,8 @@ interface AdvisorStatement extends AdvisorStatementPayload {
 
 export { UserRole };
 export type {
+  AdvisorRiskProfile,
+  AdvisorHorizon,
   AdvisorProfile,
   AdvisorProfileUpdatePayload,
   Client,

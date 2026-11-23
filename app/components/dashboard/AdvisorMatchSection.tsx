@@ -8,7 +8,11 @@ import {
 import { advisorRequestService } from "../../services/advisorRequestService";
 import { ApiError } from "../../services/apiClient";
 import { clientsKey, useClientsQuery } from "../../context/ClientsContext";
-import { FEE_OPTIONS, LANGUAGE_OPTIONS, TOPIC_OPTIONS } from "../../lib/ips";
+import {
+  ASSET_CLASS_OPTIONS, FEE_OPTIONS, HORIZON_OPTIONS, INSTRUMENT_OPTIONS, LANGUAGE_OPTIONS, PURPOSE_OPTIONS, REVIEW_OPTIONS,
+  RISK_PROFILE_OPTIONS, TOPIC_OPTIONS, type Option,
+} from "../../lib/ips";
+import type { IpsPurpose, IpsReviewFrequency } from "../../models/InvestorPolicy";
 import type { AdvisorCard, AdvisorMatch, AdvisorRequest, AdvisorRequestStatus, MatchReasons } from "../../models/AdvisorRequest";
 import { TextArea } from "./ips/fields";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -137,6 +141,7 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
             <Clock className="w-4 h-4" /> Your request
           </p>
           <AdvisorHeader advisor={pending.advisor} />
+          <AdvisorOffer advisor={pending.advisor} />
           <blockquote className="text-sm text-[#44403c] bg-[#F7F5EF] rounded-2xl px-4 py-3 whitespace-pre-line">
             {pending.message}
           </blockquote>
@@ -172,11 +177,16 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
         </div>
       ) : (
         <div className="space-y-4">
-          <h3 className="text-lg font-bold text-[#1c1917]" style={SERIF}>Suggested for you</h3>
+          <div>
+            <h3 className="text-lg font-bold text-[#1c1917]" style={SERIF}>Suggested for you</h3>
+            <p className="text-xs text-[#78716c] mt-0.5">The closest to your whole Investment Policy first.</p>
+          </div>
           {matches.length === 0 ? (
             <p className={`${CARD_CLASS} text-sm text-[#78716c]`}>
               No advisor matches what you look for yet. Try widening the languages, meetings or fees in the last step of your
-              Investment Policy, or come back later: new advisors join every week.
+              Investment Policy, or come back later: new advisors join every week. An advisor isn&apos;t suggested when they
+              don&apos;t manage a class you put 10% or more in, handle none of the instruments you allow, follow risk profiles
+              at the opposite end of yours, or review less often than you ask.
             </p>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -267,6 +277,7 @@ function MatchCard({ match, disabled, onAsk }: { match: AdvisorMatch; disabled: 
           </li>
         ))}
       </ul>
+      <AdvisorOffer advisor={advisor} />
       <button
         onClick={onAsk}
         disabled={disabled}
@@ -379,24 +390,96 @@ function RequestDialog({ advisor, onClose, onSent }: { advisor: AdvisorCard; onC
   );
 }
 
-/** The reasons of a match, in words. */
+const label = <T extends string>(options: Option<T>[], value: T) => options.find((o) => o.value === value)?.label ?? value;
+const labels = <T extends string>(options: Option<T>[], values: T[]) => values.map((v) => label(options, v));
+const lower = (words: string[]) => words.map((w) => w.toLowerCase());
+
+/** "a", "a and b", "a, b and c". */
+function joinWords(words: string[]): string {
+  return words.length <= 1 ? (words[0] ?? "") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+// A purpose as what the advisor works on (the policy's labels speak as the investor).
+const PURPOSE_WORK: Record<IpsPurpose, string | null> = {
+  growth: "growing wealth",
+  income: "generating income",
+  preservation: "preserving capital",
+  retirement: "funding retirement",
+  purchase: "saving for a purchase",
+  other: null,
+};
+
+const REVIEW_WORDS: Record<IpsReviewFrequency, string> = {
+  monthly: "monthly reviews",
+  quarterly: "quarterly reviews",
+  semiannual: "reviews every 6 months",
+  annual: "yearly reviews",
+};
+
+/**
+ * The reasons of a match, in words, the policy's first. The score only orders the suggestions:
+ * it isn't shown.
+ */
 function reasonLines(reasons: MatchReasons, advisor: AdvisorCard): string[] {
-  const label = <T extends string>(options: { value: T; label: string }[], value: T) =>
-    options.find((o) => o.value === value)?.label ?? value;
   const lines: string[] = [];
+  if (reasons.assetClasses.length > 0) {
+    lines.push(`Manages ${joinWords(lower(labels(ASSET_CLASS_OPTIONS, reasons.assetClasses)))} as in your policy`);
+  }
+  if (reasons.riskProfile) {
+    const profile = label(RISK_PROFILE_OPTIONS, reasons.riskProfile).toLowerCase();
+    lines.push(reasons.riskExact ? `Follows ${profile} profiles like yours` : `Follows ${profile} profiles, close to yours`);
+  }
+  if (reasons.horizon) lines.push(`Works with horizons of ${label(HORIZON_OPTIONS, reasons.horizon).toLowerCase()}, like yours`);
+  if (reasons.purpose) {
+    const work = PURPOSE_WORK[reasons.purpose];
+    lines.push(work ? `Works on ${work}, your purpose` : "Works on your portfolio's purpose");
+  }
+  if (reasons.instruments.length > 0) {
+    lines.push(`Handles ${joinWords(labels(INSTRUMENT_OPTIONS, reasons.instruments))}, which you allow`);
+  }
+  if (reasons.leverage) lines.push("Advises on leverage, which you allow");
+  if (reasons.reviewFrequency) lines.push(`Offers ${REVIEW_WORDS[reasons.reviewFrequency]}, as often as you ask`);
   if (reasons.topics.length > 0) {
-    lines.push(`Helps with ${reasons.topics.map((t) => label(TOPIC_OPTIONS, t).toLowerCase()).join(", ")}`);
+    lines.push(`Helps with ${lower(labels(TOPIC_OPTIONS, reasons.topics)).join(", ")}`);
   }
   if (reasons.sameCity) lines.push(`Meets in person in ${advisor.city}`);
   else if (reasons.meetingModes.includes("remote")) lines.push("Meets remotely");
   if (reasons.languages.length > 0) {
     lines.push(`Speaks ${reasons.languages.map((l) => label(LANGUAGE_OPTIONS, l.split("-")[0])).join(", ")}`);
   }
-  if (reasons.feeModels.length > 0) lines.push(`Paid: ${reasons.feeModels.map((f) => label(FEE_OPTIONS, f).toLowerCase()).join(", ")}`);
+  if (reasons.feeModels.length > 0) lines.push(`Paid: ${lower(labels(FEE_OPTIONS, reasons.feeModels)).join(", ")}`);
   if (advisor.minClientWealth != null) {
     lines.push(`Takes on clients from ${new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(advisor.minClientWealth)}`);
   }
   return lines;
+}
+
+/** What an advisor manages, as they stated it; folded, under their card. */
+function AdvisorOffer({ advisor }: { advisor: AdvisorCard }) {
+  const rows: [string, string][] = [
+    ["Asset classes", labels(ASSET_CLASS_OPTIONS, advisor.assetClasses ?? []).join(", ")],
+    ["Instruments", labels(INSTRUMENT_OPTIONS, advisor.instruments ?? []).join(", ")],
+    ["Leverage", advisor.leverage ? "Advises on it" : "No"],
+    ["Purposes", labels(PURPOSE_OPTIONS, advisor.purposes ?? []).join(", ")],
+    ["Risk profiles", labels(RISK_PROFILE_OPTIONS, advisor.riskProfiles ?? []).join(", ")],
+    ["Horizons", labels(HORIZON_OPTIONS, advisor.horizons ?? []).join(", ")],
+    ["Reviews", advisor.reviewFrequency ? `Up to ${label(REVIEW_OPTIONS, advisor.reviewFrequency).toLowerCase()}` : ""],
+  ];
+  return (
+    <details className="group text-sm">
+      <summary className="cursor-pointer select-none text-xs font-bold uppercase tracking-wider text-[#78716c] hover:text-[#1c1917]">
+        What {advisor.firstName || "they"} manage{advisor.firstName ? "s" : ""}
+      </summary>
+      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+        {rows.map(([name, value]) => (
+          <div key={name} className="contents">
+            <dt className="text-[#78716c]">{name}</dt>
+            <dd className="text-[#1c1917]">{value || "Not said"}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
 }
 
 function fullName(person: { firstName: string; lastName: string }): string {
