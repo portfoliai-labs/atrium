@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { AlertCircle, Check, ClipboardList, Inbox, Loader2, X } from "lucide-react";
+import { AlertCircle, Check, ClipboardList, Globe, Inbox, Loader2, X } from "lucide-react";
 import { advisorRequestService } from "../../services/advisorRequestService";
 import { ApiError } from "../../services/apiClient";
 import { useClients, useClientsQuery, useClientsRead } from "../../context/ClientsContext";
 import { policySections } from "../../lib/ips";
-import type { AdvisorRequest, AdvisorRequestStatus } from "../../models/AdvisorRequest";
+import { shortNpub } from "../../lib/journal";
+import type { AdvisorRequest, AdvisorRequestStatus, RequestInvestor } from "../../models/AdvisorRequest";
 import type { InvestorPolicy } from "../../models/InvestorPolicy";
 import { TextArea } from "./ips/fields";
 
@@ -26,8 +27,11 @@ const STATUS_LABELS: Record<AdvisorRequestStatus, string> = {
 /**
  * REQUESTS — the advisor's side of advisor matching: the investors who picked them among their
  * suggestions. Each request carries a first message and the investor's policy as they shared
- * it; accepting makes the investor a client (they then appear under Clients), declining keeps the
- * advisor out of that investor's suggestions. A request left unanswered expires after a week.
+ * it; accepting (with an optional reply) makes the investor a client (they then appear under
+ * Clients), declining keeps the advisor out of that investor's suggestions. A request left
+ * unanswered expires after a week. A network investor (a Nostr key: the phone app, another
+ * instance) found the advisor's network profile: accepting them opens a private chat, never a
+ * client's data.
  */
 export function AdvisorRequestsSection() {
   const query = useClientsQuery(["requests", "incoming"], () => advisorRequestService.getIncomingRequests());
@@ -36,6 +40,7 @@ export function AdvisorRequestsSection() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [reading, setReading] = useState<AdvisorRequest | null>(null);
   const [declining, setDeclining] = useState<AdvisorRequest | null>(null);
+  const [accepting, setAccepting] = useState<AdvisorRequest | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const requests = query.data ?? NO_REQUESTS;
   const loading = query.isPending;
@@ -78,7 +83,7 @@ export function AdvisorRequestsSection() {
         </h2>
         <p className="text-sm text-[#78716c] mt-1">
           Investors who chose you among the advisors we suggested to them. You are suggested while your profile is verified
-          and you take on new clients.
+          and you take on new clients, and to investors on the network while your profile is visible there.
         </p>
       </div>
 
@@ -95,7 +100,7 @@ export function AdvisorRequestsSection() {
           {pending.map((request) => (
             <div key={request.requestUuid} className={`${CARD_CLASS} space-y-4`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-bold text-[#1c1917]">{fullName(request.investor)}</p>
+                <InvestorName investor={request.investor} />
                 <p className="text-xs text-[#78716c]">
                   Received on {formatDate(request.createdAt)} · expires on {formatDate(request.expiresAt)}
                 </p>
@@ -111,12 +116,12 @@ export function AdvisorRequestsSection() {
                   <ClipboardList className="w-4 h-4" /> Read their Investment Policy
                 </button>
                 <button
-                  onClick={() => act(request, () => advisorRequestService.acceptRequest(request.requestUuid))}
+                  onClick={() => setAccepting(request)}
                   disabled={busy !== null}
                   className="flex items-center gap-2 bg-[#1c1917] text-white px-4 py-2.5 rounded-2xl text-sm font-semibold hover:bg-[#292524] transition-colors disabled:opacity-40"
                 >
                   {busy === request.requestUuid ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  Accept as client
+                  {request.investor.network ? "Accept" : "Accept as client"}
                 </button>
                 <button
                   onClick={() => setDeclining(request)}
@@ -135,17 +140,31 @@ export function AdvisorRequestsSection() {
         <div className="space-y-3">
           <h3 className="text-lg font-bold text-[#1c1917]" style={SERIF}>Answered</h3>
           {past.map((request) => (
-            <div key={request.requestUuid} className="bg-white rounded-2xl border border-[rgba(196,154,60,0.15)] px-5 py-4 flex flex-wrap items-center justify-between gap-2">
-              <span className="font-semibold text-sm text-[#1c1917]">{fullName(request.investor)}</span>
-              <span className="text-xs font-semibold text-[#78716c]">
-                {request.status ? STATUS_LABELS[request.status] : "—"} · {formatDate(request.closedAt ?? request.createdAt)}
-              </span>
+            <div key={request.requestUuid} className="bg-white rounded-2xl border border-[rgba(196,154,60,0.15)] px-5 py-4 space-y-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <InvestorName investor={request.investor} small />
+                <span className="text-xs font-semibold text-[#78716c]">
+                  {request.status ? STATUS_LABELS[request.status] : "—"} · {formatDate(request.closedAt ?? request.createdAt)}
+                </span>
+              </div>
+              {request.reply && <p className="text-sm text-[#44403c] whitespace-pre-line">Your reply: “{request.reply}”</p>}
             </div>
           ))}
         </div>
       )}
 
       {reading && <SharedPolicyDialog request={reading} onClose={() => setReading(null)} />}
+      {accepting && (
+        <AcceptDialog
+          request={accepting}
+          onClose={() => setAccepting(null)}
+          onAccept={(reply) => {
+            const request = accepting;
+            setAccepting(null);
+            act(request, () => advisorRequestService.acceptRequest(request.requestUuid, reply));
+          }}
+        />
+      )}
       {declining && (
         <DeclineDialog
           request={declining}
@@ -173,14 +192,17 @@ function SharedPolicyDialog({ request, onClose }: { request: AdvisorRequest; onC
 
   return (
     <Dialog title={`${fullName(request.investor)}'s Investment Policy`} onClose={onClose} wide>
-      <p className="text-xs text-[#78716c]">Version {request.investorPolicyVersion}, as shared with the request.</p>
+      <p className="text-xs text-[#78716c]">
+        {request.investorPolicyVersion > 0 ? `Version ${request.investorPolicyVersion}, as` : "As"} shared with the request
+        {request.currency ? `; amounts in ${request.currency}` : "; the amounts' currency wasn't given"}.
+      </p>
       {policy === undefined ? (
         <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-[#C49A3C]" /></div>
       ) : policy === null ? (
         <p className="text-sm text-[#78716c]">The policy is no longer available.</p>
       ) : (
         <div className="space-y-6">
-          {policySections(policy, { currency: "EUR", riskTolerance: null }).map((section, i) => (
+          {policySections(policy, { currency: request.currency ?? "", riskTolerance: null }).map((section, i) => (
             <section key={section.title} className="space-y-2">
               <h3 className="font-bold text-[#1c1917]" style={SERIF}>{i + 1}. {section.title}</h3>
               <dl className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-4 gap-y-1.5 text-sm">
@@ -195,6 +217,28 @@ function SharedPolicyDialog({ request, onClose }: { request: AdvisorRequest; onC
           ))}
         </div>
       )}
+    </Dialog>
+  );
+}
+
+function AcceptDialog({
+  request, onClose, onAccept,
+}: { request: AdvisorRequest; onClose: () => void; onAccept: (reply: string) => void }) {
+  const [reply, setReply] = useState("");
+  return (
+    <Dialog title={`Accept ${fullName(request.investor)}`} onClose={onClose}>
+      <p className="text-sm text-[#44403c]">
+        {request.investor.network
+          ? "A private chat opens with this investor on the network. They don't become a client here: you never see their data, only what they write to you."
+          : "They become your client: you see their data to advise them, and a chat opens with them."}
+      </p>
+      <TextArea value={reply} onChange={setReply} maxLength={2000} placeholder="Optional: a few words for them, e.g. when you can talk." />
+      <button
+        onClick={() => onAccept(reply.trim())}
+        className="w-full flex items-center justify-center gap-2 bg-[#1c1917] text-white px-5 py-3 rounded-2xl text-sm font-semibold hover:bg-[#292524] transition-colors"
+      >
+        <Check className="w-4 h-4" /> Accept the request
+      </button>
     </Dialog>
   );
 }
@@ -241,8 +285,23 @@ function Dialog({
   );
 }
 
-function fullName(person: { firstName: string; lastName: string }): string {
-  return `${person.firstName} ${person.lastName}`.trim() || "An investor";
+// A network investor has only a key: their short npub.
+function fullName(investor: RequestInvestor): string {
+  if (investor.network) return investor.npub ? shortNpub(investor.npub) : "A network investor";
+  return `${investor.firstName} ${investor.lastName}`.trim() || "An investor";
+}
+
+function InvestorName({ investor, small = false }: { investor: RequestInvestor; small?: boolean }) {
+  return (
+    <span className={`flex items-center gap-2 text-[#1c1917] ${small ? "font-semibold text-sm" : "font-bold"}`}>
+      <span title={investor.npub ?? undefined}>{fullName(investor)}</span>
+      {investor.network && (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#78716c] bg-[#F7F5EF] border border-[rgba(196,154,60,0.25)] rounded-full px-2 py-0.5">
+          <Globe className="w-3 h-3" /> Network
+        </span>
+      )}
+    </span>
+  );
 }
 
 function formatDate(iso: string): string {

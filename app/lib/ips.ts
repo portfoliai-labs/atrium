@@ -239,8 +239,9 @@ export function completedSteps(p: InvestorPolicy): IpsStepId[] {
 
 const NOT_SET = "Not specified";
 
+// An empty currency (not known) leaves the bare amount.
 function money(value: number | null, currency: string): string {
-  return value === null ? NOT_SET : `${currency} ${value.toLocaleString("en-US")}`;
+  return value === null ? NOT_SET : `${currency} ${value.toLocaleString("en-US")}`.trim();
 }
 
 function pct(value: number | null): string {
@@ -272,6 +273,7 @@ export interface PolicySection {
 }
 
 interface PolicyContext {
+  // The amounts' (ISO 4217); "" when not known.
   currency: string;
   // The general risk tolerance from the profile, already worded for display (e.g. "Moderate").
   riskTolerance: string | null;

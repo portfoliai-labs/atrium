@@ -1,8 +1,14 @@
 // models/Conversation.ts
 // Aligned with ianus' /v1/conversations, camelCase: colloquium's chat between an advisor and each
-// client (kind advisor_client), and the user's chats with the AI assistant (kind assistant).
+// client (kind advisor_client), the same with a network participant, a Nostr key (kind
+// advisor_network_client: messages as NIP-17's, no read receipts), and the user's chats with the
+// AI assistant (kind assistant).
 
-export type ConversationKind = "advisor_client" | "assistant";
+export type ConversationKind = "advisor_client" | "advisor_network_client" | "assistant";
+
+// Where a message the caller sent to a network participant stands: stored, not yet taken by a
+// relay of theirs (retried); taken; not delivered.
+export type MessageDelivery = "pending" | "sent" | "failed";
 
 export type ParticipantRole = "advisor" | "client";
 
@@ -10,12 +16,17 @@ export type ParticipantRole = "advisor" | "client";
 export type ConversationStatus = "open" | "closed";
 
 export interface Participant {
-  userUuid: string;
+  // Null for a network participant.
+  userUuid: string | null;
   role: ParticipantRole;
-  // Null when the account has none (or no longer exists).
+  // Null when the account has none (or no longer exists), and for a network participant.
   firstName: string | null;
   lastName: string | null;
   profilePicture: string | null;
+  // A network participant (a Nostr key): no uuid, no names.
+  network?: boolean;
+  pubkey?: string | null;
+  npub?: string | null;
 }
 
 export interface ChartSeries {
@@ -87,8 +98,14 @@ export type AnswerStop = "answered" | "cut_short" | "out_of_reads";
 export interface ChatMessage {
   messageUuid: string;
   conversationUuid: string;
-  // Null on the AI's answers.
+  // Null on the AI's answers and a network participant's messages.
   senderUuid: string | null;
+  // The network participant who wrote it (lowercase hex); null otherwise.
+  senderPubkey?: string | null;
+  // Where the caller's own message to a network participant stands; null for any other.
+  delivery?: MessageDelivery | null;
+  // In a network conversation, its id on Nostr (the NIP-17 rumor's), once known.
+  networkId?: string | null;
   // The text blocks joined: for previews.
   text: string;
   // What to render, in order.
@@ -108,7 +125,7 @@ export interface ReadReceipt {
 
 export interface Conversation {
   conversationUuid: string;
-  kind: "advisor_client";
+  kind: "advisor_client" | "advisor_network_client";
   status: ConversationStatus;
   // The caller's part in it.
   role: ParticipantRole;
@@ -166,4 +183,6 @@ export type ConversationEvent =
   | { type: "answer_piece"; conversationUuid: string; messageUuid: string; piece: AnswerPiece }
   | { type: "answer_failed"; conversationUuid: string; messageUuid: string; reason?: string }
   // An action changed (confirmed, done, failed...): it replaces the answer's block of the same actionId.
-  | { type: "action_changed"; conversationUuid: string; messageUuid: string; action: AssistantAction };
+  | { type: "action_changed"; conversationUuid: string; messageUuid: string; action: AssistantAction }
+  // A message the caller sent to a network participant was sent, or failed.
+  | { type: "delivery_changed"; conversationUuid: string; messageUuid: string; delivery: MessageDelivery };

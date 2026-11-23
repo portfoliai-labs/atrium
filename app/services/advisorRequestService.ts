@@ -7,13 +7,15 @@ import { apiFetch } from "./apiClient";
 export const advisorRequestService = {
   // --- The investor ---
 
-  // GET /users/advisor-matches — at most 3 advisors, best first. 409 InvestorPolicyRequiredError
+  // GET /users/advisor-matches — at most 3 advisors, best first: the verified ones, then the
+  // network's (never verified), left out with `onlyVerified`. 409 InvestorPolicyRequiredError
   // before the caller saved an investor policy.
-  async getMatches(): Promise<AdvisorMatch[]> {
-    return apiFetch<AdvisorMatch[]>("/v1/users/advisor-matches");
+  async getMatches(onlyVerified = false): Promise<AdvisorMatch[]> {
+    return apiFetch<AdvisorMatch[]>(`/v1/users/advisor-matches?onlyVerified=${onlyVerified}`);
   },
 
-  // POST /users/advisor-requests — 409 AdvisorRequestPendingError while another one is pending.
+  // POST /users/advisor-requests — 409 AdvisorRequestPendingError while another one is pending;
+  // to a network advisor (by advisorPubkey), 409 NetworkRefusedError when the network refused it.
   async createRequest(payload: AdvisorRequestPayload): Promise<AdvisorRequest> {
     return apiFetch<AdvisorRequest>("/v1/users/advisor-requests", {
       method: "POST",
@@ -49,8 +51,12 @@ export const advisorRequestService = {
     return apiFetch<AdvisorRequest[]>("/v1/advisor/requests");
   },
 
-  async acceptRequest(requestUuid: string): Promise<AdvisorRequest> {
-    return apiFetch<AdvisorRequest>(`/v1/advisor/requests/${requestUuid}/accept`, { method: "POST" });
+  // A network investor is answered by a private message and becomes no client: the pair only talks.
+  async acceptRequest(requestUuid: string, reply = ""): Promise<AdvisorRequest> {
+    return apiFetch<AdvisorRequest>(`/v1/advisor/requests/${requestUuid}/accept`, {
+      method: "POST",
+      body: JSON.stringify({ reply }),
+    });
   },
 
   async declineRequest(requestUuid: string, reply: string): Promise<AdvisorRequest> {

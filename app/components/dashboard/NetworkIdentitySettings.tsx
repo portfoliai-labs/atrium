@@ -7,7 +7,7 @@ import { AlertTriangle, Check, Copy, Download, Globe, KeyRound, Loader2, Upload 
 import { accountKey, useAccountQuery } from "../../hooks/useAccountQuery";
 import { ApiError } from "../../services/apiClient";
 import { networkService } from "../../services/journalService";
-import type { NetworkIdentity } from "../../models/Journal";
+import type { NetworkIdentity, NetworkKeyExport } from "../../models/Journal";
 
 // pons' bound (NIP-49's password): shorter is PasswordTooShortError.
 const PASSWORD_MIN = 8;
@@ -53,15 +53,83 @@ function Card({ icon, title, children }: { icon: React.ReactNode; title: string;
   );
 }
 
+// What tells one key from the other on the page.
+interface KeyCopy {
+  // The cache's key.
+  id: string;
+  fileName: string;
+  title: string;
+  intro: string;
+  publicKeyHint: string;
+  none: string;
+  exportHint: string;
+  exportWarning: string;
+  importWarning: string;
+  importedText: string;
+  read: () => Promise<NetworkIdentity>;
+  exportKey: (password: string) => Promise<NetworkKeyExport>;
+  importKey: (ncryptsec: string, password: string) => Promise<NetworkIdentity>;
+}
+
+const JOURNAL_KEY: KeyCopy = {
+  id: "network-identity",
+  fileName: "portfoliai-nostr-key.ncryptsec.txt",
+  title: "Journal key",
+  intro: "What you publish in the Journal goes out to the network (Nostr), signed with a key of yours that this instance keeps. "
+    + "Others follow you, on any instance or Nostr app, by your public key (npub).",
+  publicKeyHint: "The npub others follow you by.",
+  none: "You don't have one yet: it's made the first time you publish, follow someone or export it.",
+  exportHint: "Your secret key, encrypted with a password you choose, to sign in to another Nostr app or instance as yourself.",
+  exportWarning: "Keep it safe, with its password: whoever has both can publish as you. Nobody, not even this instance, can recover the password.",
+  importWarning: "The key you import replaces your current one: from then on you publish and follow as it. What you already published "
+    + "stays on the network, signed with the old key; export it first if you want to keep it.",
+  importedText: "Imported: this is your Journal key now.",
+  read: () => networkService.identity(),
+  exportKey: (password) => networkService.exportKey(password),
+  importKey: (ncryptsec, password) => networkService.importKey(ncryptsec, password),
+};
+
+const MESSAGES_KEY: KeyCopy = {
+  id: "network-messages-identity",
+  fileName: "portfoliai-nostr-messages-key.ncryptsec.txt",
+  title: "Messages key",
+  intro: "A different key from the Journal's, kept apart so your articles and your private conversations can't be linked: "
+    + "it encrypts your private messages with advisors and investors on the network (requests and chats), and an advisor's "
+    + "profile on the network is published with it.",
+  publicKeyHint: "The npub advisors and investors on the network reach you by.",
+  none: "You don't have one yet: it's made the first time you write to someone on the network, publish your advisor profile or export it.",
+  exportHint: "Your messages secret key, encrypted with a password you choose, to read and write the same conversations from the app "
+    + "on your phone or another instance.",
+  exportWarning: "Keep it safe, with its password: whoever has both can read your private messages and write as you. Nobody, not even "
+    + "this instance, can recover the password.",
+  importWarning: "The key you import replaces your current messages key: what was sent to it is read again here. The messages kept for "
+    + "the key it replaces no longer open; export it first if you want to keep it.",
+  importedText: "Imported: this is your messages key now.",
+  read: () => networkService.messagesIdentity(),
+  exportKey: (password) => networkService.exportMessagesKey(password),
+  importKey: (ncryptsec, password) => networkService.importMessagesKey(ncryptsec, password),
+};
+
 /**
- * NETWORK IDENTITY — the user's key on the network (Nostr, kept by pons): the npub others follow
- * and find their articles by; the secret key taken out encrypted with a password (an ncryptsec,
- * for another Nostr app or instance), or one brought in from elsewhere in place of this one.
+ * NETWORK — the user's two keys on the network (Nostr, kept by pons), each with its npub, its
+ * secret key taken out encrypted with a password (an ncryptsec, for another Nostr app or
+ * instance) or one brought in from elsewhere in place of it: the Journal's (articles, strategies,
+ * follows) and the private messages' (requests and chats with the network's advisors and
+ * investors, an advisor's network profile).
  */
 export function NetworkIdentitySettings() {
+  return (
+    <div className="space-y-12">
+      <NetworkKey copy={JOURNAL_KEY} />
+      <NetworkKey copy={MESSAGES_KEY} />
+    </div>
+  );
+}
+
+function NetworkKey({ copy }: { copy: KeyCopy }) {
   const queryClient = useQueryClient();
-  const identity = useAccountQuery(["network-identity"], () => networkService.identity());
-  const setIdentity = (next: NetworkIdentity) => queryClient.setQueryData(accountKey("network-identity"), next);
+  const identity = useAccountQuery([copy.id], copy.read);
+  const setIdentity = (next: NetworkIdentity) => queryClient.setQueryData(accountKey(copy.id), next);
 
   const [exportPassword, setExportPassword] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -78,7 +146,7 @@ export function NetworkIdentitySettings() {
     setExporting(true);
     setExportError(null);
     try {
-      const result = await networkService.exportKey(exportPassword);
+      const result = await copy.exportKey(exportPassword);
       setExported(result.ncryptsec);
       setExportPassword("");
       setIdentity({ pubkey: result.pubkey, npub: result.npub });
@@ -92,7 +160,7 @@ export function NetworkIdentitySettings() {
   const download = (text: string) => {
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
-    link.download = "portfoliai-nostr-key.ncryptsec.txt";
+    link.download = copy.fileName;
     link.click();
     URL.revokeObjectURL(link.href);
   };
@@ -102,7 +170,7 @@ export function NetworkIdentitySettings() {
     setImportError(null);
     setImported(false);
     try {
-      setIdentity(await networkService.importKey(ncryptsec.trim(), importPassword));
+      setIdentity(await copy.importKey(ncryptsec.trim(), importPassword));
       setNcryptsec("");
       setImportPassword("");
       setExported(null);
@@ -116,13 +184,14 @@ export function NetworkIdentitySettings() {
 
   const npub = identity.data?.npub;
   return (
-    <div className="space-y-8">
-      <p className="text-[13px] text-[#78716c] leading-relaxed max-w-3xl">
-        What you publish in the Journal goes out to the network (Nostr), signed with a key of yours that this instance keeps. Others
-        follow you, on any instance or Nostr app, by your public key (npub).
-      </p>
+    <section className="space-y-6">
+      <div className="space-y-1.5">
+        <h3 className="font-bold text-lg text-[#1c1917]">{copy.title}</h3>
+        <p className="text-[13px] text-[#78716c] leading-relaxed max-w-3xl">{copy.intro}</p>
+      </div>
 
       <Card icon={<Globe className="w-5 h-5" />} title="Your public key">
+        <p className="text-[13px] text-[#78716c] leading-relaxed">{copy.publicKeyHint}</p>
         {identity.isLoading ? (
           <Loader2 className="h-5 w-5 animate-spin text-[#C49A3C]" />
         ) : identity.isError ? (
@@ -133,19 +202,17 @@ export function NetworkIdentitySettings() {
             <CopyButton text={npub} label="Copy" />
           </div>
         ) : (
-          <p className="text-sm text-[#78716c]">You don&apos;t have one yet: it&apos;s made the first time you publish, follow someone or export it.</p>
+          <p className="text-sm text-[#78716c]">{copy.none}</p>
         )}
       </Card>
 
       <Card icon={<KeyRound className="w-5 h-5" />} title="Export your key">
-        <p className="text-[13px] text-[#78716c] leading-relaxed">
-          Your secret key, encrypted with a password you choose, to sign in to another Nostr app or instance as yourself.
-        </p>
+        <p className="text-[13px] text-[#78716c] leading-relaxed">{copy.exportHint}</p>
         {exported ? (
           <div className="space-y-3">
             <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-              Keep it safe, with its password: whoever has both can publish as you. Nobody, not even this instance, can recover the password.
+              {copy.exportWarning}
             </p>
             <code className="block break-all rounded-xl bg-[#F7F5EF] px-4 py-3 text-xs text-[#1c1917]">{exported}</code>
             <div className="flex flex-wrap gap-2">
@@ -173,8 +240,7 @@ export function NetworkIdentitySettings() {
       <Card icon={<Upload className="w-5 h-5" />} title="Import a key">
         <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-          The key you import replaces your current one: from then on you publish and follow as it. What you already published stays
-          on the network, signed with the old key; export it first if you want to keep it.
+          {copy.importWarning}
         </p>
         <form onSubmit={(e) => { e.preventDefault(); void importKey(); }} className="space-y-3">
           <label className="block">
@@ -192,8 +258,8 @@ export function NetworkIdentitySettings() {
           </div>
         </form>
         {importError && <p className="text-xs font-medium text-rose-600">{importError}</p>}
-        {imported && <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-700"><Check className="h-3.5 w-3.5" /> Imported: this is your key now.</p>}
+        {imported && <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-700"><Check className="h-3.5 w-3.5" /> {copy.importedText}</p>}
       </Card>
-    </div>
+    </section>
   );
 }
