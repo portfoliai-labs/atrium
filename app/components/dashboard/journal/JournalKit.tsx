@@ -53,15 +53,20 @@ export function AuthorBadge({ author, dark = false }: { author: ArticleAuthor; d
           Advisor
         </span>
       )}
-      {newAuthor && (
-        <span
-          title="Outside your network: neither you nor anyone you follow follows them"
-          className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${dark ? "bg-amber-400/15 text-amber-200" : "bg-amber-50 text-amber-700"}`}
-        >
-          New author
-        </span>
-      )}
+      {newAuthor && <NewAuthorBadge dark={dark} />}
     </>
+  );
+}
+
+/** "New author": an author outside the reader's network, on an article or a strategy. */
+export function NewAuthorBadge({ dark = false }: { dark?: boolean }) {
+  return (
+    <span
+      title="Outside your network: neither you nor anyone you follow follows them"
+      className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${dark ? "bg-amber-400/15 text-amber-200" : "bg-amber-50 text-amber-700"}`}
+    >
+      New author
+    </span>
   );
 }
 
