@@ -86,25 +86,43 @@ export const REPORT_NOTICE =
 
 // The feed shown when the Journal opens, as the reader last left it (on this browser).
 export const ALL_NETWORK_NOTICE = "Articles from anyone on the network, not filtered by whom you follow.";
-const FEED_SCOPE_KEY = "atrium.journal.feed";
 export type FeedScope = "trusted" | "all";
-// Unreadable storage keeps the choice for this visit only (as the Sidebar's).
-const feedListeners = new Set<() => void>();
-let feedFallback: FeedScope = "trusted";
-export const subscribeFeedScope = (listener: () => void) => {
-  feedListeners.add(listener);
-  return () => { feedListeners.delete(listener); };
-};
-export function readFeedScope(): FeedScope {
-  try { return localStorage.getItem(FEED_SCOPE_KEY) === "all" ? "all" : "trusted"; } catch { return feedFallback; }
+
+/**
+ * A reader's choice of scope kept on this browser under `key` (the reader's network by default),
+ * for useSyncExternalStore. Unreadable storage keeps the choice for this visit only (as the Sidebar's).
+ */
+function scopeStore(key: string) {
+  const listeners = new Set<() => void>();
+  let fallback: FeedScope = "trusted";
+  return {
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    read: (): FeedScope => {
+      try { return localStorage.getItem(key) === "all" ? "all" : "trusted"; } catch { return fallback; }
+    },
+    // Before the browser's: the reader's network.
+    server: (): FeedScope => "trusted",
+    write: (scope: FeedScope) => {
+      fallback = scope;
+      try { localStorage.setItem(key, scope); } catch { /* fallback holds it */ }
+      listeners.forEach((listener) => listener());
+    },
+  };
 }
-// Before the browser's: the reader's network.
-export const serverFeedScope = (): FeedScope => "trusted";
-export function writeFeedScope(scope: FeedScope) {
-  feedFallback = scope;
-  try { localStorage.setItem(FEED_SCOPE_KEY, scope); } catch { /* feedFallback holds it */ }
-  feedListeners.forEach((listener) => listener());
-}
+
+const feedStore = scopeStore("atrium.journal.feed");
+export const subscribeFeedScope = feedStore.subscribe;
+export const readFeedScope = feedStore.read;
+export const serverFeedScope = feedStore.server;
+export const writeFeedScope = feedStore.write;
+
+// The strategies catalog's: the reader's network (this instance's strategies and those by their
+// web of trust) or every one on the network.
+export const strategiesScope = scopeStore("atrium.strategies.scope");
+export const ALL_NETWORK_STRATEGIES_NOTICE = "Strategies from anyone on the network, not filtered by whom you follow.";
 
 /** Whether the reader should be careful with this author: a network author outside their web of trust. */
 export const isNewAuthor = (author: Pick<ArticleAuthor, "trusted">) => author.trusted === false;

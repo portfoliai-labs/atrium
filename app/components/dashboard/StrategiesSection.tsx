@@ -8,7 +8,8 @@ import { useSectionView } from "../../lib/dashboardHistory";
 import { STRATEGIES_SECTION, openClientPage, openPortfolioPage } from "../../lib/dashboardNav";
 import { useMyPublications } from "../../hooks/useMyPublications";
 import { publicationService } from "../../services/publicationService";
-import { PublishStrategyDialog } from "./PublishStrategyDialog";
+import { DELETE_PUBLISHED_NOTE, PublishStrategyDialog, WITHDRAW_DESCRIPTION } from "./PublishStrategyDialog";
+import { NetworkStateBadge } from "./NetworkStrategy";
 import type { PublishedStrategy } from "../../models/PublishedStrategy";
 import { PortfolioNode, type PortfolioPage } from "./InvestmentsSection";
 import { isBacktest, type Portfolio } from "../../models/Portfolio";
@@ -74,7 +75,7 @@ export function StrategiesSection({ onNavigate }: { onNavigate: (section: string
 
 /**
  * STRATEGIES NODE — the strategies: the user's own, each a backtest of how they would invest on
- * historical prices (StrategyBuilder makes a new one), and the ones advisors publish (the catalog,
+ * historical prices (StrategyBuilder makes a new one), and the ones published here and on the network (the catalog,
  * read only). Each backtest opens its page, the same as a portfolio's in Investments without what a
  * simulation doesn't have (see PortfolioNode), and is adopted on a portfolio (AdoptStrategyDialog):
  * each of its targets becomes a range there, with an alert saying where the portfolio stands
@@ -159,7 +160,8 @@ export function StrategiesNode({ view, trail, onOpen, onOpenPortfolio, onNavigat
  * portfolio's Strategy page, where its ranges are.
  *
  * An advisor adopts theirs on a client's portfolio (opening it in the client's investments, where it's
- * shared with the client or not), and publishes them to the catalog or withdraws them.
+ * shared with the client or not). Anyone publishes theirs to the catalog and the network, with a
+ * thesis, or withdraws them; a published one says where it stands on the network.
  */
 function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, onOpenPublished, onOpenPortfolio, onCompare, onNavigate }: {
   mine: boolean;
@@ -173,7 +175,7 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
   onNavigate: (section: string) => void;
 }) {
   const { portfolios, deletePortfolio } = usePortfolio();
-  const { publications, reload: reloadPublications, canPublish } = useMyPublications();
+  const { publications, reload: reloadPublications, canPublish, isAdvisor } = useMyPublications();
   const [publishing, setPublishing] = useState<Portfolio | null>(null);
   const [withdrawing, setWithdrawing] = useState<PublishedStrategy | null>(null);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
@@ -229,12 +231,12 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
           <p className="flex items-start gap-2 flex-1 min-w-64 text-[12.5px] text-[#78716c] max-w-2xl">
             <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             {mine
-              ? canPublish
-                ? "The strategies you backtested: open one, adopt it on a client's portfolio, or publish it to the catalog."
-                : "The strategies you backtested: open one to see how it would have done, or adopt it on one of your portfolios."
-              : canPublish
-                ? "Yours and the ones advisors publish. Backtest a strategy on historical prices and adopt it on a client's portfolio: each of its targets becomes a range, and an alert tells you where the portfolio stands against it; share it to let the client read it. Or publish it, for everyone to read."
-                : "Yours and the ones advisors publish. Backtest how you would invest on historical prices; when one of yours fits, adopt it on one of your portfolios: each of its targets becomes a range, and an alert says where the portfolio stands against it."}
+              ? isAdvisor
+                ? "The strategies you backtested: open one, adopt it on a client's portfolio, or publish it on the network."
+                : "The strategies you backtested: open one to see how it would have done, adopt it on one of your portfolios, or publish it on the network."
+              : isAdvisor
+                ? "Yours and the ones published here and on the network. Backtest a strategy on historical prices and adopt it on a client's portfolio: each of its targets becomes a range, and an alert tells you where the portfolio stands against it; share it to let the client read it. Or publish it, for everyone to read."
+                : "Yours and the ones published here and on the network. Backtest how you would invest on historical prices; when one of yours fits, adopt it on one of your portfolios: each of its targets becomes a range, and an alert says where the portfolio stands against it. Or publish it, for everyone to read."}
           </p>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <ActionButton action={{ label: mine ? "All strategies" : `Your strategies · ${backtests.length}`, onClick: onToggleMine }} />
@@ -308,6 +310,9 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
                     </span>
                   )}
                 </p>
+                {publications?.get(p.uuid)?.networkState && (
+                  <p className="mt-1.5"><NetworkStateBadge strategy={publications.get(p.uuid)!} /></p>
+                )}
                 <h3 className="mt-1.5 text-xl font-bold text-[#1c1917] leading-tight line-clamp-2" style={serif}>{p.name}</h3>
                 <p className="text-[11px] text-[#78716c] mt-1">Created {createdLabel(p.createdAt)}</p>
               </div>
@@ -325,7 +330,7 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
                   title="Keep one of your portfolios in this strategy's ranges"
                   className="flex items-center gap-1.5 min-h-10 px-4 rounded-xl bg-[#1c1917] text-white text-xs font-bold hover:bg-[#C49A3C] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Target className="h-3.5 w-3.5" /> {canPublish ? "Adopt on a client" : "Adopt"}
+                  <Target className="h-3.5 w-3.5" /> {isAdvisor ? "Adopt on a client" : "Adopt"}
                 </button>
                 {canPublish && (
                   publications?.has(p.uuid) ? (
@@ -378,8 +383,8 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
       )}
       {withdrawing && (
         <ConfirmDialog
-          title={`Withdraw "${withdrawing.portfolioName}" from the catalog?`}
-          description="It leaves the catalog: nobody can read it there any more. The backtest stays yours, to publish again."
+          title={`Withdraw "${withdrawing.portfolioName}"?`}
+          description={WITHDRAW_DESCRIPTION}
           confirmLabel="Withdraw"
           confirming={withdrawBusy}
           error={withdrawError}
@@ -391,7 +396,7 @@ function StrategiesHome({ mine, trail, onToggleMine, onBuild, onOpenBacktest, on
       {deleting && (
         <ConfirmDialog
           title={`Delete "${deleting.name}"?`}
-          description="The backtest and its generated transactions are deleted. This can't be undone."
+          description={`The backtest and its generated transactions are deleted.${publications?.has(deleting.uuid) ? ` ${DELETE_PUBLISHED_NOTE}` : ""} This can't be undone.`}
           confirming={deleteBusy}
           error={deleteError}
           onConfirm={handleDelete}

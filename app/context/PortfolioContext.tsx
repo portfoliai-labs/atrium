@@ -191,7 +191,12 @@ export const usePortfolio = (): PortfolioContextType => {
  * filters, another page, another range) keeps the last answer up until its own.
  */
 export function useInvestmentsQuery<T>(
-  key: unknown[], read: () => Promise<T>, { enabled = true, keepPrevious = false, pollMs }: { enabled?: boolean; keepPrevious?: boolean; pollMs?: number } = {},
+  key: unknown[], read: () => Promise<T>, { enabled = true, keepPrevious = false, pollMs }: {
+    enabled?: boolean;
+    keepPrevious?: boolean;
+    // A fixed interval, or one from the last answer (undefined: not polled while it says so).
+    pollMs?: number | ((data: T | undefined) => number | undefined);
+  } = {},
 ): UseQueryResult<T> {
   return useQuery({
     queryKey: investmentsKey(...key),
@@ -199,7 +204,7 @@ export function useInvestmentsQuery<T>(
     enabled,
     placeholderData: keepPrevious ? keepPreviousData : undefined,
     // Read again on that interval while the tab is visible (a reading changing underneath the page).
-    refetchInterval: pollMs,
+    refetchInterval: typeof pollMs === "function" ? (query) => pollMs(query.state.data) ?? false : pollMs,
   });
 }
 

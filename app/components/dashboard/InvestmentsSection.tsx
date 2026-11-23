@@ -13,7 +13,7 @@ import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHisto
 import { INVESTMENTS_SECTION, openClientPage, openProfilePreferences, openStrategiesPage } from "../../lib/dashboardNav";
 import { useMyPublications } from "../../hooks/useMyPublications";
 import { publicationService } from "../../services/publicationService";
-import { PublishStrategyDialog } from "./PublishStrategyDialog";
+import { DELETE_PUBLISHED_NOTE, PublishStrategyDialog, WITHDRAW_DESCRIPTION } from "./PublishStrategyDialog";
 import { investmentsOf, isBacktest, type Portfolio } from "../../models/Portfolio";
 import type { PortfolioComparisonEntry } from "../../models/PortfolioData";
 import { PerformanceSection } from "./PerformanceSection";
@@ -163,7 +163,7 @@ function viewFromHistory(hasStrategies: boolean, portfolios: Portfolio[], sectio
  * portfolio, so none of them asks which one: Transactions, Alerts and Reports, and on All
  * portfolios Compare and Manage portfolios (its stress test and projection are in its Insights); the
  * investments' Taxes from the Realized P&L of their Insights. Beside All portfolios, Strategies (StrategiesNode): the user's
- * strategies, each a backtest opening the same page as a portfolio's, and the ones advisors publish.
+ * strategies, each a backtest opening the same page as a portfolio's, and the ones published here and on the network.
  *
  * Every page is a browser history entry, so back and forward move between them (see
  * lib/dashboardHistory). Opening a portfolio also makes it the selected one (PortfolioContext).
@@ -419,8 +419,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const [dialog, setDialog] = useState<"new" | "rename" | "delete" | "adopt" | "publish" | "withdraw" | "connectBroker" | null>(null);
   // A portfolio holding an account at a broker: that account's page, and its session in the header.
   const atBroker = useBrokerOf(portfolio);
-  // An advisor's backtest: whether it's in the catalog.
-  const { publications, reload: reloadPublications, canPublish } = useMyPublications();
+  // The user's backtest: whether it's in the catalog (and on the network).
+  const { publications, reload: reloadPublications, canPublish, isAdvisor } = useMyPublications();
   const publication = backtest ? publications?.get(portfolio.uuid) : undefined;
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -449,13 +449,13 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   // ── What can be done with it ──
   const actions: PageAction[] = backtest
     ? [
-        { label: canPublish ? "Adopt on a client" : "Adopt this strategy", primary: true, onClick: () => setDialog("adopt") },
+        { label: isAdvisor ? "Adopt on a client" : "Adopt this strategy", primary: true, onClick: () => setDialog("adopt") },
         ...(canPublish ? publication
           ? [
               { label: "Edit the publication", onClick: () => setDialog("publish") },
-              { label: "Withdraw from the catalog", onClick: () => { setWithdrawError(null); setDialog("withdraw"); } },
+              { label: "Take off the network", onClick: () => { setWithdrawError(null); setDialog("withdraw"); } },
             ]
-          : [{ label: "Publish to the catalog", onClick: () => setDialog("publish"), ...(publications === undefined ? { disabled: true } : {}) }]
+          : [{ label: "Publish on the network", onClick: () => setDialog("publish"), ...(publications === undefined ? { disabled: true } : {}) }]
           : []),
         { label: "Projection", onClick: () => open("projection") },
         { label: "Delete backtest", danger: true, onClick: () => setDialog("delete") },
@@ -609,8 +609,8 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
       )}
       {dialog === "withdraw" && publication && (
         <ConfirmDialog
-          title={`Withdraw "${portfolio.name}" from the catalog?`}
-          description="It leaves the catalog: nobody can read it there any more. The backtest stays yours, to publish again."
+          title={`Withdraw "${portfolio.name}"?`}
+          description={WITHDRAW_DESCRIPTION}
           confirmLabel="Withdraw"
           confirming={deleting}
           error={withdrawError}
@@ -634,7 +634,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
         <ConfirmDialog
           title={`Delete "${portfolio.name}"?`}
           description={backtest
-            ? "The backtest and its generated transactions are deleted. This can't be undone."
+            ? `The backtest and its generated transactions are deleted.${publication ? ` ${DELETE_PUBLISHED_NOTE}` : ""} This can't be undone.`
             : "Its transactions, insights, reports and alerts are deleted with it. This can't be undone."}
           confirming={deleting}
           error={deleteError}

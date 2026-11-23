@@ -1,9 +1,11 @@
 // models/PublishedStrategy.ts
-// Matches PublishedStrategyResponse and CatalogPageResponse (the strategies catalog): an advisor's
-// strategy portfolio, published for every user to read (POST /v1/advisor/publications), listed at
-// GET /v1/explore/strategies and read at GET /v1/explore/strategies/{publicationId}. Its portfolio
-// (`portfolioUuid`) is readable by everyone through the usual portfolio routes (its Insights, its
-// /strategy), never writable, copyable or adoptable.
+// Matches PublishedStrategyResponse and CatalogPageResponse (the strategies catalog): a user's
+// strategy portfolio, published for every user to read and sent to the Nostr network (POST
+// /v1/publications), or another instance's or client's strategy read from the network and
+// recomputed here (`source` network); listed at GET /v1/explore/strategies and read at GET
+// /v1/explore/strategies/{publicationId}. Its portfolio (`portfolioUuid`, a network strategy's
+// once its backtest is made here) is readable by everyone through the usual portfolio routes (its
+// Insights, its /strategy), never writable, copyable or adoptable.
 //
 // Every figure is a simulation: the strategy played on historical prices. The figures are
 // time-weighted on the holdings' prices, so cash flows don't move them, and net of trading costs:
@@ -13,6 +15,7 @@
 
 import type { StrategyCosts } from "./Strategy";
 import type { StrategyAllocation } from "./AdoptedStrategy";
+import type { ReportReason } from "./Journal";
 
 // The trailing windows the figures are over, ending on the backtest's last day. `inception` is the
 // whole history: shown, never filtered or sorted on (422).
@@ -123,13 +126,31 @@ interface StrategyProfile {
   factorExposures?: FactorExposures | null;
 }
 
+// Where a catalog strategy comes from: this instance (`platform`) or the network (`network`,
+// another instance's user or another client, recomputed here).
+type StrategySource = "platform" | "network";
+// Whose strategies the catalog reads: this instance's and the reader's web of trust's (the
+// authors they follow and those these follow), or every one the reader sees.
+type CatalogScope = "trusted" | "all";
+// Where a network strategy's recomputation here stands: its backtest has run; it's queued or
+// running; nobody here follows its author, so opening it starts it; too many network strategies
+// are computed already (computed when room is made); given up on (its instruments' prices).
+type NetworkRecompute = "computed" | "running" | "on_open" | "capped" | "failed";
+// Where one of the caller's own publications stands on the network: being sent (tried again a
+// while after each failure), on it, or given up on until it's published again.
+type PublicationNetworkState = "pending" | "sent" | "failed";
+
 interface PublishedStrategy {
   publicationId: string;
-  portfolioUuid: string;
+  // Null for a network strategy until its backtest is made here: no chart, no Compare until then.
+  portfolioUuid: string | null;
+  // A network strategy's: its event's title.
   portfolioName: string;
-  authorUuid: string;
-  // Null when the backend has no name for them.
+  // Null for a network strategy.
+  authorUuid: string | null;
+  // Null when the backend has no name for them (always for a network strategy).
   authorName: string | null;
+  // The thesis, in Markdown (required on publishing; an older publication's may be null).
   description: string | null;
   strategy: StrategyAllocation;
   // The author's; the fixed fee is in `currency`.
@@ -145,6 +166,20 @@ interface PublishedStrategy {
   figuresComputedAt: string | null;
   // Null until its holdings are first computed; absent from an ianus before the profile.
   profile?: StrategyProfile | null;
+  // Absent from an ianus before the network (0.89.0): a platform strategy.
+  source?: StrategySource;
+  // The author's key (lowercase hex) and npub; null for a local author with no key (then it can't
+  // be hidden or reported). The author is muted at the Journal's /mutes/{authorPubkey}.
+  authorPubkey?: string | null;
+  authorNpub?: string | null;
+  // Its `d` on the network (a local one's: its publication id).
+  identifier?: string;
+  // Its current event on the network, once there.
+  eventId?: string | null;
+  // A network strategy's only; null for this instance's.
+  recompute?: NetworkRecompute | null;
+  // The caller's own publications only; null on anyone else's.
+  networkState?: PublicationNetworkState | null;
 }
 
 interface CatalogPage {
@@ -157,7 +192,12 @@ interface CatalogPage {
 // sort by figure needs one (422 InvalidFieldError on `horizon` otherwise), and then only the
 // strategies whose history covers it come back. `maxDrawdownPct` is positive: 20 = no worse
 // than −20%. `limit` 1–100 (20 by default).
+// `source` platform or network (unset: both); `scope` trusted or all (unset: all). Never the
+// strategies the reader hid or reported, their muted authors', nor those hidden by the reports of
+// people they follow.
 interface CatalogQuery {
+  source?: StrategySource;
+  scope?: CatalogScope;
   horizon?: FilterHorizon;
   maxVolatilityPct?: number;
   maxDrawdownPct?: number;
@@ -166,13 +206,20 @@ interface CatalogQuery {
   offset?: number;
 }
 
-// Body of POST /v1/advisor/publications: one of the advisor's own strategy portfolios, once its
-// backtest has run (409 BacktestNotRunError before, 404 for a portfolio that isn't a strategy's).
-// Publishing it again keeps its publication and replaces the description (at most
-// MAX_DESCRIPTION_LENGTH characters, 422 past that).
+// Body of POST /v1/publications: one of the caller's own strategy portfolios, once its backtest
+// has run (409 BacktestNotRunError before, 404 for a portfolio that isn't a strategy's, 403 for a
+// client's), sent to the network too. `description` is required: the strategy's thesis, Markdown,
+// trimmed, at most MAX_DESCRIPTION_LENGTH characters (422 when blank or past that). Publishing it
+// again keeps its publication, replaces the thesis and sends it again.
 interface PublishStrategyPayload {
   portfolioUuid: string;
-  description?: string;
+  description: string;
+}
+
+// Body of POST /v1/explore/strategies/{id}/reports: the Journal's reasons, a note up to 500.
+interface StrategyReportPayload {
+  reason: ReportReason;
+  note?: string | null;
 }
 
 const MAX_DESCRIPTION_LENGTH = 2000;
@@ -204,9 +251,46 @@ const CRISIS_LABELS: Record<Crisis, string> = {
 /** A sort on the figures, which needs a horizon. */
 const isFigureSort = (sort: CatalogSort) => sort !== "newest";
 
+/** Whether it was read from the network (another instance's or client's), recomputed here. */
+const isNetworkStrategy = (s: Pick<PublishedStrategy, "source">) => s.source === "network";
+
+/** Whether its figures can be drawn and compared: its backtest exists here. */
+const hasBacktest = (s: Pick<PublishedStrategy, "portfolioUuid">): s is { portfolioUuid: string } => s.portfolioUuid !== null;
+
+// Where a network strategy's figures stand, when they aren't in yet (`computed` says nothing).
+const RECOMPUTE_LABELS: Record<Exclude<NetworkRecompute, "computed">, { title: string; note: string }> = {
+  running: {
+    title: "Computing",
+    note: "Its figures are being simulated here from its rules, on historical prices. Come back to it shortly.",
+  },
+  on_open: {
+    title: "Not computed yet",
+    note: "Its figures are simulated here when someone opens it: opening it starts them.",
+  },
+  capped: {
+    title: "Not computed yet",
+    note: "Many strategies from the network are simulated here already: this one will be when there's room.",
+  },
+  failed: {
+    title: "Couldn't be computed",
+    note: "Its figures couldn't be simulated here: the prices of what it holds aren't available.",
+  },
+};
+
+// One's own publication on the network.
+const NETWORK_STATE_LABELS: Record<PublicationNetworkState, string> = {
+  pending: "Sending to the network",
+  sent: "On the network",
+  failed: "Not sent to the network: publish it again to retry",
+};
+
 export type {
   CatalogHorizon, FilterHorizon, CatalogSort, Crisis, HorizonFigures, CrisisFigures, PublishedStrategy, CatalogPage,
-  CatalogQuery, PublishStrategyPayload, ProfileDimension, ProfileShare, ProfileBreakdown, StrategyProfile,
+  CatalogQuery, PublishStrategyPayload, StrategyReportPayload, StrategySource, CatalogScope, NetworkRecompute,
+  PublicationNetworkState, ProfileDimension, ProfileShare, ProfileBreakdown, StrategyProfile,
   FactorExposuresStatus, FactorSetKind, FactorExposure, FactorSetExposures, FactorExposures,
 };
-export { MAX_DESCRIPTION_LENGTH, FILTER_HORIZONS, HORIZON_LABELS, SORT_LABELS, CRISIS_LABELS, isFigureSort };
+export {
+  MAX_DESCRIPTION_LENGTH, FILTER_HORIZONS, HORIZON_LABELS, SORT_LABELS, CRISIS_LABELS, RECOMPUTE_LABELS, NETWORK_STATE_LABELS,
+  isFigureSort, isNetworkStrategy, hasBacktest,
+};
