@@ -136,7 +136,7 @@ const LAYERS: Layer[] = [
   {
     icon: GitBranch,
     title: "Strategies & backtests",
-    body: "A strategy is target weights plus a rebalancing rule. Test it on up to 40 years of real prices, adopt it, and get drift alerts with the rebalancing orders worked out. Browse the catalogue advisors publish to.",
+    body: "A strategy is target weights plus a rebalancing rule. Test it on up to 40 years of real prices, adopt it, and get drift alerts with the rebalancing orders worked out. Browse the catalogue of strategies published here and on the network, or publish yours.",
   },
   {
     icon: MessageSquareText,

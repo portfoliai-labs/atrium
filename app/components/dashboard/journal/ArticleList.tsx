@@ -27,14 +27,17 @@ function FilterChip({ label, onClear }: { label: string; onClear: () => void }) 
   );
 }
 
-/** Which feed: the reader's network (the default) or all of it, as they last left it on this browser. */
-function FeedSwitch({ feed, onChange }: { feed: FeedScope; onChange: (feed: FeedScope) => void }) {
+/**
+ * Which feed: the reader's network (the default) or all of it, as they last left it on this
+ * browser. The strategies catalog's too (`label`).
+ */
+export function FeedSwitch({ feed, onChange, label = "Feed" }: { feed: FeedScope; onChange: (feed: FeedScope) => void; label?: string }) {
   const options: { id: FeedScope; label: string; icon: typeof Users }[] = [
     { id: "trusted", label: "Your network", icon: Users },
     { id: "all", label: "All the network", icon: Globe },
   ];
   return (
-    <div role="tablist" aria-label="Feed" className="inline-flex gap-1 p-1 bg-white rounded-full border border-slate-200">
+    <div role="tablist" aria-label={label} className="inline-flex gap-1 p-1 bg-white rounded-full border border-slate-200">
       {options.map((o) => {
         const active = feed === o.id;
         return (

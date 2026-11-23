@@ -92,9 +92,11 @@ export function ItemMenu({ items, label = "More", dark = false }: { items: MenuI
  * REPORT — why the reader reports an article, a comment or an author, with a note: the target is
  * hidden (an author muted) for them, and a report on network content goes out on the network,
  * public and signed with their identity, as the dialog says. `onDone` once the API took it.
+ * Something else than the Journal's targets (a catalog strategy) comes with its own `send`.
  */
-export function ReportDialog({ target, what, onClose, onDone }: {
-  target: ReportTarget;
+export function ReportDialog({ what, onClose, onDone, ...to }: ({ target: ReportTarget } | {
+  send: (reason: ReportReason, note: string | null) => Promise<Report>;
+}) & {
   // "this article", "this comment", "Name".
   what: string;
   onClose: () => void;
@@ -114,7 +116,8 @@ export function ReportDialog({ target, what, onClose, onDone }: {
     setSending(true);
     setError(null);
     try {
-      const report = await journalService.report({ ...target, reason, note: note.trim() || null });
+      const trimmed = note.trim() || null;
+      const report = "send" in to ? await to.send(reason, trimmed) : await journalService.report({ ...to.target, reason, note: trimmed });
       changed();
       onDone(report);
     } catch (err) {

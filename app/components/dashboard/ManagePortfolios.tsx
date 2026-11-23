@@ -14,6 +14,8 @@ import { NewPortfolioDialog } from "./NewPortfolioDialog";
 import { VIRTUAL_COLOR, VirtualBadge } from "./BacktestMarks";
 import { usePortfoliosAlertRules } from "../../hooks/useAlertRules";
 import { useReadOnly } from "../../hooks/useReadOnly";
+import { useMyPublications } from "../../hooks/useMyPublications";
+import { DELETE_PUBLISHED_NOTE } from "./PublishStrategyDialog";
 import type { Portfolio } from "../../models/Portfolio";
 import type { TaxationMode } from "../../models/Tax";
 import { TAXATION_MODE_LABELS } from "../../lib/taxes";
@@ -48,6 +50,8 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const colorOf = useMemo(() => portfolioColorMap(portfolios), [portfolios]);
+  // Which backtests are published: deleting one unpublishes it, as its confirmation says.
+  const { publications } = useMyPublications();
 
   const uuidsKey = portfolios.map((p) => p.uuid).join(",");
   // Read again when the set of portfolios changes (one made or deleted), not on a rename.
@@ -137,7 +141,7 @@ export function ManagePortfolios({ trail, onOpenPortfolio, onOpenAlerts }: {
         <ConfirmDialog
           title={`Delete "${toDelete.name}"?`}
           description={toDelete.isVirtual
-            ? "This permanently deletes this backtest and everything computed from it. The strategy isn't kept: you'd have to set it up again."
+            ? `This permanently deletes this backtest and everything computed from it. The strategy isn't kept: you'd have to set it up again.${publications?.has(toDelete.uuid) ? ` ${DELETE_PUBLISHED_NOTE}` : ""}`
             : "This permanently deletes this portfolio and every transaction and alert in it. Its reports stay among your reports, until you delete them. This can't be undone."}
           confirming={deleting}
           onConfirm={handleDelete}

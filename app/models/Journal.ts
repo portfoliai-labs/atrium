@@ -296,6 +296,8 @@ export interface Report {
   createdAt: string;
   networkState: ReportNetworkState;
   eventId?: string | null;
+  // A catalog strategy's report: `38151:<author's key>:<identifier>`.
+  strategyAddress?: string | null;
 }
 
 // ── The caller's network identity (Nostr) ──

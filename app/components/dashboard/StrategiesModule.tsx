@@ -13,11 +13,12 @@ import { alertState } from "../../lib/alerts";
 import { openBacktestPage, openStrategiesPage } from "../../lib/dashboardNav";
 import { isBacktest } from "../../models/Portfolio";
 import type { SharedStrategy } from "../../models/AdoptedStrategy";
-import type { PublishedStrategy } from "../../models/PublishedStrategy";
+import { isNetworkStrategy, type PublishedStrategy } from "../../models/PublishedStrategy";
+import { authorLabel } from "./NetworkStrategy";
 import { MODULE_BODY, Module, ModuleHead } from "./PerformanceSection";
 import { formatPct } from "./CompareCharts";
 
-const DESC = "The strategies your portfolios follow and where each one stands against its ranges; without one, your backtests by their yearly return; without those, the newest strategies advisors published.";
+const DESC = "The strategies your portfolios follow and where each one stands against its ranges; without one, your backtests by their yearly return; without those, the newest strategies published here and on the network.";
 
 // The catalog's, without either: its newest (its own order, no pick by figures), more than fit.
 const CATALOG_QUERY = { limit: 8 };
@@ -176,7 +177,7 @@ export function StrategiesModule({ investmentsUuid, onOpenStrategy, onNavigate }
                 <FitItem key={s.publicationId}>
                   <Row
                     title={s.portfolioName}
-                    sub={`Simulated · ${s.authorName ? `by ${s.authorName}` : "by an advisor"}`}
+                    sub={`Simulated · by ${authorLabel(s)}${isNetworkStrategy(s) ? " · from the network" : ""}`}
                     onClick={() => openStrategiesPage(onNavigate, { page: "published", publicationId: s.publicationId })}
                   >
                     <span className={`block text-[13px] font-black tabular-nums text-right ${f?.annualizedReturnPct == null ? "text-[#857e78]" : f.annualizedReturnPct >= 0 ? "text-[#047857]" : "text-[#e11d48]"}`}>

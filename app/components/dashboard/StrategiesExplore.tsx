@@ -1,7 +1,7 @@
 // components/dashboard/StrategiesExplore.tsx
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, useSyncExternalStore } from "react";
 import { AlertCircle, ArrowUpRight, Check, ChevronLeft, ChevronRight, Loader2, Telescope } from "lucide-react";
 import { publicationService } from "../../services/publicationService";
 import { useInvestmentsQuery, useInvestmentsRead } from "../../context/PortfolioContext";
@@ -10,8 +10,10 @@ import { STRATEGY_PROXIES, simulatedPeriod, targetLabel, type StrategyCosts, typ
 import { portfoliosService } from "../../services/portfoliosService";
 import {
   CRISIS_LABELS, FILTER_HORIZONS, HORIZON_LABELS, SORT_LABELS, isFigureSort,
+  hasBacktest, isNetworkStrategy,
   type CatalogSort, type FilterHorizon, type HorizonFigures, type PublishedStrategy,
 } from "../../models/PublishedStrategy";
+import { ALL_NETWORK_STRATEGIES_NOTICE, strategiesScope } from "../../lib/journal";
 import { exchangeLabel } from "../../models/Listing";
 import { formatCurrency } from "../../lib/format";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
@@ -20,6 +22,13 @@ import { ReadOnlySimulation } from "./ReadOnlySimulation";
 import type { CompareStrategy } from "./ComparisonView";
 import { CATEGORY_COLORS, SECURITY_COLORS } from "./StrategyBuilder";
 import { ProfileSummary } from "./StrategyProfile";
+import { PageHeader } from "./PageHeader";
+import { Markdown } from "./assistant/Markdown";
+import { FeedSwitch } from "./journal/ArticleList";
+import { ItemMenu } from "./journal/Moderation";
+import {
+  NetworkBadge, NetworkStateBadge, authorLabel, isRecomputing, plainThesis, recomputeNote, useStrategyModeration,
+} from "./NetworkStrategy";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 const dateLabel = (iso: string) => new Date(iso.length === 10 ? `${iso}T00:00:00` : iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
@@ -36,7 +45,9 @@ const fig = (v: number | null, format: (v: number) => string) => (v == null ? "�
 const costsLine = (c: StrategyCosts, currency: string) =>
   `${c.commissionPct}% commission · ${formatCurrency(c.fixedFee, currency, 2)} fixed fee per trade · ${c.spreadPct}% spread`;
 
-const byline = (s: PublishedStrategy) => `By ${s.authorName ?? "an advisor"} · published ${dateLabel(s.publishedAt)}`;
+const byline = (s: PublishedStrategy) => `By ${authorLabel(s)} · published ${dateLabel(s.publishedAt)}`;
+// How often a network strategy's page reads it again while its figures are being computed.
+const RECOMPUTE_POLL_MS = 10_000;
 
 function SimulatedBadge() {
   return (
@@ -114,8 +125,12 @@ const positive = (v: string) => {
 /**
  * STRATEGIES CATALOG — Strategies' list (see StrategiesSection): the user's own strategies (`own`,
  * their backtests, as cards made by the page) and the catalog (GET /v1/explore/strategies),
- * strategy portfolios advisors published, for every user to read, in one grid. "All" lists the
- * user's first, then the published ones (an advisor's own published ones are theirs, not listed
+ * strategy portfolios users published here and strategies read from the Nostr network ("From the
+ * network", their figures simulated here), for every user to read, in one grid. The catalog is the
+ * reader's network (this instance's and their web of trust's) or all of the network, as they last
+ * left it on this browser; each card someone else published has the reader's moderation (hide,
+ * mute its author, report), what it takes away leaving at once. "All" lists the
+ * user's first, then the published ones (the user's own published ones are theirs, not listed
  * again: `ownUuids`); with `onlyOwn` (Your strategies, a page of its own) only theirs, without the
  * catalog's filters (`emptyOwn` when there are none).
  * The published ones are newest first by default, with no horizon; picking a
@@ -124,7 +139,8 @@ const positive = (v: string) => {
  * filters stay off without one. Every figure is a simulation, net of its author's costs (shown next
  * to them), labelled so; nothing here is matched to the viewer, and nothing can be copied or adopted.
  * A strategy opens its page (PublishedStrategyPage). With `selection` (Strategies' Compare), a
- * click on a card picks it or leaves it instead, a box in its corner saying which.
+ * click on a card picks it or leaves it instead, a box in its corner saying which; a network
+ * strategy whose figures aren't computed yet can't be picked.
  */
 export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection, onlyOwn = false }: {
   own: { key: string; name: string; card: React.ReactNode }[];
@@ -138,6 +154,8 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection, 
   // The figure filters as last sent: they follow the inputs once typing stops.
   const [applied, setApplied] = useState({ maxVolatilityPct: "", maxDrawdownPct: "" });
   const [page, setPage] = useState(0);
+  const scope = useSyncExternalStore(strategiesScope.subscribe, strategiesScope.read, strategiesScope.server);
+  const moderation = useStrategyModeration();
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -154,10 +172,11 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection, 
         maxVolatilityPct: positive(applied.maxVolatilityPct),
         maxDrawdownPct: positive(applied.maxDrawdownPct),
         sort: filters.sort,
+        scope,
         limit: PAGE_SIZE,
         offset: page * PAGE_SIZE,
       }
-    : { limit: PAGE_SIZE, offset: page * PAGE_SIZE };
+    : { scope, limit: PAGE_SIZE, offset: page * PAGE_SIZE };
 
   // While the next page loads, the last one stays, dimmed.
   const read = useInvestmentsQuery(["publications", "catalog", query], () => publicationService.list(query), { keepPrevious: true, enabled: !onlyOwn });
@@ -176,12 +195,23 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection, 
   const from = total === 0 ? 0 : page * PAGE_SIZE + 1;
   const to = Math.min(total, (page + 1) * PAGE_SIZE);
 
-  const published = (shown?.strategies ?? []).filter((x) => !ownUuids.includes(x.portfolioUuid));
+  const published = (shown?.strategies ?? [])
+    .filter((x) => !(x.portfolioUuid && ownUuids.includes(x.portfolioUuid)))
+    .filter(moderation.visible);
   // The user's own lead the first page of All.
   const leading = onlyOwn || page === 0 ? own : [];
   // A card as it is, or, while strategies are picked, under a layer that picks it.
-  const selectable = (key: string, strategy: CompareStrategy, card: React.ReactNode) => {
+  // A network strategy not computed yet has nothing to compare (`strategy` null): it can't be picked.
+  const selectable = (key: string, strategy: CompareStrategy | null, card: React.ReactNode) => {
     if (!selection) return <Fragment key={key}>{card}</Fragment>;
+    if (!strategy) {
+      return (
+        <div key={key} className="relative h-full opacity-50" title="Its figures aren't computed yet: it can't be compared">
+          {card}
+          <div aria-hidden className="absolute inset-0 rounded-[1.75rem] cursor-not-allowed" />
+        </div>
+      );
+    }
     const on = selection.selected.some((s) => s.uuid === strategy.uuid);
     return (
       <div key={key} className="relative h-full">
@@ -204,13 +234,29 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection, 
   const cards = onlyOwn ? own.map(ownCard) : [
     ...leading.map(ownCard),
     ...published.map((x) => selectable(
-      x.publicationId, { uuid: x.portfolioUuid, name: x.portfolioName },
-      <StrategyCard strategy={x} horizon={filters.horizon} onOpen={() => onOpen(x.publicationId)} />,
+      x.publicationId, hasBacktest(x) ? { uuid: x.portfolioUuid, name: x.portfolioName } : null,
+      <StrategyCard
+        strategy={x}
+        horizon={filters.horizon}
+        menu={selection ? null : <ItemMenu items={moderation.menuFor(x)} label="Strategy options" />}
+        onOpen={() => onOpen(x.publicationId)}
+      />,
     )),
   ];
 
   return (
     <div className="space-y-6">
+      {!onlyOwn && (
+        <div className="flex flex-wrap items-center gap-3">
+          <FeedSwitch
+            feed={scope}
+            label="Strategies"
+            onChange={(next) => { strategiesScope.write(next); setPage(0); }}
+          />
+          {scope === "all" && <p className="text-xs text-slate-500">{ALL_NETWORK_STRATEGIES_NOTICE}</p>}
+        </div>
+      )}
+      {!onlyOwn && moderation.bar}
       {!onlyOwn && (
         <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-6 space-y-4">
           <div>
@@ -281,6 +327,11 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection, 
             <p className="text-sm font-black text-slate-900">
               {filters.horizon ? "No strategy matches these filters" : "No strategies yet"}
             </p>
+            {!filters.horizon && scope === "trusted" && (
+              <p className="text-xs text-slate-500 max-w-md">
+                Your network is this platform&apos;s strategies and those by the authors you follow and the ones they follow. Have a look at all the network.
+              </p>
+            )}
             {filters.horizon && (
               <p className="text-xs text-slate-500 max-w-md">
                 Only strategies whose history covers the whole period are listed. Try a shorter period or looser limits.
@@ -308,6 +359,7 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection, 
           )}
         </>
       )}
+      {moderation.dialog}
     </div>
   );
 }
@@ -317,11 +369,19 @@ export function StrategiesCatalog({ own, ownUuids, emptyOwn, onOpen, selection, 
  * portfolio's Insights opens its detail, the arrow in its corner turning gold as it's hovered):
  * its name and author, what it's for, one horizon's figures with the annualized return first, what
  * it holds (its targets, then its profile: category, region, index factors), and the author's
- * costs the figures are net of.
+ * costs the figures are net of. One from the network says so, and where its figures stand until
+ * they're in; the reader's own, where it stands on the network. `menu`: the reader's moderation.
  */
-function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStrategy; horizon: FilterHorizon | null; onOpen: () => void }) {
+function StrategyCard({ strategy: s, horizon, menu, onOpen }: {
+  strategy: PublishedStrategy;
+  horizon: FilterHorizon | null;
+  menu: React.ReactNode;
+  onOpen: () => void;
+}) {
   const figures = cardFigures(s, horizon);
   const r = figures?.annualizedReturnPct ?? null;
+  const pending = recomputeNote(s);
+  const network = isNetworkStrategy(s);
   return (
     <article
       role="link"
@@ -331,17 +391,26 @@ function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStr
       aria-label={`Open ${s.portfolioName}`}
       className="group/card relative h-full bg-white rounded-[1.75rem] border border-[#EEE9DD] p-6 flex flex-col gap-5 cursor-pointer transition-colors hover:border-[#C49A3C]/60 hover:bg-[#FBFAF6] outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40"
     >
-      <span aria-hidden className="absolute top-5 right-5 h-6 w-6 rounded-full flex items-center justify-center text-[#857e78] transition-colors group-hover/card:text-[#C49A3C]">
-        <ArrowUpRight className="h-4 w-4" />
+      <span className="absolute top-4 right-4 flex items-center gap-1" onKeyDown={(e) => e.stopPropagation()}>
+        {menu}
+        <span aria-hidden className="h-6 w-6 rounded-full flex items-center justify-center text-[#857e78] transition-colors group-hover/card:text-[#C49A3C]">
+          <ArrowUpRight className="h-4 w-4" />
+        </span>
       </span>
 
-      <div className="min-w-0 pr-8">
+      <div className="min-w-0 pr-16">
+        {(network || s.networkState) && (
+          <p className="flex flex-wrap items-center gap-1.5 mb-2">
+            {network && <NetworkBadge />}
+            <NetworkStateBadge strategy={s} />
+          </p>
+        )}
         <p className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-700">
           Simulated{figures ? ` · last ${HORIZON_LABELS[figures.horizon]}` : ""}
         </p>
         <h3 className="mt-1.5 text-xl font-bold text-[#1c1917] leading-tight line-clamp-2" style={serif}>{s.portfolioName}</h3>
-        <p className="text-[11px] text-[#78716c] mt-1">{byline(s)}</p>
-        {s.description && <p className="text-[12.5px] text-[#57534e] leading-relaxed mt-3 line-clamp-2">{s.description}</p>}
+        <p className="text-[11px] text-[#78716c] mt-1" title={s.authorNpub ?? undefined}>{byline(s)}</p>
+        {s.description && <p className="text-[12.5px] text-[#57534e] leading-relaxed mt-3 line-clamp-2">{plainThesis(s.description)}</p>}
       </div>
 
       {figures ? (
@@ -365,6 +434,8 @@ function StrategyCard({ strategy: s, horizon, onOpen }: { strategy: PublishedStr
             ))}
           </dl>
         </div>
+      ) : pending ? (
+        <p className="text-xs text-[#78716c]"><b className="font-bold text-[#57534e]">{pending.title}.</b> {pending.note}</p>
       ) : (
         <p className="text-xs text-[#78716c]">{s.figuresComputedAt ? "Its history is shorter than a year." : "Its figures are being computed."}</p>
       )}
@@ -423,13 +494,24 @@ const HORIZON_ORDER = [...FILTER_HORIZONS, "inception"] as const;
  * it's simulated over, every horizon's figures (the whole history's too; total return as on the
  * Insights, annualized as in the list) and how it went through the past crises its history covers, then its
  * portfolio's Insights (ReadOnlySimulation), all simulated. Read only: no way to copy or adopt it.
+ *
+ * One from the network (tabella's NetworkStrategyHeader) says so, names its author by their npub
+ * when it has no name, shows its thesis as Markdown and, until its figures are in, where they stand
+ * (opening it starts them; the page reads it again meanwhile): without its backtest here yet, the
+ * page is its rules and thesis alone, without Insights. Someone else's has the reader's moderation
+ * among its actions (hide or show it, mute its author, report it); the reader's own, where it stands
+ * on the network.
  */
 export function PublishedStrategyPage({ publicationId, trail, onNavigate }: {
   publicationId: string;
   trail: Crumb[];
   onNavigate?: (section: string) => void;
 }) {
-  const read = useInvestmentsQuery(["publications", publicationId], () => publicationService.get(publicationId));
+  const read = useInvestmentsQuery(
+    ["publications", publicationId], () => publicationService.get(publicationId),
+    { pollMs: (data) => (isRecomputing(data) ? RECOMPUTE_POLL_MS : undefined) },
+  );
+  const moderation = useStrategyModeration();
   const error = !read.isError ? null
     : read.error instanceof ApiError && read.error.status === 404 ? "This strategy isn't in the catalog any more: its author withdrew it."
     : read.error instanceof Error ? read.error.message : "Unable to load this strategy.";
@@ -456,21 +538,36 @@ export function PublishedStrategyPage({ publicationId, trail, onNavigate }: {
   const s = read.data;
   const horizons = HORIZON_ORDER.flatMap((h) => s.horizons.filter((x) => x.horizon === h));
   const period = simulatedPeriod(s.startedOn);
+  const network = isNetworkStrategy(s);
+  const pending = recomputeNote(s);
+  const actions = moderation.actionsFor(s);
+  const figuresPending = pending ? `${pending.title}: ${pending.note}` : "Its figures are being computed.";
 
-  return (
-    <ReadOnlySimulation
-      portfolioUuid={s.portfolioUuid}
-      trail={trail}
-      crumb="Published strategy"
-      title={s.portfolioName}
-      banner={false}
-      strategyShown
-      onNavigate={onNavigate}
-    >
+  const body = (
       <div className="space-y-6">
+        {moderation.bar}
         <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 md:p-7 space-y-3">
-          <p className="text-[11px] font-semibold text-slate-400">{byline(s)}</p>
-          {s.description && <p className="text-[13px] text-slate-700 leading-relaxed whitespace-pre-line">{s.description}</p>}
+          {(network || s.networkState) && (
+            <p className="flex flex-wrap items-center gap-1.5">
+              {network && <NetworkBadge />}
+              <NetworkStateBadge strategy={s} />
+            </p>
+          )}
+          <p className="text-[11px] font-semibold text-slate-400" title={s.authorNpub ?? undefined}>{byline(s)}</p>
+          {network && (
+            <p className="text-[12px] text-slate-500 leading-relaxed">
+              {pending
+                ? <><b className="font-bold text-slate-700">{pending.title}.</b> {pending.note}</>
+                : "Simulated here from its rules, on historical prices: its author's figures are never published, these are this platform's."}
+            </p>
+          )}
+          {/* The thesis, in Markdown (an older publication's plain description reads the same). */}
+          {s.description && (
+            <div className="space-y-1.5">
+              <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-500">Thesis</h4>
+              <Markdown text={s.description} />
+            </div>
+          )}
           <div className="max-w-xl"><AllocationBar targets={s.strategy.targets} /></div>
         </section>
 
@@ -501,7 +598,7 @@ export function PublishedStrategyPage({ publicationId, trail, onNavigate }: {
 
         <DetailPanel title="Figures by period" badge={<SimulatedBadge />} note={s.figuresComputedAt ? `Computed ${dateLabel(s.figuresComputedAt)}.` : undefined}>
           {horizons.length === 0 ? (
-            <p className="text-xs text-slate-500 py-2">Its figures are being computed.</p>
+            <p className="text-xs text-slate-500 py-2">{figuresPending}</p>
           ) : (
             <div className="overflow-x-auto -mx-1">
               <table className="w-full text-[13px] tabular-nums">
@@ -536,7 +633,7 @@ export function PublishedStrategyPage({ publicationId, trail, onNavigate }: {
 
         <DetailPanel title="Through past crises" badge={<SimulatedBadge />} note="How the simulation went from each crisis's start to its end.">
           {s.crises.length === 0 ? (
-            <p className="text-xs text-slate-500 py-2">Its history covers none of the crises tracked.</p>
+            <p className="text-xs text-slate-500 py-2">{pending ? figuresPending : "Its history covers none of the crises tracked."}</p>
           ) : (
             <ul className="divide-y divide-slate-100">
               {s.crises.map((c) => (
@@ -558,7 +655,31 @@ export function PublishedStrategyPage({ publicationId, trail, onNavigate }: {
             </ul>
           )}
         </DetailPanel>
+        {moderation.dialog}
       </div>
+  );
+
+  // Without its backtest here yet (a network strategy not computed): its rules and thesis alone.
+  if (!hasBacktest(s)) {
+    return (
+      <div className="space-y-6 pb-12">
+        <PageHeader crumbs={trail} title={s.portfolioName} actions={actions} />
+        {body}
+      </div>
+    );
+  }
+  return (
+    <ReadOnlySimulation
+      portfolioUuid={s.portfolioUuid}
+      trail={trail}
+      crumb="Published strategy"
+      title={s.portfolioName}
+      banner={false}
+      strategyShown
+      extraActions={actions}
+      onNavigate={onNavigate}
+    >
+      {body}
     </ReadOnlySimulation>
   );
 }
