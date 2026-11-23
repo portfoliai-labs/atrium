@@ -4,19 +4,24 @@ import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Building2, Palette, Award, Save, Loader2, CheckCircle2, AlertCircle,
-  ImagePlus, Trash2, Briefcase, BadgeCheck, Handshake, Clock,
+  ImagePlus, Trash2, Briefcase, BadgeCheck, Handshake, Clock, Compass,
 } from "lucide-react";
 import { advisorService } from "../../services/advisorService";
 import { clientsKey, useClientsQuery } from "../../context/ClientsContext";
-import { FEE_OPTIONS, LANGUAGE_OPTIONS, MEETING_OPTIONS, TOPIC_OPTIONS } from "../../lib/ips";
+import { ApiError } from "../../services/apiClient";
+import {
+  ASSET_CLASS_OPTIONS, FEE_OPTIONS, HORIZON_OPTIONS, INSTRUMENT_OPTIONS, LANGUAGE_OPTIONS, MEETING_OPTIONS,
+  PURPOSE_OPTIONS, REVIEW_OPTIONS, RISK_PROFILE_OPTIONS, TOPIC_OPTIONS,
+} from "../../lib/ips";
 import type { AdvisorProfile, AdvisorStatement, AdvisorStatementPayload } from "../../models/Advisor";
-import { ChipSelect, Field, FieldGroup, NumberInput, TextArea, TextInput, YesNo } from "./ips/fields";
+import { ChoiceCards, ChipSelect, Field, FieldGroup, NumberInput, TextArea, TextInput, YesNo } from "./ips/fields";
 
 const DEFAULT_BRAND_COLOR = "#C49A3C";
 
 const EMPTY_STATEMENT: AdvisorStatementPayload = {
   languages: [], meetingModes: [], city: "", feeModels: [], topics: [], minClientWealth: null,
   acceptingClients: false, bio: "", registerNumber: "",
+  assetClasses: [], instruments: [], leverage: false, purposes: [], riskProfiles: [], horizons: [], reviewFrequency: null,
 };
 
 const readProfile = () => advisorService.getAdvisorProfile();
@@ -34,7 +39,22 @@ const statementForm = (saved: AdvisorStatement): AdvisorStatementPayload => ({
   languages: saved.languages, meetingModes: saved.meetingModes, city: saved.city, feeModels: saved.feeModels,
   topics: saved.topics, minClientWealth: saved.minClientWealth, acceptingClients: saved.acceptingClients,
   bio: saved.bio, registerNumber: saved.registerNumber,
+  assetClasses: saved.assetClasses ?? [], instruments: saved.instruments ?? [], leverage: saved.leverage ?? false,
+  purposes: saved.purposes ?? [], riskProfiles: saved.riskProfiles ?? [], horizons: saved.horizons ?? [],
+  reviewFrequency: saved.reviewFrequency ?? null,
 });
+
+// A refusal of the statement names its field as a camelCase path (e.g. "assetClasses.0"): its
+// first part is the form's field.
+interface StatementRefusal {
+  field: string;
+  message: string;
+}
+
+const statementRefusalOf = (err: unknown): StatementRefusal | null =>
+  err instanceof ApiError && err.errorType === "InvalidFieldError" && err.metadata.field
+    ? { field: err.metadata.field.split(".")[0], message: err.message }
+    : null;
 
 /**
  * The advisor's profile and statement, in the query cache under ["clients", "advisorProfile"] and
@@ -67,7 +87,13 @@ function AdvisorProfileForm({ profile, statement: initialStatement }: { profile:
   const [statement, setStatement] = useState<AdvisorStatementPayload>(() => (initialStatement ? statementForm(initialStatement) : EMPTY_STATEMENT));
   const [verifiedAt, setVerifiedAt] = useState<string | null>(initialStatement?.verifiedAt ?? null);
   const [savedRegisterNumber, setSavedRegisterNumber] = useState(initialStatement?.registerNumber ?? "");
-  const setOffer = (patch: Partial<AdvisorStatementPayload>) => setStatement((s) => ({ ...s, ...patch }));
+  const [refusal, setRefusal] = useState<StatementRefusal | null>(null);
+  const setOffer = (patch: Partial<AdvisorStatementPayload>) => {
+    setStatement((s) => ({ ...s, ...patch }));
+    // Changing the refused field clears its refusal.
+    setRefusal((r) => (r && r.field in patch ? null : r));
+  };
+  const errorOf = (field: keyof AdvisorStatementPayload) => (refusal?.field === field ? refusal.message : null);
 
   const applyStatement = (saved: AdvisorStatement) => {
     setStatement(statementForm(saved));
@@ -89,6 +115,7 @@ function AdvisorProfileForm({ profile, statement: initialStatement }: { profile:
 
   const handleSave = async () => {
     setSaving(true);
+    setRefusal(null);
     try {
       await advisorService.updateAdvisorProfile({
         company_name: formData.company_name.trim() || null,
@@ -105,7 +132,9 @@ function AdvisorProfileForm({ profile, statement: initialStatement }: { profile:
       showMessage("success", "Profile updated successfully");
     } catch (err) {
       console.error("Update error:", err);
-      showMessage("error", "Error saving profile");
+      const refused = statementRefusalOf(err);
+      setRefusal(refused);
+      showMessage("error", refused ? refused.message : "Error saving profile");
     } finally {
       setSaving(false);
     }
@@ -279,7 +308,7 @@ function AdvisorProfileForm({ profile, statement: initialStatement }: { profile:
         <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-4xl border border-[rgba(196,154,60,0.2)] shadow-sm space-y-6">
           <SectionHeader icon={<BadgeCheck className="w-5 h-5" />} title="Verification" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-end">
-            <Field label="OCF register number" hint="Your number on the albo unico dei consulenti finanziari. We check it before suggesting you to investors.">
+            <Field label="OCF register number" hint="Your number on the albo unico dei consulenti finanziari. We check it before suggesting you to investors." error={errorOf("registerNumber")}>
               <TextInput value={statement.registerNumber} onChange={(registerNumber) => setOffer({ registerNumber })} placeholder="e.g. 12345" />
             </Field>
             <VerificationBadge
@@ -297,39 +326,78 @@ function AdvisorProfileForm({ profile, statement: initialStatement }: { profile:
             <YesNo value={statement.acceptingClients} onChange={(v) => setOffer({ acceptingClients: v === true })} />
           </FieldGroup>
 
-          <FieldGroup label="Languages" hint="The languages you advise in.">
+          <FieldGroup label="Languages" hint="The languages you advise in." error={errorOf("languages")}>
             <ChipSelect options={LANGUAGE_OPTIONS} selected={statement.languages} onChange={(languages) => setOffer({ languages })} />
           </FieldGroup>
 
-          <FieldGroup label="How you meet clients">
+          <FieldGroup label="How you meet clients" error={errorOf("meetingModes")}>
             <ChipSelect options={MEETING_OPTIONS} selected={statement.meetingModes} onChange={(meetingModes) => setOffer({ meetingModes })} />
           </FieldGroup>
 
           {statement.meetingModes.includes("in_person") && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Field label="City" hint="Where you meet clients in person.">
+              <Field label="City" hint="Where you meet clients in person." error={errorOf("city")}>
                 <TextInput value={statement.city} onChange={(city) => setOffer({ city })} placeholder="e.g. Milano" />
               </Field>
             </div>
           )}
 
-          <FieldGroup label="How you are paid">
+          <FieldGroup label="How you are paid" error={errorOf("feeModels")}>
             <ChipSelect options={FEE_OPTIONS} selected={statement.feeModels} onChange={(feeModels) => setOffer({ feeModels })} />
           </FieldGroup>
 
-          <FieldGroup label="Topics" hint="What you help with, beyond the portfolio.">
+          <FieldGroup label="Topics" hint="What you help with, beyond the portfolio." error={errorOf("topics")}>
             <ChipSelect options={TOPIC_OPTIONS} selected={statement.topics} onChange={(topics) => setOffer({ topics })} />
           </FieldGroup>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Field label="Smallest client wealth" hint="Leave empty if you take on any client.">
+            <Field label="Smallest client wealth" hint="Leave empty if you take on any client." error={errorOf("minClientWealth")}>
               <NumberInput value={statement.minClientWealth} onChange={(minClientWealth) => setOffer({ minClientWealth })} placeholder="0" suffix="EUR" />
             </Field>
           </div>
 
-          <Field label="About you" hint="Who you are and how you work: what investors read when you are suggested to them.">
+          <Field label="About you" hint="Who you are and how you work: what investors read when you are suggested to them." error={errorOf("bio")}>
             <TextArea value={statement.bio} onChange={(bio) => setOffer({ bio })} maxLength={3000} />
           </Field>
+        </div>
+
+        {/* What you manage: the investor policy's words */}
+        <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-4xl border border-[rgba(196,154,60,0.2)] shadow-sm space-y-8">
+          <SectionHeader icon={<Compass className="w-5 h-5" />} title="What you manage" />
+          <p className="text-sm text-[#78716c] -mt-2">
+            Investors are matched on their whole Investment Policy, in these same words. You are not suggested to an investor
+            when a class they put 10% or more in is one you don&apos;t manage, when you handle none of the instruments they
+            allow, when their risk profile is at the opposite end of yours, or when you review less often than they ask.
+            What they leave unset never counts; the rest ranks you among the advisors suggested.
+          </p>
+
+          <FieldGroup label="Asset classes" hint="The classes you manage." error={errorOf("assetClasses")}>
+            <ChipSelect options={ASSET_CLASS_OPTIONS} selected={statement.assetClasses} onChange={(assetClasses) => setOffer({ assetClasses })} />
+          </FieldGroup>
+
+          <FieldGroup label="Instruments" hint="The instruments you handle." error={errorOf("instruments")}>
+            <ChipSelect options={INSTRUMENT_OPTIONS} selected={statement.instruments} onChange={(instruments) => setOffer({ instruments })} />
+          </FieldGroup>
+
+          <FieldGroup label="Leverage" hint="Whether you advise on leveraged positions." error={errorOf("leverage")}>
+            <YesNo value={statement.leverage} onChange={(v) => setOffer({ leverage: v === true })} />
+          </FieldGroup>
+
+          <FieldGroup label="Purposes" hint="What the portfolios you manage are for." error={errorOf("purposes")}>
+            <ChipSelect options={PURPOSE_OPTIONS} selected={statement.purposes} onChange={(purposes) => setOffer({ purposes })} />
+          </FieldGroup>
+
+          <FieldGroup label="Risk profiles" hint="The investors you follow, by how much loss they bear." error={errorOf("riskProfiles")}>
+            <ChipSelect options={RISK_PROFILE_OPTIONS} selected={statement.riskProfiles} onChange={(riskProfiles) => setOffer({ riskProfiles })} />
+          </FieldGroup>
+
+          <FieldGroup label="Horizons" hint="How long your clients invest for." error={errorOf("horizons")}>
+            <ChipSelect options={HORIZON_OPTIONS} selected={statement.horizons} onChange={(horizons) => setOffer({ horizons })} />
+          </FieldGroup>
+
+          <FieldGroup label="Reviews" hint="The most frequent review you offer; investors asking for more frequent ones are not suggested you." error={errorOf("reviewFrequency")}>
+            <ChoiceCards columns={4} options={REVIEW_OPTIONS} value={statement.reviewFrequency} onChange={(reviewFrequency) => setOffer({ reviewFrequency })} />
+          </FieldGroup>
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 // app/lib/ips.ts
 // Definitions, completion rules and the written-out document for the Investor Policy Statement.
 import { CATEGORICAL_PALETTE } from "./chartColors";
+import type { AdvisorHorizon, AdvisorRiskProfile } from "../models/Advisor";
 import type {
   AssetClassId, InvestorPolicy, IpsAdvisoryTopic, IpsDropReaction, IpsFeeModel, IpsIncomeStability, IpsInstrument,
   IpsLiquidityNeed, IpsMeetingMode, IpsPurpose, IpsRebalanceMethod, IpsReviewFrequency, IpsStepId,
@@ -116,6 +117,24 @@ export const ASSET_CLASSES: { id: AssetClassId; label: string; color: string }[]
   { id: "real_estate", label: "Real estate", color: CATEGORICAL_PALETTE[3] },
   { id: "commodities", label: "Commodities & gold", color: CATEGORICAL_PALETTE[4] },
   { id: "crypto_other", label: "Crypto & other", color: CATEGORICAL_PALETTE[5] },
+];
+
+// The asset classes as options, for what an advisor manages.
+export const ASSET_CLASS_OPTIONS: Option<AssetClassId>[] = ASSET_CLASSES.map((c) => ({ value: c.id, label: c.label }));
+
+// The risk profiles an advisor follows. An investor's comes from their policy: the more cautious of
+// the largest acceptable loss's (up to 10% cautious, up to 25% balanced) and the reaction to a 20% fall's.
+export const RISK_PROFILE_OPTIONS: Option<AdvisorRiskProfile>[] = [
+  { value: "cautious", label: "Cautious", hint: "Small losses only: up to about 10%." },
+  { value: "balanced", label: "Balanced", hint: "Losses up to about 25% for a better return." },
+  { value: "dynamic", label: "Dynamic", hint: "Large swings accepted for growth." },
+];
+
+// The horizons an advisor works with, against the policy's time horizon in years.
+export const HORIZON_OPTIONS: Option<AdvisorHorizon>[] = [
+  { value: "short", label: "Under 3 years" },
+  { value: "medium", label: "3 to 10 years" },
+  { value: "long", label: "Over 10 years" },
 ];
 
 export const ALLOCATION_PRESETS: { id: string; label: string; targets: Record<AssetClassId, number> }[] = [

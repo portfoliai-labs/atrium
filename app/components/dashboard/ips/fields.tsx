@@ -9,10 +9,12 @@ export const INPUT_CLASS =
   "w-full p-3.5 bg-white border border-[rgba(196,154,60,0.25)] rounded-xl font-medium text-[#1c1917] outline-none focus:border-[#C49A3C] focus:ring-4 focus:ring-[#C49A3C]/10 transition-all placeholder:text-[#857e78]";
 
 export function Field({
-  label, hint, className = "", children,
+  label, hint, error, className = "", children,
 }: {
   label: string;
   hint?: string;
+  // A refusal of this field's value, shown under it.
+  error?: string | null;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -26,16 +28,23 @@ export function Field({
         {hint && <span className="block text-xs text-[#78716c] font-medium mt-1 ml-1">{hint}</span>}
       </span>
       {children}
+      {error && <FieldError text={error} />}
     </label>
   );
 }
 
+function FieldError({ text }: { text: string }) {
+  return <span role="alert" className="block text-xs font-semibold text-rose-600 ml-1">{text}</span>;
+}
+
 // Groups that hold several controls (choice cards, chips) use a fieldset instead of a label.
 export function FieldGroup({
-  label, hint, className = "", children,
+  label, hint, error, className = "", children,
 }: {
   label: string;
   hint?: string;
+  // A refusal of this group's value, shown under it.
+  error?: string | null;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -46,6 +55,7 @@ export function FieldGroup({
         {hint && <span className="block text-xs text-[#78716c] font-medium mt-1 ml-1">{hint}</span>}
       </legend>
       {children}
+      {error && <FieldError text={error} />}
     </fieldset>
   );
 }
