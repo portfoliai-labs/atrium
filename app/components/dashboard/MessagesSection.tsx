@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowLeft, CheckCheck, Library, Loader2, Lock, MessagesSquare, Plus, Send, Sparkles, Trash2 } from "lucide-react";
+import {
+  AlertCircle, ArrowLeft, Check, CheckCheck, Clock, Globe, Library, Loader2, Lock, MessagesSquare, Plus, RotateCw, Send, Sparkles, Trash2,
+} from "lucide-react";
 import { conversationService } from "../../services/conversationService";
 import { ApiError } from "../../services/apiClient";
 import { useUser } from "../../context/UserContext";
@@ -10,8 +12,9 @@ import { usePortfolio } from "../../context/PortfolioContext";
 import { useWallets } from "../../context/WalletsContext";
 import type {
   ActionBlock, AnswerPiece, AssistantAction, AssistantConversation, ChatMessage, Conversation, ConversationEvent,
-  Participant,
+  MessageDelivery, Participant,
 } from "../../models/Conversation";
+import { shortNpub } from "../../lib/journal";
 import { pushDashboardEntry, readDashboardEntry } from "../../lib/dashboardHistory";
 import { readAiChatView } from "../../lib/dashboardNav";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -51,7 +54,10 @@ type Row =
  * (New chat with the assistant), the top bar's ✨ or a widget's (AiHelpButton): a new one open, see
  * readAiChatView. Both kinds look alike.
  * - With a person: opens when the advisor takes the client on (an accepted request's message is
- *   its first) and closes, read-only, when the relation ends; nothing in it is ever deleted.
+ *   its first) and closes, read-only, when the relation ends; nothing in it is ever deleted. With
+ *   a network participant (a Nostr key; kind advisor_network_client) likewise, opened when the
+ *   request is accepted: messages travel as NIP-17 private messages, one's own show their
+ *   delivery (pending, sent, failed: sent again as a new message), no read receipts.
  * - With the AI: opened under a uuid made here, on its first question. The answer is written live
  *   on the stream, piece by piece, then arrives whole; every answer is marked as the AI's (AI Act,
  *   art. 50). Its title is the AI's, after the first answer; its deletion is final.
@@ -168,6 +174,18 @@ export function MessagesSection() {
     });
   }, [queryClient]);
 
+  // A network message's delivery as it is now: in the open thread, and as its conversation's last.
+  const applyDelivery = useCallback((conversationUuid: string, messageUuid: string, delivery: MessageDelivery) => {
+    if (selectedRef.current?.uuid === conversationUuid) {
+      setMessages((shown) => shown.map((m) => (m.messageUuid === messageUuid ? { ...m, delivery } : m)));
+    }
+    setPeople((list) => list.map((c) => (
+      c.conversationUuid === conversationUuid && c.lastMessage?.messageUuid === messageUuid
+        ? { ...c, lastMessage: { ...c.lastMessage, delivery } }
+        : c
+    )));
+  }, [setPeople]);
+
   const loadThread = useCallback(async (chat: Selected) => {
     setLoadingThread(true);
     try {
@@ -270,6 +288,9 @@ export function MessagesSection() {
             blocks: event.message.blocks ?? [],
             answerStop: event.message.answerStop ?? null,
             advisorRequestUuid: event.message.advisorRequestUuid ?? null,
+            senderPubkey: event.message.senderPubkey ?? null,
+            delivery: event.message.delivery ?? null,
+            networkId: event.message.networkId ?? null,
           };
           if (isPerson(message.conversationUuid)) receivedFromPerson(message);
           else if (isChat(message.conversationUuid)) receivedFromAi(message);
@@ -315,6 +336,10 @@ export function MessagesSection() {
         case "action_changed":
           if (!isChat(event.conversationUuid) || !event.action) return;
           applyAction(event.conversationUuid, event.action);
+          return;
+        case "delivery_changed":
+          if (!isPerson(event.conversationUuid) || !event.delivery) return;
+          applyDelivery(event.conversationUuid, event.messageUuid, event.delivery);
           return;
         case "answer_failed":
           if (!isChat(event.conversationUuid)) return;
@@ -366,7 +391,7 @@ export function MessagesSection() {
       if (retry) clearTimeout(retry);
       window.removeEventListener("auth-unauthorized", handleUnauthorized);
     };
-  }, [me, receivedFromPerson, receivedFromAi, applyPiece, applyAction, dropDraft, patchChat, loadPeople, loadChats, loadThread, setPeople, setChats]);
+  }, [me, receivedFromPerson, receivedFromAi, applyPiece, applyAction, applyDelivery, dropDraft, patchChat, loadPeople, loadChats, loadThread, setPeople, setChats]);
 
   const isAi = selected?.kind === "ai";
   // An answer's action, as a card the user confirms or cancels in this chat.
@@ -390,14 +415,15 @@ export function MessagesSection() {
     field.style.height = `${Math.min(field.scrollHeight, 160)}px`;
   }, [text]);
 
-  const sendToPerson = async () => {
-    const message = text.trim();
+  // `again`: a network message that wasn't delivered, sent again as a new one.
+  const sendToPerson = async (again?: string) => {
+    const message = (again ?? text).trim();
     if (!person || !message || sending) return;
     setSending(true);
     setError(null);
     try {
       receivedFromPerson(await conversationService.send(person.conversationUuid, crypto.randomUUID(), message));
-      setText("");
+      if (again === undefined) setText("");
     } catch (err) {
       console.error(err);
       if (err instanceof ApiError && err.errorType === "ConversationClosedError") {
@@ -450,6 +476,7 @@ export function MessagesSection() {
   };
 
   const send = () => (isAi ? ask() : sendToPerson());
+  const onNetwork = person?.kind === "advisor_network_client" || !!person?.counterpart.network;
   const suggestions = useSuggestions();
 
   // A widget's question, sent once the chats are known (StrictMode's second run sends nothing).
@@ -565,7 +592,10 @@ export function MessagesSection() {
                       <button onClick={() => open({ kind: "people", uuid: conversation.conversationUuid })} className={`${rowClass(active)} items-start`}>
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center justify-between gap-2">
-                            <span className="font-semibold text-[#1c1917] truncate">{fullName(conversation.counterpart)}</span>
+                            <span className="min-w-0 flex items-center gap-1.5">
+                              <span className="font-semibold text-[#1c1917] truncate">{fullName(conversation.counterpart)}</span>
+                              {conversation.counterpart.network && <Globe className="w-3 h-3 shrink-0 text-[#857e78]" aria-label="On the network" />}
+                            </span>
                             {conversation.unreadCount > 0 && (
                               <span className="text-xs font-bold bg-[#C49A3C] text-white rounded-full px-2 py-0.5 leading-none">{conversation.unreadCount}</span>
                             )}
@@ -628,8 +658,16 @@ export function MessagesSection() {
               </button>
               {person ? (
                 <div className="min-w-0">
-                  <p className="font-bold text-[#1c1917] truncate">{fullName(person.counterpart)}</p>
-                  <p className="text-xs text-[#78716c]">{person.counterpart.role === "advisor" ? "Your advisor" : "Your client"}</p>
+                  <p className="font-bold text-[#1c1917] truncate flex items-center gap-2">
+                    <span className="truncate" title={person.counterpart.npub ?? undefined}>{fullName(person.counterpart)}</span>
+                    {onNetwork && <NetworkBadge />}
+                  </p>
+                  <p className="text-xs text-[#78716c] truncate">
+                    {person.counterpart.role === "advisor" ? "Your advisor" : "Your client"}
+                    {onNetwork && (person.counterpart.role === "advisor"
+                      ? " on the network: encrypted private messages; they don't see your data"
+                      : " on the network: encrypted private messages; you don't see their data")}
+                  </p>
                 </div>
               ) : (
                 <>
@@ -688,7 +726,20 @@ export function MessagesSection() {
                         <span className="text-[11px] text-[#857e78] mt-1 flex items-center gap-1">
                           {formatTime(message.sentAt)}
                           {message.messageUuid === seenUpTo && <><CheckCheck className="w-3 h-3" /> Seen</>}
+                          {mine && message.delivery && <DeliveryState delivery={message.delivery} />}
                         </span>
+                        {mine && message.delivery === "failed" && person?.status !== "closed" && (
+                          <span className="text-[11px] text-[#78716c] mt-0.5 flex items-center gap-1.5">
+                            The network didn&apos;t take it.
+                            <button
+                              onClick={() => void sendToPerson(message.text)}
+                              disabled={sending}
+                              className="inline-flex items-center gap-1 font-semibold text-[#C49A3C] hover:underline disabled:opacity-50"
+                            >
+                              <RotateCw className="w-3 h-3" /> Send again
+                            </button>
+                          </span>
+                        )}
                       </div>
                     );
                   })}
@@ -804,9 +855,26 @@ function withMessage(shown: ChatMessage[], message: ChatMessage): ChatMessage[] 
   return at < 0 ? [...shown, message] : [...shown.slice(0, at), message, ...shown.slice(at)];
 }
 
+// A network participant has only a key: their short npub.
 function fullName(participant: Participant): string {
   const name = [participant.firstName, participant.lastName].filter(Boolean).join(" ");
+  if (!name && participant.network && participant.npub) return shortNpub(participant.npub);
   return name || (participant.role === "advisor" ? "Your advisor" : "A client");
+}
+
+function NetworkBadge() {
+  return (
+    <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#78716c] bg-[#F7F5EF] border border-[rgba(196,154,60,0.25)] rounded-full px-2 py-0.5">
+      <Globe className="w-3 h-3" /> Network
+    </span>
+  );
+}
+
+// Where one's own message to a network participant stands.
+function DeliveryState({ delivery }: { delivery: MessageDelivery }) {
+  if (delivery === "pending") return <span className="flex items-center gap-1" title="Waiting for a relay of theirs to take it"><Clock className="w-3 h-3" /> Sending</span>;
+  if (delivery === "sent") return <span className="flex items-center gap-1" title="A relay of theirs took it"><Check className="w-3 h-3" /> Sent</span>;
+  return <span className="flex items-center gap-1 text-rose-600"><AlertCircle className="w-3 h-3" /> Not delivered</span>;
 }
 
 function formatTime(iso: string): string {

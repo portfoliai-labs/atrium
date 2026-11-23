@@ -85,6 +85,9 @@ interface AdvisorStatementPayload {
   horizons: AdvisorHorizon[];
   // The most frequent review they offer; null: not said.
   reviewFrequency: IpsReviewFrequency | null;
+  // Also published as their advisor profile on the network (Nostr), while they take on clients:
+  // public, unverified there; network users can send them requests and chat, never read client data.
+  onNetwork: boolean;
 }
 
 interface AdvisorStatement extends AdvisorStatementPayload {

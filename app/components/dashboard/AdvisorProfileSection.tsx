@@ -22,6 +22,7 @@ const EMPTY_STATEMENT: AdvisorStatementPayload = {
   languages: [], meetingModes: [], city: "", feeModels: [], topics: [], minClientWealth: null,
   acceptingClients: false, bio: "", registerNumber: "",
   assetClasses: [], instruments: [], leverage: false, purposes: [], riskProfiles: [], horizons: [], reviewFrequency: null,
+  onNetwork: false,
 };
 
 const readProfile = () => advisorService.getAdvisorProfile();
@@ -42,6 +43,7 @@ const statementForm = (saved: AdvisorStatement): AdvisorStatementPayload => ({
   assetClasses: saved.assetClasses ?? [], instruments: saved.instruments ?? [], leverage: saved.leverage ?? false,
   purposes: saved.purposes ?? [], riskProfiles: saved.riskProfiles ?? [], horizons: saved.horizons ?? [],
   reviewFrequency: saved.reviewFrequency ?? null,
+  onNetwork: saved.onNetwork ?? false,
 });
 
 // A refusal of the statement names its field as a camelCase path (e.g. "assetClasses.0"): its
@@ -324,6 +326,27 @@ function AdvisorProfileForm({ profile, statement: initialStatement }: { profile:
 
           <FieldGroup label="Taking on new clients" hint="Only then are you suggested to investors looking for an advisor.">
             <YesNo value={statement.acceptingClients} onChange={(v) => setOffer({ acceptingClients: v === true })} />
+          </FieldGroup>
+
+          <FieldGroup
+            label="Visible on the network"
+            hint="Also publish this profile on the open network (Nostr), so investors using other instances or the phone app can find you."
+          >
+            <YesNo value={statement.onNetwork} onChange={(v) => setOffer({ onNetwork: v === true })} />
+            <ul className="mt-3 space-y-1.5 text-[13px] text-[#78716c] leading-relaxed list-disc pl-5">
+              <li>
+                Your profile becomes public on Nostr relays, which anyone can read: your name, your OCF register number and everything
+                under &quot;What you offer&quot;. Turning it off asks the relays to delete it, but copies may remain.
+              </li>
+              <li>
+                Network users aren&apos;t verified by anyone, and you appear to them as &quot;not verified&quot;: they check your register
+                number themselves. It is published only while you take on new clients.
+              </li>
+              <li>
+                They can send you requests, which arrive under Requests like the others. Accepting one opens a private chat: you never
+                read a network investor&apos;s data, only what they share in the request and the chat.
+              </li>
+            </ul>
           </FieldGroup>
 
           <FieldGroup label="Languages" hint="The languages you advise in." error={errorOf("languages")}>

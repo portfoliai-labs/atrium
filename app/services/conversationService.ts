@@ -7,10 +7,15 @@ import { API_BASE_URL } from "@/app/lib/origins";
 
 
 export const conversationService = {
-  // GET /conversations?kind=advisor_client — the caller's with their advisor or clients, the last
-  // active first.
+  // GET /conversations?kind=advisor_client and advisor_network_client — the caller's with their
+  // advisor or clients, here and on the network, the last active first.
   async list(): Promise<Conversation[]> {
-    return apiFetch<Conversation[]>("/v1/conversations?kind=advisor_client");
+    const [here, network] = await Promise.all([
+      apiFetch<Conversation[]>("/v1/conversations?kind=advisor_client"),
+      apiFetch<Conversation[]>("/v1/conversations?kind=advisor_network_client"),
+    ]);
+    const at = (c: Conversation) => Date.parse(c.lastMessage?.sentAt ?? c.createdAt);
+    return [...here, ...network].sort((a, b) => at(b) - at(a));
   },
 
   // GET /conversations?kind=assistant — the caller's chats with the AI, the last active first.

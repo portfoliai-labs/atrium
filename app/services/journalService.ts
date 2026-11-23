@@ -245,7 +245,11 @@ function imageFormatOf(file: File): ImageFormat | null {
   return null;
 }
 
-/** The caller's identity on the network (ianus' /v1/network, pons' keys). */
+/**
+ * The caller's identities on the network (ianus' /v1/network, pons' keys), two keys apart: the
+ * Journal's (articles, strategies, follows) and the private messages' (chats and requests with the
+ * network's advisors and investors, NIP-17, and an advisor's network profile).
+ */
 export const networkService = {
   async identity(): Promise<NetworkIdentity> {
     return apiFetch<NetworkIdentity>("/v1/network/identity");
@@ -259,5 +263,20 @@ export const networkService = {
   // Replaces the caller's key with one exported elsewhere.
   async importKey(ncryptsec: string, password: string): Promise<NetworkIdentity> {
     return apiFetch<NetworkIdentity>("/v1/network/identity/import", { method: "POST", body: JSON.stringify({ ncryptsec, password }) });
+  },
+
+  // The private messages' key: nulls while there's none (reading never makes one).
+  async messagesIdentity(): Promise<NetworkIdentity> {
+    return apiFetch<NetworkIdentity>("/v1/network/messages-identity");
+  },
+
+  // The messages secret key encrypted with `password`; makes the key if there's none.
+  async exportMessagesKey(password: string): Promise<NetworkKeyExport> {
+    return apiFetch<NetworkKeyExport>("/v1/network/messages-identity/export", { method: "POST", body: JSON.stringify({ password }) });
+  },
+
+  // Replaces the caller's messages key with one exported elsewhere (the phone's, another instance's).
+  async importMessagesKey(ncryptsec: string, password: string): Promise<NetworkIdentity> {
+    return apiFetch<NetworkIdentity>("/v1/network/messages-identity/import", { method: "POST", body: JSON.stringify({ ncryptsec, password }) });
   },
 };

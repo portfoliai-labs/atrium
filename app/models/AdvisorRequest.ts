@@ -9,9 +9,13 @@ import type {
 
 type AdvisorRequestStatus = "pending" | "accepted" | "declined" | "withdrawn" | "expired";
 
-// An advisor's public profile: shown only within the investor's matches and requests.
+// An advisor's public profile: shown only within the investor's matches and requests. Either an
+// advisor of this instance (advisorUuid, names, verified by its staff) or one found by their
+// profile on the network (Nostr): a key, never verified, no uuid, names nor picture.
 interface AdvisorCard {
-  advisorUuid: string;
+  // Null for a network advisor.
+  advisorUuid: string | null;
+  // Empty for a network advisor (see `name`).
   firstName: string;
   lastName: string;
   profilePicture: string | null;
@@ -23,7 +27,8 @@ interface AdvisorCard {
   topics: IpsAdvisoryTopic[];
   // In EUR; null: any.
   minClientWealth: number | null;
-  // Their number on the OCF register, verified by the platform's staff.
+  // Their number on the OCF register: verified by this instance's staff when `verified`; a network
+  // advisor's is theirs to say, for the investor to check on the register.
   registerNumber: string;
   yearsExperience: number | null;
   specialization: string | null;
@@ -35,6 +40,15 @@ interface AdvisorCard {
   riskProfiles: AdvisorRiskProfile[];
   horizons: AdvisorHorizon[];
   reviewFrequency: IpsReviewFrequency | null;
+  // Found by their profile on the network: never verified.
+  network: boolean;
+  // This instance's staff verified their register number.
+  verified: boolean;
+  // A network advisor's messages key (lowercase hex) and the same as an npub; null otherwise.
+  advisorPubkey: string | null;
+  npub: string | null;
+  // The name a network advisor's profile tells; null when none (and for an advisor here).
+  name: string | null;
 }
 
 // What the advisor and the investor share.
@@ -69,18 +83,27 @@ interface AdvisorMatch {
   reasons: MatchReasons;
 }
 
+// Exactly one of advisorUuid (an advisor here), advisorPubkey or npub (a network advisor).
 interface AdvisorRequestPayload {
-  advisorUuid: string;
+  advisorUuid?: string;
+  advisorPubkey?: string;
+  npub?: string;
   message: string;
   // The consent to share the investor policy with the advisor: required.
   shareInvestorPolicy: boolean;
 }
 
 interface RequestInvestor {
-  userUuid: string;
+  // Null for a network investor.
+  userUuid: string | null;
+  // Empty for a network investor.
   firstName: string;
   lastName: string;
   profilePicture: string | null;
+  // A network investor (the phone's local mode, another instance): only their key.
+  network: boolean;
+  pubkey: string | null;
+  npub: string | null;
 }
 
 interface AdvisorRequest {
@@ -88,10 +111,13 @@ interface AdvisorRequest {
   // Null for a status this client doesn't know yet.
   status: AdvisorRequestStatus | null;
   message: string;
-  // The advisor's words when they declined.
+  // The advisor's words when they answered (declined, or accepted with a reply).
   reply: string;
-  // The version of the investor policy shared with the advisor.
+  // The version of the investor policy shared with the advisor; 0 when a network investor's app
+  // told none.
   investorPolicyVersion: number;
+  // The investor's reference currency (ISO 4217): the shared policy's amounts'; null: unknown.
+  currency: string | null;
   createdAt: string;
   // When it expires if still pending.
   expiresAt: string;

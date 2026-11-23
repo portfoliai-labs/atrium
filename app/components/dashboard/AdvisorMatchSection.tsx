@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  AlertCircle, BadgeCheck, Check, ClipboardList, Clock, Handshake, Loader2, Send, X,
+  AlertCircle, BadgeCheck, Check, ClipboardList, Clock, ExternalLink, Globe, Handshake, Loader2, MessagesSquare, Send, ShieldAlert, X,
 } from "lucide-react";
 import { advisorRequestService } from "../../services/advisorRequestService";
 import { ApiError } from "../../services/apiClient";
@@ -14,6 +14,7 @@ import {
 } from "../../lib/ips";
 import type { IpsPurpose, IpsReviewFrequency } from "../../models/InvestorPolicy";
 import type { AdvisorCard, AdvisorMatch, AdvisorRequest, AdvisorRequestStatus, MatchReasons } from "../../models/AdvisorRequest";
+import { shortNpub } from "../../lib/journal";
 import { TextArea } from "./ips/fields";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -23,6 +24,9 @@ const CARD_CLASS = "bg-white p-6 md:p-8 rounded-4xl border border-[rgba(196,154,
 const NO_REQUESTS: AdvisorRequest[] = [];
 const NO_MATCHES: AdvisorMatch[] = [];
 const NO_ADVISORS: AdvisorCard[] = [];
+
+// The OCF register's search, where an investor checks a network advisor's number themselves.
+const OCF_REGISTER_SEARCH_URL = "https://www.organismocf.it/portal/web/portale-ocf/ricerca-nelle-sezioni-dell-albo";
 
 const STATUS_LABELS: Record<AdvisorRequestStatus, string> = {
   pending: "Waiting for an answer",
@@ -34,45 +38,51 @@ const STATUS_LABELS: Record<AdvisorRequestStatus, string> = {
 
 /**
  * FIND AN ADVISOR — the investor's side of advisor matching. The platform suggests up to three
- * verified advisors from what the investor said they look for (the last step of their Investment
- * Policy), with the reasons; the investor asks one of them, with a first message and their
+ * advisors from what the investor said they look for (the last step of their Investment Policy),
+ * with the reasons: this instance's, verified by its staff, first; then advisors found by their
+ * profile on the network (Nostr), never verified, with their OCF number to check on the register
+ * ("Only verified" leaves them out). A network advisor who accepts only chats (Messages): they
+ * never read the investor's data. The investor asks one of them, the investor asks one of them, with a first message and their
  * consent to share the policy. One request is pending at a time; the advisor accepts or declines,
  * and an unanswered request expires after a week. An advisor who accepted reads the investor's
  * data (never changes it) until the investor ends it, from "Your advisor" at the top.
  */
 // `onOpenPolicy`: where the Investment Policy is filled in (Profile's).
 export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void }) {
+  const [onlyVerified, setOnlyVerified] = useState(false);
   const [asking, setAsking] = useState<AdvisorCard | null>(null);
   const [ending, setEnding] = useState<AdvisorCard | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // The investor's advisors, their requests and their suggested advisors (null: no policy to match
   // on yet), read together; again after a request, and after a save of the policy (useInvestorPolicy).
-  const query = useClientsQuery(["matches"], async () => {
+  const query = useClientsQuery(["matches", onlyVerified], async () => {
     const [advisors, mine, found] = await Promise.all([
       advisorRequestService.getMyAdvisors(),
       advisorRequestService.getMyRequests(),
-      advisorRequestService.getMatches().catch((err: unknown) => {
+      advisorRequestService.getMatches(onlyVerified).catch((err: unknown) => {
         if (err instanceof ApiError && err.errorType === "InvestorPolicyRequiredError") return null;
         throw err;
       }),
     ]);
     return { advisors, requests: mine, matches: found };
-  });
+  }, { keepPrevious: true });
   const queryClient = useQueryClient();
   const reload = () => { void queryClient.invalidateQueries({ queryKey: clientsKey("matches") }); };
 
+  // Only the first read waits; a change of the filter keeps the page while it reads.
   const loading = query.isPending;
   const advisors = query.data?.advisors ?? NO_ADVISORS;
   const requests = query.data?.requests ?? NO_REQUESTS;
-  const matches = query.data?.matches ?? NO_MATCHES;
+  // Verified first, the network's after (as civis orders them; kept so whatever comes).
+  const matches = sortVerifiedFirst(query.data?.matches ?? NO_MATCHES);
   const needsPolicy = query.data?.matches === null;
   const error = actionError ?? (query.isError ? "We couldn't load your advisors. Please try again." : null);
 
   const pending = requests.find((r) => r.status === "pending") ?? null;
   // An accepted request is past once its advisor no longer is the investor's (it was ended).
-  const current = new Set(advisors.map((a) => a.advisorUuid));
-  const past = requests.filter((r) => r !== pending && !(r.status === "accepted" && current.has(r.advisor.advisorUuid)));
+  const current = new Set(advisors.map(advisorKey));
+  const past = requests.filter((r) => r !== pending && !(r.status === "accepted" && current.has(advisorKey(r.advisor))));
 
   const withdraw = async (request: AdvisorRequest) => {
     setActionError(null);
@@ -101,7 +111,8 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
           Find an advisor
         </h2>
         <p className="text-sm text-[#78716c] mt-1">
-          Advisors registered on the OCF register and verified by us, matched on what you look for in your Investment Policy.
+          Advisors matched on what you look for in your Investment Policy: this platform&apos;s own, whose OCF register number we
+          verified, first; then advisors found on the open network, whose number you check yourself.
         </p>
       </div>
 
@@ -118,14 +129,14 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
           </p>
           <ul className="space-y-4">
             {advisors.map((advisor) => (
-              <li key={advisor.advisorUuid} className="flex flex-wrap items-center justify-between gap-3">
+              <li key={advisorKey(advisor)} className="flex flex-wrap items-center justify-between gap-3">
                 <AdvisorHeader advisor={advisor} />
-                <button
+                {advisor.advisorUuid && <button
                   onClick={() => { setActionError(null); setEnding(advisor); }}
                   className="text-sm font-semibold text-[#78716c] hover:text-red-700 px-4 py-2 rounded-xl hover:bg-red-50 transition-colors"
                 >
                   End
-                </button>
+                </button>}
               </li>
             ))}
           </ul>
@@ -177,9 +188,23 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
         </div>
       ) : (
         <div className="space-y-4">
-          <div>
-            <h3 className="text-lg font-bold text-[#1c1917]" style={SERIF}>Suggested for you</h3>
-            <p className="text-xs text-[#78716c] mt-0.5">The closest to your whole Investment Policy first.</p>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-bold text-[#1c1917]" style={SERIF}>Suggested for you</h3>
+              <p className="text-xs text-[#78716c] mt-0.5">
+                Verified advisors first, then the network&apos;s; each the closest to your whole Investment Policy first.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-[#44403c] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={onlyVerified}
+                onChange={(e) => setOnlyVerified(e.target.checked)}
+                className="accent-[#C49A3C]"
+              />
+              Only verified
+              {query.isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#C49A3C]" />}
+            </label>
           </div>
           {matches.length === 0 ? (
             <p className={`${CARD_CLASS} text-sm text-[#78716c]`}>
@@ -192,7 +217,7 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
               {matches.map((match) => (
                 <MatchCard
-                  key={match.advisor.advisorUuid}
+                  key={advisorKey(match.advisor)}
                   match={match}
                   disabled={pending !== null}
                   onAsk={() => setAsking(match.advisor)}
@@ -212,12 +237,20 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
           {past.map((request) => (
             <div key={request.requestUuid} className="bg-white rounded-2xl border border-[rgba(196,154,60,0.15)] px-5 py-4 space-y-1">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-semibold text-sm text-[#1c1917]">{fullName(request.advisor)}</span>
+                <span className="font-semibold text-sm text-[#1c1917] flex items-center gap-2">
+                  {fullName(request.advisor)}
+                  {request.advisor.network && <NetworkBadge />}
+                </span>
                 <span className="text-xs font-semibold text-[#78716c]">
                   {request.status ? STATUS_LABELS[request.status] : "—"} · {formatDate(request.closedAt ?? request.createdAt)}
                 </span>
               </div>
               {request.reply && <p className="text-sm text-[#44403c] whitespace-pre-line">“{request.reply}”</p>}
+              {request.status === "accepted" && request.advisor.network && (
+                <p className="text-xs text-[#78716c] flex items-center gap-1.5">
+                  <MessagesSquare className="w-3.5 h-3.5" /> You can talk to them in Messages. They don&apos;t see your data.
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -244,6 +277,7 @@ function EndAdvisorDialog({ advisor, onClose, onEnded }: { advisor: AdvisorCard;
     setBusy(true);
     setError(null);
     try {
+      if (!advisor.advisorUuid) return;
       await advisorRequestService.endAdvisor(advisor.advisorUuid);
       onEnded();
     } catch (err) {
@@ -283,7 +317,7 @@ function MatchCard({ match, disabled, onAsk }: { match: AdvisorMatch; disabled: 
         disabled={disabled}
         className="mt-auto flex items-center justify-center gap-2 bg-[#1c1917] text-white px-5 py-3 rounded-2xl text-sm font-semibold hover:bg-[#292524] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        <Send className="w-4 h-4" /> Ask {advisor.firstName || "this advisor"}
+        <Send className="w-4 h-4" /> Ask {advisor.network ? "this advisor" : advisor.firstName || "this advisor"}
       </button>
     </div>
   );
@@ -298,18 +332,40 @@ function AdvisorHeader({ advisor }: { advisor: AdvisorCard }) {
     <div className="flex items-center gap-4">
       {advisor.profilePicture ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={advisor.profilePicture} alt="" className="w-14 h-14 rounded-2xl object-cover" />
+        <img src={advisor.profilePicture} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0" />
       ) : (
-        <div className="w-14 h-14 rounded-2xl bg-[#C49A3C]/15 text-[#C49A3C] flex items-center justify-center font-bold text-lg">
-          {(advisor.firstName[0] ?? "") + (advisor.lastName[0] ?? "")}
+        <div className="w-14 h-14 shrink-0 rounded-2xl bg-[#C49A3C]/15 text-[#C49A3C] flex items-center justify-center font-bold text-lg">
+          {advisor.network && !advisor.name ? <Globe className="w-6 h-6" /> : initials(advisor)}
         </div>
       )}
       <div className="min-w-0">
-        <p className="font-bold text-[#1c1917] truncate">{fullName(advisor)}</p>
-        {details.length > 0 && <p className="text-sm text-[#78716c] truncate">{details.join(" · ")}</p>}
-        <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1 mt-0.5">
-          <BadgeCheck className="w-3.5 h-3.5" /> OCF register no. {advisor.registerNumber}
+        <p className="font-bold text-[#1c1917] truncate flex items-center gap-2">
+          <span className="truncate" title={advisor.npub ?? undefined}>{fullName(advisor)}</span>
+          {advisor.network && <NetworkBadge />}
         </p>
+        {details.length > 0 && <p className="text-sm text-[#78716c] truncate">{details.join(" · ")}</p>}
+        {advisor.verified ? (
+          <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1 mt-0.5">
+            <BadgeCheck className="w-3.5 h-3.5" /> Verified · OCF register no. {advisor.registerNumber}
+          </p>
+        ) : (
+          <div className="mt-1 space-y-0.5">
+            <p className="text-xs font-semibold text-amber-800 flex flex-wrap items-center gap-1">
+              <span className="inline-flex items-center gap-1 bg-amber-100 rounded-full px-2 py-0.5">
+                <ShieldAlert className="w-3.5 h-3.5" /> Not verified
+              </span>
+              <span>OCF register no. {advisor.registerNumber || "not given"}</span>
+            </p>
+            <a
+              href={OCF_REGISTER_SEARCH_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-semibold text-[#C49A3C] hover:underline inline-flex items-center gap-1"
+            >
+              Check it yourself on the OCF register <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -326,12 +382,18 @@ function RequestDialog({ advisor, onClose, onSent }: { advisor: AdvisorCard; onC
     setError(null);
     try {
       await advisorRequestService.createRequest({
-        advisorUuid: advisor.advisorUuid, message: message.trim(), shareInvestorPolicy: consent,
+        ...(advisor.advisorUuid ? { advisorUuid: advisor.advisorUuid } : { advisorPubkey: advisor.advisorPubkey ?? undefined }),
+        message: message.trim(),
+        shareInvestorPolicy: consent,
       });
       onSent();
     } catch (err) {
       console.error(err);
-      setError(err instanceof ApiError ? err.message : "We couldn't send your request.");
+      setError(
+        err instanceof ApiError && err.errorType === "NetworkRefusedError"
+          ? "The network refused your request: the advisor's relays didn't take it. Please try again later."
+          : err instanceof ApiError ? err.message : "We couldn't send your request.",
+      );
       setSending(false);
     }
   };
@@ -366,10 +428,20 @@ function RequestDialog({ advisor, onClose, onSent }: { advisor: AdvisorCard; onC
             className="mt-1 accent-[#C49A3C]"
           />
           <span>
-            I agree to share my Investment Policy with {advisor.firstName || "the advisor"}, as it is now. They will read it
-            to decide whether to take me on.
+            I agree to share my Investment Policy with {advisor.network ? "the advisor" : advisor.firstName || "the advisor"}, as
+            it is now. They will read it to decide whether to take me on.
           </span>
         </label>
+        {advisor.network && (
+          <p className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            <span>
+              This advisor is on the open network: nobody verified them. Check their OCF register number ({advisor.registerNumber || "not given"})
+              before you share anything. Your request and your Investment Policy travel to them as an encrypted private message; if
+              they accept, you chat with them, and they never see your data here.
+            </span>
+          </p>
+        )}
         <p className="text-xs text-[#78716c]">
           You can chat once the advisor accepts. If they don&apos;t answer within a week, the request expires and you can ask another advisor.
         </p>
@@ -482,8 +554,32 @@ function AdvisorOffer({ advisor }: { advisor: AdvisorCard }) {
   );
 }
 
-function fullName(person: { firstName: string; lastName: string }): string {
-  return `${person.firstName} ${person.lastName}`.trim() || "Advisor";
+// What tells advisors apart: their uuid here, their key on the network.
+function advisorKey(advisor: AdvisorCard): string {
+  return advisor.advisorUuid ?? advisor.advisorPubkey ?? advisor.npub ?? "";
+}
+
+function sortVerifiedFirst(matches: AdvisorMatch[]): AdvisorMatch[] {
+  return [...matches.filter((m) => !m.advisor.network), ...matches.filter((m) => m.advisor.network)];
+}
+
+// A network advisor's name is what their profile tells, else their short npub.
+function fullName(advisor: AdvisorCard): string {
+  if (advisor.network) return advisor.name?.trim() || (advisor.npub ? shortNpub(advisor.npub) : "Network advisor");
+  return `${advisor.firstName} ${advisor.lastName}`.trim() || "Advisor";
+}
+
+function initials(advisor: AdvisorCard): string {
+  if (advisor.network) return (advisor.name ?? "").trim().split(/\s+/).slice(0, 2).map((w) => w[0] ?? "").join("").toUpperCase();
+  return (advisor.firstName[0] ?? "") + (advisor.lastName[0] ?? "");
+}
+
+function NetworkBadge() {
+  return (
+    <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#78716c] bg-[#F7F5EF] border border-[rgba(196,154,60,0.25)] rounded-full px-2 py-0.5">
+      <Globe className="w-3 h-3" /> Network
+    </span>
+  );
 }
 
 function formatDate(iso: string): string {

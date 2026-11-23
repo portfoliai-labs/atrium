@@ -65,8 +65,9 @@ const TABS = [
   // The wallets' categories (money in and out): an investor's, where they have wallets. The banks
   // connected are accounts, under Cash, accounts and cards (each its own page).
   { id: "categories", label: "Categories", icon: FolderTree },
-  // The user's key on the network (Nostr), which the Journal publishes with.
-  { id: "network", label: "Network identity", icon: Globe },
+  // The user's keys on the network (Nostr): the Journal's, and the private messages' (requests and
+  // chats with the network's advisors and investors).
+  { id: "network", label: "Network", icon: Globe },
   // The Journal's authors the user muted and articles they hid: where the Journal is.
   { id: "moderation", label: "Muted and hidden", icon: EyeOff },
   // This server as one of the user's devices, syncing with their phones through their own storage.
