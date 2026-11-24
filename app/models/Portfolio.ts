@@ -36,6 +36,10 @@ interface Portfolio {
   tradingAccountUuid?: string | null;
   // A real portfolio's: who keeps its assets, where (models/Custody); null: not known yet.
   custody?: Custody | null;
+  // A network client's portfolio as their latest snapshot brought it (an advisor reads it under
+  // Clients › Network clients): read only for everyone, its edits are refused (403
+  // ImportedPortfolioReadOnlyError). Absent from older answers: false.
+  imported?: boolean;
 }
 
 /** A strategy's backtest: virtual, and not the aggregate. */

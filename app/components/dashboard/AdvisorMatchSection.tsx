@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  AlertCircle, BadgeCheck, Check, ClipboardList, Clock, ExternalLink, Globe, Handshake, Loader2, MessagesSquare, Send, ShieldAlert, X,
+  AlertCircle, BadgeCheck, Check, ChevronRight, ClipboardList, Clock, ExternalLink, Globe, Handshake, Loader2, MessagesSquare, Send, ShieldAlert, X,
 } from "lucide-react";
 import { advisorRequestService } from "../../services/advisorRequestService";
 import { ApiError } from "../../services/apiClient";
@@ -17,6 +17,9 @@ import type { AdvisorCard, AdvisorMatch, AdvisorRequest, AdvisorRequestStatus, M
 import { shortNpub } from "../../lib/journal";
 import { TextArea } from "./ips/fields";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { EndNetworkAdvisorDialog, NETWORK_ADVISORS_KEY, useNetworkAdvisors } from "./NetworkAdvisorSharePage";
+import { formatDay, networkAdvisorName, shareStateLine } from "../../lib/clientSnapshots";
+import type { NetworkAdvisor } from "../../models/ClientSnapshot";
 
 const SERIF = { fontFamily: "'Playfair Display', Georgia, serif" };
 const CARD_CLASS = "bg-white p-6 md:p-8 rounded-4xl border border-[rgba(196,154,60,0.2)] shadow-sm";
@@ -24,6 +27,7 @@ const CARD_CLASS = "bg-white p-6 md:p-8 rounded-4xl border border-[rgba(196,154,
 const NO_REQUESTS: AdvisorRequest[] = [];
 const NO_MATCHES: AdvisorMatch[] = [];
 const NO_ADVISORS: AdvisorCard[] = [];
+const NO_NETWORK_ADVISORS: NetworkAdvisor[] = [];
 
 // The OCF register's search, where an investor checks a network advisor's number themselves.
 const OCF_REGISTER_SEARCH_URL = "https://www.organismocf.it/portal/web/portale-ocf/ricerca-nelle-sezioni-dell-albo";
@@ -45,13 +49,17 @@ const STATUS_LABELS: Record<AdvisorRequestStatus, string> = {
  * never read the investor's data. The investor asks one of them, the investor asks one of them, with a first message and their
  * consent to share the policy. One request is pending at a time; the advisor accepts or declines,
  * and an unanswered request expires after a week. An advisor who accepted reads the investor's
- * data (never changes it) until the investor ends it, from "Your advisor" at the top.
+ * data (never changes it) until the investor ends it, from "Your advisor" at the top. A network
+ * advisor who accepted is there too: they read only the portfolios the investor shares with them
+ * (an encrypted copy, see NetworkAdvisorSharePage), from the page `onOpenShare` opens.
  */
-// `onOpenPolicy`: where the Investment Policy is filled in (Profile's).
-export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void }) {
+// `onOpenPolicy`: where the Investment Policy is filled in (Profile's); `onOpenShare`: a network
+// advisor's sharing page, by their key.
+export function AdvisorMatchSection({ onOpenPolicy, onOpenShare }: { onOpenPolicy: () => void; onOpenShare: (advisorPubkey: string) => void }) {
   const [onlyVerified, setOnlyVerified] = useState(false);
   const [asking, setAsking] = useState<AdvisorCard | null>(null);
   const [ending, setEnding] = useState<AdvisorCard | null>(null);
+  const [endingNetwork, setEndingNetwork] = useState<NetworkAdvisor | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // The investor's advisors, their requests and their suggested advisors (null: no policy to match
@@ -68,20 +76,28 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
     return { advisors, requests: mine, matches: found };
   }, { keepPrevious: true });
   const queryClient = useQueryClient();
-  const reload = () => { void queryClient.invalidateQueries({ queryKey: clientsKey("matches") }); };
+  // The network advisors who accepted, with what the investor shares with each (also the sharing page's read).
+  const network = useNetworkAdvisors();
+  const reload = () => {
+    void queryClient.invalidateQueries({ queryKey: clientsKey("matches") });
+    void queryClient.invalidateQueries({ queryKey: clientsKey(...NETWORK_ADVISORS_KEY) });
+  };
 
   // Only the first read waits; a change of the filter keeps the page while it reads.
-  const loading = query.isPending;
-  const advisors = query.data?.advisors ?? NO_ADVISORS;
+  const loading = query.isPending || network.isPending;
+  const networkAdvisors = network.data ?? NO_NETWORK_ADVISORS;
+  const networkKeys = new Set(networkAdvisors.map((a) => a.advisorPubkey));
+  // This instance's advisors (a network advisor is listed with what's shared with them).
+  const advisors = (query.data?.advisors ?? NO_ADVISORS).filter((a) => !(a.advisorPubkey && networkKeys.has(a.advisorPubkey)));
   const requests = query.data?.requests ?? NO_REQUESTS;
   // Verified first, the network's after (as civis orders them; kept so whatever comes).
   const matches = sortVerifiedFirst(query.data?.matches ?? NO_MATCHES);
   const needsPolicy = query.data?.matches === null;
-  const error = actionError ?? (query.isError ? "We couldn't load your advisors. Please try again." : null);
+  const error = actionError ?? (query.isError || network.isError ? "We couldn't load your advisors. Please try again." : null);
 
   const pending = requests.find((r) => r.status === "pending") ?? null;
   // An accepted request is past once its advisor no longer is the investor's (it was ended).
-  const current = new Set(advisors.map(advisorKey));
+  const current = new Set([...advisors.map(advisorKey), ...networkKeys]);
   const past = requests.filter((r) => r !== pending && !(r.status === "accepted" && current.has(advisorKey(r.advisor))));
 
   const withdraw = async (request: AdvisorRequest) => {
@@ -122,10 +138,10 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
         </p>
       )}
 
-      {advisors.length > 0 && (
+      {advisors.length + networkAdvisors.length > 0 && (
         <div className={`${CARD_CLASS} space-y-4`}>
           <p className="text-xs font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1.5">
-            <Check className="w-4 h-4" /> {advisors.length === 1 ? "Your advisor" : "Your advisors"}
+            <Check className="w-4 h-4" /> {advisors.length + networkAdvisors.length === 1 ? "Your advisor" : "Your advisors"}
           </p>
           <ul className="space-y-4">
             {advisors.map((advisor) => (
@@ -140,9 +156,28 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
               </li>
             ))}
           </ul>
-          <p className="text-xs text-[#78716c]">
-            {advisors.length === 1 ? "Your advisor sees" : "Your advisors see"} your data to advise you; only you change it.
-          </p>
+          {advisors.length > 0 && (
+            <p className="text-xs text-[#78716c]">
+              {advisors.length === 1 ? "Your advisor sees" : "Your advisors see"} your data to advise you; only you change it.
+            </p>
+          )}
+          {networkAdvisors.length > 0 && (
+            <ul className="space-y-3">
+              {networkAdvisors.map((advisor) => (
+                <NetworkAdvisorRow
+                  key={advisor.advisorPubkey}
+                  advisor={advisor}
+                  onShare={() => onOpenShare(advisor.advisorPubkey)}
+                  onEnd={() => { setActionError(null); setEndingNetwork(advisor); }}
+                />
+              ))}
+            </ul>
+          )}
+          {networkAdvisors.length > 0 && (
+            <p className="text-xs text-[#78716c]">
+              A network advisor sees only the portfolios you share with them, and you talk in Messages.
+            </p>
+          )}
         </div>
       )}
 
@@ -256,6 +291,10 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
         </div>
       )}
 
+      {endingNetwork && (
+        <EndNetworkAdvisorDialog advisor={endingNetwork} onClose={() => setEndingNetwork(null)} onEnded={() => { setEndingNetwork(null); reload(); }} />
+      )}
+
       {ending && <EndAdvisorDialog advisor={ending} onClose={() => setEnding(null)} onEnded={() => { setEnding(null); reload(); }} />}
 
       {asking && (
@@ -266,6 +305,46 @@ export function AdvisorMatchSection({ onOpenPolicy }: { onOpenPolicy: () => void
         />
       )}
     </div>
+  );
+}
+
+/** A network advisor of the investor's: how the sharing stands, the way to its page, the relation's end. */
+function NetworkAdvisorRow({ advisor, onShare, onEnd }: { advisor: NetworkAdvisor; onShare: () => void; onEnd: () => void }) {
+  const share = advisor.share;
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[rgba(196,154,60,0.15)] px-4 py-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-11 h-11 shrink-0 rounded-2xl bg-[#C49A3C]/15 text-[#C49A3C] flex items-center justify-center">
+          <Globe className="w-5 h-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="font-bold text-[#1c1917] truncate flex items-center gap-2">
+            <span className="truncate" title={advisor.npub}>{networkAdvisorName(advisor)}</span>
+            <NetworkBadge />
+          </p>
+          <p className="text-xs text-[#78716c]">Accepted on {formatDay(advisor.acceptedAt)}</p>
+          <p className={`text-xs font-semibold ${share?.lastError ? "text-red-700" : share && !share.ending ? "text-emerald-700" : "text-[#78716c]"}`}>
+            {shareStateLine(share)}{share?.lastError ? " · the last attempt failed" : ""}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={onEnd}
+          className="text-sm font-semibold text-[#78716c] hover:text-red-700 px-4 py-2 rounded-xl hover:bg-red-50 transition-colors"
+        >
+          End relation
+        </button>
+        <button
+          type="button"
+          onClick={onShare}
+          className="flex items-center gap-1.5 text-sm font-semibold text-[#1c1917] px-4 py-2 rounded-xl border border-[rgba(196,154,60,0.3)] hover:border-[#C49A3C] transition-colors"
+        >
+          {share && !share.ending ? "Shared portfolios" : "Share portfolios"} <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+    </li>
   );
 }
 

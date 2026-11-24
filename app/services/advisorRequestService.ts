@@ -1,6 +1,7 @@
 // services/advisorRequestService.ts
 import type { AdvisorCard, AdvisorMatch, AdvisorRequest, AdvisorRequestPayload } from "../models/AdvisorRequest";
 import type { InvestorPolicy } from "../models/InvestorPolicy";
+import type { NetworkAdvisor, SnapshotShare } from "../models/ClientSnapshot";
 import { mergeWithDefaults } from "../lib/ips";
 import { apiFetch } from "./apiClient";
 
@@ -42,6 +43,36 @@ export const advisorRequestService = {
   // data. 404 when they aren't the investor's advisor.
   async endAdvisor(advisorUuid: string): Promise<void> {
     await apiFetch<{ status: string }>(`/v1/users/advisors/${advisorUuid}`, { method: "DELETE" });
+  },
+
+  // --- The investor's network advisors (the portfolios shared with them) ---
+
+  // GET /users/network-advisors — the network advisors who accepted the caller, the pair not
+  // ended, oldest first, each with what the caller shares with them (null: nothing).
+  async getMyNetworkAdvisors(): Promise<NetworkAdvisor[]> {
+    return apiFetch<NetworkAdvisor[]>("/v1/users/network-advisors");
+  },
+
+  // PUT /users/network-advisors/{key}/share — these standard portfolios of the caller's, replacing
+  // what was shared: 403 NotYourNetworkAdvisorError, 409 PortfolioNotShareableError
+  // (`portfolio_uuid`), 422 InvalidFieldError (none, or more than 50) or InvalidAdvisorKeyError.
+  async setShare(advisorPubkey: string, portfolioUuids: string[]): Promise<SnapshotShare> {
+    return apiFetch<SnapshotShare>(`/v1/users/network-advisors/${encodeURIComponent(advisorPubkey)}/share`, {
+      method: "PUT",
+      body: JSON.stringify({ portfolioUuids }),
+    });
+  },
+
+  // DELETE /users/network-advisors/{key}/share — stops sharing: the advisor is told and the file
+  // deleted (the share is `ending` meanwhile). 404 SnapshotShareNotFoundError with no share.
+  async stopShare(advisorPubkey: string): Promise<void> {
+    await apiFetch<{ status: string }>(`/v1/users/network-advisors/${encodeURIComponent(advisorPubkey)}/share`, { method: "DELETE" });
+  },
+
+  // DELETE /users/network-advisors/{key} — ends the relation (sharing stops with it). 404 when
+  // they aren't the caller's network advisor.
+  async endNetworkAdvisor(advisorPubkey: string): Promise<void> {
+    await apiFetch<{ status: string }>(`/v1/users/network-advisors/${encodeURIComponent(advisorPubkey)}`, { method: "DELETE" });
   },
 
   // --- The advisor ---

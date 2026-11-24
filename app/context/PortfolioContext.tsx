@@ -64,6 +64,9 @@ interface PortfolioContextType {
 export interface ClientScope {
   uuid: string;
   name: string;
+  // A network client's: their portfolios are the copy they shared (`imported`), read only to the
+  // advisor too, strategies and proposals included.
+  imported?: boolean;
 }
 
 const PortfolioContext = createContext<PortfolioContextType | undefined>(undefined);
