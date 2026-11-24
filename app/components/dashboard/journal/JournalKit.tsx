@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import {
-  AlertTriangle, ArrowLeft, ArrowUpRight, Check, Clock, Copy, Globe, HandHeart, Loader2, MessageCircle, UserCheck, UserPlus,
+  AlertTriangle, ArrowLeft, ArrowUpRight, Bookmark, BookmarkCheck, Check, Clock, Copy, Globe, HandHeart, Loader2, MessageCircle, UserCheck, UserPlus,
 } from "lucide-react";
 import { journalKey, useJournal } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
@@ -295,29 +295,101 @@ export function ArticleCard({ article, onOpen, footer, menu }: { article: Articl
   );
 }
 
+// 1,234 as "1.2K", the way a feed counts.
+const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
+
+/** Save or unsave an article from a row: its own state, the other lists (Saved) told. */
+function RowSave({ article }: { article: ArticleSummary }) {
+  const { canWrite, changed } = useJournal();
+  const [saved, setSaved] = useState(article.saved);
+  const [busy, setBusy] = useState(false);
+  if (!canWrite) return null;
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      if (saved) await journalService.unsave(article.uuid);
+      else await journalService.save(article.uuid);
+      setSaved(!saved);
+      changed();
+    } catch { /* unchanged: the icon says so */ } finally {
+      setBusy(false);
+    }
+  };
+  const label = saved ? "Remove from Saved" : "Save";
+  return (
+    <button
+      type="button"
+      onClick={() => void toggle()}
+      disabled={busy}
+      aria-pressed={saved}
+      aria-label={label}
+      title={label}
+      className={`flex items-center justify-center h-7 w-7 rounded-lg transition-colors disabled:opacity-60 ${saved ? "text-[#9a7424]" : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"}`}
+    >
+      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
+    </button>
+  );
+}
+
 /**
- * An article as a row of the Journal's feed, the way a reading feed lists them: who wrote it, its
- * title and line, when and how long, its cover small on the right; `menu` (the reader's
- * moderation) at its top right. Rows are divided by a hairline, no card around each.
+ * An article as a row of the Journal's feed, the way a reading site lists them: who wrote it (and
+ * in which category), its title and line, its cover small on the right; under them when it came
+ * out, how long it reads, its applause and comments (when it has some, the reader's own applause
+ * in gold), and on the right Save and `menu` (the reader's moderation). Rows are divided by a
+ * hairline, no card around each; the row opens the article, its buttons do their own.
  */
 export function ArticleRow({ article, onOpen, menu }: { article: ArticleSummary; onOpen: () => void; menu?: React.ReactNode }) {
   const cover = coverUrl(article);
+  const category = article.category && article.category !== DEFAULT_CATEGORY ? CATEGORY_LABELS[article.category] : null;
   return (
-    <div className="relative py-6">
-      <button type="button" onClick={onOpen} className="group w-full text-left flex items-start gap-5 md:gap-8 outline-none rounded-xl focus-visible:ring-2 focus-visible:ring-[#C49A3C]/60">
-        <div className="min-w-0 flex-1 flex flex-col gap-2">
-          <div className={menu ? "pr-10" : undefined}><CardByline article={article} /></div>
-          <h3 className="text-lg md:text-xl font-black text-slate-900 leading-snug group-hover:text-[#9a7424] transition-colors" style={serif}>{article.title}</h3>
-          {article.dek && <p className="text-[13px] md:text-sm text-slate-500 leading-relaxed line-clamp-2">{article.dek}</p>}
-          <div className="pt-1"><Meta article={article} /></div>
+    <article className="group relative flex items-center gap-5 md:gap-10 py-7">
+      <div className="min-w-0 flex-1">
+        <button type="button" onClick={onOpen} className="block w-full text-left outline-none rounded-lg focus-visible:ring-2 focus-visible:ring-[#C49A3C]/60">
+          <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-slate-600">
+            <AuthorAvatar author={article.author} size={20} />
+            <span className="font-bold text-slate-800">{authorName(article.author)}</span>
+            {category && <><span className="text-slate-400">in</span><span className="font-bold text-slate-800">{category}</span></>}
+            <span className="ml-1 inline-flex items-center gap-1.5">
+              <AuthorBadge author={article.author} />
+              {isNetworkArticle(article) && <NetworkBadge />}
+            </span>
+          </span>
+          <h3 className="mt-2.5 text-xl md:text-[22px] font-black text-slate-900 leading-tight group-hover:text-[#9a7424] transition-colors" style={serif}>
+            {article.title || "Untitled"}
+          </h3>
+          {article.dek && <p className="mt-1.5 text-[14px] text-slate-500 leading-relaxed line-clamp-2">{article.dek}</p>}
+        </button>
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] font-semibold text-slate-400">
+            {article.publishedAt && <span>{dateLabel(article.publishedAt)}</span>}
+            <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{article.readMinutes} min read</span>
+            {article.applauseCount > 0 && (
+              <span
+                className={`flex items-center gap-1 ${article.applauded ? "text-[#C49A3C]" : ""}`}
+                title={`${article.applauseCount} ${article.applauseCount === 1 ? "reader applauds" : "readers applaud"} it${article.applauded ? ", you too" : ""}`}
+              >
+                <HandHeart className="h-3.5 w-3.5" />{compact.format(article.applauseCount)}
+              </span>
+            )}
+            {article.commentCount > 0 && (
+              <span className="flex items-center gap-1" title={`${article.commentCount} ${article.commentCount === 1 ? "comment" : "comments"}`}>
+                <MessageCircle className="h-3.5 w-3.5" />{compact.format(article.commentCount)}
+              </span>
+            )}
+          </p>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <RowSave key={String(article.saved)} article={article} />
+            {menu}
+          </div>
         </div>
-        {cover && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={cover} alt={article.cover?.altText ?? ""} className="mt-10 shrink-0 w-20 h-20 md:w-36 md:h-24 rounded-xl object-cover bg-slate-100" />
-        )}
-      </button>
-      {menu && <div className="absolute right-0 top-4 z-10">{menu}</div>}
-    </div>
+      </div>
+      {cover && (
+        <button type="button" onClick={onOpen} tabIndex={-1} aria-hidden className="shrink-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={cover} alt="" className="w-20 h-20 md:w-40 md:h-28 rounded-lg object-cover bg-slate-100" />
+        </button>
+      )}
+    </article>
   );
 }
 
