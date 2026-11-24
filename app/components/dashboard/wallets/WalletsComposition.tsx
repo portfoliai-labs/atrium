@@ -69,8 +69,9 @@ function walletItem(w: Wallet, color: string, currency: string, rate: number | u
  * wide as they are there together. One just connected, with no wallet yet, is listed to be opened
  * and its wallets chosen. While the accounts are read (or when they can't be), each wallet is by
  * itself. A wallet in no account in another currency counts at the rate an account tells, or,
- * with none, is listed in its own without a share; a card in debt takes none either. Beside it, to
- * read only, the balances by kind (current accounts, cards, savings, cash).
+ * with none, is listed in its own without a share; a card in debt takes none either. Below it (not
+ * beside: the list can run long, and the kinds are a few rows), to read only, the balances by kind
+ * (current accounts, cards, savings, cash).
  */
 export function WalletsComposition({ currency, onOpen, onOpenAccount }: {
   currency: string;
@@ -126,15 +127,15 @@ export function WalletsComposition({ currency, onOpen, onOpenAccount }: {
   const kindsTotal = kinds.reduce((s, k) => s + Math.max(k.value, 0), 0);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-[22px]">
-      <div className={kinds.length > 1 ? "lg:col-span-8" : "lg:col-span-12"}>
+    <div className="flex flex-col gap-[22px]">
+      <div>
         <Module>
           <ModuleHead title="Accounts and wallets" desc="Your banks' and addresses' accounts, with their wallets around them, and the wallets of your own: open one for its page." />
           <div className={MODULE_BODY}><DonutList items={items} currency={currency} /></div>
         </Module>
       </div>
       {kinds.length > 1 && (
-        <div className="lg:col-span-4">
+        <div>
           <Module>
             <ModuleHead title="By kind" desc={`Your wallets in ${currency} by kind, to read.`} />
             <div className={MODULE_BODY}>
