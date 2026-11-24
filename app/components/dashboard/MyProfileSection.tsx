@@ -18,14 +18,18 @@ import { AdvisorProfileSection } from "./AdvisorProfileSection";
 import { InvestorPolicyEditor, riskToleranceLabel } from "./InvestorPolicyDialog";
 import { PROFILE_GRID, PolicyCards, ProfileCard, ProfileDialog, ProfileRows } from "./ips/PolicyCards";
 import { Breadcrumb } from "./Breadcrumb";
+import { NetworkAdvisorSharePage } from "./NetworkAdvisorSharePage";
 
 // Profile's own page (the preferences, and an advisor's declaration), an investor's Investment Policy (set up step by step, then
 // its cards) or Find an advisor, each opened from the account menu (an older entry's `page:
 // "setup"`, `tab: "policy"` and `tab: "advisor"` too).
-export type ProfilePage = "home" | "policy" | "advisor";
+// "share": a network advisor's sharing page, under Find an advisor (`advisor`: their key).
+export type ProfilePage = "home" | "policy" | "advisor" | "share";
+type ProfileView = { page: ProfilePage; advisor?: string };
 
-const parseView = (raw: unknown): { page: ProfilePage } => {
-  const v = raw as { page?: string; tab?: string } | undefined;
+const parseView = (raw: unknown): ProfileView => {
+  const v = raw as { page?: string; tab?: string; advisor?: unknown } | undefined;
+  if (v?.page === "share" && typeof v.advisor === "string") return { page: "share", advisor: v.advisor };
   if (v?.page === "advisor" || v?.tab === "advisor") return { page: "advisor" };
   if (v?.page === "policy" || v?.page === "setup" || v?.tab === "policy") return { page: "policy" };
   return { page: "home" };
@@ -83,12 +87,24 @@ export function MyProfileSection() {
     URL.revokeObjectURL(url);
   };
 
+  if (page === "share" && view.advisor) {
+    const back = () => open({ page: "advisor" });
+    return (
+      <div className="pb-12">
+        <NetworkAdvisorSharePage advisorPubkey={view.advisor} trail={[{ label: "Find an advisor", onClick: back }]} onBack={back} />
+      </div>
+    );
+  }
+
   if (page === "advisor") {
     return (
       <div className="space-y-6 pb-12">
         <Breadcrumb trail={[]} current="Find an advisor" hidden />
         {/* Without a policy there's nothing to match on: it's set up on its own page. */}
-        <AdvisorMatchSection onOpenPolicy={() => open({ page: "policy" })} />
+        <AdvisorMatchSection
+          onOpenPolicy={() => open({ page: "policy" })}
+          onOpenShare={(advisor) => open({ page: "share", advisor })}
+        />
       </div>
     );
   }

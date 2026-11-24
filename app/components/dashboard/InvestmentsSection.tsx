@@ -413,7 +413,9 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
   const counts = useActivityCounts(portfolio, real);
   const { hasAdoption, shared, reload: reloadAdoption } = useHasAdoption(portfolio);
   // An advisor reaches a client's portfolio's Strategy page with or without one: it's where theirs is adopted.
-  const strategyAction: PageAction[] = hasAdoption || shared.length > 0 || client ? [{ label: "Strategy", onClick: () => open("strategy") }] : [];
+  // Never on a network client's copy (imported): nothing is adopted on it.
+  const imported = portfolio.imported === true || client?.imported === true;
+  const strategyAction: PageAction[] = !imported && (hasAdoption || shared.length > 0 || client) ? [{ label: "Strategy", onClick: () => open("strategy") }] : [];
   // In the user's Settings (Assets), or where it's opened from says (a client's settings).
   const openCategories = onOpenAssetSettings ?? (() => openAssetSettings(onNavigate));
   const [dialog, setDialog] = useState<"new" | "rename" | "delete" | "adopt" | "publish" | "withdraw" | "connectBroker" | null>(null);
@@ -477,7 +479,7 @@ export function PortfolioNode({ portfolio, page, trail, isInvestments, extraActi
           ...(addsPortfolios ? [{ label: "New portfolio", onClick: () => setDialog("new"), ...lock }] : []),
           ...connectBroker,
           ...extraActions,
-          ...(canManage ? [
+          ...(canManage && !imported ? [
             { label: "Rename", onClick: () => setDialog("rename"), ...lock },
             {
               label: "Delete portfolio",

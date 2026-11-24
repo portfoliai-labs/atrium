@@ -3,9 +3,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { BellRing, ChevronRight, Info, Loader2, Settings2, Trash2, Users, X } from "lucide-react";
+import { BellRing, ChevronRight, Globe, Info, Loader2, Settings2, Trash2, Users, X } from "lucide-react";
 import { advisorService } from "../../services/advisorService";
-import { clientDisplayName, clientInitials, useClients } from "../../context/ClientsContext";
+import { clientDisplayName, clientInitials, clientsKey, useClients, useClientsQuery } from "../../context/ClientsContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { formatDay, formatMoment, networkClientName, snapshotErrorMessage } from "../../lib/clientSnapshots";
+import type { NetworkClient } from "../../models/ClientSnapshot";
 import { PortfolioProvider, usePortfolio, type ClientScope } from "../../context/PortfolioContext";
 import { useClientAlertRules } from "../../hooks/useAlertRules";
 import { useClientsFigures, totalsByCurrency, type ClientFigures } from "../../hooks/useClientsFigures";
@@ -17,6 +20,7 @@ import { TAX_REGIME_COUNTRIES, countryName } from "../../lib/taxes";
 import type { Client } from "../../models/Advisor";
 import type { ClientAlertRuleResponse } from "../../models/Alert";
 import { PageHeader, type PageAction } from "./PageHeader";
+import { Breadcrumb } from "./Breadcrumb";
 import { Module, ModuleHead } from "./PerformanceSection";
 import { InvestmentsSection } from "./InvestmentsSection";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -32,12 +36,25 @@ const LANGUAGE_LABELS: Record<string, string> = { it: "Italian", en: "English", 
 
 const signedPct = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)}%`;
 
+// The network clients' read (GET /advisor/network-clients), under the clients' key: `reload()` too.
+const NETWORK_CLIENTS_KEY = ["network-clients"];
+const NO_NETWORK_CLIENTS: NetworkClient[] = [];
+
+// The client a page is on: a linked one (`client`) or a network one (`networkClient`), by uuid.
+type OpenClient = { kind: "client" | "networkClient"; uuid: string };
+
 /** The client the current history entry is on, if it's this section's. */
-const clientFromHistory = (): string | null => {
+const clientFromHistory = (): OpenClient | null => {
   const entry = readDashboardEntry();
-  const view = entry?.section === SECTION ? (entry.view as { client?: unknown } | undefined) : undefined;
-  return typeof view?.client === "string" ? view.client : null;
+  const view = entry?.section === SECTION ? (entry.view as { client?: unknown; networkClient?: unknown } | undefined) : undefined;
+  if (typeof view?.client === "string") return { kind: "client", uuid: view.client };
+  if (typeof view?.networkClient === "string") return { kind: "networkClient", uuid: view.networkClient };
+  return null;
 };
+
+function useNetworkClients() {
+  return useClientsQuery(NETWORK_CLIENTS_KEY, () => advisorService.getNetworkClients());
+}
 
 export function ClientAvatar({ client, size = "md" }: { client: Client; size?: "sm" | "md" }) {
   const sizes = { sm: "w-8 h-8 text-[11px] rounded-lg", md: "w-10 h-10 text-xs rounded-xl" };
@@ -57,34 +74,50 @@ export function ClientAvatar({ client, size = "md" }: { client: Client; size?: "
  * Transactions, Alerts (the advisor's), Strategy (adopted from the advisor's backtests, shared or
  * not) and Asset categories, plus the client's details. The client is in each page's history
  * entry (`{ client, ...wealthView }`), so back and forward, and the Sidebar's rows, follow it.
+ *
+ * Network clients (investors from the open network, Nostr, the advisor accepted) are listed apart:
+ * they have no account here, only a key; the advisor reads the portfolios they share as a copy
+ * (data as of when they took it, at most a day old after a change), through the same pages, read
+ * only (`{ networkClient, ...wealthView }`).
  */
 export function ClientsSection({ onNavigate }: { onNavigate: (section: string) => void }) {
   const { clients, loading } = useClients();
-  const [clientUuid, setClientUuid] = useState<string | null>(clientFromHistory);
+  const network = useNetworkClients();
+  const [opened, setOpened] = useState<OpenClient | null>(clientFromHistory);
 
   useEffect(() => {
     const onPopState = () => {
-      if (readDashboardEntry()?.section === SECTION) setClientUuid(clientFromHistory());
+      if (readDashboardEntry()?.section === SECTION) setOpened(clientFromHistory());
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  const openClient = (uuid: string | null) => {
-    pushDashboardEntry({ section: SECTION, view: uuid ? { client: uuid } : undefined });
-    setClientUuid(uuid);
+  const openClient = (next: OpenClient | null) => {
+    pushDashboardEntry({ section: SECTION, view: next ? { [next.kind]: next.uuid } : undefined });
+    setOpened(next);
     window.scrollTo({ top: 0 });
   };
 
-  if (loading) {
+  if (loading || (opened?.kind === "networkClient" && network.isPending)) {
     return <div className="flex items-center justify-center py-32"><Loader2 className="w-7 h-7 animate-spin text-[#C49A3C]" /></div>;
   }
 
-  const client = clientUuid ? clients.find((c) => c.uuid === clientUuid) : undefined;
+  const client = opened?.kind === "client" ? clients.find((c) => c.uuid === opened.uuid) : undefined;
   if (client) {
     return <ClientPage key={client.uuid} client={client} onBack={() => openClient(null)} onNavigate={onNavigate} />;
   }
-  return <ClientsList onOpen={openClient} onOpenRequests={() => onNavigate(REQUESTS_SECTION)} />;
+  const networkClient = opened?.kind === "networkClient" ? network.data?.find((c) => c.clientUuid === opened.uuid) : undefined;
+  if (networkClient) {
+    return <NetworkClientPage key={networkClient.clientUuid} client={networkClient} onBack={() => openClient(null)} onNavigate={onNavigate} />;
+  }
+  return (
+    <ClientsList
+      onOpen={(uuid) => openClient({ kind: "client", uuid })}
+      onOpenNetwork={(uuid) => openClient({ kind: "networkClient", uuid })}
+      onOpenRequests={() => onNavigate(REQUESTS_SECTION)}
+    />
+  );
 }
 
 // ── The list ──────────────────────────────────────────────────────────────────────────────
@@ -101,8 +134,16 @@ function alertsSummary(rules: ClientAlertRuleResponse[]) {
   return { text: count, tone: "ok" as const };
 }
 
-function ClientsList({ onOpen, onOpenRequests }: { onOpen: (uuid: string) => void; onOpenRequests: () => void }) {
+function ClientsList({ onOpen, onOpenNetwork, onOpenRequests }: {
+  onOpen: (uuid: string) => void;
+  onOpenNetwork: (clientUuid: string) => void;
+  onOpenRequests: () => void;
+}) {
   const { clients, error, removed } = useClients();
+  const network = useNetworkClients();
+  const networkClients = network.data ?? NO_NETWORK_CLIENTS;
+  const [toEnd, setToEnd] = useState<NetworkClient | null>(null);
+  const queryClient = useQueryClient();
   const { rules } = useClientAlertRules();
   const figures = useClientsFigures(clients);
   const [toRemove, setToRemove] = useState<Client | null>(null);
@@ -123,13 +164,14 @@ function ClientsList({ onOpen, onOpenRequests }: { onOpen: (uuid: string) => voi
           { label: "Clients", value: String(clients.length) },
           { label: "Your alerts", value: rules === null ? "—" : String(rules.length), sub: "On their portfolios" },
           { label: "Triggered", value: rules === null ? "—" : String(triggered), tone: triggered > 0 ? "loss" : undefined },
+          ...(networkClients.length > 0 ? [{ label: "Network clients", value: String(networkClients.length) }] : []),
         ] : []}
         actions={[{ label: "Requests", primary: true, onClick: onOpenRequests }]}
       />
 
       {error && <p className="text-sm font-semibold text-rose-600">{error}</p>}
 
-      {clients.length === 0 ? (
+      {clients.length === 0 ? networkClients.length > 0 ? null : (
         <button
           type="button"
           onClick={onOpenRequests}
@@ -164,6 +206,39 @@ function ClientsList({ onOpen, onOpenRequests }: { onOpen: (uuid: string) => voi
             ))}
           </ul>
         </Module>
+      )}
+
+      {network.isError && <p className="text-sm font-semibold text-rose-600">Unable to load your network clients.</p>}
+
+      {networkClients.length > 0 && (
+        <Module>
+          <ModuleHead
+            title="Network clients"
+            desc="Investors from the open network you accepted: you read the portfolios they share with you, as a copy, read only."
+          />
+          <div className="hidden md:grid grid-cols-[minmax(0,1fr)_9rem_14rem_2rem] gap-4 px-6 pb-2 text-[10px] font-black uppercase tracking-widest text-[#857e78]">
+            <span>Client</span>
+            <span>Accepted on</span>
+            <span>Shared data</span>
+            <span />
+          </div>
+          <ul className="divide-y divide-[#EEE9DD] border-t border-[#EEE9DD]">
+            {networkClients.map((c) => (
+              <NetworkClientRow key={c.clientUuid} client={c} onOpen={() => onOpenNetwork(c.clientUuid)} onEnd={() => setToEnd(c)} />
+            ))}
+          </ul>
+        </Module>
+      )}
+
+      {toEnd && (
+        <EndNetworkClientDialog
+          client={toEnd}
+          onClose={() => setToEnd(null)}
+          onEnded={() => {
+            setToEnd(null);
+            void queryClient.invalidateQueries({ queryKey: clientsKey(...NETWORK_CLIENTS_KEY) });
+          }}
+        />
       )}
 
       {toRemove && (
@@ -236,6 +311,153 @@ function ClientRow({ client, figures, rules, onOpen, onRemove }: {
         <Trash2 className="w-4 h-4" />
       </button>
     </li>
+  );
+}
+
+/** "Data as of 24 Nov 2026, 09:30 · 2 portfolios", or that nothing came yet. */
+function sharedDataLine(client: NetworkClient): string {
+  if (!client.takenAt) return "Nothing shared yet";
+  const count = `${client.portfolioCount} ${client.portfolioCount === 1 ? "portfolio" : "portfolios"}`;
+  return `Data as of ${formatMoment(client.takenAt)} · ${count}`;
+}
+
+function NetworkClientRow({ client, onOpen, onEnd }: { client: NetworkClient; onOpen: () => void; onEnd: () => void }) {
+  const name = networkClientName(client);
+  return (
+    <li className="group relative">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="w-full grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,1fr)_9rem_14rem_2rem] items-center gap-x-4 gap-y-1.5 px-6 py-3.5 text-left hover:bg-[#FBFAF6] transition-colors"
+      >
+        <span className="flex items-center gap-3 min-w-0">
+          <span className="w-10 h-10 rounded-xl bg-[#1c1917] flex items-center justify-center text-[#C49A3C] shrink-0"><Globe className="w-4 h-4" /></span>
+          <span className="min-w-0">
+            <span className="block text-sm font-bold text-[#1c1917] truncate" title={client.npub}>{name}</span>
+            <span className="block text-xs text-[#78716c] truncate md:hidden">Accepted on {formatDay(client.acceptedAt)}</span>
+          </span>
+        </span>
+        <span className="hidden md:block text-sm text-[#44403c]">{formatDay(client.acceptedAt)}</span>
+        <span className={`col-span-2 md:col-span-1 pl-13 md:pl-0 text-xs font-semibold ${client.takenAt ? "text-[#1c1917]" : "text-[#857e78]"}`}>
+          {sharedDataLine(client)}
+        </span>
+        <ChevronRight className="hidden md:block w-4 h-4 text-[#857e78] group-hover:text-[#C49A3C] transition-colors justify-self-end" />
+      </button>
+      <button
+        type="button"
+        onClick={onEnd}
+        aria-label={`End the relation with ${name}`}
+        title="End relation"
+        className="absolute right-14 top-1/2 -translate-y-1/2 p-2 rounded-lg text-[#857e78] hover:text-rose-600 hover:bg-rose-50 transition-colors md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 hidden md:block"
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </li>
+  );
+}
+
+// ── A network client's page ───────────────────────────────────────────────────────────────
+
+/**
+ * A network client's investments: the copy they shared (imported portfolios), on the investor's
+ * pages under Clients › the client, read only, with a banner saying how old it is. Before any copy
+ * came, a page that says so.
+ */
+function NetworkClientPage({ client, onBack, onNavigate }: { client: NetworkClient; onBack: () => void; onNavigate: (section: string) => void }) {
+  const name = networkClientName(client);
+  const scope = useMemo<ClientScope>(() => ({ uuid: client.clientUuid, name, imported: true }), [client.clientUuid, name]);
+  const [ending, setEnding] = useState(false);
+  const queryClient = useQueryClient();
+  const trail = useMemo(() => [{ label: "Clients", onClick: onBack }], [onBack]);
+  const ended = () => {
+    setEnding(false);
+    onBack();
+    void queryClient.invalidateQueries({ queryKey: clientsKey(...NETWORK_CLIENTS_KEY) });
+  };
+
+  return (
+    <>
+      {client.takenAt && client.portfolioCount > 0 ? (
+        <PortfolioProvider client={scope}>
+          <NetworkClientWealth client={client} trail={trail} onEnd={() => setEnding(true)} onNavigate={onNavigate} />
+        </PortfolioProvider>
+      ) : (
+        <div className="space-y-6 pb-12">
+          <Breadcrumb trail={trail} current={name} />
+          <div className="bg-white rounded-[1.75rem] border border-[#E0DACC] p-6 md:p-8 space-y-4">
+            <p className="text-lg font-black text-[#1c1917] flex items-center gap-2" title={client.npub}>
+              <Globe className="w-5 h-5 text-[#C49A3C]" /> {name}
+            </p>
+            <p className="text-sm text-[#44403c]">
+              Network client since {formatDay(client.acceptedAt)}. They haven&apos;t shared any portfolio with you yet: once they
+              do, a copy comes within a day and their portfolios are here to read.
+            </p>
+            <button
+              type="button"
+              onClick={() => setEnding(true)}
+              className="text-sm font-semibold text-[#78716c] hover:text-rose-700 px-4 py-2 rounded-xl hover:bg-rose-50 transition-colors"
+            >
+              End relation
+            </button>
+          </div>
+        </div>
+      )}
+      {ending && <EndNetworkClientDialog client={client} onClose={() => setEnding(false)} onEnded={ended} />}
+    </>
+  );
+}
+
+function NetworkClientWealth({ client, trail, onEnd, onNavigate }: {
+  client: NetworkClient;
+  trail: { label: string; onClick: () => void }[];
+  onEnd: () => void;
+  onNavigate: (section: string) => void;
+}) {
+  const { loading, failed } = usePortfolio();
+  const scope = useMemo(() => ({ networkClient: client.clientUuid }), [client.clientUuid]);
+  const extraActions = useMemo<PageAction[]>(() => [{ label: "End relation", danger: true, onClick: onEnd }], [onEnd]);
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-32"><Loader2 className="w-7 h-7 animate-spin text-[#C49A3C]" /></div>;
+  }
+  if (failed) {
+    return <p className="text-sm font-semibold text-rose-600 py-6">Unable to load {networkClientName(client)}&apos;s portfolios.</p>;
+  }
+  return (
+    <div className="space-y-4">
+      <p className="flex items-start gap-2.5 rounded-xl bg-[#C49A3C]/10 border border-[#C49A3C]/30 px-4 py-3 text-[13px] font-semibold text-[#8A6A28]">
+        <Info className="w-4 h-4 shrink-0 mt-0.5" />
+        Shared by the client, data as of {formatMoment(client.takenAt!)}. Read only: a new copy comes at most once a day after they change something.
+      </p>
+      <InvestmentsSection onNavigate={onNavigate} section={SECTION} scope={scope} rootTrail={trail} extraActions={extraActions} />
+    </div>
+  );
+}
+
+function EndNetworkClientDialog({ client, onClose, onEnded }: { client: NetworkClient; onClose: () => void; onEnded: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const end = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await advisorService.endNetworkClient(client.clientUuid);
+      onEnded();
+    } catch (err) {
+      setError(snapshotErrorMessage(err, "Unable to end the relation with this client."));
+      setBusy(false);
+    }
+  };
+  return (
+    <ConfirmDialog
+      title={`End the relation with ${networkClientName(client)}?`}
+      description="They're no longer your client: the copy of the portfolios they shared is deleted here, and they stop sharing."
+      confirmLabel="End relation"
+      confirming={busy}
+      error={error}
+      onConfirm={end}
+      onClose={onClose}
+    />
   );
 }
 
