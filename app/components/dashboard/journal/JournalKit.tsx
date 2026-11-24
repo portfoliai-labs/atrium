@@ -17,7 +17,13 @@ import { serif } from "../../preview/PreviewKit";
 import { JournalMenu } from "./JournalMenu";
 
 /** A Journal page's head: the eyebrow, its title, a line under it, its actions and the Journal's menu. */
-export function JournalHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: React.ReactNode }) {
+export function JournalHeader({ title, subtitle, actions, menuNarrowOnly = false }: {
+  title: string;
+  subtitle?: string;
+  actions?: React.ReactNode;
+  // The Journal's menu on a narrow screen only: a wide one has the list's rail.
+  menuNarrowOnly?: boolean;
+}) {
   return (
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div>
@@ -27,7 +33,7 @@ export function JournalHeader({ title, subtitle, actions }: { title: string; sub
       </div>
       <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
         {actions}
-        <JournalMenu />
+        {menuNarrowOnly ? <span className="contents lg:hidden"><JournalMenu /></span> : <JournalMenu />}
       </div>
     </header>
   );
@@ -285,6 +291,32 @@ export function ArticleCard({ article, onOpen, footer, menu }: { article: Articl
       </button>
       {footer && <div className="border-t border-slate-100 px-5 py-3 md:px-6">{footer}</div>}
       {menu && <div className={`absolute right-3 z-10 ${cover ? "top-3" : "top-4"}`}>{menu}</div>}
+    </div>
+  );
+}
+
+/**
+ * An article as a row of the Journal's feed, the way a reading feed lists them: who wrote it, its
+ * title and line, when and how long, its cover small on the right; `menu` (the reader's
+ * moderation) at its top right. Rows are divided by a hairline, no card around each.
+ */
+export function ArticleRow({ article, onOpen, menu }: { article: ArticleSummary; onOpen: () => void; menu?: React.ReactNode }) {
+  const cover = coverUrl(article);
+  return (
+    <div className="relative py-6">
+      <button type="button" onClick={onOpen} className="group w-full text-left flex items-start gap-5 md:gap-8 outline-none rounded-xl focus-visible:ring-2 focus-visible:ring-[#C49A3C]/60">
+        <div className="min-w-0 flex-1 flex flex-col gap-2">
+          <div className={menu ? "pr-10" : undefined}><CardByline article={article} /></div>
+          <h3 className="text-lg md:text-xl font-black text-slate-900 leading-snug group-hover:text-[#9a7424] transition-colors" style={serif}>{article.title}</h3>
+          {article.dek && <p className="text-[13px] md:text-sm text-slate-500 leading-relaxed line-clamp-2">{article.dek}</p>}
+          <div className="pt-1"><Meta article={article} /></div>
+        </div>
+        {cover && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={cover} alt={article.cover?.altText ?? ""} className="mt-10 shrink-0 w-20 h-20 md:w-36 md:h-24 rounded-xl object-cover bg-slate-100" />
+        )}
+      </button>
+      {menu && <div className="absolute right-0 top-4 z-10">{menu}</div>}
     </div>
   );
 }

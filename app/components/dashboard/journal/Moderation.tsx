@@ -245,7 +245,7 @@ export function useArticleModeration() {
       await journalService.hideArticle(article.uuid);
       changed();
       setLast({
-        message: "Article hidden. You'll find it in Settings → Muted and hidden.",
+        message: "Article hidden. You'll find it in the Journal's Muted and hidden.",
         undo: async () => {
           await journalService.unhideArticle(article.uuid);
           setGoneArticles((s) => drop(s, article.uuid));

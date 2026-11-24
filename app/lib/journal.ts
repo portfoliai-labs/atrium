@@ -85,7 +85,6 @@ export const REPORT_NOTICE =
   "A report on something from the network is published on the network: a public report, signed with your network identity, that other apps and relays can read. Either way, what you report is hidden for you.";
 
 // The feed shown when the Journal opens, as the reader last left it (on this browser).
-export const ALL_NETWORK_NOTICE = "Articles from anyone on the network, not filtered by whom you follow.";
 export type FeedScope = "trusted" | "all";
 
 /**

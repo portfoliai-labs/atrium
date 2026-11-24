@@ -13,6 +13,8 @@ import { ArticleEditor } from "./journal/ArticleEditor";
 import { MyArticles } from "./journal/MyArticles";
 import { SavedArticles } from "./journal/SavedArticles";
 import { FollowingAuthors } from "./journal/FollowingAuthors";
+import { MutedAndHidden } from "./journal/MutedAndHidden";
+import { JournalHeader } from "./journal/JournalKit";
 import { JournalNavContext } from "./journal/JournalMenu";
 
 const SECTION = JOURNAL_SECTION;
@@ -40,6 +42,8 @@ export type JournalView =
   | { page: "mine" }
   // The authors the reader follows.
   | { page: "following" }
+  // The authors they muted and the articles they hid.
+  | { page: "moderation" }
   // The editor: one of the caller's articles, or a new one.
   | { page: "write"; uuid?: string };
 
@@ -56,7 +60,8 @@ function viewFromHistory(): JournalView {
 /**
  * JOURNAL — articles on investing by PortfoliAI's advisors and users (acta, through ianus'
  * /v1/journal): the latest, searchable and narrowed by category, author or instrument; each
- * article; the reader's saved articles; the author's own articles and their editor. On a backend without the Journal the pages show no
+ * article; the reader's saved articles; the authors they follow; what they muted and hid; the
+ * author's own articles and their editor. On a backend without the Journal the pages show no
  * articles (see JournalContext). Each page is a history
  * entry, so the browser's back button walks through them (see lib/dashboardHistory).
  */
@@ -87,7 +92,7 @@ export function JournalSection() {
   // from before) is the list.
   const allowed =
     view.page === "journal" || view.page === "article"
-    || ((view.page === "saved" || view.page === "mine" || view.page === "write" || view.page === "following") && canWrite);
+    || ((view.page === "saved" || view.page === "mine" || view.page === "write" || view.page === "following" || view.page === "moderation") && canWrite);
   const page = allowed ? view : LIST;
 
   // The page itself; the Journal's menu, in each page's header, reads where it is and moves on.
@@ -106,6 +111,13 @@ export function JournalSection() {
         return <SavedArticles onOpen={openArticle} />;
       case "following":
         return <FollowingAuthors onAuthor={(author) => go({ page: "journal", filters: { author } })} />;
+      case "moderation":
+        return (
+          <div className="space-y-6 pb-12">
+            <JournalHeader title="Muted and hidden" />
+            <MutedAndHidden />
+          </div>
+        );
       case "mine":
         return <MyArticles onOpen={openEditor} onNew={() => openEditor()} />;
       case "write":

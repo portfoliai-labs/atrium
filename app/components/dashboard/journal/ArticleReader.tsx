@@ -271,7 +271,7 @@ export function ArticleReader({ slug, onEdit, onFilter }: {
             : readerHidden
               ? "You hid this article: it doesn't show in your lists."
               : `You muted ${authorName(author)}: their articles and comments don't show in your lists.`}
-          <span className="text-slate-400">Undo it from the menu, or in Settings → Muted and hidden.</span>
+          <span className="text-slate-400">Undo it from the menu, or in the Journal&apos;s Muted and hidden.</span>
         </p>
       )}
       {byReports && (

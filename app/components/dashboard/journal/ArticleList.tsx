@@ -2,16 +2,17 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Globe, HandHeart, Search, UserCheck, Users, X } from "lucide-react";
+import { Globe, HandHeart, UserCheck, Users, X } from "lucide-react";
 import { useJournal, useJournalRead } from "../../../context/JournalContext";
 import { journalService } from "../../../services/journalService";
 import {
-  ALL_NETWORK_NOTICE, CATEGORIES, CATEGORY_LABELS, QUERY_MAX, readFeedScope, serverFeedScope, subscribeFeedScope, writeFeedScope,
+  readFeedScope, serverFeedScope, subscribeFeedScope, writeFeedScope,
   type FeedScope,
 } from "../../../lib/journal";
 import type { ArticleCategory, ArticleLanguage, ArticleScope } from "../../../models/Journal";
 import type { JournalFilters } from "../JournalSection";
-import { ArticleCard, EmptyState, ErrorState, JournalHeader, LeadCard, LoadMore, Spinner, useArticles } from "./JournalKit";
+import { ArticleRow, EmptyState, ErrorState, JournalHeader, LeadCard, LoadMore, Spinner, useArticles } from "./JournalKit";
+import { JournalRail, JournalSearch, TopicChips } from "./JournalRail";
 import { useArticleModeration } from "./Moderation";
 
 const SEARCH_DEBOUNCE_MS = 350;
@@ -57,6 +58,41 @@ export function FeedSwitch({ feed, onChange, label = "Feed" }: { feed: FeedScope
   );
 }
 
+// The Journal's feeds, as its tabs name them.
+const FEED_TABS: { id: FeedScope; label: string }[] = [
+  { id: "trusted", label: "Your network" },
+  { id: "all", label: "Discover" },
+];
+
+/**
+ * The Journal's two feeds as tabs over the list, underlined: Your network (whom the reader follows
+ * and whom they follow) and Discover (all the network). None is marked while the list is one
+ * author's or the followed ones' (`feed` null), which no feed narrows.
+ */
+function FeedTabs({ feed, onChange }: { feed: FeedScope | null; onChange: (feed: FeedScope) => void }) {
+  return (
+    <div role="tablist" aria-label="Feed" className="flex gap-7 border-b border-slate-200">
+      {FEED_TABS.map((t) => {
+        const active = feed === t.id;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(t.id)}
+            className={`-mb-px border-b-2 pb-3 text-sm font-bold transition-colors ${
+              active ? "border-slate-900 text-slate-900" : "border-transparent text-slate-400 hover:text-slate-700"
+            }`}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * The day's most applauded article (ianus' `order=top_day`): the ranking puts the newest after the
  * applauded ones, so one without applause is none. `undefined` until it answers; `null` for none,
@@ -77,12 +113,14 @@ function useTopArticle(enabled: boolean, language: ArticleLanguage, scope: Artic
 /**
  * The Journal's articles, newest first (or a search's, by relevance), the reader's language
  * first: on the unnarrowed list the day's most applauded (the API's only) leads on the large
- * dark card, or the newest when none was applauded today; the rest in a grid. Narrowed by a category, words, an
+ * dark card, or the newest when none was applauded today; the rest one under the other, as rows. Narrowed by a category, words, an
  * author or an instrument (the last two from an article's page); the narrowing lives in the
  * history entry (`onFilters` replaces it), so coming back from an article finds it. With the
  * API, the feed is the reader's network (this instance's authors and the network's in their web
- * of trust) or, as they choose, all of it; one author's articles and Following are never narrowed
- * by it. Each card has the reader's moderation (hide, mute, report), what it takes off the list
+ * of trust) or, as they choose, all of it (Discover), on two tabs; one author's articles and
+ * Following are never narrowed by it, and a tab chosen leaves them. Beside the list (on a wide
+ * screen), the rail (JournalRail): the search, the reader's pages, the categories and the authors
+ * they follow; on a narrow one, the search and the categories over the list. Each card has the reader's moderation (hide, mute, report), what it takes off the list
  * leaving at once.
  */
 export function ArticleList({ filters, onFilters, onOpen }: {
@@ -127,116 +165,103 @@ export function ArticleList({ filters, onFilters, onOpen }: {
   const shownTop = top && moderation.visible(top) ? top : null;
   // The large card only on the unnarrowed list: today's most applauded, or the newest.
   const lead = narrowed ? undefined : shownTop ?? items?.[0];
-  const grid = (items ?? []).filter((a) => a.uuid !== lead?.uuid);
+  const rows = (items ?? []).filter((a) => a.uuid !== lead?.uuid);
+  // A tab chosen is its feed, out of one author's articles or the followed ones'.
+  const chooseFeed = (next: FeedScope) => {
+    writeFeedScope(next);
+    if (author || following) onFilters({ ...filters, author: undefined, following: undefined });
+  };
+  const toggleFollowing = () => onFilters({ ...filters, author: undefined, following: following ? undefined : true });
 
   return (
     <div className="space-y-6 pb-12">
       <JournalHeader
         title="Journal"
         subtitle="Notes on investing by advisors and investors: the ideas behind the numbers on your dashboard."
+        // The rail has the Journal's pages on a wide screen.
+        menuNarrowOnly
       />
 
-      <div className="space-y-3">
-        {feedApplies && (
-          <div className="flex flex-wrap items-center gap-3">
-            <FeedSwitch feed={feed} onChange={writeFeedScope} />
-            {feed === "all" && <p className="text-xs text-slate-500">{ALL_NETWORK_NOTICE}</p>}
-          </div>
-        )}
-        {/* The categories and the search on one row; the search above them on a phone. */}
-        <div className="flex flex-col-reverse md:flex-row md:items-center gap-3 md:gap-6">
-          <div className="min-w-0 flex-1 -mx-1 flex gap-1.5 overflow-x-auto px-1 py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {[undefined, ...CATEGORIES].map((c) => {
-              const active = category === c;
-              return (
-                <button
-                  key={c ?? "all"}
-                  type="button"
-                  onClick={() => setCategory(c)}
-                  className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
-                    active ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-500 hover:text-slate-800"
-                  }`}
-                >
-                  {c ? CATEGORY_LABELS[c] : "All"}
-                </button>
-              );
-            })}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_300px] gap-10 xl:gap-14 items-start">
+        <div className="min-w-0 space-y-6">
+          <div className="space-y-4">
             {canWrite && (
-              <>
-                <span className="shrink-0 w-px my-1 bg-slate-200" />
-                <button
-                  type="button"
-                  onClick={() => onFilters({ ...filters, following: following ? undefined : true })}
-                  title="Only the authors you follow"
-                  className={`shrink-0 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
-                    following ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-500 hover:text-slate-800"
-                  }`}
-                >
-                  <UserCheck className="h-3.5 w-3.5" /> Following
-                </button>
-              </>
+              <FeedTabs feed={feedApplies ? feed : null} onChange={chooseFeed} />
+            )}
+            {/* Without the rail (a narrow screen): the search and the categories, the followed authors' articles too. */}
+            <div className="lg:hidden space-y-3">
+              <JournalSearch query={query} onQuery={setQuery} />
+              <div className="flex items-center gap-1.5">
+                <div className="min-w-0 flex-1"><TopicChips category={category} onCategory={setCategory} /></div>
+                {canWrite && (
+                  <button
+                    type="button"
+                    onClick={toggleFollowing}
+                    title="Only the authors you follow"
+                    className={`shrink-0 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
+                      following ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <UserCheck className="h-3.5 w-3.5" /> Following
+                  </button>
+                )}
+              </div>
+            </div>
+            {(author || instrument || following) && (
+              <div className="flex flex-wrap gap-2">
+                {following && <FilterChip label="From whom you follow" onClear={() => onFilters({ ...filters, following: undefined })} />}
+                {author && <FilterChip label={`By ${author.name}`} onClear={() => onFilters({ ...filters, author: undefined })} />}
+                {instrument && <FilterChip label={`About ${instrument.ticker}`} onClear={() => onFilters({ ...filters, instrument: undefined })} />}
+              </div>
             )}
           </div>
-          <label className="relative block shrink-0 md:w-64">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="search"
-              value={query}
-              maxLength={QUERY_MAX}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search articles"
-              className="w-full rounded-full border border-slate-200 bg-white pl-10 pr-4 py-2 text-sm outline-none focus:border-[#C49A3C]"
-            />
-          </label>
+
+          {moderation.bar}
+          {moderation.dialog}
+
+          {list.error ? (
+            <ErrorState message={list.error} onRetry={list.retry} />
+          ) : !items || top === undefined ? (
+            <Spinner />
+          ) : items.length === 0 && !list.hasMore ? (
+            <EmptyState>
+              {following && !category && !q && !author && !instrument
+                ? "No articles from the authors you follow yet: follow an author from one of their articles."
+                : narrowed ? "No articles match." : scope === "trusted" ? (
+                  <span className="flex flex-col items-center gap-3">
+                    <span>Nothing from your network yet: follow authors from their articles, and their articles (and those of whom they follow) show here.</span>
+                    <button type="button" onClick={() => writeFeedScope("all")} className="text-xs font-bold text-[#9a7424] hover:text-[#C49A3C]">
+                      Open Discover
+                    </button>
+                  </span>
+                ) : "No articles yet."}
+            </EmptyState>
+          ) : (
+            <>
+              {lead && (
+                <LeadCard
+                  article={lead}
+                  onOpen={() => lead.slug && onOpen(lead.slug)}
+                  badge={lead === shownTop ? <><HandHeart className="h-3.5 w-3.5" /> Most applauded today</> : undefined}
+                  menu={moderation.menuFor(lead, true)}
+                />
+              )}
+              {rows.length > 0 && (
+                <div className="divide-y divide-slate-200">
+                  {rows.map((a) => (
+                    <ArticleRow key={a.uuid} article={a} onOpen={() => a.slug && onOpen(a.slug)} menu={moderation.menuFor(a)} />
+                  ))}
+                </div>
+              )}
+              {list.hasMore && <LoadMore onClick={() => void list.more()} loading={list.loadingMore} />}
+            </>
+          )}
         </div>
-        {(author || instrument) && (
-          <div className="flex flex-wrap gap-2">
-            {author && <FilterChip label={`By ${author.name}`} onClear={() => onFilters({ ...filters, author: undefined })} />}
-            {instrument && <FilterChip label={`About ${instrument.ticker}`} onClear={() => onFilters({ ...filters, instrument: undefined })} />}
-          </div>
-        )}
+
+        <aside className="hidden lg:block sticky top-24 border-l border-slate-200 pl-8 xl:pl-10 py-1">
+          <JournalRail query={query} onQuery={setQuery} filters={filters} onFilters={onFilters} onFollowing={toggleFollowing} />
+        </aside>
       </div>
-
-      {moderation.bar}
-      {moderation.dialog}
-
-      {list.error ? (
-        <ErrorState message={list.error} onRetry={list.retry} />
-      ) : !items || top === undefined ? (
-        <Spinner />
-      ) : items.length === 0 && !list.hasMore ? (
-        <EmptyState>
-          {following && !category && !q && !author && !instrument
-            ? "No articles from the authors you follow yet: follow an author from one of their articles."
-            : narrowed ? "No articles match." : scope === "trusted" ? (
-              <span className="flex flex-col items-center gap-3">
-                <span>Nothing from your network yet: follow authors from their articles, and their articles (and those of whom they follow) show here.</span>
-                <button type="button" onClick={() => writeFeedScope("all")} className="text-xs font-bold text-[#9a7424] hover:text-[#C49A3C]">
-                  Open All the network
-                </button>
-              </span>
-            ) : "No articles yet."}
-        </EmptyState>
-      ) : (
-        <>
-          {lead && (
-            <LeadCard
-              article={lead}
-              onOpen={() => lead.slug && onOpen(lead.slug)}
-              badge={lead === shownTop ? <><HandHeart className="h-3.5 w-3.5" /> Most applauded today</> : undefined}
-              menu={moderation.menuFor(lead, true)}
-            />
-          )}
-          {grid.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {grid.map((a) => (
-                <ArticleCard key={a.uuid} article={a} onOpen={() => a.slug && onOpen(a.slug)} menu={moderation.menuFor(a)} />
-              ))}
-            </div>
-          )}
-          {list.hasMore && <LoadMore onClick={() => void list.more()} loading={list.loadingMore} />}
-        </>
-      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import type { JournalFilters } from "../JournalSection";
 import {
   AuthorAvatar, AuthorBadge, EmptyState, ErrorState, FollowButton, JournalHeader, LoadMore, NpubChip, PAGE_SIZE, Spinner, usePaged,
 } from "./JournalKit";
+import { authorFilter } from "./FollowingRail";
 import { ItemMenu, ReportDialog, UndoBar, reportedMessage, type Undoable } from "./Moderation";
 
 /**
@@ -72,9 +73,7 @@ export function FollowingAuthors({ onAuthor }: { onAuthor: (author: NonNullable<
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
             {list.items.map(({ author, followedAt }) => {
               const key = author.pubkey ?? author.npub ?? "";
-              const open = () => onAuthor(author.userUuid
-                ? { uuid: author.userUuid, name: authorName(author) }
-                : { pubkey: author.pubkey ?? undefined, name: authorName(author) });
+              const open = () => onAuthor(authorFilter(author));
               return (
                 <div key={key} className="flex flex-wrap items-center gap-3 px-5 py-4 md:px-6">
                   <button type="button" onClick={open} className="group flex-1 min-w-0 flex items-center gap-3 text-left">

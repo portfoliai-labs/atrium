@@ -16,6 +16,7 @@ const ENTRIES: Entry[] = [
   { key: "saved", label: "Saved", view: { page: "saved" }, here: (v) => v.page === "saved" },
   { key: "mine", label: "Your articles", view: { page: "mine" }, here: (v) => v.page === "mine" },
   { key: "following", label: "Following", view: { page: "following" }, here: (v) => v.page === "following" },
+  { key: "moderation", label: "Muted and hidden", view: { page: "moderation" }, here: (v) => v.page === "moderation" },
 ];
 
 // Pages shown as buttons; the rest go under the dots.

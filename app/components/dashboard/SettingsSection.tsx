@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, FolderTree, Globe, EyeOff, RefreshCw } from "lucide-react";
+import { AlertCircle, AlertTriangle, Loader2, Bell, Save, CheckCircle2, User as UserIcon, Trash2, Mail, Lock, Shapes, FolderTree, Globe, RefreshCw } from "lucide-react";
 import { userService } from "../../services/userService";
 import { supabase } from "../../lib/supabaseClient";
 import { MIN_PASSWORD_LENGTH, newPasswordError } from "../../lib/password";
@@ -15,8 +15,6 @@ import { AssetCategoriesEditor } from "./AssetCategoriesEditor";
 import { ManualAssetsEditor } from "./ManualAssetsEditor";
 import { NetworkIdentitySettings } from "./NetworkIdentitySettings";
 import { SyncSettings } from "./SyncSettings";
-import { MutedAndHidden } from "./journal/MutedAndHidden";
-import { useJournal } from "../../context/JournalContext";
 import { WalletCategories } from "./wallets/WalletCategories";
 import { useWallets } from "../../context/WalletsContext";
 
@@ -68,8 +66,6 @@ const TABS = [
   // The user's keys on the network (Nostr): the Journal's, and the private messages' (requests and
   // chats with the network's advisors and investors).
   { id: "network", label: "Network", icon: Globe },
-  // The Journal's authors the user muted and articles they hid: where the Journal is.
-  { id: "moderation", label: "Muted and hidden", icon: EyeOff },
   // This server as one of the user's devices, syncing with their phones through their own storage.
   { id: "sync", label: "Sync", icon: RefreshCw },
   { id: "account", label: "Account", icon: UserIcon },
@@ -102,9 +98,8 @@ export function SettingsSection() {
   const { available: walletsAvailable } = useWallets();
   // Categories only where the wallets are (a backend with them).
   const hasWallets = user?.role !== "ADVISOR" && walletsAvailable;
-  const { canWrite: hasJournal } = useJournal();
   const walletTab = (id: TabId) => id === "categories";
-  const unavailable = (id: TabId) => (walletTab(id) && !hasWallets) || (id === "moderation" && !hasJournal);
+  const unavailable = (id: TabId) => (walletTab(id) && !hasWallets);
   const tabs = TABS.filter((t) => !unavailable(t.id));
   const [chosenTab, setActiveTab] = useState<TabId>(() => {
     const tab = requestedTab ?? linkedTab() ?? "notifications";
@@ -497,7 +492,6 @@ export function SettingsSection() {
 
       {activeTab === "network" && <NetworkIdentitySettings />}
 
-      {activeTab === "moderation" && <MutedAndHidden />}
 
       {activeTab === "sync" && <SyncSettings />}
 
