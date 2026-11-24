@@ -144,7 +144,7 @@ export function NewsPageSection() {
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-500">
-      <PageHeader eyebrow="Market news" title="Today's headlines" note="Market news published today, from the sources we follow." />
+      <PageHeader eyebrow="Market news" title="Today's headlines" info="Market news published today, from the sources we follow." />
       {loading ? (
         <div className="flex h-40 items-center justify-center">
           <Loader2 className="animate-spin h-6 w-6 text-[#C49A3C]" />

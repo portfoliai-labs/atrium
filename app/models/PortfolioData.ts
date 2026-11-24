@@ -624,6 +624,30 @@ interface RealizedPnlResponse extends ModuleState {
   totalRealizedTradingPnl: number;
   totalDividendIncome: number;
   byAsset: RealizedPnlEntryResponse[];
+  // Each calendar year that realized anything, oldest first: every year's add up to the totals.
+  // Missing from a document built before them (nucleo < 0.86.0).
+  byYear?: RealizedPnlYear[];
+}
+
+// What a calendar year realized, as the totals split it: from sales and from dividends.
+interface RealizedPnlYear {
+  year: number;
+  realizedTradingPnl: number;
+  dividendIncome: number;
+  realizedPnl: number;
+  // The assets that realized anything that year, largest trading P&L (either sign) first.
+  byAsset: RealizedPnlYearAsset[];
+}
+
+interface RealizedPnlYearAsset {
+  assetId: string;
+  ticker: string | null;
+  listingId?: string | null;
+  name: string;
+  assetClassCode: string;
+  realizedTradingPnl: number;
+  dividendIncome: number;
+  realizedPnl: number;
 }
 
 // GET /insights/returns
@@ -866,7 +890,7 @@ export type {
   InsightsVolatilityModule, InsightsFrontierModule, InsightsFactorExposuresModule, InsightsRiskResponse,
   FacetState, InsightsStatusModules, InsightsStatusResponse,
   BrokerTotal, AssetClassTotal, CurrencyHolding, CurrencyDetail, HoldingsByCurrencyResponse,
-  PositionResponse, DividendsResponse, TradingCostsResponse, RealizedPnlResponse, ReturnsResponse, PeriodDashboard,
+  PositionResponse, DividendsResponse, TradingCostsResponse, RealizedPnlResponse, RealizedPnlYear, RealizedPnlYearAsset, ReturnsResponse, PeriodDashboard,
   BenchmarkResponse, VolatilityDetailResponse, RiskModelResponse,
   ComparisonValue, ComparisonPerformance, ComparisonVolatility, ComparisonAllocationEntry,
   ComparisonDividends, ComparisonTradingCosts, ComparisonBenchmark, PortfolioComparisonEntry,

@@ -159,7 +159,7 @@ function ClientsList({ onOpen, onOpenNetwork, onOpenRequests }: {
         eyebrow="Advisor"
         title="Clients"
         value={clients.length > 0 ? value : undefined}
-        note={clients.length > 0 ? "Their investments together" : undefined}
+        info={clients.length > 0 ? "Their investments together." : undefined}
         figures={clients.length > 0 ? [
           { label: "Clients", value: String(clients.length) },
           { label: "Your alerts", value: rules === null ? "—" : String(rules.length), sub: "On their portfolios" },

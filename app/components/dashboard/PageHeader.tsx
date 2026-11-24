@@ -2,8 +2,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MoreHorizontal, Plus } from "lucide-react";
+import { Info, MoreHorizontal, Plus } from "lucide-react";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
+import { InfoTip } from "./PerformanceSection";
 
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 
@@ -49,8 +50,32 @@ const VISIBLE_ACTIONS = 3;
  * figures, each leading down to the module it comes from. The actions always act on this page's
  * portfolio, so nothing on the pages under it asks which one.
  */
+/**
+ * A page's title, the same on every section's page: what the page is (`info`) told by the "i"
+ * beside it, on hover or focus, rather than in a line under it. Under the breadcrumb, `PAGE_HEAD`
+ * apart (as PageHeader has it).
+ */
+export function PageTitle({ title, info }: { title: React.ReactNode; info?: string }) {
+  return (
+    <div className="flex items-center gap-2.5 min-w-0">
+      <h1 className="min-w-0 text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05] text-balance" style={serif}>{title}</h1>
+      {info && (
+        <span className="shrink-0 inline-flex">
+          <InfoTip text={info}>
+            <Info className="h-4 w-4 text-[#857e78] hover:text-[#78716c] cursor-help transition-colors" />
+          </InfoTip>
+        </span>
+      )}
+    </div>
+  );
+}
+
+// The breadcrumb (or eyebrow) and the title under it, and what follows under the title: the same
+// space on every page.
+export const PAGE_HEAD = "flex flex-col gap-2";
+
 export function PageHeader({
-  eyebrow, crumbs, badge, notice, title, value, change, note, counters = [], actions = [], figures = [],
+  eyebrow, crumbs, badge, notice, title, info, value, change, note, counters = [], actions = [], figures = [],
 }: {
   // Left out where the breadcrumb above already says what the page is.
   eyebrow?: string;
@@ -61,6 +86,8 @@ export function PageHeader({
   // Above it all, across the page: what the page is, when it needs saying (a backtest's banner).
   notice?: React.ReactNode;
   title: string;
+  // What the page is, said by the "i" beside the title (on hover), never under it.
+  info?: string;
   // null while loading; undefined to leave it out.
   value?: string | null;
   change?: { text: string; tone?: "gain" | "loss" } | null;
@@ -77,7 +104,7 @@ export function PageHeader({
       {notice}
       {/* The actions keep to the right: beside a long title or note from lg, under it otherwise. */}
       <div className="flex flex-wrap lg:flex-nowrap items-end justify-between gap-5">
-        <div className="min-w-0 lg:flex-1 flex flex-col gap-2">
+        <div className={`min-w-0 lg:flex-1 ${PAGE_HEAD}`}>
           {crumbs && crumbs.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
               <Breadcrumb trail={crumbs} current={title} />
@@ -89,7 +116,7 @@ export function PageHeader({
               {badge}
             </p>
           )}
-          <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05] text-balance" style={serif}>{title}</h1>
+          <PageTitle title={title} info={info} />
           {(value !== undefined || note) && (
             <p className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1.5">
               {value !== undefined && (
@@ -105,38 +132,7 @@ export function PageHeader({
               {note && <span className="text-[12.5px] text-[#78716c]">{note}</span>}
             </p>
           )}
-          {counters.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {counters.map((c) => {
-                const body = (
-                  <>
-                    {c.attention && c.attention.count > 0 && (
-                      <>
-                        <span className="h-[7px] w-[7px] rounded-full bg-[#e11d48]" />
-                        <b className="text-[#e11d48] tabular-nums">{c.attention.count}</b>
-                        <span className="text-[#e11d48]">{c.attention.label} ·</span>
-                      </>
-                    )}
-                    {c.count !== undefined && <b className="text-[#1c1917] tabular-nums">{c.count ?? "…"}</b>}
-                    {c.label}
-                  </>
-                );
-                const pill = "inline-flex items-center gap-[7px] px-[11px] py-[5px] rounded-full border border-[#E0DACC] text-xs font-semibold text-[#78716c]";
-                return c.onClick ? (
-                  <button
-                    key={c.key}
-                    type="button"
-                    onClick={c.onClick}
-                    className={`${pill} hover:border-[#C49A3C] hover:text-[#1c1917] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40`}
-                  >
-                    {body}
-                  </button>
-                ) : (
-                  <span key={c.key} className={pill}>{body}</span>
-                );
-              })}
-            </div>
-          )}
+          {counters.length > 0 && <PageCounters counters={counters} />}
         </div>
         {actions.length > 0 && (
           <div className="ml-auto shrink-0 flex flex-wrap items-center justify-end gap-2">
@@ -172,6 +168,42 @@ export function PageHeader({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/** A page's counters: its Transactions, Alerts… each a pill, opening its page. */
+export function PageCounters({ counters }: { counters: PageCounter[] }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {counters.map((c) => {
+        const body = (
+          <>
+            {c.attention && c.attention.count > 0 && (
+              <>
+                <span className="h-[7px] w-[7px] rounded-full bg-[#e11d48]" />
+                <b className="text-[#e11d48] tabular-nums">{c.attention.count}</b>
+                <span className="text-[#e11d48]">{c.attention.label} ·</span>
+              </>
+            )}
+            {c.count !== undefined && <b className="text-[#1c1917] tabular-nums">{c.count ?? "…"}</b>}
+            {c.label}
+          </>
+        );
+        const pill = "inline-flex items-center gap-[7px] px-[11px] py-[5px] rounded-full border border-[#E0DACC] text-xs font-semibold text-[#78716c]";
+        return c.onClick ? (
+          <button
+            key={c.key}
+            type="button"
+            onClick={c.onClick}
+            className={`${pill} hover:border-[#C49A3C] hover:text-[#1c1917] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40`}
+          >
+            {body}
+          </button>
+        ) : (
+          <span key={c.key} className={pill}>{body}</span>
+        );
+      })}
     </div>
   );
 }

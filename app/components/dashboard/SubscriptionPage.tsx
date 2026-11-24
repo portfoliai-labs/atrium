@@ -29,7 +29,7 @@ export function SubscriptionPage() {
 
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-500">
-      <PageHeader eyebrow="Account" title="Subscription" note="Your plan, and the plans you can move to." />
+      <PageHeader eyebrow="Account" title="Subscription" info="Your plan, and the plans you can move to." />
 
       {/* Current plan */}
       <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-[rgba(196,154,60,0.2)] shadow-sm space-y-6">

@@ -17,8 +17,8 @@ import {
 } from "../../../models/Projection";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
 import { Fig, Figs, Module, ModuleHead, MODULE_BODY } from "../PerformanceSection";
+import { PAGE_HEAD, PageTitle } from "../PageHeader";
 
-const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 const AXIS_TICK_COLOR = "#57534e";
 const TOOLTIP_STYLE: React.CSSProperties = { borderRadius: 8, borderColor: "#e2e8f0", fontSize: 12, color: "#334155" };
 const GOLD = "#C49A3C";
@@ -98,10 +98,10 @@ function requestOf(question: Question, forms: Forms): { request: ProjectionReque
 export function ProjectionPage({ portfolioUuid, trail, eyebrow }: { portfolioUuid: string; trail: Crumb[]; eyebrow?: string }) {
   return (
     <div className="space-y-6 pb-12">
-      <Breadcrumb trail={trail} current="Projection" />
-      <div className="flex flex-col gap-2">
+      <div className={PAGE_HEAD}>
+        <Breadcrumb trail={trail} current="Projection" />
         {eyebrow && <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">{eyebrow}</p>}
-        <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>Projection</h1>
+        <PageTitle title="Projection" />
       </div>
       <ProjectionPanel portfolioUuid={portfolioUuid} />
     </div>

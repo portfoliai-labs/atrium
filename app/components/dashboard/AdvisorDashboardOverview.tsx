@@ -87,7 +87,7 @@ export default function AdvisorDashboardOverview({ onNavigate }: { onNavigate: (
         eyebrow="Advisor"
         title={greeting}
         value={clients.length > 0 ? aum : undefined}
-        note={clients.length > 0 ? `Your ${clients.length} ${clients.length === 1 ? "client's" : "clients'"} investments together` : "Add your first client to get started"}
+        info={clients.length > 0 ? `Your ${clients.length} ${clients.length === 1 ? "client's" : "clients'"} investments together.` : "Add your first client to get started."}
         actions={[
           { label: "Clients", primary: true, plus: false, onClick: () => onNavigate(CLIENTS_SECTION) },
           { label: "New strategy", onClick: () => openStrategiesPage(onNavigate, { page: "builder" }) },

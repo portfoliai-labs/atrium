@@ -182,7 +182,7 @@ export function FinancialStatementsPage({ listingId, name, onClose }: { listingI
       <PageHeader
         crumbs={[{ label: name, onClick: onClose }]}
         title="Financial statements"
-        note={[sourceNote, currency && `amounts in ${currency}`].filter(Boolean).join(" · ") || undefined}
+        info={[sourceNote, currency && `Amounts in ${currency}`].filter(Boolean).map((t) => `${t}.`).join(" ") || undefined}
       />
       {data === null ? (
         <Module><div className={`${MODULE_BODY} pt-[22px]`}><p className="text-[12.5px] text-[#857e78]">The statements couldn&apos;t be read.</p></div></Module>

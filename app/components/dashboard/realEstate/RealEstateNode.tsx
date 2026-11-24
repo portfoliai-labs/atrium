@@ -7,9 +7,7 @@ import { Area, AreaChart, Bar, BarChart, ReferenceLine, ResponsiveContainer, Too
 import { useRealEstate, useRealEstateOverview, useRealEstateRead, useRealEstateSummary } from "../../../context/RealEstateContext";
 import { CATEGORICAL_PALETTE } from "../../../lib/chartColors";
 import { formatCompact, formatCurrency } from "../../../lib/format";
-import { INVESTMENTS_SECTION, useOpenDashboardPage } from "../../../lib/dashboardNav";
 import { PROPERTY_KIND_LABELS, PROPERTY_USE_LABELS } from "../../../lib/realEstate";
-import type { InvestmentsView } from "../InvestmentsSection";
 import { dayLabel, monthLabel, today } from "../../../lib/wallets";
 import type { Property, PropertyTax, PropertyUse, TaxList } from "../../../models/RealEstate";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
@@ -21,9 +19,11 @@ import { ALL_PROPERTIES, RealEstateTransactions } from "./RealEstateTransactions
 import { RealEstateInsights } from "./RealEstateInsights";
 import { PropertyPage } from "./PropertyPage";
 import { RealEstateAlerts, alertsCounter, useAlertRules } from "./RealEstateAlerts";
+import { PropertyTaxesByYearModule, RealEstateTaxesPage } from "./RealEstateTaxes";
 
-// The real estate's pages: its own, a property's, and those its header leads to.
-export type RealEstatePage = "home" | "property" | "insights" | "transactions" | "alerts";
+// The real estate's pages: its own, a property's, and those its header leads to; "taxes", the
+// properties' taxes of a year, from its taxes by year or this year's.
+export type RealEstatePage = "home" | "property" | "insights" | "transactions" | "alerts" | "taxes";
 
 const VALUE_COLOR = "#C49A3C";
 
@@ -48,14 +48,15 @@ const toneOf = (v: number | null | undefined): "gain" | "loss" | undefined => (v
  * every property's or one's too. A property that's gone (deleted, an old link) opens the real
  * estate's own page.
  */
-export function RealEstateNode({ page: requested, property: propertyUuid, rootTrail, onOpen }: {
+export function RealEstateNode({ page: requested, property: propertyUuid, year: taxYear, rootTrail, onOpen }: {
   page: RealEstatePage;
   property?: string;
+  // On "taxes": the year.
+  year?: number;
   rootTrail: Crumb[];
-  onOpen: (page: RealEstatePage, property?: string) => void;
+  onOpen: (page: RealEstatePage, property?: string, year?: number) => void;
 }) {
   const { properties, loading, error } = useRealEstate();
-  const openPage = useOpenDashboardPage();
   const property = propertyUuid ? properties.find((p) => p.uuid === propertyUuid) : undefined;
   const page: RealEstatePage = requested === "property" && !property ? "home" : requested;
   const active = useMemo(() => properties.filter((p) => !p.archived), [properties]);
@@ -124,6 +125,18 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
     );
   }
 
+  if (page === "taxes") {
+    return (
+      <RealEstateTaxesPage
+        key={taxYear}
+        year={taxYear ?? Number(today().slice(0, 4))}
+        trail={trail}
+        properties={properties}
+        onOpenProperty={(uuid) => onOpen("property", uuid)}
+      />
+    );
+  }
+
   if (page === "alerts") {
     return <RealEstateAlerts key={property?.uuid ?? "all"} trail={trail} property={property} onOpenProperty={(uuid) => onOpen("property", uuid)} />;
   }
@@ -171,8 +184,9 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
           <TaxesModule
             properties={active}
             onOpen={(uuid) => onOpen("property", uuid)}
-            onOpenTaxes={openPage ? () => openPage(INVESTMENTS_SECTION, { kind: "portfolio", uuid: "", page: "taxes" } satisfies InvestmentsView) : undefined}
+            onOpenTaxes={(year) => onOpen("taxes", undefined, year)}
           />
+          <PropertyTaxesByYearModule properties={properties} onOpenYear={(year) => onOpen("taxes", undefined, year)} />
         </>
       )}
       <ArchivedList archived={archived} onOpen={(uuid) => onOpen("property", uuid)} />
@@ -191,8 +205,8 @@ export function RealEstateNode({ page: requested, property: propertyUuid, rootTr
 function TaxesModule({ properties, onOpen, onOpenTaxes }: {
   properties: Property[];
   onOpen: (uuid: string) => void;
-  // The Taxes page: the year's taxes, the investments' with the properties'.
-  onOpenTaxes?: () => void;
+  // Real estate's Taxes, on the year: the properties' taxes.
+  onOpenTaxes?: (year: number) => void;
 }) {
   const year = Number(today().slice(0, 4));
   const taxed = properties.some((p) => p.address.country === "IT");
@@ -220,7 +234,7 @@ function TaxesModule({ properties, onOpen, onOpenTaxes }: {
       <ModuleHead
         title={`Taxes ${year}`}
         desc="IMU and the tax on rents this year, at your share. Open a property to see how they're worked out and record a payment."
-        onExplore={onOpenTaxes}
+        onExplore={onOpenTaxes ? () => onOpenTaxes(year) : undefined}
         right={provisional ? <span className="px-2 py-0.5 rounded-full bg-amber-50 text-[10px] font-black uppercase tracking-wider text-amber-700">Estimate</span> : undefined}
       />
       <div className={`${MODULE_BODY} space-y-5`}>

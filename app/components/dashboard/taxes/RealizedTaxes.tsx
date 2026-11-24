@@ -3,8 +3,8 @@
 
 import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Bar, BarChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Hourglass, Info } from "lucide-react";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { ChevronRight, Hourglass, Info } from "lucide-react";
 import { useInvestmentsRead, usePortfolio } from "../../../context/PortfolioContext";
 import { fetchTaxYears, taxYearsKey, useRealizedGains, useTaxYear } from "../../../hooks/useTaxes";
 import { ApiError } from "../../../services/apiClient";
@@ -13,7 +13,7 @@ import { CATEGORICAL_PALETTE } from "../../../lib/chartColors";
 import { TAX_DISCLAIMER } from "../../../lib/taxes";
 import { TAX_REGIME_UNAVAILABLE, type TaxYear } from "../../../models/Tax";
 import { ExplorePanel } from "../ExploreView";
-import { AXIS_TICK_COLOR, FigRows, TOOLTIP_STYLE } from "../PerformanceSection";
+import { AXIS_TICK_COLOR, Fig, FigRows, Figs, TOOLTIP_STYLE } from "../PerformanceSection";
 
 const isNoRegime = (err: unknown) => err instanceof ApiError && err.status === 409 && err.errorType === TAX_REGIME_UNAVAILABLE;
 
@@ -25,22 +25,21 @@ const SERIES = [
   { key: "withheld", label: "Withheld by brokers", color: CATEGORICAL_PALETTE[2], of: (t: TaxYear) => t.withheldTax },
 ] as const;
 
-const sum = (values: number[]) => values.reduce((s, v) => s + v, 0);
+export const sum = (values: number[]) => values.reduce((s, v) => s + v, 0);
+
+// The widest a year's bar gets, with a year or two: the fewer the years, the wider.
+const BAR_MAX = 160;
 
 /**
- * TAXES BY YEAR — Profit & Loss's (the investments': All portfolios, or the only portfolio): the
- * estimated tax of each calendar year since the first transaction, by the regime of the tax
- * residence, as stacked bars (what goes in the tax return on the gains and on the income, what the
- * brokers withhold) over a table that adds the losses carried forward. A year (its bar, its row)
- * opens the Taxes page on it (`onOpen`). Without a residence (or a regime for it), the way there.
+ * Every year's taxes on the investments, from the first transaction's (GET /v1/taxes/years):
+ * undefined loading; "noRegime" without a residence or a regime for it; null failed; [] without
+ * any transaction. Each year also goes in the cache, for the Taxes page's.
  */
-export function TaxesByYearPanel({ onOpen }: { onOpen: (year?: number) => void }) {
+export function useTaxYearsRead() {
   const { client } = usePortfolio();
   const clientUuid = client?.uuid ?? null;
   const queryClient = useQueryClient();
-  // undefined loading; "noRegime" without a residence or a regime for it; null failed. [] without
-  // any transaction. Each year also goes in the cache, for the Taxes page's.
-  const data = useInvestmentsRead<TaxYear[] | "noRegime">(taxYearsKey(clientUuid), async () => {
+  return useInvestmentsRead<TaxYear[] | "noRegime">(taxYearsKey(clientUuid), async () => {
     try {
       return await fetchTaxYears(queryClient, clientUuid);
     } catch (err) {
@@ -48,6 +47,79 @@ export function TaxesByYearPanel({ onOpen }: { onOpen: (year?: number) => void }
       throw err;
     }
   });
+}
+
+/** The figures of every year together: what the taxes came to, and the losses carried on now. */
+export function taxTotals(rows: TaxYear[]) {
+  const last = rows[rows.length - 1];
+  const current = new Date().getFullYear();
+  return {
+    currency: rows[0]?.currency ?? "EUR",
+    declared: sum(rows.map((t) => t.tax + t.incomeTax)),
+    withheld: sum(rows.map((t) => t.withheldTax)),
+    total: sum(rows.map((t) => t.tax + t.incomeTax + t.withheldTax)),
+    thisYear: rows.filter((t) => t.year === current).reduce((s, t) => s + t.tax + t.incomeTax + t.withheldTax, 0),
+    carried: last ? sum(last.carriedLosses.map((l) => l.amount)) : 0,
+    expiring: last && last.year === current ? sum(last.expiringLosses.map((l) => l.amount)) : 0,
+  };
+}
+
+/**
+ * TAXES — Profit & Loss's short of them (the investments': All portfolios, or the only
+ * portfolio): what the taxes came to since the first year, this year's so far, the losses carried
+ * on; the whole card opens the Taxes section (`onOpen`: TaxesOverviewPage). Without a residence (or
+ * a regime for it), that the taxes need one.
+ */
+export function TaxesSummaryPanel({ onOpen }: { onOpen: () => void }) {
+  const data = useTaxYearsRead();
+  const rows = Array.isArray(data) ? data : [];
+  const t = taxTotals(rows);
+  const money = (v: number) => formatCurrency(v, t.currency, 0);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      className="block cursor-pointer rounded-[1.75rem] outline-none focus-visible:ring-2 focus-visible:ring-[#C49A3C]/40 [&>section]:transition-colors [&>section]:hover:border-[#C49A3C]"
+    >
+      <ExplorePanel
+        title="Taxes"
+        desc="The estimated taxes on your investments, every year together. Opens the taxes year by year."
+        right={<span className="inline-flex items-center gap-1 text-xs font-bold text-[#8A6A28]">Taxes <ChevronRight className="h-3.5 w-3.5" /></span>}
+      >
+        <div className="px-6 pb-6">
+          {data === undefined ? (
+            <p className="text-[12.5px] text-[#857e78]">Loading…</p>
+          ) : data === null ? (
+            <p className="text-[12.5px] text-[#857e78]">The taxes couldn&apos;t be read right now.</p>
+          ) : data === "noRegime" ? (
+            <p className="text-[12.5px] text-[#857e78]">Set your tax residence to see your taxes. Only Italy&apos;s are computed for now.</p>
+          ) : rows.length === 0 ? (
+            <p className="text-[12.5px] text-[#857e78]">No transactions yet.</p>
+          ) : (
+            <Figs spread>
+              <Fig label={`Total since ${rows[0].year}`} strong value={money(t.total)} info="The tax return's on the gains and the income, and what the brokers withheld, every year together. An estimate." />
+              <Fig label="This year so far" value={money(t.thisYear)} />
+              <Fig label="Losses carried forward" value={money(t.carried)} sub={t.expiring > 0 ? `${money(t.expiring)} expire this year` : undefined} info="The losses left to offset in the years after, the tax return's and each broker's." />
+            </Figs>
+          )}
+        </div>
+      </ExplorePanel>
+    </div>
+  );
+}
+
+/**
+ * TAXES BY YEAR — the Taxes section's (the investments': All portfolios, or the only portfolio):
+ * the estimated tax of each calendar year since the first transaction, by the regime of the tax
+ * residence, as stacked bars (what goes in the tax return on the gains and on the income, what the
+ * brokers withhold; a bar's tooltip names them, the fewer the years the wider) over a table that
+ * adds the losses carried forward. A year (its bar, its row) opens the Taxes page on it (`onOpen`).
+ * Without a residence (or a regime for it), the way there.
+ */
+export function TaxesByYearPanel({ onOpen }: { onOpen: (year?: number) => void }) {
+  const data = useTaxYearsRead();
 
   const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
   const currency = rows[0]?.currency ?? "EUR";
@@ -84,6 +156,7 @@ export function TaxesByYearPanel({ onOpen }: { onOpen: (year?: number) => void }
               <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 600, height: 256 }}>
                 <BarChart
                   data={chart}
+                  barCategoryGap="22%"
                   margin={{ top: 8, right: 4, left: 0, bottom: 0 }}
                   onClick={(s) => {
                     const row = rows[Number(s?.activeIndex)];
@@ -99,7 +172,6 @@ export function TaxesByYearPanel({ onOpen }: { onOpen: (year?: number) => void }
                     labelFormatter={(y) => (Number(y) === current ? `${y} so far` : String(y))}
                     formatter={(v, n) => [money(Number(v)), n]}
                   />
-                  {series.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
                   {series.map((s, i) => (
                     <Bar
                       key={s.key}
@@ -107,7 +179,7 @@ export function TaxesByYearPanel({ onOpen }: { onOpen: (year?: number) => void }
                       stackId="t"
                       fill={s.color}
                       radius={i === series.length - 1 ? [4, 4, 0, 0] : undefined}
-                      maxBarSize={40}
+                      maxBarSize={BAR_MAX}
                       isAnimationActive={false}
                     />
                   ))}
@@ -169,15 +241,20 @@ export function TaxesByYearPanel({ onOpen }: { onOpen: (year?: number) => void }
  * - one declared with others: their gains and losses offset each other, so it has no tax of its
  *   own. Its net realized this year instead, and that it's taxed with them.
  * Opens the Taxes page on the year (`onOpen`). Nothing without a residence or when it can't be read.
+ * This year's, or `year`'s (a Profit & Loss year's page, `bare` in its own module).
  */
-export function PortfolioTaxYear({ portfolioUuid, onOpen }: { portfolioUuid: string; onOpen: (year?: number) => void }) {
+export function PortfolioTaxYear({ portfolioUuid, onOpen, year = new Date().getFullYear(), bare = false }: {
+  portfolioUuid: string;
+  onOpen: (year?: number) => void;
+  year?: number;
+  bare?: boolean;
+}) {
   const { portfolios } = usePortfolio();
   const portfolio = portfolios.find((p) => p.uuid === portfolioUuid);
   const declared = portfolios.filter((p) => !p.isVirtual && p.taxationMode === "declared");
   const withheld = portfolio?.taxationMode === "withheld";
   // Declared with others: its own net, from the year's sales.
   const shared = !withheld && declared.length > 1;
-  const year = new Date().getFullYear();
   const tax = useTaxYear(year);
   const gains = useRealizedGains(year, null, { enabled: shared });
   const data = tax.data && (!shared || gains.data) ? { tax: tax.data, gains: shared ? gains.data ?? null : null } : undefined;
@@ -188,28 +265,31 @@ export function PortfolioTaxYear({ portfolioUuid, onOpen }: { portfolioUuid: str
   const net = data.gains?.byPortfolio.find((b) => b.key === portfolioUuid)?.net ?? 0;
 
   return (
-    <div className="pt-3 border-t border-[#EEE9DD] space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#78716c]">Taxes {year} · estimate</p>
-        <button type="button" onClick={() => onOpen(year)} className="text-xs font-bold text-[#8A6A28] hover:text-[#C49A3C]">Details →</button>
-      </div>
+    <div className={bare ? "space-y-2" : "pt-3 border-t border-[#EEE9DD] space-y-2"}>
+      {/* `bare`: its module's head says it and opens the year. */}
+      {!bare && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#78716c]">Taxes {year} · estimate</p>
+          <button type="button" onClick={() => onOpen(year)} className="text-xs font-bold text-[#8A6A28] hover:text-[#C49A3C]">Details →</button>
+        </div>
+      )}
       {withheld ? (
         <FigRows
           rows={[
-            { key: "withheld", label: "Withheld by the broker", value: money(data.tax.withheld.find((w) => w.portfolioUuid === portfolioUuid)?.tax ?? 0), info: "What its broker withholds on this year's gains (regime amministrato). Its income is taxed at source." },
+            { key: "withheld", label: "Withheld by the broker", value: money(data.tax.withheld.find((w) => w.portfolioUuid === portfolioUuid)?.tax ?? 0), info: "What its broker withholds on the year's gains (regime amministrato). Its income is taxed at source." },
             carried > 0 && { key: "carried", label: "Its losses carried forward", value: money(carried), info: "Only its broker can offset them, against this portfolio's gains." },
           ]}
         />
       ) : shared ? (
         <>
-          <FigRows rows={[{ key: "net", label: `Net realized in ${year}`, value: money(net), tone: net > 0 ? "gain" : net < 0 ? "loss" : undefined, info: "This year's gains less its losses, on this portfolio." }]} />
+          <FigRows rows={[{ key: "net", label: `Net realized in ${year}`, value: money(net), tone: net > 0 ? "gain" : net < 0 ? "loss" : undefined, info: "The year's gains less its losses, on this portfolio." }]} />
           <p className="text-xs text-[#78716c]">
             Declared in your tax return with your other {declared.length - 1 === 1 ? "portfolio" : `${declared.length - 1} portfolios`}: their gains and losses offset each other, so the tax is theirs together.
           </p>
         </>
       ) : (
         <FigRows
-          rows={[{ key: "tax", label: "Tax to declare", value: money(data.tax.tax + data.tax.incomeTax), info: "What this year's gains and income owe, to put in the tax return." }]}
+          rows={[{ key: "tax", label: "Tax to declare", value: money(data.tax.tax + data.tax.incomeTax), info: "What the year's gains and income owe, to put in the tax return." }]}
         />
       )}
     </div>

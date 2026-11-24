@@ -5,7 +5,7 @@ import { Fragment, useMemo, useState } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { AlertTriangle, ChevronDown, Hourglass, Info, Loader2, Landmark } from "lucide-react";
 import { usePortfolio } from "../../../context/PortfolioContext";
-import { useRealizedGains, useTaxIncome, useYearTaxes } from "../../../hooks/useTaxes";
+import { useRealizedGains, useTaxAlertRules, useTaxIncome, useTaxYear, useYearTaxes } from "../../../hooks/useTaxes";
 import { ApiError } from "../../../services/apiClient";
 import { formatCurrency, formatQuantity } from "../../../lib/format";
 import {
@@ -14,17 +14,15 @@ import {
 import {
   TAX_REGIME_UNAVAILABLE,
   type CarriedLoss, type CostMethod, type IncomeCategory, type IncomePayment, type InvestmentIncome, type RealizedGain,
-  type RealizedGains, type TaxedIncome, type TaxYear, type UnrealizedGain, type YearTaxes,
+  type RealizedGains, type TaxedIncome, type TaxYear, type UnrealizedGain,
 } from "../../../models/Tax";
-import { REAL_ESTATE_SECTION, useOpenDashboardPage } from "../../../lib/dashboardNav";
-import type { RealEstateView } from "../realEstate/RealEstateSection";
-import { PropertiesTaxes, YearGlance } from "./YearTaxes";
-import { TaxAlerts } from "./TaxAlerts";
+import { InvestmentsYearGlance } from "./YearTaxes";
 import { WealthTaxesModule } from "./WealthTaxes";
+import { TaxAlerts, isInvestmentAlert } from "./TaxAlerts";
 import { Breadcrumb, type Crumb } from "../Breadcrumb";
 import { Fig, Figs, Module, ModuleHead, MODULE_BODY } from "../PerformanceSection";
+import { PAGE_HEAD, PageCounters, PageTitle } from "../PageHeader";
 
-const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 
 // What a request came back with: the answer, or why there's none.
 type Loaded<T> = { data: T | null; error: string | null; noRegime?: boolean };
@@ -47,11 +45,12 @@ const toneOf = (v: number): "gain" | "loss" | undefined => (v > 0 ? "gain" : v <
 const toneClass = (v: number) => (v > 0 ? "text-[#047857]" : v < 0 ? "text-[#e11d48]" : "text-[#1c1917]");
 
 /**
- * TAXES — every tax of the user's for a calendar year (an advisor's client's, on the client's
- * Wealth: their investments' alone, the properties being the owner's to read), from fiscus' one
- * year (GET /v1/taxes/overview/{year}): the year at a glance (each currency's total, the
- * properties' instalments by due day), then the investments', then the properties' (each opening
- * its page, where its taxes are worked out and paid), then the user's tax alerts. All
+ * TAXES — the taxes on the user's investments for a calendar year (an advisor's client's, on the
+ * client's Wealth), from fiscus' year (GET /v1/taxes/years/{year}): the year at a glance (what goes
+ * in the tax return, what the brokers withhold), then the year's detail. The properties' taxes are
+ * Real estate's (its Taxes, by year). The year is the trail's, opened from a chart's year
+ * (`initialYear`); the user's tax alerts on the investments are a page of their own, opened under
+ * the title (`onOpenAlerts`). All
  * portfolios' Taxes page, or the only portfolio's. The investments', across every real portfolio
  * (not the backtests), by the regime of the tax residence (Italy only, for now):
  * - what goes in the tax return (the declared portfolios'), by kind of income, with the earlier
@@ -68,7 +67,7 @@ const toneClass = (v: number) => (v > 0 ? "text-[#047857]" : v < 0 ? "text-[#e11
  * with the way to set it (`onOpenSettings`). Every figure is an estimate on the recorded transactions: the page says
  * so, the backend doesn't. Who pays a portfolio's taxes is set in Manage portfolios (`onOpenPortfolios`).
  */
-export function TaxesPage({ trail, initialYear, onOpenSettings, onOpenPortfolios }: {
+export function TaxesPage({ trail, initialYear, onOpenSettings, onOpenPortfolios, onOpenAlerts }: {
   trail: Crumb[];
   // The year it opens on (one the Realized P&L's taxes opened): this one without, or if not offered.
   initialYear?: number;
@@ -76,28 +75,31 @@ export function TaxesPage({ trail, initialYear, onOpenSettings, onOpenPortfolios
   onOpenSettings?: () => void;
   // Where each portfolio's taxation mode is set.
   onOpenPortfolios: () => void;
+  // The user's tax alerts (not a client's), on the year shown, to come back to it.
+  onOpenAlerts?: (year: number) => void;
 }) {
   const { portfolios, client } = usePortfolio();
   const years = useMemo(() => taxYears(), []);
-  const [year, setYear] = useState(() => (initialYear !== undefined && years.includes(initialYear) ? initialYear : years[0]));
+  // The year it's on: one a chart's year opened (the Realized P&L's), this one otherwise. Another
+  // year is opened from its chart, not picked here.
+  const year = initialYear !== undefined && years.includes(initialYear) ? initialYear : years[0];
   // null: the regime's own.
   const [method, setMethod] = useState<CostMethod | null>(null);
   // A residence set elsewhere (the Profile, the client's settings) invalidates them (`changed()`).
-  const yearRead = useYearTaxes(year);
-  const openPage = useOpenDashboardPage();
-  const openProperty = openPage
-    ? (uuid: string) => openPage(REAL_ESTATE_SECTION, { page: "property", property: uuid } satisfies RealEstateView)
-    : undefined;
+  const yearRead = useTaxYear(year);
+  // The year's overview, for its taxes on holdings (with their figures and due days).
+  const overview = useYearTaxes(year).data;
+  const alertsRead = useTaxAlertRules(!client && !!onOpenAlerts);
   const incomeRead = useTaxIncome(year);
   // The year's gains by the method asked before, kept on screen while another method's load.
   const gainsRead = useRealizedGains(year, method, { keepPrevious: true });
 
-  const overview: Loaded<YearTaxes> | null = loaded(yearRead, (err) => ({ error: errorText(err, "this year's taxes") }));
-  // The investments' part: without a regime, why (the properties are there either way).
-  const tax: Loaded<TaxYear> | null = overview === null ? null
-    : overview.error ? { data: null, error: overview.error }
-    : overview.data?.investments ? { data: overview.data.investments, error: null }
-    : { data: null, error: null, noRegime: overview.data?.investmentsUnavailable?.errorType === TAX_REGIME_UNAVAILABLE };
+  // Without a residence (or a regime for it), why: the sales and the income still read.
+  const tax: Loaded<TaxYear> | null = loaded(yearRead, (err) => (
+    err instanceof ApiError && err.status === 409 && err.errorType === TAX_REGIME_UNAVAILABLE
+      ? { error: null, noRegime: true }
+      : { error: errorText(err, "this year's taxes") }
+  ));
   const payments = loaded(incomeRead, (err) => ({ error: errorText(err, "this year's income") }));
   const sales = gainsRead.isPlaceholderData ? null : loaded(gainsRead, (err) => ({ error: errorText(err, "this year's sales") }));
   const shownSales = sales ?? (gainsRead.isPlaceholderData ? { data: gainsRead.data, error: null } : null);
@@ -110,40 +112,32 @@ export function TaxesPage({ trail, initialYear, onOpenSettings, onOpenPortfolios
   const isCurrent = year === years[0];
   const whose = client ? `${client.name}'s` : "your";
 
-  const right = (
-    <label className="relative inline-flex items-center">
-      <span className="sr-only">Tax year</span>
-      <select
-        value={year}
-        onChange={(e) => setYear(Number(e.target.value))}
-        className="appearance-none h-10 pl-4 pr-9 rounded-xl bg-white border border-[#E0DACC] text-[13px] font-bold text-[#1c1917] outline-none hover:border-[#C49A3C] focus:ring-2 focus:ring-[#C49A3C]/30"
-      >
-        {years.map((y) => <option key={y} value={y}>{y}</option>)}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-[#857e78]" />
-    </label>
-  );
+  const alertRules = alertsRead.isError ? null : alertsRead.data?.filter(isInvestmentAlert);
+  const alertsFound = alertRules?.filter((r) => r.enabled).reduce((n, r) => n + r.findings.length, 0) ?? 0;
 
   return (
     <div className="space-y-6 pb-12">
-      <Breadcrumb trail={trail} current="Taxes" right={right} />
-
-      <div className="flex flex-col gap-2">
-        {/* The page's name, as the other pages have it; the year is the picker's, beside the trail. */}
-        <h1 className="text-[30px] md:text-[40px] font-bold text-[#1c1917] leading-[1.05]" style={serif}>
-          {client ? `${client.name}'s taxes` : "Taxes"}
-        </h1>
-        <p className="flex items-start gap-2 text-[12.5px] text-[#78716c] max-w-3xl">
-          <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          {TAX_DISCLAIMER}
-        </p>
+      <div className={PAGE_HEAD}>
+        {/* The year is the trail's last step, under Taxes (`trail`'s, every year's): another one
+            opens from there. */}
+        <Breadcrumb trail={trail} current={String(year)} />
+        {/* The page's name, as the other pages have it; that its figures are estimates, its "i"'s. */}
+        <PageTitle title={client ? `${client.name}'s taxes ${year}` : `Taxes ${year}`} info={TAX_DISCLAIMER} />
+        {!client && onOpenAlerts && (
+          <PageCounters
+            counters={[{
+              key: "alerts",
+              label: "alerts",
+              count: alertRules === undefined ? null : alertRules?.length ?? 0,
+              attention: alertsFound > 0 ? { count: alertsFound, label: "found" } : undefined,
+              onClick: () => onOpenAlerts(year),
+            }]}
+          />
+        )}
       </div>
 
-      {overview?.data && (overview.data.totals.length > 0 || overview.data.instalments.length > 0) && (
-        <YearGlance data={overview.data} onOpenProperty={openProperty} />
-      )}
+      {tax?.data && <InvestmentsYearGlance data={tax.data} overview={overview} />}
 
-      <SectionTitle title="Investments" />
       {tax === null ? (
         <Loading />
       ) : tax.noRegime ? (
@@ -174,39 +168,27 @@ export function TaxesPage({ trail, initialYear, onOpenSettings, onOpenPortfolios
 
       <IncomeModule loaded={payments} nameOf={nameOf} whose={whose} />
 
-      {overview?.data?.wealth && (
-        <>
-          <SectionTitle title="Holdings" />
-          <WealthTaxesModule data={overview.data.wealth} onOpenPortfolios={onOpenPortfolios} />
-        </>
-      )}
-      {overview?.data?.wealthUnavailable && overview.data.wealthUnavailable.errorType !== TAX_REGIME_UNAVAILABLE && (
-        <>
-          <SectionTitle title="Holdings" />
-          <ErrorNote text="The taxes on your holdings can't be computed yet: a currency's exchange rate is missing. Try again later." />
-        </>
-      )}
-
-      {overview?.data?.propertiesIncluded && overview.data.properties.length > 0 && (
-        <>
-          <SectionTitle title="Properties" />
-          <PropertiesTaxes data={overview.data} onOpenProperty={openProperty} />
-        </>
-      )}
-
-      {!client && (
-        <>
-          <SectionTitle title="Alerts" />
-          <TaxAlerts properties={overview?.data?.properties.map((p) => ({ uuid: p.propertyUuid, name: p.name })) ?? []} />
-        </>
+      {/* The taxes on holdings (the user's own: none for a client's): the stamp duty, the IVAFE,
+          the tax on crypto-assets, the IVIE. */}
+      {overview?.wealth && <WealthTaxesModule data={overview.wealth} onOpenPortfolios={onOpenPortfolios} />}
+      {overview?.wealthUnavailable && overview.wealthUnavailable.errorType !== TAX_REGIME_UNAVAILABLE && (
+        <ErrorNote text="The taxes on your holdings can't be computed yet: a currency's exchange rate is missing. Try again later." />
       )}
     </div>
   );
 }
 
-/** A part of the page: the investments, the properties, the alerts. */
-function SectionTitle({ title }: { title: string }) {
-  return <h2 className="pt-2 text-[20px] md:text-[24px] font-bold text-[#1c1917]" style={serif}>{title}</h2>;
+/**
+ * TAX ALERTS' PAGE — Taxes › Alerts: the user's own rules on their investments' taxes (a
+ * property's tax falling due is Real estate's alerts').
+ */
+export function TaxAlertsPage({ trail }: { trail: Crumb[]; year?: number }) {
+  return (
+    <div className="space-y-6 pb-12">
+      <Breadcrumb trail={trail} current="Alerts" />
+      <TaxAlerts />
+    </div>
+  );
 }
 
 function Loading() {
@@ -261,6 +243,8 @@ function TaxYearModules({ data, net, incomeGross, isCurrent, nameOf, whose, with
   whose: string;
   withheldCount: number;
   onOpenPortfolios: () => void;
+  // The user's tax alerts (not a client's), on the year shown, to come back to it.
+  onOpenAlerts?: (year: number) => void;
 }) {
   const money = (v: number) => formatCurrency(v, data.currency);
   const carried = data.carriedLosses.reduce((s, l) => s + l.amount, 0);

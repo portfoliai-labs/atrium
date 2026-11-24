@@ -24,7 +24,9 @@ import { toChartPoints, type SeriesPoint } from "../../lib/series";
 import { CATEGORICAL_PALETTE, portfolioColorMap } from "../../lib/chartColors";
 import { investmentsKey, usePortfolio, useInvestmentsQuery } from "../../context/PortfolioContext";
 import { investmentsOf } from "../../models/Portfolio";
-import { PortfolioTaxYear, TaxesByYearPanel } from "./taxes/RealizedTaxes";
+import { PortfolioTaxYear, TaxesSummaryPanel } from "./taxes/RealizedTaxes";
+import { PnlByYearPanel } from "./pnl/ProfitLossYears";
+import type { PortfolioExplore } from "./InvestmentsSection";
 import { insightsKey, useDetail, useInsights, type Insights, type SectionState } from "../../hooks/useInsights";
 import { pushDashboardEntry, readDashboardEntry, type DashboardOverlay } from "../../lib/dashboardHistory";
 import { NoDataEmptyState } from "./NoDataEmptyState";
@@ -95,7 +97,7 @@ export const TOOLTIP_STYLE: React.CSSProperties = {
  * in as they arrive. Stale modules are followed through /insights/status (see useInsights).
  */
 export function PerformanceSection({
-  portfolioUuid, isAggregate = false, backtest = false, strategyShown = false, onNavigate, trail, pageLabel = "Insights", trailInTop = false, top, onOpenPortfolio, onCompare, onOpenStrategy, onOpenTaxes, comparison = null,
+  portfolioUuid, isAggregate = false, backtest = false, strategyShown = false, onNavigate, trail, pageLabel = "Insights", trailInTop = false, top, onOpenPortfolio, onCompare, onOpenStrategy, onOpenTaxes, onOpenPnlYear, initialExplore, comparison = null,
 }: {
   portfolioUuid: string; isAggregate?: boolean; onNavigate?: (section: string) => void;
   // A strategy's backtest (a virtual portfolio): its header carries BacktestBanner, and before
@@ -127,6 +129,10 @@ export function PerformanceSection({
   // Opens the investments' Taxes page, on a year: with it, the Realized P&L shows the taxes (the
   // investments' year by year in its detail, a portfolio's this year's under it).
   onOpenTaxes?: (year?: number) => void;
+  // Opens Profit & Loss's page of a year (ProfitLossYearPage), from its year by year.
+  onOpenPnlYear?: (year: number) => void;
+  // The detail it opens with: Profit & Loss (from a year's trail).
+  initialExplore?: PortfolioExplore;
   // The portfolio's side-by-side figures (GET /v1/portfolios/comparison), which the page's header
   // already loads: the returns, the drawdown and the benchmark's excess the modules show next to
   // their own. null while loading or without one; those figures are then left out.
@@ -304,6 +310,8 @@ export function PerformanceSection({
               onOpenStrategy={onNavigate ? onOpenStrategy : undefined}
               onNavigate={onNavigate}
               onOpenTaxes={onOpenTaxes}
+              onOpenPnlYear={onOpenPnlYear}
+              initialExplore={initialExplore}
               comparison={comparison}
               backtest={backtest}
               strategyShown={strategyShown}
@@ -335,17 +343,23 @@ export const MODULE_BODY = "px-6 pb-[22px]";
 // Figures read as good or bad news.
 const TONE_CLASS = { gain: "text-[#047857]", loss: "text-[#e11d48]" } as const;
 const toneClass = (tone?: "gain" | "loss") => (tone ? TONE_CLASS[tone] : "text-[#1c1917]");
-const toneOfValue = (v: number | null | undefined): "gain" | "loss" | undefined => (v == null || v === 0 ? undefined : v > 0 ? "gain" : "loss");
+export const toneOfValue = (v: number | null | undefined): "gain" | "loss" | undefined => (v == null || v === 0 ? undefined : v > 0 ? "gain" : "loss");
 
 /**
  * FIGS — a module's figures, as a grid of label-over-value cells with a hairline above each (as
  * many to a row as fit, 120px at least). `strong` is the headline one, a size up; `sub` a faint
  * line under the value; `info`, a tooltip on the label.
  */
-export function Figs({ children, className = "", pairs = false, wide = false }: { children: React.ReactNode; className?: string; pairs?: boolean; wide?: boolean }) {
+export function Figs({ children, className = "", pairs = false, wide = false, spread = false }: {
+  children: React.ReactNode; className?: string; pairs?: boolean; wide?: boolean; spread?: boolean;
+}) {
   // `pairs`: two to a row whatever the width, for a half-width module that lines up with its neighbour.
   // `wide`: columns of 150px at least, for figures in the thousands with their cents.
-  const cols = pairs ? "grid-cols-2" : wide ? "grid-cols-[repeat(auto-fit,minmax(150px,1fr))]" : "grid-cols-[repeat(auto-fit,minmax(120px,1fr))]";
+  // `spread`: from md, one row across the module, the first figure at its left edge, the last at
+  // its right, those between centred (two to a row, to the left, below).
+  const cols = spread
+    ? "grid-cols-2 md:grid-flow-col md:auto-cols-fr md:[&>*:last-child]:items-end md:[&>*:last-child]:text-right md:[&>*:not(:first-child):not(:last-child)]:items-center md:[&>*:not(:first-child):not(:last-child)]:text-center"
+    : pairs ? "grid-cols-2" : wide ? "grid-cols-[repeat(auto-fit,minmax(150px,1fr))]" : "grid-cols-[repeat(auto-fit,minmax(120px,1fr))]";
   return <div className={`grid ${cols} gap-x-5 gap-y-3.5 ${className}`}>{children}</div>;
 }
 
@@ -776,7 +790,7 @@ const isPeriodEmpty = (data: PeriodDashboard) =>
 // percentage display checks this first and falls back to "—".
 const hasPeriodBaseline = (data: PeriodDashboard) => data.t0Value !== 0;
 const formatPct = (pct: number) => `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
-const formatSignedCurrency = (amount: number, currency: string) =>
+export const formatSignedCurrency = (amount: number, currency: string) =>
   `${amount >= 0 ? "+" : ""}${formatCurrency(amount, currency, 0)}`;
 
 /**
@@ -2725,20 +2739,23 @@ function MonthlyReturnsHeatmap({
  * REALIZED P&L MODULE — the Income & Costs section's realized P&L: what selling has locked in
  * since inception and the dividends received (just the one from sales when no dividend ever
  * was), in the reference currency, each sale converted at its own date. Its detail is Profit &
- * Loss's (ProfitLossExplore): every realized and dividend figure, the investments' taxes year by
- * year, then every asset in one table. With `onOpenTaxes`, a portfolio that isn't the investments
+ * Loss's (ProfitLossExplore): every realized and dividend figure, each year's (opening its page,
+ * `onOpenPnlYear`), the investments' taxes year by year, then every asset in one table. With `onOpenTaxes`, a portfolio that isn't the investments
  * has this year's taxes under its figures (PortfolioTaxYear).
  */
-function RealizedPnlModule({ slot, currency, portfolioUuid, onOpenTaxes }: {
+function RealizedPnlModule({ slot, currency, portfolioUuid, onOpenTaxes, onOpenPnlYear, openOnMount = false }: {
   slot: ModuleSlot<InsightsRealizedPnlModule>;
   currency: string;
   portfolioUuid: string;
   onOpenTaxes?: (year?: number) => void;
+  onOpenPnlYear?: (year: number) => void;
+  // Its detail open as the page opens (Profit & Loss, from a year's trail), once it has loaded.
+  openOnMount?: boolean;
 }) {
   const { portfolios } = usePortfolio();
   // The investments (All portfolios, or the only portfolio): their taxes are the taxpayer's.
   const isInvestments = investmentsOf(portfolios)?.uuid === portfolioUuid;
-  const [exploring, setExploring] = useState(false);
+  const [exploring, setExploring] = useState(openOnMount);
   const data = slot.module;
   const hasAny = data !== null && (data.topAssets.length > 0 || data.totalRealizedPnl !== 0);
   const canExplore = hasAny && !slot.updating;
@@ -2772,7 +2789,7 @@ function RealizedPnlModule({ slot, currency, portfolioUuid, onOpenTaxes }: {
       )}
       {canExplore && exploring && (
         <ExploreView title="Profit & Loss" onClose={() => setExploring(false)}>
-          <ProfitLossExplore portfolioUuid={portfolioUuid} onOpenTaxes={onOpenTaxes && isInvestments ? onOpenTaxes : undefined} />
+          <ProfitLossExplore portfolioUuid={portfolioUuid} onOpenTaxes={onOpenTaxes && isInvestments ? onOpenTaxes : undefined} onOpenPnlYear={onOpenPnlYear} />
         </ExploreView>
       )}
     </Module>
@@ -2783,10 +2800,15 @@ function RealizedPnlModule({ slot, currency, portfolioUuid, onOpenTaxes }: {
  * PROFIT & LOSS EXPLORE — the Realized P&L module's detail: what selling has locked in
  * (/insights/realized-pnl) and every dividend figure (/insights/dividends), then every asset in one
  * table (AssetPnlTable). The two load on their own, and the table shows as soon as either has.
- * Without any dividend ever received, the dividends' panel and columns are left out. With
- * `onOpenTaxes` (the investments'), the taxes year by year last, each year opening its page.
+ * Without any dividend ever received, the dividends' panel and columns are left out. Then what
+ * each year realized, each opening its page (`onOpenPnlYear`), and with `onOpenTaxes` (the
+ * investments') the Taxes card, opening the Taxes section (every year's, each opening its page).
  */
-function ProfitLossExplore({ portfolioUuid, onOpenTaxes }: { portfolioUuid: string; onOpenTaxes?: (year?: number) => void }) {
+function ProfitLossExplore({ portfolioUuid, onOpenTaxes, onOpenPnlYear }: {
+  portfolioUuid: string;
+  onOpenTaxes?: (year?: number) => void;
+  onOpenPnlYear?: (year: number) => void;
+}) {
   const realized = useDetail(() => portfolioService.getRealizedPnl(portfolioUuid), insightsKey(portfolioUuid, "incomeCosts", "realizedPnl"));
   const dividends = useDetail(() => portfolioService.getDividends(portfolioUuid), insightsKey(portfolioUuid, "incomeCosts", "dividends"));
   const loading = realized.loading || dividends.loading;
@@ -2799,7 +2821,8 @@ function ProfitLossExplore({ portfolioUuid, onOpenTaxes }: { portfolioUuid: stri
       {!loading && (realized.data || dividends.data) && (
         <AssetPnlTable realized={realized.data} dividends={dividends.data} withDividends={!noDividends} />
       )}
-      {onOpenTaxes && <TaxesByYearPanel onOpen={onOpenTaxes} />}
+      {onOpenPnlYear && realized.data && <PnlByYearPanel data={realized.data} onOpen={onOpenPnlYear} />}
+      {onOpenTaxes && <TaxesSummaryPanel onOpen={() => onOpenTaxes()} />}
     </>
   );
 }
@@ -2878,12 +2901,6 @@ function joinAssetPnl(realized: RealizedPnlResponse | null, dividends: Dividends
   return rows;
 }
 
-/**
- * ASSET P&L TABLE — Profit & Loss's every asset, in one table instead of one for the realized P&L
- * and one for the dividends (which repeated each asset's lifetime dividends): what selling it
- * locked in, what it has paid, the total, then its dividends over the last two years and its
- * yields. Every column sorts; it scrolls sideways when it doesn't fit.
- */
 /** The instrument's tokens (census' trackers): another issuer's security each, which tracks the
  * instrument and is priced as it, held in a wallet of the user's own. On a token's own page its
  * row is there too, marked: where the user buys or sells the token they are on. */
@@ -2918,6 +2935,15 @@ function TrackersModule({ trackers, asset, referencePrice, referenceCurrency }: 
   );
 }
 
+/**
+ * ASSET P&L TABLE — Profit & Loss's every asset, in one widget instead of one table for the
+ * realized P&L and one for the dividends (which repeated each asset's lifetime dividends), its
+ * columns in two views so neither scrolls sideways: Realized (what selling it locked in, what it
+ * has paid, the total) and, with any dividend, Dividends (the payers' last two years and yields).
+ * Every column sorts.
+ */
+type AssetPnlView = "realized" | "dividends";
+
 function AssetPnlTable({ realized, dividends, withDividends }: {
   realized: RealizedPnlResponse | null;
   dividends: DividendsResponse | null;
@@ -2925,35 +2951,78 @@ function AssetPnlTable({ realized, dividends, withDividends }: {
   withDividends: boolean;
 }) {
   const currency = realized?.currency ?? dividends?.currency ?? "EUR";
+  const [view, setView] = useState<AssetPnlView>("realized");
+  const shown = withDividends ? view : "realized";
   const rows = useMemo(() => joinAssetPnl(realized, dividends), [realized, dividends]);
+  // The Dividends view: the assets that have paid.
+  const payers = useMemo(() => rows.filter((r) => (r.dividends ?? 0) > 0 || (r.trailing12M ?? 0) > 0 || (r.prior12M ?? 0) > 0), [rows]);
   const money = (v: number | null) => (v === null ? <span className="text-slate-300">—</span> : formatCurrency(v, currency, 0));
   const signed = (v: number | null) => (v === null ? <span className="text-slate-300">—</span> : <SignedAmount amount={v} currency={currency} />);
-  const columns = useMemo((): DataColumn<AssetPnlRow>[] => [
-    { key: "asset", label: "Asset", sortValue: (a) => a.ticker ?? a.name, render: (a) => <AssetCell ticker={a.ticker} name={a.name} sub={a.isHeld === null ? undefined : a.isHeld ? "Still partly held" : "Closed"} /> },
-    { key: "sales", label: "From sales", align: "right", sortValue: (a) => a.fromSales, render: (a) => signed(a.fromSales) },
-    ...(withDividends ? ([
-      { key: "dividends", label: "Dividends", align: "right", sortValue: (a) => a.dividends, render: (a) => money(a.dividends) },
-      { key: "total", label: "Total", align: "right", sortValue: (a) => a.total, render: (a) => signed(a.total) },
-      { key: "t12m", label: "Div. last 12m", align: "right", sortValue: (a) => a.trailing12M, render: (a) => money(a.trailing12M) },
-      { key: "p12m", label: "Div. prior 12m", align: "right", sortValue: (a) => a.prior12M, render: (a) => money(a.prior12M) },
-      { key: "yoy", label: "Change", align: "right", sortValue: (a) => a.growthYoyPct, render: (a) => <SignedPct pct={a.growthYoyPct} /> },
-      { key: "yield", label: "Yield", align: "right", sortValue: (a) => a.yieldPct, render: (a) => plainPctOrDash(a.yieldPct) },
-      { key: "yoc", label: "On cost", align: "right", sortValue: (a) => a.yieldOnCostPct, render: (a) => plainPctOrDash(a.yieldOnCostPct) },
-    ] satisfies DataColumn<AssetPnlRow>[]) : []),
+  const columns = useMemo((): DataColumn<AssetPnlRow>[] => {
+    const asset: DataColumn<AssetPnlRow> = {
+      key: "asset", label: "Asset", grow: true, sortValue: (a) => a.ticker ?? a.name,
+      render: (a) => <AssetCell ticker={a.ticker} name={a.name} sub={a.isHeld === null ? undefined : a.isHeld ? "Still partly held" : "Closed"} />,
+    };
+    if (shown === "dividends") {
+      return [
+        asset,
+        { key: "t12m", label: "Last 12m", align: "right", sortValue: (a) => a.trailing12M, render: (a) => money(a.trailing12M) },
+        { key: "p12m", label: "Prior 12m", align: "right", sortValue: (a) => a.prior12M, render: (a) => money(a.prior12M) },
+        { key: "yoy", label: "Change", align: "right", sortValue: (a) => a.growthYoyPct, render: (a) => <SignedPct pct={a.growthYoyPct} /> },
+        { key: "yield", label: "Yield", align: "right", sortValue: (a) => a.yieldPct, render: (a) => plainPctOrDash(a.yieldPct) },
+        { key: "yoc", label: "On cost", align: "right", sortValue: (a) => a.yieldOnCostPct, render: (a) => plainPctOrDash(a.yieldOnCostPct) },
+      ];
+    }
+    return [
+      asset,
+      { key: "sales", label: "From sales", align: "right", sortValue: (a) => a.fromSales, render: (a) => signed(a.fromSales) },
+      ...(withDividends ? ([
+        { key: "dividends", label: "Dividends", align: "right", sortValue: (a) => a.dividends, render: (a) => money(a.dividends) },
+        { key: "total", label: "Total", align: "right", sortValue: (a) => a.total, render: (a) => signed(a.total) },
+      ] satisfies DataColumn<AssetPnlRow>[]) : []),
+    ];
   // money and signed only read currency.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [currency, withDividends]);
+  }, [currency, withDividends, shown]);
 
   return (
     <ExplorePanel
       eyebrow={currency}
       title="By Asset"
-      desc={withDividends
-        ? "Every asset sold or that has paid dividends: what selling it locked in, what it has paid, and its dividends over the last two years. The largest gains and losses from sales first."
-        : "Every asset sold: what selling it locked in. The largest gains and losses first."}
+      desc={shown === "dividends"
+        ? "Every asset that has paid: its dividends over the last two years, and what it yields on its price and on what it cost."
+        : withDividends
+          ? "Every asset sold or that has paid dividends: what selling it locked in and what it has paid. The largest gains and losses from sales first."
+          : "Every asset sold: what selling it locked in. The largest gains and losses first."}
+      right={withDividends ? <AssetPnlSwitch view={shown} onChange={setView} /> : undefined}
     >
-      <DataTable columns={columns} rows={rows} rowKey={(a) => a.assetId} />
+      {/* Its own key per view: the sort of one view's columns doesn't carry to the other's. */}
+      <DataTable key={shown} columns={columns} rows={shown === "dividends" ? payers : rows} rowKey={(a) => a.assetId} />
     </ExplorePanel>
+  );
+}
+
+/** By Asset's two views: what was realized, the dividends. */
+function AssetPnlSwitch({ view, onChange }: { view: AssetPnlView; onChange: (view: AssetPnlView) => void }) {
+  const options: { id: AssetPnlView; label: string }[] = [{ id: "realized", label: "Realized" }, { id: "dividends", label: "Dividends" }];
+  return (
+    <div role="tablist" aria-label="By asset" className="inline-flex gap-1 p-1 bg-white rounded-full border border-[#E0DACC]">
+      {options.map((o) => {
+        const active = view === o.id;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(o.id)}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${active ? "bg-[#1c1917] text-white" : "text-[#78716c] hover:text-[#1c1917]"}`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -4648,7 +4717,7 @@ function MonthPage({
  * Performance's detail (see PerformanceSection).
  */
 function HistoryPage({
-  insights, performance, value, portfolioUuid, onSelectMonth, onOpenStress, onOpenProjection, isAggregate, onOpenPortfolio, onCompare, onOpenStrategy, onNavigate, onOpenTaxes, comparison, backtest, strategyShown,
+  insights, performance, value, portfolioUuid, onSelectMonth, onOpenStress, onOpenProjection, isAggregate, onOpenPortfolio, onCompare, onOpenStrategy, onNavigate, onOpenTaxes, onOpenPnlYear, initialExplore, comparison, backtest, strategyShown,
 }: {
   insights: Insights;
   // The Performance section, already loaded, and its value (PerformanceSection checks both).
@@ -4671,6 +4740,9 @@ function HistoryPage({
   onNavigate?: (section: string) => void;
   // Opens the investments' Taxes page, from the Realized P&L.
   onOpenTaxes?: (year?: number) => void;
+  // Opens a year's Profit & Loss page, from the Realized P&L's year by year.
+  onOpenPnlYear?: (year: number) => void;
+  initialExplore?: PortfolioExplore;
   comparison: PortfolioComparisonEntry | null;
   // A strategy's backtest: a simulation, so only what it says about the strategy — its returns
   // against the benchmark, its mix, what trading cost it at the costs set for it, its risk. Its
@@ -4833,6 +4905,8 @@ function HistoryPage({
             currency={currency}
             portfolioUuid={portfolioUuid}
             onOpenTaxes={onOpenTaxes}
+            onOpenPnlYear={onOpenPnlYear}
+            openOnMount={initialExplore === "realizedPnl"}
           />
         </Tile>
       )}

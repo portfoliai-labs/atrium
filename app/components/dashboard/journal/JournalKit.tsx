@@ -15,8 +15,9 @@ import {
 } from "../../../lib/journal";
 import { serif } from "../../preview/PreviewKit";
 import { JournalMenu } from "./JournalMenu";
+import { PAGE_HEAD, PageTitle } from "../PageHeader";
 
-/** A Journal page's head: the eyebrow, its title, a line under it, its actions and the Journal's menu. */
+/** A Journal page's head: the eyebrow, its title (what the page is in its "i": `subtitle`), its actions and the Journal's menu. */
 export function JournalHeader({ title, subtitle, actions, menuNarrowOnly = false }: {
   title: string;
   subtitle?: string;
@@ -26,10 +27,9 @@ export function JournalHeader({ title, subtitle, actions, menuNarrowOnly = false
 }) {
   return (
     <header className="flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C] mb-1.5">PortfoliAI Journal</p>
-        <h1 className="text-3xl md:text-4xl font-black text-slate-900" style={serif}>{title}</h1>
-        {subtitle && <p className="text-[13px] text-slate-500 mt-1.5 leading-relaxed max-w-xl">{subtitle}</p>}
+      <div className={PAGE_HEAD}>
+        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C49A3C]">PortfoliAI Journal</p>
+        <PageTitle title={title} info={subtitle} />
       </div>
       <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
         {actions}
