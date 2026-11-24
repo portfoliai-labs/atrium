@@ -63,7 +63,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.signOut().catch((error) => console.error("Supabase sign-out failed:", error));
 
     // Redirect to login with a reason parameter for UX
-    router.replace('/homepage');
+    router.replace('/login');
   }, [router]);
 
   /**

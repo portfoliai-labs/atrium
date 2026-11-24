@@ -2,23 +2,12 @@
 
 import React, { Suspense, useState } from "react";
 import { motion } from "framer-motion";
-import { BarChart3, ShieldCheck, Zap, Loader2, AlertCircle, Mail, Lock, MailCheck } from "lucide-react";
+import { BarChart3, Loader2, AlertCircle, Mail, Lock, MailCheck } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useAuthFlow } from "@/app/hooks/useAuthFlow";
 import { MIN_PASSWORD_LENGTH } from "@/app/lib/password";
 
-const loginFeatures: Array<{ icon: React.ElementType; title: string; description: string }> = [
-  {
-    icon: Zap,
-    title: "Instant AI Analysis",
-    description: "Get your portfolio parsed and analysed in seconds.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Secure & Private",
-    description: "Your data is encrypted and access-controlled — retained only while your account is active, deletable anytime.",
-  },
-];
+const SOURCE_URL = "https://github.com/portfoliai-labs";
 
 function LoginContent() {
   const searchParams = useSearchParams();
@@ -260,7 +249,7 @@ function LoginContent() {
                 </div>
                 )}
                 {authMode === "signin" && (
-                  <div className="flex justify-end">
+                  <div className="flex justify-end pb-2">
                     <button
                       type="button"
                       onClick={() => setAuthMode("reset")}
@@ -302,12 +291,6 @@ function LoginContent() {
             </>
           )}
 
-          <div className="flex items-center gap-4 my-8">
-            <div className="flex-1 h-px" style={{ background: "#E0DACC" }} />
-            <span className="text-[10px] uppercase tracking-[0.1em]" style={{ color: "#c4bdb5" }}>secure login</span>
-            <div className="flex-1 h-px" style={{ background: "#E0DACC" }} />
-          </div>
-
           <p className="text-center text-[11px] mt-8 leading-relaxed" style={{ color: "#857e78" }}>
             By continuing, you agree to our{" "}
             <a href="#" className="underline transition-colors" style={{ color: "#78716c" }}
@@ -333,22 +316,24 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col md:flex-row" style={{ background: "#F7F5EF" }}>
 
-      {/* ── LEFT — branding ── */}
+      {/* ── LEFT — branding: the name, one line on what it is, and that it is open source. ── */}
       <div
-        className="hidden md:flex md:w-1/2 flex-col justify-between p-14 lg:p-20 border-r relative overflow-hidden"
+        className="hidden md:flex md:w-1/2 flex-col justify-between gap-10 p-14 lg:p-20 border-r relative overflow-hidden"
         style={{ background: "#131210", borderColor: "rgba(255,255,255,0.06)" }}
       >
         <div
           className="absolute pointer-events-none"
           style={{
-            top: "-80px", left: "-80px",
-            width: "480px", height: "480px",
+            bottom: "-160px", right: "-160px",
+            width: "560px", height: "560px",
             borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(196,154,60,0.07) 0%, transparent 70%)",
+            background: "radial-gradient(circle, rgba(196,154,60,0.10) 0%, transparent 70%)",
             filter: "blur(32px)",
           }}
         />
 
+        {/* The name and the line together at the top; the license alone at the bottom. */}
+        <div className="relative flex flex-col gap-16">
         <motion.div
           initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -367,64 +352,34 @@ export default function LoginPage() {
           initial={{ opacity: 0, x: -24 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.7, delay: 0.15 }}
+          className="relative"
         >
-          <div className="flex items-center gap-2 mb-8">
-            <span className="w-5 h-px" style={{ background: "rgba(196,154,60,0.5)" }} />
-            <span className="text-[10px] font-medium tracking-[0.14em] uppercase" style={{ color: "rgba(196,154,60,0.6)" }}>
-              AI Portfolio Intelligence
-            </span>
-          </div>
           <h1
-            className="text-[clamp(34px,3.8vw,52px)] font-black leading-[1.06] tracking-tight mb-6"
+            className="text-[clamp(34px,3.8vw,56px)] font-black leading-[1.06] tracking-tight mb-6"
             style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#fafaf9" }}
           >
-            Master your<br />
-            wealth with<br />
-            <em style={{ fontStyle: "italic", color: "#8A6A28" }}>absolute</em> clarity.
+            All of your wealth,<br />
+            in one place,<br />
+            <em style={{ fontStyle: "italic", color: "#C49A3C" }}>understood.</em>
           </h1>
-          <p className="text-[14px] font-light leading-[1.75] max-w-sm" style={{ color: "rgba(255,255,255,0.35)" }}>
-            Join investors and advisors who use PortfoliAI to uncover
-            hidden costs and understand their real returns.
+          <p className="text-[15px] font-light leading-[1.75] max-w-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
+            Investments, cash and property in a single view, on a server of your own.
           </p>
         </motion.div>
+        </div>
 
-        <motion.div
+        <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.7, delay: 0.35 }}
-          className="flex flex-col gap-6"
+          className="relative text-[11px]"
+          style={{ color: "rgba(255,255,255,0.3)" }}
         >
-          {loginFeatures.map((feature, i) => {
-            const Icon = feature.icon;
-            return (
-              <div key={i} className="flex items-start gap-4">
-                <div
-                  className="w-9 h-9 flex items-center justify-center rounded-[4px] border flex-shrink-0"
-                  style={{ borderColor: "rgba(196,154,60,0.22)" }}
-                >
-                  <Icon className="w-4 h-4" style={{ color: "#E8C97A" }} strokeWidth={1.5} />
-                </div>
-                <div>
-                  <h3 className="text-[14px] font-bold mb-0.5" style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#fafaf9" }}>
-                    {feature.title}
-                  </h3>
-                  <p className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.3)" }}>
-                    {feature.description}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-
-          <div className="flex gap-0 mt-4 pt-6 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-            {[{ num: "€ 0", label: "to start" }, { num: "100%", label: "private" }, { num: "1", label: "click away" }].map((s, i) => (
-              <div key={i} className={`flex-1 ${i > 0 ? "pl-4 border-l" : ""} ${i < 2 ? "pr-4" : ""}`} style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-                <div className="text-[22px] font-bold leading-none mb-1" style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "#fafaf9" }}>{s.num}</div>
-                <div className="text-[9px] uppercase tracking-[0.09em]" style={{ color: "rgba(255,255,255,0.22)" }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </motion.div>
+          Open source under the Apache License 2.0 ·{" "}
+          <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white/60 transition-colors">
+            Source on GitHub
+          </a>
+        </motion.p>
       </div>
 
       {/* ── RIGHT — auth form ── */}

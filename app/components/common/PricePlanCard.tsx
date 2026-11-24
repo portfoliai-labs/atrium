@@ -22,7 +22,7 @@ const PricePlanCard: React.FC<PricePlanCardProps> = ({
   index, 
   available, 
   onAction,
-  variant = 'dark' // Default scuro per la homepage
+  variant = 'dark'
 }) => {
   const isDark = variant === 'dark';
 
