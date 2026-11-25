@@ -12,7 +12,7 @@ import { journalKey, useJournal, useJournalQuery } from "../../../context/Journa
 import { ApiError } from "../../../services/apiClient";
 import { journalService } from "../../../services/journalService";
 import type {
-  Article, ArticleAudience, ArticleCategory, ArticleContent, ArticleImage, ArticleInstrument, ArticleLanguage, Block,
+  Article, ArticleCategory, ArticleContent, ArticleImage, ArticleInstrument, ArticleLanguage, Block,
 } from "../../../models/Journal";
 import { instrumentRef } from "../../../models/Journal";
 import {
@@ -36,7 +36,6 @@ interface Form {
   dek: string;
   category: ArticleCategory;
   language: ArticleLanguage;
-  audience: ArticleAudience;
   interestDisclosure: string;
 }
 
@@ -45,7 +44,6 @@ const formOf = (article: Article | null, language: ArticleLanguage): Form => ({
   dek: article?.dek ?? "",
   category: article?.category ?? DEFAULT_CATEGORY,
   language: article?.language ?? language,
-  audience: article?.audience ?? "everyone",
   interestDisclosure: article?.interestDisclosure ?? "",
 });
 
@@ -195,7 +193,6 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
       cover: coverOf(blocks),
       body: blocks,
       instruments: instruments.map(instrumentRef),
-      audience: isAdvisor ? f.audience : null,
       interestDisclosure: isAdvisor ? f.interestDisclosure.trim() || null : null,
     };
   };
@@ -293,8 +290,8 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
       setActionError(`To publish it, it still needs ${missing.join(", ").replace(/, ([^,]*)$/, " and $1")}.`);
       return;
     }
-    // An article for an advisor's clients never goes out to the network: no notice to confirm.
-    if (form.audience !== "advisor_clients" && !confirmPublish) {
+    // Every published article goes out to the network: a notice to confirm first.
+    if (!confirmPublish) {
       setConfirmPublish(true);
       return;
     }
@@ -352,7 +349,6 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
     language: form.language,
     cover: coverOf(previewBody),
     instruments,
-    audience: form.audience,
     slug: article?.slug ?? null,
     readMinutes: article?.readMinutes ?? 1,
     publishedAt: article?.publishedAt ?? null,
@@ -436,7 +432,7 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-900">
           <span className="flex items-center gap-2 font-bold">
             <CheckCircle2 className="h-4 w-4" />
-            {form.audience === "advisor_clients" ? "Published: your clients can read it now." : "Published: it's in the Journal and on its way to the network."}
+            Published: it&apos;s in the Journal and on its way to the network.
           </span>
           <button type="button" onClick={() => onRead(article.slug!)} className="text-xs font-bold underline underline-offset-2">Read it</button>
         </div>
@@ -510,29 +506,18 @@ export function ArticleEditor({ uuid, onCreated, onBack, onRead }: {
               {instruments.length > MAX_INSTRUMENTS && <span className="text-rose-600 font-semibold">Up to {MAX_INSTRUMENTS} instruments.</span>}
             </div>
           )}
-          {isAdvisor && (
-            <div className="space-y-4 border-t border-[#E7E1D3] pt-4">
-              <label className="flex flex-wrap items-center gap-3">
-                <FieldLabel>Who reads it</FieldLabel>
-                <select value={form.audience} onChange={(e) => change({ audience: e.target.value as ArticleAudience })} className={`${inputClass(flagged === "audience")} w-auto`}>
-                  <option value="everyone">Everyone on PortfoliAI</option>
-                  <option value="advisor_clients">Only my clients</option>
-                </select>
-              </label>
-              {(needsDisclosure || form.interestDisclosure) && (
-                <label className="block">
-                  <FieldLabel>{DISCLOSURE_TITLE}{needsDisclosure ? " (required)" : ""}</FieldLabel>
-                  <textarea
-                    value={form.interestDisclosure}
-                    maxLength={DISCLOSURE_MAX}
-                    onChange={(e) => change({ interestDisclosure: e.target.value })}
-                    rows={3}
-                    className={`${inputClass(flagged === "interestDisclosure")} resize-none`}
-                  />
-                  <span className="mt-1.5 block text-[11px] text-slate-400 leading-relaxed">{DISCLOSURE_HELP}</span>
-                </label>
-              )}
-            </div>
+          {isAdvisor && (needsDisclosure || form.interestDisclosure) && (
+            <label className="block border-t border-[#E7E1D3] pt-4">
+              <FieldLabel>{DISCLOSURE_TITLE}{needsDisclosure ? " (required)" : ""}</FieldLabel>
+              <textarea
+                value={form.interestDisclosure}
+                maxLength={DISCLOSURE_MAX}
+                onChange={(e) => change({ interestDisclosure: e.target.value })}
+                rows={3}
+                className={`${inputClass(flagged === "interestDisclosure")} resize-none`}
+              />
+              <span className="mt-1.5 block text-[11px] text-slate-400 leading-relaxed">{DISCLOSURE_HELP}</span>
+            </label>
           )}
         </div>
         {previewArticle && <ArticleDocument article={previewArticle} />}

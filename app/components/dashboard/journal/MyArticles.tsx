@@ -54,7 +54,6 @@ export function MyArticles({ onOpen, onNew }: { onOpen: (uuid: string) => void; 
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusChip status={a.status} />
                     {a.category && a.category !== DEFAULT_CATEGORY && <span className="text-[10px] font-black uppercase tracking-wider text-[#C49A3C]">{CATEGORY_LABELS[a.category]}</span>}
-                    {a.audience === "advisor_clients" && <span className="text-[10px] font-bold text-slate-400">Clients only</span>}
                     <NetworkStatusLine network={a.network} />
                   </div>
                   <p className={`mt-1.5 text-base font-black leading-snug truncate ${a.title ? "text-slate-900" : "text-slate-400"}`} style={serif}>
