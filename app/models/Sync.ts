@@ -30,3 +30,24 @@ export interface SyncStatus {
   // Null while sync is off.
   link: SyncLink | null;
 }
+
+// Which of the user's Nostr keys: the network's (their identity: what they publish, applaud, follow
+// with) or the private messages'.
+export type SyncKeyPurpose = "network" | "messages";
+
+export interface SyncPublicKey {
+  // Lowercase hex, and the same in bech32 ("npub1...").
+  pubkey: string;
+  npub: string;
+}
+
+// One of the user's Nostr keys in their sync set, as this server holds it (ianus' /v1/sync/keys).
+export interface SyncSharedKey {
+  purpose: SyncKeyPurpose;
+  // This server's key is the set's: the user's other devices sign with it too.
+  shared: boolean;
+  // This server's own key; null while it has none yet.
+  own: SyncPublicKey | null;
+  // The set's key, not taken because this server's was already used; null when none.
+  offered: SyncPublicKey | null;
+}

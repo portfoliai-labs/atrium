@@ -4,14 +4,18 @@
 import { useId, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
-import { AlertTriangle, Check, Cloud, Copy, KeyRound, Link2, Loader2, LifeBuoy, PowerOff, RefreshCw, Smartphone } from "lucide-react";
+import { AlertTriangle, Check, Cloud, Copy, Fingerprint, KeyRound, Link2, Loader2, LifeBuoy, PowerOff, RefreshCw, Smartphone } from "lucide-react";
 import { accountKey, useAccountQuery } from "../../hooks/useAccountQuery";
 import { ApiError } from "../../services/apiClient";
 import { syncService } from "../../services/syncService";
-import type { SyncLink, SyncStatus, SyncStorage } from "../../models/Sync";
+import type { SyncKeyPurpose, SyncLink, SyncSharedKey, SyncStatus, SyncStorage } from "../../models/Sync";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { Toggle } from "./Toggle";
 
 // How often the status is read again while the tab is open: speculum pulls every minute.
 const STATUS_POLL_MS = 10_000;
+// The keys again: a set's key reaches this server with a pull, after a join for instance.
+const KEYS_POLL_MS = 30_000;
 
 const inputClass = "w-full px-4 py-3 bg-[#F7F5EF] border border-[rgba(196,154,60,0.2)] rounded-xl text-sm font-medium text-[#1c1917] outline-none focus:ring-2 focus:ring-[#C49A3C]/40";
 const labelClass = "block text-[10px] font-bold text-[#78716c] uppercase tracking-wider mb-1.5";
@@ -29,6 +33,9 @@ function errorText(err: unknown, fallback: string) {
       case "NoRecoveryFileError": return "That folder has no recovery file: no device made a recovery code for it.";
       case "WrongRecoveryCodeError": return "Those words don't open the folder's recovery file: check them, and that it's the latest code.";
       case "NotLinkedError": return "Sync is off.";
+      case "NoOfferedKeyError": return "Your other devices offer no key any more.";
+      case "KeyTakenError": return "Another account on this server already uses that key.";
+      case "PonsUnavailableError": return "The network's keys couldn't be reached: try again in a moment.";
     }
   }
   return err instanceof Error && err.message ? err.message : fallback;
@@ -226,6 +233,143 @@ function Unlinked({ onLinked }: { onLinked: (link: SyncLink) => void }) {
   );
 }
 
+// Each key's copy: the network key is shared as this server joins a set, the messages key only
+// when the user turns it on.
+const KEY_COPY: Record<SyncKeyPurpose, { title: string; hint: string; queryId: string }> = {
+  network: {
+    title: "Network key",
+    hint: "Your identity on the network: what you publish, applaud and follow with. Shared with your devices as this server joins your set, so they are all one you.",
+    queryId: "network-identity",
+  },
+  messages: {
+    title: "Messages key",
+    hint: "Your private messages with advisors and investors on the network. Shared only if you turn it on: then every device of yours reads them.",
+    queryId: "network-messages-identity",
+  },
+};
+
+function shortNpub(npub: string) {
+  return npub.length > 20 ? `${npub.slice(0, 12)}…${npub.slice(-6)}` : npub;
+}
+
+/** One of the user's Nostr keys in their set: sharing it, and the set's key when it's offered. */
+function SharedKeyRow({ sharedKey, onChanged }: { sharedKey: SyncSharedKey; onChanged: (next: SyncSharedKey) => void }) {
+  const copy = KEY_COPY[sharedKey.purpose];
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [takeAsked, setTakeAsked] = useState(false);
+  const [taking, setTaking] = useState(false);
+  const [takeError, setTakeError] = useState<string | null>(null);
+
+  const setShared = async (shared: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      onChanged(await syncService.setKeySharing(sharedKey.purpose, shared));
+    } catch (err) {
+      setError(errorText(err, "The key's sharing couldn't be changed."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const take = async () => {
+    setTaking(true);
+    setTakeError(null);
+    try {
+      onChanged(await syncService.takeOfferedKey(sharedKey.purpose));
+      setTakeAsked(false);
+    } catch (err) {
+      setTakeError(errorText(err, "The key couldn't be taken."));
+    } finally {
+      setTaking(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 py-4 first:pt-0 last:pb-0">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 space-y-1">
+          <p className="font-bold text-sm text-[#1c1917]">{copy.title}</p>
+          <p className="text-[13px] text-[#78716c] leading-relaxed">{copy.hint}</p>
+          <p className="text-[12px] text-[#a8a29e]">
+            This server&apos;s key:{" "}
+            {sharedKey.own ? (
+              <code className="font-mono text-[#57534e]" title={sharedKey.own.npub}>{shortNpub(sharedKey.own.npub)}</code>
+            ) : "none yet"}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {busy && <Loader2 className="h-4 w-4 animate-spin text-[#C49A3C]" />}
+          <Toggle
+            checked={sharedKey.shared} disabled={busy} label={`Share the ${copy.title.toLowerCase()} with your devices`}
+            onChange={(v) => void setShared(v)}
+          />
+        </div>
+      </div>
+      <Failure text={error} />
+      {sharedKey.offered && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-[13px] text-amber-900 leading-relaxed min-w-0">
+            Your other devices use another key:{" "}
+            <code className="font-mono" title={sharedKey.offered.npub}>{shortNpub(sharedKey.offered.npub)}</code>.
+            This server kept its own, as it had already used it.
+          </p>
+          <button type="button" className={`${secondaryButtonClass} shrink-0 bg-white`} onClick={() => { setTakeError(null); setTakeAsked(true); }}>
+            Use your other devices&apos; key
+          </button>
+        </div>
+      )}
+      {takeAsked && sharedKey.offered && (
+        <ConfirmDialog
+          title="Use your other devices' key?"
+          description={sharedKey.purpose === "network"
+            ? "What you published with this server's current key stays on the network, signed by it: those articles, applause and follows are no longer yours there. From now on this server signs as your other devices do."
+            : "The messages sent and received with this server's current key stay on the network, sealed to it: this server won't read them any more. From now on it reads and sends as your other devices do."}
+          confirmLabel="Use their key"
+          confirming={taking}
+          error={takeError}
+          onConfirm={() => void take()}
+          onClose={() => setTakeAsked(false)}
+        >
+          <p className="text-xs text-slate-500">
+            The key you take: <code className="font-mono break-all">{sharedKey.offered.npub}</code>
+          </p>
+        </ConfirmDialog>
+      )}
+    </div>
+  );
+}
+
+/** The user's Nostr keys travelling with the sync: one identity on every device of theirs. */
+function SharedKeys() {
+  const queryClient = useQueryClient();
+  const keys = useAccountQuery(["sync-keys"], () => syncService.sharedKeys(), { pollMs: KEYS_POLL_MS });
+
+  const changed = (next: SyncSharedKey) => {
+    queryClient.setQueryData<SyncSharedKey[]>(accountKey("sync-keys"), (old) => old?.map((k) => k.purpose === next.purpose ? next : k));
+    // Taking a key changes the identity the network's settings show.
+    void queryClient.invalidateQueries({ queryKey: accountKey(KEY_COPY[next.purpose].queryId) });
+  };
+
+  return (
+    <Card icon={<Fingerprint className="w-5 h-5" />} title="Network keys">
+      <p className="text-[13px] text-[#78716c]">
+        Your Nostr keys travel with the sync, encrypted like the rest: your phones and this server are one identity on the network.
+      </p>
+      {keys.isLoading ? (
+        <Loader2 className="h-5 w-5 animate-spin text-[#C49A3C]" />
+      ) : keys.isError ? (
+        <Failure text={errorText(keys.error, "The keys couldn't be read.")} />
+      ) : (
+        <div className="divide-y divide-[rgba(196,154,60,0.15)]">
+          {keys.data?.map((k) => <SharedKeyRow key={k.purpose} sharedKey={k} onChanged={changed} />)}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 /** Sync on: how it goes, pairing a phone, the recovery code, turning it off. */
 function Linked({ link, onUnlinked }: { link: SyncLink; onUnlinked: () => void }) {
   const [pairingAsked, setPairingAsked] = useState(false);
@@ -301,6 +445,8 @@ function Linked({ link, onUnlinked }: { link: SyncLink; onUnlinked: () => void }
         {link.lastError && <Failure text={`The last sync failed: ${link.lastError}`} />}
         {link.waitingError && <Failure text={`A change from another device couldn't be applied: ${link.waitingError}`} />}
       </Card>
+
+      <SharedKeys />
 
       <Card icon={<Smartphone className="w-5 h-5" />} title="Add a phone">
         <p className="text-[13px] text-[#78716c]">In tabella, open Settings → Sync → Join, and scan this server&apos;s pairing code.</p>
@@ -404,7 +550,11 @@ function Linked({ link, onUnlinked }: { link: SyncLink; onUnlinked: () => void }
 export function SyncSettings() {
   const queryClient = useQueryClient();
   const status = useAccountQuery(["sync"], () => syncService.status(), { pollMs: STATUS_POLL_MS });
-  const setStatus = (next: SyncStatus) => queryClient.setQueryData(accountKey("sync"), next);
+  const setStatus = (next: SyncStatus) => {
+    queryClient.setQueryData(accountKey("sync"), next);
+    // Another set, or none: its keys are read again.
+    void queryClient.removeQueries({ queryKey: accountKey("sync-keys") });
+  };
 
   return (
     <div className="space-y-8">
