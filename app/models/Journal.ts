@@ -7,8 +7,6 @@ export type ArticleCategory =
 export type ArticleLanguage = "it" | "en";
 // Told by who the author is, never chosen.
 export type AuthorKind = "advisor" | "user";
-// `advisor_clients`: an advisor's articles only, for their clients.
-export type ArticleAudience = "everyone" | "advisor_clients";
 export type ArticleStatus = "draft" | "published";
 // Where it was written: on this instance (its author's to edit), or read from the network (Nostr:
 // another instance, another client), read-only here (409 NetworkArticleReadOnlyError on a write).
@@ -107,7 +105,6 @@ export interface ArticleContent {
   cover?: ArticleImage | null;
   body: Block[];
   instruments: ArticleInstrumentRef[];
-  audience?: ArticleAudience | null;
   // An advisor's interests in the instruments they write about (MAR, art. 20).
   interestDisclosure?: string | null;
 }
@@ -160,7 +157,6 @@ export interface ArticleSummary {
   language: ArticleLanguage | null;
   cover: ArticleImage | null;
   instruments: ArticleInstrument[];
-  audience: ArticleAudience;
   // Given at the first publishing, kept after.
   slug: string | null;
   readMinutes: number;
