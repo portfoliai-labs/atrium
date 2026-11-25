@@ -19,6 +19,9 @@ interface UserProfile {
   created_at: string;
   updated_at: string | null;
   language: string;
+  // The IANA time zone the backend counts the user's days in ("Europe/Rome"); null until one is
+  // set (UTC meanwhile): the app then sends the browser's (context/UserContext).
+  time_zone?: string | null;
   profile_picture: string | null;
   first_name: string | null;
   last_name: string | null;
@@ -42,6 +45,8 @@ interface ProfileCreatePayload {
   last_name: string;
   language: string;
   role: UserRole;
+  // The browser's IANA time zone (userService adds it).
+  time_zone?: string | null;
 }
 
 // Matches ProfileUpdatePayload DTO (PATCH /users/profile) — investor financial data,
@@ -57,6 +62,8 @@ interface ProfileUpdatePayload {
   financial_knowledge_level?: FinancialKnowledgeLevel | null;
   currency?: string | null;
   language?: string | null;
+  // An IANA time zone ("Europe/Rome"); 422 when the backend doesn't know it. Left out: unchanged.
+  time_zone?: string | null;
   // Two letters, any case (the backend upper-cases them); 422 otherwise. Left out: unchanged.
   tax_residence?: string | null;
 }

@@ -14,6 +14,7 @@ import { userService } from '../services/userService';
 import { ApiError } from '../services/apiClient';
 import { supabase } from '../lib/supabaseClient';
 import type { UserProfile } from '../models/User';
+import { deviceTimeZone } from '../lib/timeZone';
 
 /**
  * Context Type Definition
@@ -74,7 +75,18 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     const silent = opts?.silent ?? false;
     try {
       if (!silent) setLoading(true);
-      const profile: UserProfile = await userService.getUserProfile();
+      let profile: UserProfile = await userService.getUserProfile();
+      // A profile without a time zone (an account from before it, or one an advisor created) gets
+      // the browser's: the backend counts the user's days in UTC until it has one.
+      const zone = profile.time_zone ? null : deviceTimeZone();
+      if (zone) {
+        try {
+          await userService.updateUserProfile({ time_zone: zone });
+          profile = { ...profile, time_zone: zone };
+        } catch (zoneError) {
+          console.error("Failed to set the time zone:", zoneError);
+        }
+      }
       setUser(profile);
       setNeedsLegalAcceptance(false);
 

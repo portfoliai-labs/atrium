@@ -9,6 +9,7 @@ import type { UserProfile } from "../../models/User";
 import { useSectionView } from "../../lib/dashboardHistory";
 import { PROFILE_SECTION } from "../../lib/dashboardNav";
 import { TAX_REGIME_COUNTRIES, residenceOptions } from "../../lib/taxes";
+import { deviceTimeZone, timeZoneLabel, timeZoneOptions } from "../../lib/timeZone";
 import { IPS_STEPS, completedSteps, policyToMarkdown } from "../../lib/ips";
 import { useInvestorPolicy } from "../../hooks/useInvestorPolicy";
 import { useUser } from "../../context/UserContext";
@@ -144,8 +145,9 @@ export function MyProfileSection() {
 }
 
 /**
- * PREFERENCES — Profile's first card: the language, the currency and, for an investor, the tax
- * residence their taxes are computed by (see the investments' Taxes), edited in a dialog.
+ * PREFERENCES — Profile's first card: the language, the currency, the time zone the user's days
+ * are counted in ("today", this month) and, for an investor, the tax residence their taxes are
+ * computed by (see the investments' Taxes), edited in a dialog.
  */
 function PreferencesCard() {
   const { user, refreshUser } = useUser();
@@ -156,9 +158,12 @@ function PreferencesCard() {
   const profile = useAccountRead(["profile"], () => userService.getUserProfile());
   // The tax residence ("" until set) picks the regime the investor's taxes are computed by.
   const saved = profile
-    ? { language: profile.language || "en", currency: profile.currency || "USD", taxResidence: profile.tax_residence ?? "" }
+    ? {
+      language: profile.language || "en", currency: profile.currency || "USD", taxResidence: profile.tax_residence ?? "",
+      timeZone: profile.time_zone || deviceTimeZone() || "UTC",
+    }
     : null;
-  const [form, setForm] = useState({ language: "en", currency: "USD", taxResidence: "" });
+  const [form, setForm] = useState({ language: "en", currency: "USD", taxResidence: "", timeZone: "UTC" });
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -177,14 +182,15 @@ function PreferencesCard() {
     try {
       // The residence only when picked: once set it's changed, not cleared.
       const residence = form.taxResidence && form.taxResidence !== saved.taxResidence ? { tax_residence: form.taxResidence } : {};
-      await userService.updateUserProfile({ language: form.language, currency: form.currency, ...residence });
+      await userService.updateUserProfile({ language: form.language, currency: form.currency, time_zone: form.timeZone, ...residence });
       localStorage.removeItem("user_profile");
       await refreshUser({ silent: true });
-      // The figures in the reference currency, the taxes by the residence's regime.
+      // The figures in the reference currency and on the zone's day, the taxes by the residence's regime.
       changed();
       // The profile as saved, here and wherever else it's read.
       queryClient.setQueryData<UserProfile>(accountKey("profile"), (prev) => prev && {
-        ...prev, language: form.language, currency: form.currency, tax_residence: form.taxResidence || saved.taxResidence || null,
+        ...prev, language: form.language, currency: form.currency, time_zone: form.timeZone,
+        tax_residence: form.taxResidence || saved.taxResidence || null,
       });
       setEditing(false);
     } catch (err) {
@@ -209,7 +215,7 @@ function PreferencesCard() {
     <>
       <ProfileCard
         title="Preferences"
-        description={isAdvisor ? "Your language and currency." : "Your language, currency and where you pay taxes."}
+        description={isAdvisor ? "Your language, currency and time zone." : "Your language, currency, time zone and where you pay taxes."}
         onEdit={edit}
         editDisabled={saved ? undefined : "Loading…"}
       >
@@ -217,6 +223,7 @@ function PreferencesCard() {
           <ProfileRows rows={[
             { label: "Language", value: language(saved.language) },
             { label: "Currency", value: currencyLabel(saved.currency) },
+            { label: "Time zone", value: timeZoneLabel(saved.timeZone) },
             ...(isAdvisor ? [] : [{ label: "Tax residence", value: residence(saved.taxResidence) }]),
           ]} />
         ) : (
@@ -227,7 +234,7 @@ function PreferencesCard() {
       {editing && (
         <ProfileDialog
           title="Preferences"
-          description={isAdvisor ? "Your language and currency." : "Your language, currency and where you pay taxes."}
+          description={isAdvisor ? "Your language, currency and time zone." : "Your language, currency, time zone and where you pay taxes."}
           onClose={() => !saving && setEditing(false)}
           footer={(
             <>
@@ -269,6 +276,16 @@ function PreferencesCard() {
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#857e78]" />
               </div>
+            </div>
+            <div>
+              <label htmlFor="pref-time-zone" className={label}>Time zone</label>
+              <div className="relative">
+                <select id="pref-time-zone" value={form.timeZone} onChange={(e) => setForm({ ...form, timeZone: e.target.value })} disabled={saving} className={select}>
+                  {timeZoneOptions(form.timeZone).map((z) => <option key={z} value={z}>{timeZoneLabel(z)}</option>)}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#857e78]" />
+              </div>
+              <p className="text-[11px] text-[#78716c] mt-1.5">What &ldquo;today&rdquo; and &ldquo;this month&rdquo; mean in your figures, budgets and alerts.</p>
             </div>
             {!isAdvisor && (
               <div>
