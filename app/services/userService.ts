@@ -8,17 +8,18 @@ import type {
   NotificationPreferencesUpdatePayload,
 } from "../models/User";
 import { apiFetch } from "./apiClient";
+import { deviceTimeZone } from "../lib/timeZone";
 
 export const userService = {
   async getUserProfile(): Promise<UserProfile> {
     return apiFetch<UserProfile>('/v1/users/profile');
   },
 
-  // POST /v1/users/register — creates the user with basic info + role only
+  // POST /v1/users/register — creates the user with basic info + role, and the browser's time zone
   async createUserProfile(payload: ProfileCreatePayload): Promise<UserProfile> {
     return apiFetch<UserProfile>('/v1/users/register', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ time_zone: deviceTimeZone(), ...payload }),
     });
   },
 
